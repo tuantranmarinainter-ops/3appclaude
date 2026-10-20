@@ -5,6 +5,7 @@ import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
+import { resolveSides, turnRig, type SwapSidesMode } from './sides.ts'
 import { glbNodeNames, mergeAnimationGlbs } from './glbContract.ts'
 import { loadAsset } from './loadAsset.ts'
 import { QualityMeter, summarizeQuality } from './quality.ts'
@@ -39,6 +40,8 @@ export interface NormalizeRequest {
   onProgress?: NormalizeProgress
   /** With `mappingPreset`: the family to report/assume (a preset itself carries none), e.g. keeps minecraft20's absent Foot roles non-required. */
   presetFamily?: SourceFamily
+  /** Left/Right policy: 'auto' (default) mirrors the mapping when motion contradicts the bone names, 'on'/'off' force it. */
+  swapSides?: SwapSidesMode
 }
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
@@ -157,7 +160,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
     actions: request.actions ? [...request.actions] : 'all' as const, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
-    fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs' }
+    fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs', swapSides: request.swapSides ?? 'auto' }
 
   const src = createThreeRigAdapter(request.source, { ...sourceOptions, collectUnsupportedTracks: true })
   const dst = createThreeRigAdapter(request.target, targetOptions)
@@ -166,9 +169,13 @@ export async function inspectNormalize(request: NormalizeRequest) {
   let sourceBones: Map<string, { name?: string; parentId: string | null }>
   let sourceHipsHeight: number | null = null
   let rigs: InspectRigs
+  let sides: ReturnType<typeof resolveSides>['report']
   const actions = src.actions.map((action) => ({ index: action.index, name: action.name, durationSeconds: action.durationSeconds, ready: action.ready, issues: action.issues }))
   try {
     mapping = request.mappingPreset ? buildPresetMapping(request.mappingPreset, src.rig, dst.rig, request.presetFamily) : buildAutoMapping(src.rig, dst.rig)
+    // Before calibration: facing is measured on the mapped Left/Right hips, so a side swap also corrects the facing.
+    const resolved = resolveSides(src, mapping, input.swapSides, !!request.mappingPreset)
+    mapping = resolved.mapping; sides = resolved.report
     sourceBones = new Map(src.rig.bones.map((bone) => [bone.id, bone]))
     const hipsId = mapping.joints.find((joint) => joint.target === 'Hips')?.sourceId
     sourceHipsHeight = hipsId ? src.rig.bones.find((bone) => bone.id === hipsId)!.restWorld[13]! : null
@@ -182,11 +189,11 @@ export async function inspectNormalize(request: NormalizeRequest) {
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
   const targetHipsHeight = targetRest.get('Hips')?.[13] ?? null
   const suggestedRootScale = sourceHipsHeight && sourceHipsHeight > 0 && targetHipsHeight ? targetHipsHeight / sourceHipsHeight : null
-  const base = { input, actions, mapping, mappingReport, rigs, sourceHipsHeight, targetHipsHeight, suggestedRootScale, targetRest }
+  const base = { input, actions, mapping, mappingReport, sides, rigs, sourceHipsHeight, targetHipsHeight, suggestedRootScale, targetRest }
 
   const missing = (request.actions ?? []).filter((index) => !actions[index])
   const blocker = !actions.length ? { code: 'NO_ACTION', message: 'Source has no Action', extra: { input, actions } as Record<string, unknown> }
-    : mapping.missingRequired.length ? { code: 'MISSING_REQUIRED_JOINTS', message: `Missing main joints: ${mapping.missingRequired.join(', ')}`, extra: { input, actions, mapping: mappingReport } as Record<string, unknown> }
+    : mapping.missingRequired.length ? { code: 'MISSING_REQUIRED_JOINTS', message: `Missing main joints: ${mapping.missingRequired.join(', ')}`, extra: { input, actions, mapping: mappingReport, sides } as Record<string, unknown> }
     : missing.length ? { code: 'NO_ACTION', message: `Action ${missing.join(', ')} does not exist (source has ${actions.length})`, extra: { input, actions } as Record<string, unknown> } : null
   if (blocker) return { ...base, blocker, ready: undefined }
 
@@ -201,7 +208,10 @@ export async function inspectNormalize(request: NormalizeRequest) {
   // Calibration must cover the exact rigs normalizeAnimation builds, so it is computed from adapters with the same options.
   let calibration: ReturnType<typeof buildCalibration>
   const finalSource = createThreeRigAdapter(request.source, sourceOptions), finalTarget = createThreeRigAdapter(request.target, targetOptions)
-  try { calibration = buildCalibration(finalSource.rig, finalTarget.rig, mapping.joints, input.calibrate, request.facingDegrees) } finally { finalSource.dispose(); finalTarget.dispose() }
+  // Rest/animation facing mismatch (LoL Lux): the solver's source reference is the rest pose turned to face like the Actions.
+  const hipsId = mapping.joints.find((joint) => joint.target === 'Hips')?.sourceId
+  const reference = hipsId ? turnRig(finalSource.rig, hipsId, sides.restTurnDegrees) : finalSource.rig
+  try { calibration = buildCalibration(reference, finalTarget.rig, mapping.joints, input.calibrate, request.facingDegrees) } finally { finalSource.dispose(); finalTarget.dispose() }
   return { ...base, blocker: null, ready: { prune, prunedActions, actionsReport, sourceOptions, targetOptions, calibration } }
 }
 
@@ -314,6 +324,7 @@ export async function runNormalize(request: NormalizeRequest) {
     status: (Object.values(gates).every((gate) => gate === 'PASS') ? 'PASS' : 'FAIL') as GateStatus,
     gates, contract, input, actions: actionsReport, exportedActions: exported.length, skippedActions,
     mapping: mappingReport,
+    sides: inspected.sides,
     calibration: { mode: input.calibrate, facingYawDegrees: calibration.facingYawDegrees, measuredFacingYawDegrees: calibration.measuredFacingYawDegrees,
       facingAmbiguous: calibration.facingAmbiguous, facingSource: calibration.facingSource,
       maxDegrees: Math.max(0, ...calibration.corrections.map((item) => item.degrees)), corrections: calibration.corrections },

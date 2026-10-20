@@ -28,7 +28,7 @@ export function measureFacingYaw(source: RetargetRig, target: RetargetRig, joint
     return new Vector3().crossVectors(left, new Vector3(0, 1, 0)).normalize()
   }
   const from = forward(source, 'sourceId'), to = forward(target, 'targetId')
-  return Math.atan2(from.z * to.x - from.x * to.z, from.x * to.x + from.z * to.z) * 180 / Math.PI
+  return Math.atan2(from.z * to.x - from.x * to.z, from.x * to.x + from.z * to.z) * 180 / Math.PI || 0 // no "-0°"
 }
 
 export function resolveFacing(measuredDegrees: number, overrideDegrees?: number) {

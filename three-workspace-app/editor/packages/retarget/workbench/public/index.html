@@ -76,7 +76,17 @@
             </label>
             <label class="field">Hướng mặt (độ)
               <input type="number" name="facingDegrees" placeholder="Tự đo" step="90">
+              <span class="row rotate-row" role="group" aria-label="Xoay nhân vật kết quả">
+                <button type="button" data-rotate="-90" title="Xoay kết quả −90°">⟲ 90°</button>
+                <button type="button" data-rotate="180" title="Nhân vật quay lưng? Xoay 180°">↻ 180°</button>
+                <button type="button" data-rotate="90" title="Xoay kết quả +90°">⟳ 90°</button>
+                <button type="button" data-rotate="auto" title="Bỏ xoay tay, dùng hướng đo được">Tự đo</button>
+              </span>
               <small id="facingHint"></small>
+            </label>
+            <label class="field">Trái / phải
+              <select name="swapSides"><option value="auto">Tự động (theo bước chân)</option><option value="on">Đảo trái ↔ phải</option><option value="off">Giữ theo tên xương</option></select>
+              <small id="sidesHint"></small>
             </label>
             <div class="grid2">
               <label class="field">Đơn vị nguồn (m/đv)
@@ -127,6 +137,7 @@
           <label class="inline"><input type="checkbox" id="tgSkel" checked> Xương</label>
           <label class="inline"><input type="checkbox" id="tgGrid" checked> Lưới sàn</label>
           <button type="button" id="frameBtn">Khớp camera</button>
+          <button type="button" id="flipRunBtn" title="Kết quả quay lưng so với nguồn? Xoay 180° rồi chạy lại">↻ Xoay 180° &amp; chạy lại</button>
           <span class="bindinfo" id="bindInfo"></span>
         </div>
       </div>

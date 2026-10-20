@@ -4,7 +4,7 @@
  * Usage (from editor/packages/builder so tsx resolves):
  *   node --import tsx <abs>/packages/retarget/cli/normalize.ts --src <file> --target <mixamo65.glb> --out <dir> [--preview]
  *        [--action all|<i>[,<i>...]] [--preview-action <i>] [--unit-meters <n>] [--up y|z] [--root preserve|in-place] [--root-scale <n>] [--mapping <preset.json>]
- *        [--armature <minecraft20-armature.bobj>] [--facing <deg>] [--calibrate limbs|none]   (limbs: swing source limbs onto the target rest directions — A/T calibration)
+ *        [--armature <minecraft20-armature.bobj>] [--facing <deg>] [--swap-sides auto|on|off] [--calibrate limbs|none]   (limbs: swing source limbs onto the target rest directions — A/T calibration)
  *        [--bobj [--bobj-root inPlace|follow] [--bobj-armature <minecraft20-armature.bobj>]]   (also write Minecraft20 actions for BBS FS)
  *        [--mode animation|model]   (model: also embed the source meshes + textures skinned to the Mixamo65 skeleton; Mixamo-family sources only)
  * Exit codes: 0 PASS, 1 FAIL/error, 2 BLOCKED (input cannot be normalized as given).
@@ -23,7 +23,7 @@ import { exportMinecraft20 } from './toMinecraft20.ts'
 const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
   action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
-  root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, facing: { type: 'string' }, 'root-scale': { type: 'string', default: '1' }, mapping: { type: 'string' }, armature: { type: 'string' },
+  root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string', default: '1' }, mapping: { type: 'string' }, armature: { type: 'string' },
   mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
 
@@ -32,6 +32,7 @@ if (!values.src || !values.target || !values.out) fail('--src, --target and --ou
 if (!['y', 'z'].includes(values.up!)) fail('--up must be y or z')
 if (!['preserve', 'in-place'].includes(values.root!)) fail('--root must be preserve or in-place')
 if (!['limbs', 'none'].includes(values.calibrate!)) fail('--calibrate must be limbs or none')
+if (!['auto', 'on', 'off'].includes(values['swap-sides']!)) fail('--swap-sides must be auto, on or off')
 if (!['animation', 'model'].includes(values.mode!)) fail('--mode must be animation or model')
 if (!['inPlace', 'follow'].includes(values['bobj-root']!)) fail('--bobj-root must be inPlace or follow')
 // The V9.12 Minecraft20 rig shipped with Studio is the default BBS FS target.
@@ -65,7 +66,7 @@ try {
     actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
     upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: Number(values['root-scale']),
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
-    calibrate: values.calibrate as 'limbs' | 'none', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),
+    calibrate: values.calibrate as 'limbs' | 'none', swapSides: values['swap-sides'] as 'auto' | 'on' | 'off', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),
   })
   if (values.mode === 'model') {
     result = await applyModelMode(result, { loadSource: () => loadAsset(srcBytes, format, { keepMeshes: true, resourceDir: dirname(srcPath) }), files: modelFiles ?? null, unitMeters, upAxis: values.up as 'y' | 'z' })
@@ -94,6 +95,7 @@ try {
   if (report.gates) console.log(`gates ${JSON.stringify(report.gates)} contract ${JSON.stringify(report.contract)}`)
   if (report.mapping) console.log(`mapping ${report.mapping.family} ${report.mapping.mapped}/65`)
   if (report.mapping?.needsUserConfirmation) console.log(`mapping GEOMETRY confidence ${report.mapping.confidence.toFixed(2)} - inferred from structure, confirm before use`)
+  if (report.sides) console.log(`sides ${report.sides.mode} evidence=${report.sides.evidence} ${report.sides.evidenceMeters.toFixed(2)}m agreement=${report.sides.agreement === null ? '-' : report.sides.agreement.toFixed(2)}${report.sides.mirrored ? ' MIRRORED' : ''}${report.sides.swapped ? ' (swapped)' : ''}${report.sides.restTurnDegrees ? ` restTurn=${report.sides.restTurnDegrees}°` : ''}`)
   if (report.calibration) console.log(`calibration ${report.calibration.mode} facing ${report.calibration.facingYawDegrees.toFixed(0)}°${report.calibration.facingAmbiguous ? ` (AMBIGUOUS: measured ${report.calibration.measuredFacingYawDegrees.toFixed(0)}°, set --facing)` : ''} max ${report.calibration.maxDegrees.toFixed(1)}° over ${report.calibration.corrections.length} joints`)
   if (report.proportions?.suggestedRootScale) console.log(`hips source=${report.proportions.sourceHipsHeightMeters.toFixed(2)}m target=${report.proportions.targetHipsHeightMeters.toFixed(2)}m suggested --root-scale ${report.proportions.suggestedRootScale.toFixed(3)}`)
   if (report.roundtrip) console.log(`actions exported=${report.exportedActions} skipped=${report.skippedActions.length} (${[...new Set(report.skippedActions.map((item: { code: string }) => item.code))].join(', ') || '-'})`)

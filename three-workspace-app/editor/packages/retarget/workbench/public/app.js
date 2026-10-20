@@ -265,7 +265,7 @@ function readOptions() {
   const number = (name) => { const value = get(name).value.trim(); return value === '' ? undefined : Number(value) }
   return {
     mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale') ?? 1, calibrate: get('calibrate').value,
-    facingDegrees: number('facingDegrees'), unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
+    facingDegrees: number('facingDegrees'), swapSides: get('swapSides').value, unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
   }
 }
 let inspectTimer = 0
@@ -323,6 +323,19 @@ function markOptionsChanged(event) {
 }
 optionsForm.addEventListener('input', markOptionsChanged)
 optionsForm.addEventListener('change', markOptionsChanged)
+/** Rotation buttons: turn the result by a quarter/half turn relative to the facing in use (or back to the measured one). */
+function rotateResult(delta) {
+  const input = optionsForm.elements.facingDegrees
+  if (delta === 'auto') { input.value = ''; input.dispatchEvent(new Event('change', { bubbles: true })); toast('Đã bỏ xoay tay, dùng hướng đo được.', 'ok'); return }
+  const current = input.value.trim() !== '' ? Number(input.value) : state.inspect?.facing?.yawDegrees ?? 0
+  const next = ((current + Number(delta)) % 360 + 540) % 360 - 180 || 0
+  input.value = String(next === -180 ? 180 : next)
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+  toast(`Hướng mặt ${input.value}°. Bấm "Chạy chuẩn hoá" để áp dụng.`, 'ok')
+}
+for (const button of document.querySelectorAll('[data-rotate]')) button.addEventListener('click', () => rotateResult(button.dataset.rotate))
+$('flipRunBtn')?.addEventListener('click', async () => { rotateResult(180); await inspectNow(); runNow() })
+
 function applyRootScale(value) {
   const rounded = Number(value.toPrecision(4))
   optionsForm.elements.rootScale.value = String(rounded)
@@ -344,6 +357,12 @@ function renderOptionHints() {
   } else { $('scaleHint').textContent = ''; button.hidden = true }
   const facing = info?.facing
   $('facingHint').textContent = facing ? `Đo được ${fmt(facing.measuredDegrees, 0)}°, đang dùng ${fmt(facing.yawDegrees, 0)}°${facing.ambiguous ? ' — MƠ HỒ, hãy nhập tay' : ''} (nguồn: ${facing.source}).` : ''
+  const sides = info?.sides
+  $('sidesHint').textContent = !sides ? '' : [
+    sides.mirrored ? `Tên trái/phải NGƯỢC với mũi bàn chân${sides.swapped ? ' — đã tự đảo.' : ' — chưa đảo.'}` : null,
+    sides.restTurnDegrees ? `Animation quay ${sides.restTurnDegrees}° so với tư thế rest (theo bước chân ${fmt(sides.evidenceMeters)} m) — đã xoay tư thế tham chiếu.` : null,
+    !sides.mirrored && !sides.restTurnDegrees ? (sides.evidence === 'motion' ? `Bước chân khớp hướng rest (đồng thuận ${fmt(sides.agreement)}).`
+      : 'Không đủ bước chân để kiểm hướng; nếu kết quả quay lưng hoặc ngược tay, dùng nút xoay / đảo.') : null].filter(Boolean).join(' ')
   $('modeHint').textContent = optionsForm.elements.mode.value === 'model'
     ? (info && info.mapping.family !== 'mixamo' ? `Nguồn là "${info.mapping.family}": Model mode đợt 1 sẽ trả BLOCKED (chỉ hỗ trợ Mixamo).` : 'Xuất kèm mesh, skin ≤ 4 influence, texture nhúng.')
     : 'Model mode: chỉ nguồn rig Mixamo; xuất kèm mesh, skin, texture.'
@@ -450,6 +469,12 @@ function renderOverview() {
   box.append(h('h3', { text: 'Cảnh báo chất lượng (đo trên GLB đã ghi)' }))
   if (!report.quality) box.append(h('div', { class: 'empty', text: 'Không có số đo chất lượng cho lần chạy này.' }))
   else if (!quality.length) box.append(h('div', { class: 'note info', text: 'Không có cảnh báo hông/chân/trượt chân.' }))
+  const SIDE_TITLES = { SIDES_MIRRORED: 'Tên trái/phải ngược với giải phẫu', REST_FACING_TURNED: 'Animation quay khác hướng tư thế rest' }
+  for (const warning of report.sides?.warnings ?? []) box.append(h('div', { class: 'warncard' },
+    h('div', { class: 'head' }, h('b', { text: SIDE_TITLES[warning.code] ?? warning.code }), h('span', { class: 'chip warn', text: warning.code })),
+    h('span', { text: warning.message }),
+    h('small', { text: warning.code === 'REST_FACING_TURNED' ? 'Đã xoay tư thế tham chiếu cho khớp hướng animation; kết quả quay mặt +Z như các nhân vật khác.'
+      : report.sides.swapped ? 'Đã tự đảo trái ↔ phải.' : warning.suggestion ?? '' })))
   const suggested = report.proportions?.suggestedRootScale
   for (const warning of quality) {
     const scaleHint = suggested && /root-scale/.test(warning.suggestion ?? '')
@@ -466,6 +491,7 @@ function renderOverview() {
     report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
     report.input ? ['Root', `${report.input.rootPolicy} × ${report.input.rootScale}`] : null,
     report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
+    report.sides ? ['Trái / phải', `${report.sides.mode}${report.sides.swapped ? ', đã đảo' : ''}${report.sides.restTurnDegrees ? `, xoay rest ${report.sides.restTurnDegrees}°` : ''} · bằng chứng ${report.sides.evidence}${report.sides.agreement === null ? '' : ` (${fmt(report.sides.agreement)})`}`] : null,
     report.calibration ? ['Calibration', `${report.calibration.mode}, lệch lớn nhất ${fmt(report.calibration.maxDegrees, 1)}° / ${report.calibration.corrections.length} khớp`] : null,
   ]))
   if (report.mapping) box.append(h('h3', { text: 'Mapping' }), kv([

@@ -132,6 +132,11 @@ function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): Sourc
   return 'unknown'
 }
 
+/** Pairs, required-role check and required target ids derived from the joint list (shared with side swapping). */
+export function finalizeMapping(family: SourceFamily, joints: MappedJoint[]): AutoMapping {
+  return finish(family, joints)
+}
+
 function finish(family: SourceFamily, joints: MappedJoint[]): AutoMapping {
   const pairs = joints.filter((joint) => joint.sourceId).map((joint) => ({ sourceBoneId: joint.sourceId!, targetBoneId: joint.targetId, enabled: true }))
   const notInSourceRig = [...(ABSENT_ROLES[family] ?? [])], required = MIXAMO65_REQUIRED_JOINTS.filter((name) => !notInSourceRig.includes(name))

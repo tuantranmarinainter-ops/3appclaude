@@ -31,7 +31,7 @@ export interface TargetRecord { id: string; file: string; path: string; sha256: 
 
 export interface RunOptions {
   actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale: number
-  calibrate: 'limbs' | 'none'; facingDegrees?: number; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
+  calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
 }
 
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
@@ -64,6 +64,7 @@ export function parseOptions(value: unknown): RunOptions {
     upAxis: oneOf('upAxis', ['y', 'z'], 'y'), rootPolicy: oneOf('rootPolicy', ['preserve', 'in-place'], 'preserve'),
     rootScale: number('rootScale', (n) => n > 0, 'a positive number') ?? 1,
     calibrate: oneOf('calibrate', ['limbs', 'none'], 'limbs'), facingDegrees: number('facingDegrees', () => true, 'a number of degrees'),
+    swapSides: oneOf('swapSides', ['auto', 'on', 'off'], 'auto'),
     mode: oneOf('mode', ['animation', 'model'], 'animation'), bobj: raw.bobj === true, bobjRoot: oneOf('bobjRoot', ['inPlace', 'follow'], 'inPlace'),
     preview: raw.preview === true,
   }
@@ -98,7 +99,7 @@ function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptio
   return { source: scenes.source, sourceLabel: source.name, sourceSha256: source.sha256, target: scenes.target, targetLabel: target.file, targetSha256: target.sha256,
     actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
     rootScale: options.rootScale, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
-    calibrate: options.calibrate, facingDegrees: options.facingDegrees }
+    calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides }
 }
 
 /** The inspection payload the UI renders: mapping rows, bone list, Actions, proportions, facing. No bake happens. */
@@ -112,6 +113,7 @@ export async function inspect(source: SourceRecord, target: TargetRecord, option
   return {
     sourceId: source.id, format: source.format, blocker: result.blocker ? { code: result.blocker.code, message: result.blocker.message } : null,
     mapping: result.mappingReport,
+    sides: result.sides,
     sourceBones: result.rigs.source.bones.map((bone) => ({ name: bone.name, parent: bone.parentId ? names.get(bone.parentId) ?? null : null, children: children.get(bone.id) ?? 0 })),
     actions: result.ready ? result.ready.actionsReport : result.actions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })),
     proportions: { sourceHipsHeightMeters: result.sourceHipsHeight, targetHipsHeightMeters: result.targetHipsHeight, suggestedRootScale: result.suggestedRootScale },
