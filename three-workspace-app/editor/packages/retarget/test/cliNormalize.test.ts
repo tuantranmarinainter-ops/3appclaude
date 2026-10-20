@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { AnimationClip, Bone, Group, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, MIXAMO65_REQUIRED_JOINTS } from '../cli/autoMapping.ts'
-import { loadAsset } from '../cli/loadAsset.ts'
+import { loadAsset, removeFbxBoneAliases } from '../cli/loadAsset.ts'
 import { runNormalize } from '../cli/normalizeCore.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -80,6 +80,26 @@ test('runNormalize returns GLB, contract manifest and gated report', async () =>
     targetLabel: 'mixamo65.glb', targetSha256: 'b'.repeat(64) })
   assert.equal(again.manifest.actions[0]!.uuid, result.manifest.actions[0]!.uuid, 'Action UUID is deterministic')
   assert.equal(again.manifest.glbSha256, result.manifest.glbSha256, 'output is reproducible')
+})
+
+test('animated nodes outside the skin joint list join the source rig instead of blocking (Soldier.glb case)', async () => {
+  const source = ueSource(), hand = source.getObjectByName('hand_l')!
+  const tip = new Group(); tip.name = 'index_tip_l'; tip.position.x = 0.05; hand.add(tip)
+  source.animations[0]!.tracks.push(new VectorKeyframeTrack('index_tip_l.position', [0, 1], [0.05, 0, 0, 0.06, 0, 0]))
+  const result = await runNormalize({ source, sourceLabel: 'ue', sourceSha256: 'e'.repeat(64),
+    target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }), targetLabel: 't', targetSha256: 'f'.repeat(64) })
+  assert.equal(result.status, 'PASS', JSON.stringify(result.report))
+})
+
+test('FBX identity bone aliases (one bone shared by several meshes) are removed, real bones kept', () => {
+  const hips = Object.assign(new Bone(), { ID: 7 }); hips.name = 'mixamorig:Hips'; hips.position.y = 1
+  const alias = Object.assign(new Bone(), { ID: 7 }); alias.name = 'mixamorig:Hips'; hips.add(alias)
+  const spine = Object.assign(new Bone(), { ID: 8 }); spine.name = 'mixamorig:Spine'; spine.position.y = 0.1; hips.add(spine)
+  const twin = Object.assign(new Bone(), { ID: 9 }); twin.name = 'mixamorig:Spine'; spine.add(twin) // different FBX model: not an alias
+  const root = new Group(); root.add(hips)
+  assert.equal(removeFbxBoneAliases(root), 1)
+  assert.deepEqual(hips.children.map((child) => child.name), ['mixamorig:Spine'])
+  assert.equal(spine.children.length, 1)
 })
 
 test('CLI writes GLB + manifest + report + preview, and blocks on missing required joints', async () => {

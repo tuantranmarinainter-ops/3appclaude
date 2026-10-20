@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { Matrix4, type Object3D } from 'three'
+import { Matrix4, PropertyBinding, type Bone, type Object3D, type SkinnedMesh } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
@@ -46,6 +46,21 @@ function sourceToScene(unitMeters: number, upAxis: 'y' | 'z'): number[] {
   return basis.multiply(new Matrix4().makeScale(unitMeters, unitMeters, unitMeters)).toArray()
 }
 
+/**
+ * Without a SkinnedMesh the adapter only sees Bone nodes; animated helpers outside `skin.joints` (e.g. Mixamo
+ * HandPinky end bones) would then block the Action. Listing Bones ∪ animated nodes keeps them in the rig.
+ */
+export function sourceJointNames(root: Object3D): string[] | undefined {
+  let skinned = false
+  const nodes: Object3D[] = []
+  root.traverse((node) => { nodes.push(node); if ((node as SkinnedMesh).isSkinnedMesh) skinned = true })
+  if (skinned) return undefined
+  const animated = new Set(root.animations.flatMap((clip) => clip.tracks.map((track) => PropertyBinding.parseTrackName(track.name).nodeName)))
+  const names = nodes.filter((node) => node !== root && node.name && ((node as Bone).isBone || animated.has(node.name))).map((node) => node.name)
+  const extra = names.some((name) => !nodes.some((node) => node.name === name && (node as Bone).isBone))
+  return extra && new Set(names).size === names.length ? names : undefined
+}
+
 function blocked(code: string, message: string, extra: Record<string, unknown> = {}) {
   return { status: 'BLOCKED' as const, report: { status: 'BLOCKED' as GateStatus, blocker: { code, message }, ...extra } }
 }
@@ -54,7 +69,8 @@ export async function runNormalize(request: NormalizeRequest) {
   const started = Date.now()
   const actionIndex = request.actionIndex ?? 0, rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
   const basis = sourceToScene(request.unitMeters ?? 1, request.upAxis ?? 'y')
-  const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis }, targetOptions = { fingerprint: request.targetSha256 }
+  const jointNames = sourceJointNames(request.source)
+  const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
     actionIndex, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale, fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto' }
 
@@ -88,11 +104,13 @@ export async function runNormalize(request: NormalizeRequest) {
     const names = new Map(reloaded.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[bone.id, name] as const] : [] }))
     const sampleAt = (time: number) => new Map(reloaded.sample(0, time).flatMap((bone) => names.has(bone.id) ? [[names.get(bone.id)!, bone.world.slice(12, 15)] as const] : []))
     const first = sampleAt(0), last = sampleAt(clip.durationSeconds)
-    let finite = true, minHips = Infinity, maxHips = -Infinity
+    let finite = true, minHips = Infinity, maxHips = -Infinity, excursion = 0
     for (let frame = 0; frame <= Math.round(clip.durationSeconds * CONTRACT_FPS); frame++) {
       const pose = sampleAt(Math.min(frame / CONTRACT_FPS, clip.durationSeconds))
       finite &&= [...pose.values()].every((p) => p.every(Number.isFinite))
-      minHips = Math.min(minHips, pose.get('Hips')![1]!); maxHips = Math.max(maxHips, pose.get('Hips')![1]!)
+      const hips = pose.get('Hips')!, start = first.get('Hips')!
+      minHips = Math.min(minHips, hips[1]!); maxHips = Math.max(maxHips, hips[1]!)
+      excursion = Math.max(excursion, Math.hypot(hips[0]! - start[0]!, hips[2]! - start[2]!))
     }
     if (request.preview) previewFrames = Array.from({ length: PREVIEW_FRAMES }, (_, index) => {
       const time = clip.durationSeconds * index / (PREVIEW_FRAMES - 1)
@@ -102,7 +120,7 @@ export async function runNormalize(request: NormalizeRequest) {
     roundtrip = { status: (names.size === 65 && reloaded.joints.length === 65 && finite && durationError < 1e-4 ? 'PASS' : 'FAIL') as GateStatus,
       jointCount: reloaded.joints.length, durationSeconds: clip.durationSeconds, durationErrorSeconds: durationError, allFinite: finite,
       hipsTravelMeters: Math.hypot(last.get('Hips')![0]! - first.get('Hips')![0]!, last.get('Hips')![2]! - first.get('Hips')![2]!),
-      hipsHeightRangeMeters: [minHips, maxHips], prefixedJointNames: glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length }
+      hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion, prefixedJointNames: glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length }
   } finally { reloaded.dispose() }
 
   const boneLengthsMeters = Object.fromEntries(MIXAMO65_BONE_PARENTS.flatMap(([name, parent]) => {
@@ -131,7 +149,7 @@ export async function runNormalize(request: NormalizeRequest) {
   const { metrics, unmappedSourceBoneIds, resourceCost, sampleCount } = normalized.report
   const report = {
     status: (Object.values(gates).every((gate) => gate === 'PASS') ? 'PASS' : 'FAIL') as GateStatus,
-    gates, contract, input, actions: actions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length })),
+    gates, contract, input, actions: actions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })),
     mapping: mappingReport,
     loss: { unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },

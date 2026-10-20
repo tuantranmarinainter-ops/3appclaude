@@ -1,4 +1,4 @@
-import { LoadingManager, type Object3D } from 'three'
+import { LoadingManager, type Bone, type Mesh, type Object3D } from 'three'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 
@@ -37,12 +37,45 @@ function rewriteGlbJson(bytes: Uint8Array, edit: (json: Record<string, any>) => 
   return result.buffer
 }
 
+type FbxNode = Object3D & { isBone?: boolean; ID?: number }
+
+/**
+ * FBXLoader adds an identity child Bone (same FBX model ID and name) when one bone deforms several meshes; the
+ * duplicate name makes animation tracks ambiguous. Same rule as `isFbxBoneAlias` in packages/builder
+ * (src/evaluate/retarget/fbxSourceBones.ts), copied because retarget must not depend on builder.
+ */
+export function removeFbxBoneAliases(root: Object3D): number {
+  const aliases: FbxNode[] = []
+  root.traverse((node: FbxNode) => {
+    const parent = node.parent as FbxNode | null
+    if (!node.isBone || !parent?.isBone || node.name !== parent.name || !Number.isSafeInteger(node.ID) || node.ID !== parent.ID) return
+    if ('transformData' in node.userData || node.position.lengthSq() !== 0 || node.scale.x !== 1 || node.scale.y !== 1 || node.scale.z !== 1 ||
+        node.quaternion.x !== 0 || node.quaternion.y !== 0 || node.quaternion.z !== 0 || node.quaternion.w !== 1) return
+    aliases.push(node)
+  })
+  for (const alias of aliases) {
+    for (const child of [...alias.children]) alias.parent!.add(child)
+    alias.removeFromParent()
+  }
+  return aliases.length
+}
+
 /** Node-side loading: external resources are refused, so only self-contained files work headless. */
 export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean } = {}): Promise<Object3D> {
   const manager = new LoadingManager()
   manager.setURLModifier((url) => { if (url.startsWith('data:')) return url; throw new TypeError(`External resource not supported headless: ${url}`) })
   const buffer = Uint8Array.from(bytes).buffer
-  if (format === 'fbx') return new FBXLoader(manager).parse(buffer, '')
+  if (format === 'fbx') {
+    const root = new FBXLoader(manager).parse(buffer, '')
+    if (options.skeletonOnly) {
+      // Same reason as glTF: geometry is unused; per-mesh Skeleton copies would otherwise read as competing skeletons.
+      const meshes: Object3D[] = []
+      root.traverse((node) => { if ((node as Mesh).isMesh) meshes.push(node) })
+      for (const mesh of meshes) mesh.removeFromParent()
+      removeFbxBoneAliases(root)
+    }
+    return root
+  }
   const data = format === 'gltf'
     ? JSON.stringify((options.skeletonOnly ? stripGltfMeshes : (json: Record<string, any>) => json)(JSON.parse(new TextDecoder().decode(bytes))))
     : options.skeletonOnly ? rewriteGlbJson(bytes, stripGltfMeshes) : buffer
