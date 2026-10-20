@@ -1,0 +1,68 @@
+# DECISIONS - các quyết định đã chốt (2026-10-20)
+
+## Workflow 3 app
+```text
+App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng cảnh, cỡ cảnh, camera
+                                                │  gói shot (từng nhân vật)
+                                                ▼
+                                   App 3 Animation: sửa động tác + vị trí nhân vật
+                                                │  GLB Action mới + manifest + vị trí
+                                                ▼
+                                   App 2: ghép film ──► xuất định dạng film BBS/FS
+```
+- Ba app tách riêng (cùng monorepo được), trao đổi chỉ qua GLB + manifest JSON.
+- App 1 là điểm đầu, không nhận dữ liệu quay lại. Hiện chỉ tập trung App 1.
+
+## Input/Output
+| App | Vào | Ra |
+| --- | --- | --- |
+| 1 Chuẩn hóa | FBX/GLB nguồn bất kỳ; mapping, calibration, Action, chế độ xuất | GLB Mixamo65 (Animation-only hoặc Model+Rig+Animation) + manifest JSON + report JSON |
+| 2 Scene | GLB từ App 1; prop/cảnh GLB trực tiếp; Action đã sửa + vị trí từ App 3 | Gói shot cho App 3; film BBS/FS chứa toàn bộ nội dung BBS/FS đọc được + project cảnh |
+| 3 Animation | Gói shot (shot JSON: camera, khoảng frame, vị trí, clip + GLB nhân vật + GLB tham chiếu chỉ xem) | GLB Action đã sửa (UUID mới, ghi UUID gốc) + manifest + vị trí mới + project App 3 |
+- App 3 sửa được động tác + vị trí nhân vật được chọn; camera/nhân vật khác chỉ xem.
+- App 2 nhận Action mới thì thay clip bằng UUID mới, giữ Action gốc.
+- Còn mở (chốt khi làm App 2/3): vị trí sửa ở App 3 lưu ở root motion hay transform trong shot
+  JSON (tránh cộng root hai lần); đặc tả định dạng film BBS/FS.
+
+## Hợp đồng GLB trao đổi v1.0.0
+File GLB:
+- Y-up, mét (chuẩn glTF).
+- Đúng 65 joint Mixamo, tên KHÔNG prefix (`Hips`, `Spine`...).
+- Rest pose: T-pose chuẩn cố định. Nhánh có mesh: giữ mesh ở tư thế gốc (vd A-pose), bind theo
+  tư thế đó; T-pose chỉ là tham chiếu animation.
+- Bake 30 FPS cố định, key mọi frame, giữ duration.
+- Root dạng skeletal; app nhận chọn in-place/trajectory.
+- Nhiều Action trong một file.
+- Skin tối đa 4 influence/vertex, tổng weight = 1.
+- Texture nhúng trong GLB.
+Manifest JSON (file riêng cạnh GLB):
+- Version semver, bắt đầu `1.0.0`.
+- Mỗi Action: UUID cố định + tên hiển thị, duration, FPS.
+- Root policy, nguồn gốc, SHA-256 của GLB.
+- Chiều dài xương + chiều cao hông (fingerprint để biết khi nào retarget lại).
+Mất dữ liệu: vẫn xuất, ghi rõ trong report; chỉ chặn khi vertex mất toàn bộ influence hoặc
+thiếu role chính.
+
+## App 1 - đầu vào/đầu ra chi tiết
+- Vào: FBX/GLB/glTF có skeleton + rest + ≥1 Action (mesh/skin nếu xuất model). MVP: humanoid,
+  một armature, animation đã bake. Không mở .uasset/.ma/.mb/.iMotion/file game gốc.
+- Lựa chọn: skeleton/Action/range/FPS; mapping (gợi ý + xác nhận); reference pose + A/T
+  calibration; root giữ mét (mặc định) hoặc scale; xương loại trừ + xử lý skin; chế độ xuất.
+- Không thuộc App 1: dựng cảnh, sửa keyframe, xuất FBX (sau MVP), xuất Film/BBS.
+
+## Kết quả rà soát bàn giao Codex (DOC-116)
+- Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.
+- DOC-116 ghi: retarget 59 PASS, studio 33 PASS/1 SKIP, Python 47 PASS, builder 557 PASS.
+  Production build Studio lỗi EPERM (Windows AppData). 0/17 task, 0/8 gate nghiệm thu.
+- Solver `universal.ts` hợp lý: world-delta rotation, giữ chiều dài xương đích, root theo mét ×
+  scale, chặn shear/scale động, chain trọng số, local-compose.
+- Không có pipeline headless: mọi luồng đi qua host Next.js + project (rig plan/run/save).
+- Lệch hợp đồng: (1) output giữ tên `mixamorig:Hips`; (2) `normalizeAnimation` xuất 1 Action/GLB;
+  (3) chưa có manifest JSON riêng.
+- Đạt: Y-up mét; 4 nhân vật builtin đều T-pose (tay ngang 0°), cao 1.03-1.79 m.
+- Chưa có nguồn non-Mixamo thật (CC/UE) - người dùng sẽ cung cấp.
+
+## Ước lượng
+- Demo hẹp (1 nguồn → Mixamo65 → GLB mở được): vài giờ khi có file mẫu.
+- MVP test được (2 nguồn, calibration A/T, report): 2-5 ngày.
+- Đủ W01: 2-6 tuần, chủ yếu thời gian kiểm tra và sửa với dữ liệu thật.

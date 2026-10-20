@@ -1,0 +1,55 @@
+checkpoint: DOC-042
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.7.1
+    - 1.7.2
+    - 1.7.3
+  summary: Offline manifest-driven BBS FS 2.4 Film package writer; no unified project or game integration.
+implementation:
+  cli: three-workspace-app/agent/unified_cli.py — film export MANIFEST --output-dir EXISTING_FOLDER
+  coordinator: three-workspace-app/agent/film_worker.py
+  java_worker: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java
+  adapted_bridge: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/DraftEditor.java
+  java:
+    runtime: Microsoft OpenJDK 17.0.20.1
+    compiler: javac 17.0.20.1
+  pinned_dependencies:
+    - path: three-workspace-app/agent/film_worker/vendor/bbs-animation-bridge-0.2.0-mc1.20.1.jar
+      sha256: 8cd0167a3f255877273aabff8455a713dbd1a9d5f179e83bf3cc308b90342010
+    - path: three-workspace-app/agent/film_worker/vendor/gson-2.10.1.jar
+      sha256: 4241c14a7727c34feea6507ec801318a3d4a90f070e4525681079fb94ee4c593
+  source_hashes:
+    - path: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java
+      sha256: 5825fa527d400523e8e4b3afa59bf1d70dd1b934e91fa397da82094f87480524
+    - path: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/DraftEditor.java
+      sha256: 247e7871a72fa86c864d9e1ee0c6ec5f79f9e31f6b2fb622ac89025745850b0b
+    - path: three-workspace-app/agent/film_worker.py
+      sha256: 2a8b6e21d80eeee919823cd1177f14a08497f4c1bcd20172b4ab1c2b3f5988e8
+  fixture:
+    path: bbs-animation-MCP-reference/src/client/resources/assets/bbs/assets/models/emoticons/steve_simple/default_simple_plus.bobj
+    sha256: 2d644b5c0528faa3f9b55d66364000032904b8cabc3057b17ebf75a149928fc2
+reuse_probe:
+  blender: 4.2.3, executable C:/Program Files/Blender Foundation/blender.exe
+  exporter_source:
+    path: BBSFix-Blender512/bbsfix/bobj402/export_bobj.py
+    sha256: f96aa05e5b3ae4d924dd9424901065e9ef2ab18e723a4342499938569cb8deb1
+  helper_source:
+    path: BBSFix-Blender512/bbsfix/animation_api.py
+    sha256: 1af171e221472aeac523801d7512486d12098ba99b0b083342075753ae3456ef
+  result: Synthetic skinned cube/one-bone export produced BOBJ under Blender 4.2.3; no addon code was copied into the app in this checkpoint.
+  legacy_exporter: io_export_bobj_402_package failed under Blender 4.2.3 because Mesh.calc_normals_split is unavailable.
+  limits: This probe did not import a real FBX/GLB, test animation conversion or validate material texture preservation; the reusable source carries a GPL-2.0-or-later header.
+checks:
+  - command: python -m unittest agent.test_film_worker -v
+    cwd: three-workspace-app
+    result: 2 passed in 38.971 s, including real Java 17 compile and BBS bridge execution
+  - command: python -m unittest agent.test_unified_cli agent.test_unified_mcp -v
+    cwd: three-workspace-app
+    result: 38 passed in 0.443 s
+  - result: Native output is GZIP-wrapped BBS1; BbsCodec read/write/read semantic round-trip passed. Tests verified actor/camera counts, exported BOBJ checksum, pose channel type/key count, package metadata, revision rejection, invalid asset hash and traversal rejection.
+not_verified:
+  - Project-to-manifest sampling, GLB/FBX-to-BOBJ conversion, texture preflight, Studio export UI, broker/API job and MCP command.
+  - Playback in Minecraft, opening/saving editable pose keys in the Film Editor, and end-to-end BBS FS acceptance.
+  - Numerical equality of every emitted actor/camera/pose keyframe against the source project; read-back currently checks typed codec round-trip and structural counts/types.
+  - Production Next build; last-known failure is the AppData junction EPERM recorded in DOC-041.

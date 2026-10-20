@@ -1,0 +1,527 @@
+[
+  {
+    "id": "1.1",
+    "parentId": null,
+    "label": "React studio shell",
+    "keywords": [],
+    "workspace": "shared",
+    "requires": []
+  },
+  {
+    "id": "1.1.1",
+    "parentId": "1.1",
+    "label": "Shell React/Topview",
+    "keywords": [
+      "shell",
+      "react/topview"
+    ],
+    "workspace": "shared",
+    "panelId": "shell",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/workspace-integration.md"
+  },
+  {
+    "id": "1.1.2",
+    "parentId": "1.1",
+    "label": "Cây tìm kiếm chức năng",
+    "keywords": [
+      "cây",
+      "tìm",
+      "kiếm",
+      "chức",
+      "năng"
+    ],
+    "workspace": "shared",
+    "panelId": "feature-tree",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/feature-navigation.md"
+  },
+  {
+    "id": "1.1.3",
+    "parentId": "1.1",
+    "label": "Chuyển ba workspace",
+    "keywords": [
+      "chuyển",
+      "ba",
+      "workspace"
+    ],
+    "workspace": "shared",
+    "panelId": "workspace-switcher",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/workspace-integration.md"
+  },
+  {
+    "id": "1.2",
+    "parentId": null,
+    "label": "Shared project contract and APIs",
+    "keywords": [],
+    "workspace": "shared",
+    "requires": []
+  },
+  {
+    "id": "1.2.1",
+    "parentId": "1.2",
+    "label": "Asset Character Skeleton",
+    "keywords": [
+      "asset",
+      "character",
+      "skeleton"
+    ],
+    "workspace": "shared",
+    "panelId": "asset-profile",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/shared-project-contract.md"
+  },
+  {
+    "id": "1.2.2",
+    "parentId": "1.2",
+    "label": "Scene Graph Transform",
+    "keywords": [
+      "scene",
+      "graph",
+      "transform"
+    ],
+    "workspace": "shared",
+    "panelId": "transform",
+    "requires": [
+      "project-open",
+      "selected-node"
+    ],
+    "spec": "../features/shared-project-contract.md"
+  },
+  {
+    "id": "1.2.3",
+    "parentId": "1.2",
+    "label": "Timeline Motion Root",
+    "keywords": [
+      "timeline",
+      "motion",
+      "root"
+    ],
+    "workspace": "shared",
+    "panelId": "motion-binding",
+    "requires": [
+      "project-open",
+      "motion",
+      "character"
+    ],
+    "spec": "../features/shared-project-contract.md"
+  },
+  {
+    "id": "1.2.4",
+    "parentId": "1.2",
+    "label": "Camera Shot",
+    "keywords": [
+      "camera",
+      "shot"
+    ],
+    "workspace": "scene",
+    "panelId": "camera-shot",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/shared-project-contract.md"
+  },
+  {
+    "id": "1.2.5",
+    "parentId": "1.2",
+    "label": "Commands History Version",
+    "keywords": [
+      "commands",
+      "history",
+      "version"
+    ],
+    "workspace": "shared",
+    "panelId": "history",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/shared-project-contract.md"
+  },
+  {
+    "id": "1.2.6",
+    "parentId": "1.2",
+    "label": "Migration project",
+    "keywords": [
+      "migration",
+      "project"
+    ],
+    "workspace": "shared",
+    "panelId": "project-import",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/project-migration.md"
+  },
+  {
+    "id": "1.3",
+    "parentId": null,
+    "label": "Retarget package",
+    "keywords": [],
+    "workspace": "retarget",
+    "requires": []
+  },
+  {
+    "id": "1.3.1",
+    "parentId": "1.3",
+    "label": "Retarget engine85actions",
+    "keywords": [
+      "retarget",
+      "engine85actions"
+    ],
+    "workspace": "retarget",
+    "panelId": "retarget-source",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/retarget-workspace.md"
+  },
+  {
+    "id": "1.3.2",
+    "parentId": "1.3",
+    "label": "Mapping Calibration Metarig",
+    "keywords": [
+      "xương",
+      "skeleton",
+      "mapping",
+      "calibration",
+      "metarig"
+    ],
+    "workspace": "retarget",
+    "panelId": "retarget-mapping",
+    "requires": [
+      "project-open",
+      "motion",
+      "two-profiles"
+    ],
+    "spec": "../features/retarget-workspace.md"
+  },
+  {
+    "id": "1.3.3",
+    "parentId": "1.3",
+    "label": "Retarget UI project export",
+    "keywords": [
+      "retarget",
+      "ui",
+      "project",
+      "export"
+    ],
+    "workspace": "retarget",
+    "panelId": "retarget-target",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/retarget-workspace.md"
+  },
+  {
+    "id": "1.4",
+    "parentId": null,
+    "label": "Scene / Topview package",
+    "keywords": [],
+    "workspace": "scene",
+    "requires": []
+  },
+  {
+    "id": "1.4.1",
+    "parentId": "1.4",
+    "label": "Scene assets pose layout",
+    "keywords": [
+      "scene",
+      "assets",
+      "pose",
+      "layout"
+    ],
+    "workspace": "scene",
+    "panelId": "scene-layout",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/scene-workspace.md"
+  },
+  {
+    "id": "1.4.2",
+    "parentId": "1.4",
+    "label": "Camera shots motion",
+    "keywords": [
+      "camera",
+      "shots",
+      "motion"
+    ],
+    "workspace": "scene",
+    "panelId": "scene-camera",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/scene-workspace.md"
+  },
+  {
+    "id": "1.4.3",
+    "parentId": "1.4",
+    "label": "Evaluate render scene",
+    "keywords": [
+      "evaluate",
+      "render",
+      "scene"
+    ],
+    "workspace": "scene",
+    "panelId": "scene-checks",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/scene-workspace.md"
+  },
+  {
+    "id": "1.5",
+    "parentId": null,
+    "label": "Animation package",
+    "keywords": [],
+    "workspace": "animation",
+    "requires": []
+  },
+  {
+    "id": "1.5.1",
+    "parentId": "1.5",
+    "label": "Rig Pose IK Skin",
+    "keywords": [
+      "rig",
+      "pose",
+      "ik",
+      "skin"
+    ],
+    "workspace": "animation",
+    "panelId": "animation-rig",
+    "requires": [
+      "project-open",
+      "selected-character"
+    ],
+    "spec": "../features/animation-workspace.md"
+  },
+  {
+    "id": "1.5.2",
+    "parentId": "1.5",
+    "label": "Timeline Graph Layers Library",
+    "keywords": [
+      "timeline",
+      "graph",
+      "layers",
+      "library"
+    ],
+    "workspace": "animation",
+    "panelId": "animation-motion",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/animation-workspace.md"
+  },
+  {
+    "id": "1.5.3",
+    "parentId": "1.5",
+    "label": "Evaluate Import Export Texture",
+    "keywords": [
+      "evaluate",
+      "import",
+      "export",
+      "texture"
+    ],
+    "workspace": "animation",
+    "panelId": "animation-io",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/animation-workspace.md"
+  },
+  {
+    "id": "1.6",
+    "parentId": null,
+    "label": "Python CLI and local agent API",
+    "keywords": [],
+    "workspace": "shared",
+    "requires": []
+  },
+  {
+    "id": "1.6.1",
+    "parentId": "1.6",
+    "label": "Python CLI compatibility",
+    "keywords": [
+      "python",
+      "cli",
+      "compatibility"
+    ],
+    "workspace": "shared",
+    "panelId": "local-cli",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/local-agent-api.md"
+  },
+  {
+    "id": "1.6.2",
+    "parentId": "1.6",
+    "label": "Local conversion jobs",
+    "keywords": [
+      "local",
+      "conversion",
+      "jobs"
+    ],
+    "workspace": "shared",
+    "panelId": "conversion",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/local-conversion-cli.md"
+  },
+  {
+    "id": "1.6.3",
+    "parentId": "1.6",
+    "label": "UI CLI MCP boundary",
+    "keywords": [
+      "ui",
+      "cli",
+      "mcp",
+      "boundary"
+    ],
+    "workspace": "shared",
+    "panelId": "local-api",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/local-agent-api.md"
+  },
+  {
+    "id": "1.7",
+    "parentId": null,
+    "label": "BBS FS export and acceptance adapter",
+    "keywords": [],
+    "workspace": "shared",
+    "requires": []
+  },
+  {
+    "id": "1.7.1",
+    "parentId": "1.7",
+    "label": "Native Film assets package",
+    "keywords": [
+      "native",
+      "film",
+      "assets",
+      "package"
+    ],
+    "workspace": "shared",
+    "panelId": "film-export",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/bbs-film-export.md"
+  },
+  {
+    "id": "1.7.2",
+    "parentId": "1.7",
+    "label": "Film playback parity",
+    "keywords": [
+      "film",
+      "playback",
+      "parity"
+    ],
+    "workspace": "shared",
+    "panelId": "film-playback",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/bbs-film-export.md"
+  },
+  {
+    "id": "1.7.3",
+    "parentId": "1.7",
+    "label": "Film editable keys",
+    "keywords": [
+      "film",
+      "editable",
+      "keys"
+    ],
+    "workspace": "shared",
+    "panelId": "film-editable",
+    "requires": [
+      "project-open"
+    ],
+    "spec": "../features/bbs-film-export.md"
+  },
+  {
+    "id": "2",
+    "parentId": null,
+    "label": "Chẩn đoán · Diagnostics",
+    "keywords": [],
+    "workspace": "shared",
+    "requires": []
+  },
+  {
+    "id": "2.1",
+    "parentId": "2",
+    "label": "Characterization regressions",
+    "keywords": [
+      "characterization",
+      "regressions"
+    ],
+    "workspace": "shared",
+    "panelId": "diagnostics-tests",
+    "requires": [
+      "diagnostics"
+    ],
+    "spec": "../features/quality-validation.md"
+  },
+  {
+    "id": "2.2",
+    "parentId": "2",
+    "label": "Desktop WebGL Site private",
+    "keywords": [
+      "desktop",
+      "webgl",
+      "site",
+      "private"
+    ],
+    "workspace": "shared",
+    "panelId": "diagnostics-runtime",
+    "requires": [
+      "diagnostics"
+    ],
+    "spec": "../features/quality-validation.md"
+  },
+  {
+    "id": "2.3",
+    "parentId": "2",
+    "label": "Licenses function preservation",
+    "keywords": [
+      "licenses",
+      "function",
+      "preservation"
+    ],
+    "workspace": "shared",
+    "panelId": "diagnostics-licenses",
+    "requires": [
+      "diagnostics"
+    ],
+    "spec": "../features/quality-validation.md"
+  },
+  {
+    "id": "2.4",
+    "parentId": "2",
+    "label": "Local package restore",
+    "keywords": [
+      "local",
+      "package",
+      "restore"
+    ],
+    "workspace": "shared",
+    "panelId": "diagnostics-package",
+    "requires": [
+      "diagnostics"
+    ],
+    "spec": "../features/quality-validation.md"
+  }
+]

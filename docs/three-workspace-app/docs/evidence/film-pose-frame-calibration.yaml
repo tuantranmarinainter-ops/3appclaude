@@ -1,0 +1,41 @@
+checkpoint: DOC-049
+date: 2026-10-19
+scope:
+  listcode: [1.7.1, 1.7.2, 1.7.3]
+  summary: Convert sampled source bone deltas into each converted BOBJ bone's local bind frame so animated project exports preserve pose tracks.
+implementation:
+  pose_bake: three-workspace-app/editor/apps/studio/src/filmPoseBake.ts
+  pose_tests: three-workspace-app/editor/apps/studio/test/filmPoseBake.test.ts
+  project_integration_test: three-workspace-app/editor/apps/studio/test/filmExportJob.integration.test.ts
+  behavior:
+    - Derives the root source-to-BOBJ world basis and a recursive source-bone-to-BOBJ-bone frame conversion from each pair of local rest matrices.
+    - Conjugates each source-relative local delta by its bone frame conversion before writing pose_transform keys; a bind-pose sample remains identity.
+    - Rejects singular, non-finite, scaled or sheared bind-frame conversions rather than baking unsupported deformation.
+    - Project integration places an imported Motion when present and checks that sampled bone world matrices change before starting the export job.
+tests:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedSceneRender.test.ts apps/studio/test/sceneRenderOutput.test.ts apps/studio/test/filmManifest.test.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmCamera.test.ts apps/studio/test/unifiedAssetImport.test.ts apps/studio/test/filmExportJob.integration.test.ts
+    cwd: three-workspace-app/editor
+    environment: BBS_TEST_MIXAMO_FBX points to the existing local Punch Combo source fixture; project export integration is skipped unless BBS_FILM_E2E_FBX is also set.
+    result: 38 tests; 37 passed, 0 failed, 1 optional export integration skipped. Covers root, changed child bind frame, propagated nested bind frame, identity rest pose, non-rigid rejection, Punch Combo import/sampling, manifest and job contracts.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: node node_modules/eslint/bin/eslint.js apps/studio/src/filmPoseBake.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmExportJob.integration.test.ts
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmExportJob.integration.test.ts
+    cwd: three-workspace-app/editor
+    environment: Temporary Blender 5.1.2 FBX with a skinned Root→Arm rig, Root translation and Arm rotation keyed at frames 0/15/29; BBS_BLENDER_EXE and BBS_JAVA_HOME use workspace Blender 5.1.2 and Microsoft OpenJDK 17.0.20.1; BBS_UNIFIED_PROJECTS_DIR uses a unique short temporary root.
+    result: 1 passed in 12.3 s. Project import found an animation Motion, the test placed it and asserted sampled bone matrices change, then the persisted film.export job converted the model, baked the manifest, completed the Java worker and returned a readable ZIP artifact. All fixture, project and job files were removed after the test.
+fixture_recipe:
+  generator: Temporary Blender Python script creates two connected edit bones, a cube mesh with Root/Arm vertex groups and an Armature modifier, keys Root.location.x and Arm.rotation_euler.y at frames 0, 15 and 29, then exports selected armature/mesh as FBX with baked animation and no leaf bones.
+  output: Generated under a unique %TEMP% directory; not retained in the repository.
+source_hashes:
+  filmPoseBake.ts: 0ad821710b910b610cc5efcc6dc14fbb569f3a995bb83d90956deb2296453f19
+  filmPoseBake.test.ts: 1be27003def51090af4977485fdf16b9be055bac7b562a285389f75aa473d406
+  filmExportJob.integration.test.ts: 29b821d5df0bb122dd4c009d2a7ab327a801d4d43f764329a3b40e1155ffc9cf
+limits:
+  - Full job evidence is a generated safe-name two-bone FBX. It does not establish compatibility with arbitrary production rigs.
+  - Punch Combo source skeleton import/sampling passes, but its names are rejected by the BOBJ converter's safe-name validation; name mapping remains open.
+  - Multiple Characters/camera cuts, Film Editor open/edit/save/reopen, Minecraft playback and live MCP host were not checked.
+  - No original Animation/Retarget/Topview workspace, game installation, Site, release or commit was changed.

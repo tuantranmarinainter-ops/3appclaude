@@ -1,0 +1,61 @@
+schema_version: '1'
+checkpoint: DOC-038
+scope:
+  listcode:
+  - '1.5.1'
+  - '1.5.2'
+  behavior: Animation workspace mounts the existing Topview DirectorStudio beside FBX clip controls on the same LocalHostAdapter, project revision, timeline, and history.
+  limits:
+  - Animation Studio 1.31.8 control-rig, IK, skin, compare/onion-skin parity is not established.
+  - Native Animation 1.31.8 graph, layers, motion-lab, edit blobs, and exporters remain unintegrated.
+browser_run:
+  startedAt: '2026-10-18T13:15:53.783Z'
+  passed: true
+  projectId: c22d2b85-a530-4f10-bbd4-051b4daf6698
+  nodeId: user_chr_azatb0y4
+  clipId: user_mc_l5gj8pyc
+  browserVersion: 153.0.8010.12
+  viewport: [1600, 1000]
+  rig: direct
+  unit: 0.01
+  meshes: 2
+  checks:
+  - Animation workspace mounts shared Topview rig/timeline editor beside clip controls
+  - FBX source import and shared Character
+  - clip trim/reverse placement and binding edit
+  - WebGL skinned mesh and animated bone pose
+  - in-place root translation/rotation and unchanged actor placement
+  - Undo/Redo, server clone, and reload
+  - trajectory/skeletal world pose parity and backward seek
+  - CPU/WebGL 65-bone pose parity
+  - read-only headless evaluation
+  - 64 loader aliases remain identity after a motion gap
+  cpuBoneCount: 65
+  cpuWorldPoseMaxDelta: 4.440892098500626e-16
+  identityAliasesAfterGap: 64
+  consoleErrors: 0
+  failedRequests: 0
+  externalRequests: 0
+automated_checks:
+  - 'Studio TypeScript check: passed'
+  - 'Targeted ESLint: passed for AnimationWorkspace.tsx, StudioOverlay.tsx, unified-smoke.mjs'
+  - 'node --check scripts/unified-smoke.mjs: passed'
+  - 'Browser smoke: passed; no full package test suite rerun for this UI composition change'
+artifacts:
+  paths_are_workspace_relative: true
+  browser_report: three-workspace-app/.test-runtime/browser/doc038-animation-workspace-report.json
+  animation_screenshot: three-workspace-app/.test-runtime/browser/doc038-animation-workspace.png
+  scene_screenshot: three-workspace-app/.test-runtime/browser/doc038-scene-final.png
+source_sha256:
+  three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx: 5476589A737D4A353DBDEAEF730B27B58E05D171091757B46C9E28C1F13C5B70
+  three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx: B651484D5FF1053920ABBA5762ECE92802C76595448FD16F9C2D4FE7031ED529
+  three-workspace-app/editor/apps/studio/app/workbench/styles.css: 62A500377126A2EE6B874B3103C40104A34233B5121BF31624F4F3D818701906
+  three-workspace-app/editor/apps/studio/scripts/unified-smoke.mjs: F16E051EA8E7CCBF0D40754E9AB0879245BBF9C47F1750F53EBC7AC3802DA616
+artifact_sha256:
+  three-workspace-app/.test-runtime/browser/doc038-animation-workspace-report.json: 52B058B589EB00FBBAB20B7F35BB529082C3C786272CB8EE8F1C624641E676AF
+  three-workspace-app/.test-runtime/browser/doc038-animation-workspace.png: 8FCBBF1B61DEFA2B00E986A5DC8A829D8D989067080D4017C4A1B7E1CF098487
+  three-workspace-app/.test-runtime/browser/doc038-scene-final.png: 93ED2DB0DEEE30AECB26336E077EAC6467003170D1C1CC02FEAE75706206840F
+limitations:
+  - Production Next build remains blocked by the previously recorded AppData junction EPERM.
+  - Intermittent server clone IO_FAILED is unresolved; this smoke run passed and does not prove the intermittent failure is fixed.
+  - No Site, release, source-workspace changes, commit, or in-game Film acceptance was performed.

@@ -1,0 +1,287 @@
+schema_version: '1'
+inventory_id: '1.1'
+name: Animation Studio 1.31.8
+source_id: '1.1'
+source_root: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/sites/animation-studio-mdx-alpha-1318/work/material_alpha_v1_31_8/src
+version_state: runtime-JS/CSS correspondence confirmed; metadata label discrepancy preserved
+status_vocabulary:
+  implementation:
+  - complete
+  - incomplete
+  - needs-repair
+  - unknown
+  verification:
+  - automated
+  - runtime
+  - user-accepted
+  - unverified
+modules:
+- id: 1.1.1
+  name: Application shell, workspace UI and settings
+  files:
+  - index.html
+  - app.js
+  - style.css
+  - workspace_ui.js
+  - workspace_ui.css
+  - locale.txt
+  responsibilities:
+  - DOM and application state
+  - workspace navigation and layout
+  - settings/localization
+  - viewport and timeline wiring
+  inputs:
+  - FBX, GLB, BOBJ, MDX/MDL assets
+  - user edits
+  - saved workspace settings
+  outputs:
+  - edited project state
+  - rendered views
+  - export requests
+  depends_on:
+  - 1.1.2
+  - 1.1.3
+  - 1.1.4
+  - 1.1.5
+  implementation: unknown
+  verification: automated
+  evidence: Versioned suites; 1.31.8-specific report covers MDX alpha/DDS path only
+  merge_action: Reuse interactions/state behind React adapters; preserve current JS modules until parity tests exist
+  source_module_key: animation:1.1.1
+  target_ids: &id001
+  - 1.1.1
+  - 1.1.3
+  - 1.5.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.1'
+  parent_source_module_key: animation:1.1
+  children: []
+  spec: ../features/animation-workspace.md
+  listcode_ids: *id001
+  module: Application shell, workspace UI and settings
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.1.2
+  name: Rig, controls, IK, pose and skin editing
+  files:
+  - core.js
+  - control_rig.js
+  - rig_kinematics.js
+  - joint_limits.js
+  - skin_shape.js
+  - dual_editor.js
+  - viewport_display.js
+  - viewport_toolbar.js
+  - ground_environment.js
+  - compare_space.js
+  - onion_skin.js
+  responsibilities:
+  - skeleton model and evaluation
+  - control rig and IK
+  - joint limits
+  - skin shape
+  - dual views, display, grounding and onion skin
+  inputs:
+  - Three.js skeleton and mesh
+  - pose/timeline edits
+  outputs:
+  - evaluated pose
+  - undoable project edits
+  - display geometry
+  depends_on:
+  - three.js
+  - 1.1.1
+  implementation: unknown
+  verification: automated
+  evidence: Versioned functional, rig, timeline and export suites; whole 1.31.8 behavior is not individually re-certified by 1.31.8 alpha report
+  merge_action: Reuse engine modules; adapter types describe public inputs/outputs; migrate only after characterization tests
+  source_module_key: animation:1.1.2
+  target_ids: &id002
+  - 1.5.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.1'
+  parent_source_module_key: animation:1.1
+  children: []
+  spec: ../features/animation-workspace.md
+  listcode_ids: *id002
+  module: Rig, controls, IK, pose and skin editing
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.1.3
+  name: Motion tools, timeline and graph editing
+  files:
+  - animation_director.js
+  - director_controller.js
+  - director_panel.js
+  - easing.js
+  - easing_panel.js
+  - graph_curves.js
+  - graph_editor.js
+  - motion_lab.js
+  - motion_panel.js
+  - motion_smoothing.js
+  - smoothing_panel.js
+  - quick_animation.js
+  responsibilities:
+  - motion lab and direct editing
+  - timeline/easing/graph
+  - smoothing and quick clip workflow
+  inputs:
+  - rig
+  - clip/motion data
+  - keyframe edits
+  outputs:
+  - pose samples
+  - edited motion
+  - timeline curves
+  depends_on:
+  - 1.1.2
+  implementation: unknown
+  verification: automated
+  evidence: Versioned motion/graph/easing/smoothing regression suites; verify exact candidate source before port
+  merge_action: Keep editor ownership in Animation workspace; share evaluator and motion IDs
+  source_module_key: animation:1.1.3
+  target_ids: &id003
+  - 1.5.2
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.1'
+  parent_source_module_key: animation:1.1
+  children: []
+  spec: ../features/animation-workspace.md
+  listcode_ids: *id003
+  module: Motion tools, timeline and graph editing
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.1.4
+  name: Scene studio and shared-scene package
+  files:
+  - scene_studio.js
+  - scene_controller.js
+  - scene_panel.js
+  - scene_evaluator.js
+  - scene_package.js
+  - director_schema.js
+  - source_preview.js
+  - studio_bridge.js
+  responsibilities:
+  - scene actors/clips/markers/contacts
+  - scene timeline and camera
+  - validation, evaluation and package export
+  - optional Studio bridge
+  inputs:
+  - character assets
+  - motion clips
+  - camera and scene edits
+  outputs:
+  - scene package
+  - BBS-oriented BOBJ and manifest
+  - bridge commands
+  depends_on:
+  - 1.1.2
+  - 1.1.3
+  - Three.js
+  implementation: unknown
+  verification: automated
+  evidence: Code includes a scene package exporter; its README states the manifest is not a native BBS FS scene. Cross-workspace/user acceptance
+    unknown
+  merge_action: Extract scene domain functions where compatible; compare with Topview model before retaining duplicated director concepts
+  source_module_key: animation:1.1.4
+  target_ids: &id004
+  - 1.2.3
+  - 1.4.1
+  - 1.5.2
+  - 1.7.1
+  code_presence: present
+  legacy_implementation_label: incomplete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.1'
+  parent_source_module_key: animation:1.1
+  children: []
+  spec: ../features/animation-workspace.md
+  listcode_ids: *id004
+  module: Scene studio and shared-scene package
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.1.5
+  name: Asset import, display, and export
+  files:
+  - fbx_loader_native.js
+  - bobj_loader.js
+  - bobj_export.js
+  - animation_export.js
+  - texture_assets.js
+  - league_loader.js
+  - warcraft_loader.js
+  - warcraft_reforged.js
+  responsibilities:
+  - FBX/BOBJ/GLB and game-asset imports
+  - texture/material handling
+  - BOBJ and animation export
+  inputs:
+  - model/animation/texture files
+  outputs:
+  - rigged Three.js assets
+  - BOBJ/FBX/BVH/GLB outputs
+  depends_on:
+  - 1.1.2
+  - Three.js loaders/exporters
+  - Blender bridge where applicable
+  implementation: unknown
+  verification: automated
+  evidence: Export/roundtrip suites vary by version; 1.31.8-specific report tests MDX alpha/DDS only
+  merge_action: Reuse format handlers behind import/export ports; retain native format readers and third-party notices
+  source_module_key: animation:1.1.5
+  target_ids: &id005
+  - 1.5.3
+  - 1.6.2
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.1'
+  parent_source_module_key: animation:1.1
+  children: []
+  spec: ../features/animation-workspace.md
+  listcode_ids: *id005
+  module: Asset import, display, and export
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+supporting_files:
+- build.mjs
+- fetch-vendor.mjs
+source_file_count: 47
+source_hash_manifest: animation-source-sha256.yaml
+test_tree: Project tests/ has 138 files and fixtures/iclone_cc_base_rig.mjs plus Flair.fbx; treat reports/tests as version-specific evidence
+important_exclusion: The animation pose editor removed from Retarget V9.12 remains a separate Animation Studio function; do not restore it to
+  Retarget
+open_items:
+- Inspect the exact source package vendor licenses and model/asset rights before redistribution
+- Characterize current common project JSON and scene package on the chosen candidate source
+id_namespace: source-module; id kept for historical references, never compare to target IDs without target_ids
+source_key: animation
+lineage_evidence: ../evidence/animation-lineage.yaml

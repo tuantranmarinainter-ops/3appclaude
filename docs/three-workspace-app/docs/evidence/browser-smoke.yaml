@@ -1,0 +1,59 @@
+schema_version: '1'
+checkpoint: DOC-032
+run:
+  startedAt: '2026-10-18T12:07:21.743Z'
+  passed: true
+  projectId: 51c043e5-17eb-4257-9e15-4b6cc06d461b
+  nodeId: user_chr_zpmubezj
+  clipId: user_mc_lzqe1db7
+  browserVersion: 153.0.8010.12
+  viewport:
+  - 1600
+  - 1000
+  rig: direct
+  unit: 0.01
+  meshes: 2
+  renderFrames: 1
+  poseMaxComponentDelta: 0.13502441868597026
+  checks:
+  - FBX source import
+  - shared Character
+  - trim/reverse placement
+  - binding edit
+  - WebGL skinned mesh
+  - animated bone pose
+  - Undo/Redo
+  - server-side clone
+  - reload
+  externalRequests: 0
+fixture:
+  id: FX-MIXAMO-PUNCH
+  sha256: acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb
+  permission: local-test-only
+runner: three-workspace-app/editor/apps/studio/scripts/unified-smoke.mjs
+artifacts:
+  report:
+    path: three-workspace-app/.test-runtime/browser/unified-fbx-report.json
+    sha256: 0ab56dde1375befebab8c7962ce16d555cf69273f1187a0b63d5d815ad1a0691
+  screenshot:
+    path: three-workspace-app/.test-runtime/browser/unified-fbx.png
+    sha256: a5c43b762b4bace33d6d78fa3ec2a1eea25886f24f23ab8679728f0c563b0774
+  legacy_screenshot:
+    path: three-workspace-app/.test-runtime/browser/offline-smoke.png
+    sha256: 93856f70ad1ed990787b45d3c12a179795de3fb213529397085938a65efb868b
+legacy_offline_smoke: 'passed: create draft, add Character, apply pose, save, API
+  cleanup; zero external requests'
+validation:
+  builder: 92 files; 538/538; golden unchanged
+  studio: 25/25 with real FBX, no skips
+  shared_retarget: 12/12
+  python_cli_mcp: 30/30
+limitations:
+- Single Punch Combo input; not full format/visual baseline parity or acceptance
+- Two earlier clone commands returned IO_FAILED 500; cause unconfirmed; three latest
+  full runs passed after development diagnostics were added
+- Production Next build fails EPERM while globbing AppData/Local; no vendor workaround
+  applied
+- Root-motion/alignment/fades, cross-rig bake, native Animation editor and Film/game
+  remain incomplete
+- MCP host interoperability is not verified

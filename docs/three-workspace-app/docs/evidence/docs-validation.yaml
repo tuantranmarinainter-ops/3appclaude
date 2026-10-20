@@ -1,0 +1,33 @@
+date: '2026-10-18'
+scope: documentation consistency/static references only
+status: pass
+checks:
+  yaml_parsed: 17
+  development_ids: 28
+  acceptance_cases: 33
+  fixtures_hashed: 15
+  source_files_hashed: 977
+  declared_symbol_locations_checked: 3271
+  prior_manifest_hashes_checked: 100
+  bbs_blobs_checked: 25
+  bridge_artifacts_checked: 5
+  architecture_ids: 35
+  local_links_checked: 189
+  agents_lines: 65
+  agents_sha256: 06112ffe7a2c18fc45ab7584d02711417936d75c283eac9cd7b8437bbb9e258e
+  command_count: 25
+  feature_specs: 11
+issues: []
+notes:
+- 'Markdown code fences excluded: approved AGENTS draft links resolve from intended
+  AGENTS destination, not historical proposal location'
+- Lexical symbol index covers named top-level declarations; not full parser/callgraph
+not_run:
+- application build/tests
+- browser/WebGL
+- new golden fixture generation
+- Film write/import/runtime
+- game
+- Site publication
+interpretation: File/symbol/hash coverage does not prove complete behavioral audit
+  or product acceptance.

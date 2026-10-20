@@ -1,0 +1,284 @@
+schema_version: '1'
+date: '2026-10-20'
+status: implementation_in_progress
+id: 1.3.4
+parent_id: '1.3'
+name: Workspace01 Universal Rig and Animation Normalization
+spec: ../features/rig-animation-normalization.md
+accepted_gates: 0
+total_gates: 8
+items:
+- id: 1.3.4.1
+  parent_id: 1.3.4
+  name: Khóa hai rig nguồn khác nhau và target profile65
+  dependencies: []
+  implementation: target_topology_pinned_source_fixtures_pending
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.1 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/mixamo65.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/skeletonMappingCommand.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/previewUtils.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/normalizationPreviewUtils.test.ts
+  source_fixture: three-workspace-app/builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb
+  source_sha256: d4ce3fb196938e538ebc83ff984b90d3294c4d083d8c2489cdd7a25cad0f8be5
+  license: CC-BY-4.0
+- id: 1.3.4.2
+  parent_id: 1.3.4
+  name: Universal import/inspect/preview
+  dependencies:
+  - 1.3.4.1
+  implementation: partial_gltf_animation_import_and_profile_assignment
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.2 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/RigTree.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/previewUtils.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/hooks/useNormalization.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/RigTree.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/normalizationPreviewUtils.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/skeletonMappingCommand.test.ts
+  checks:
+  - Studio unifiedAssetImport suite via cached tsx runner: 18 passed, 1 skipped (existing
+      FBX conversion fixture)
+  - Full Studio test set: 63 passed, 2 skipped
+  - Full Studio test set after synchronized preview: 65 passed, 2 skipped
+  - normalizationPreviewUtils.test.ts: 2/2 PASS
+  - workspace pnpm typecheck and focused ESLint: PASS
+  - RigTree.test.ts: 2/2 PASS
+  - workspace pnpm typecheck: PASS
+  - focused ESLint for normalization panel, hook, rig tree and test: PASS
+  limitation: synchronized source/target preview currently draws skeleton lines only;
+    mesh deformation/material review, capability/loss panel, browser parity and fixture
+    runtime remain incomplete.
+- id: 1.3.4.3
+  parent_id: 1.3.4
+  name: Mapping, calibration, exclusions và preset
+  dependencies:
+  - 1.3.4.2
+  implementation: partial_solver
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.3 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/normalizeAnimation.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/index.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalBake.ts
+  checks:
+  - pnpm --filter @bbs/retarget typecheck: PASS
+  - Full Retarget suite: 51/51 PASS including weighted-chain behavior and the 85-action
+      legacy manifest check
+  - Full Studio suite: 66 PASS, 2 existing SKIP; mapping host chain persistence and
+      skin-owner chain regression PASS
+  - workspace pnpm typecheck: PASS
+  - focused Studio ESLint: PASS
+  - mappedSkinOwners chain test: PASS; every source joint in a confirmed chain defaults
+      to the mapped target skin owner
+  - ? Weighted source-chain quaternion, root-owner, preset v3 compatibility, mapping
+      host, plan propagation and metrics consistency checks
+    : PASS
+  - pnpm lint: blocked by existing Builder restricted imports in sceneBasis.ts and
+      sceneBasis.test.ts
+  - pnpm test:evaluate: 554 PASS, 1 SKIP; fails because sceneBasis.test.ts has no
+      Vitest suite
+  - pnpm build: Builder PASS; Next.js fails on Windows Application Data junction scan
+      (EPERM)
+  - Browser/WebGL, offline smoke and fixture runtime: not run by user's instruction
+      to defer runtime pending fixtures
+  limitation: Root-travel scale is the only universal calibration control. Ordered
+    source chains support relative rotation weights and root travel remains owned
+    by the mapped base bone; preset v3 preserves weights and v1/v2 remain importable.
+    Explicitly ignored source bones now appear by name/reason in the plan and baked
+    report. Local-chain composition, end-effector scaling, A/T-pose/proportion calibration,
+    animated skin-loss metrics and browser acceptance remain incomplete. Weight-loss
+    review before Apply exists in DOC-108.
+  additional_files:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/mappingPreset.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/mappingPreset.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/mapping.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/mapping.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/normalizationMetrics.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/normalizationMetrics.ts
+  - ../../../../three-workspace-app/editor/packages/shared/src/index.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/skeletonMappingCommand.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/MappingEditor.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/index.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/hooks/useNormalization.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/agent/unified_cli.py
+  - ../../../../three-workspace-app/agent/unified_mcp.py
+  - ../../../../three-workspace-app/agent/test_unified_cli.py
+  - ../../../../three-workspace-app/agent/test_unified_mcp.py
+  additional_checks:
+  - pnpm --filter @bbs/retarget typecheck: PASS
+  - mappingPreset.test.ts + mapping.test.ts: 8/8 PASS
+  - pnpm --filter @topview/3d-studio typecheck: PASS
+  - Studio ESLint MappingEditor.tsx: PASS
+  - Studio normalization integration: scale-bound plan hash and bounds verified
+  - Python CLI/MCP unittest: 47 passed
+  - workspace pnpm typecheck: PASS
+  - focused Studio ESLint: PASS
+- id: 1.3.4.4
+  parent_id: 1.3.4
+  name: Tạo rig65 và chuyển skin weights
+  dependencies:
+  - 1.3.4.3
+  implementation: partial_studio_skin_rebind_and_character_import
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.4 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalSkin.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/rebindCanonicalModel.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/modelUtils.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/ModelRebindPanel.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/modelRebindUtils.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/mappedSkinOwners.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/rebindCanonicalModel.test.ts
+  checks:
+  - pnpm typecheck: PASS
+  - Focused ESLint: PASS
+  - rebindCanonicalModel.test.ts: 6/6 PASS including secondary influences, measured
+      loss, rest preservation and GLB animation roundtrip
+  - modelRebindUtils.test.ts: 4/4 PASS including JOINTS_1/WEIGHTS_1 recovery from
+      GLB accessors
+  - Full Studio suite: 68 PASS, 2 existing SKIP
+  - Full Retarget suite: 52/52 PASS, including 85-action legacy and Mixamo65↔Minecraft20
+      regressions
+  - pnpm lint: blocked by existing Builder restricted imports in sceneBasis.ts and
+      sceneBasis.test.ts
+  - pnpm test:evaluate: 554 PASS, 1 SKIP; sceneBasis.test.ts registers no Vitest suite
+  - pnpm build: Builder PASS; Next fails on Windows Application Data junction scan
+      (EPERM)
+  - pnpm --filter @topview/3d-studio test:offline: blocked because failed Next build
+      left no .next production build
+  - Model report derivative hash/persistence/readback: PASS
+  limitation: Report records client-generated deformation metrics bound to the output
+    hash; host validates identity/shape/ranges but does not recompute mesh deformation.
+    Three.js/output remains limited to four influences and requires user review of
+    truncation. Browser/external fixtures, multiple skeletons, texture/material fidelity
+    and game runtime remain unverified.
+- id: 1.3.4.5
+  parent_id: 1.3.4
+  name: Retarget action và kiểm sai lệch
+  dependencies:
+  - 1.3.4.3
+  implementation: partial_solver
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.5 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalBake.ts
+  host_implementation: inspect_plan_run_job_derivative_import_history_report
+  host_evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedRigInspection.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedJobs.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  runtime_limit: Parsed GLB sampler, canonical GLB roundtrip and synthetic host job/history/report
+    are tested; real cross-rig fixtures and browser runtime remain unverified.
+- id: 1.3.4.6
+  parent_id: 1.3.4
+  name: Animation Assignment
+  dependencies:
+  - 1.3.4.5
+  implementation: partial_profile_assignment_and_timeline_placement
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.6 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssignment.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedJobs.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedRigInspection.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/AssignmentPanel.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/hooks/useAssignment.ts
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../../../../three-workspace-app/agent/unified_cli.py
+  - ../../../../three-workspace-app/agent/unified_mcp.py
+  checks:
+  - pnpm --filter @topview/3d-studio typecheck: PASS
+  - unifiedAssetImport.test.ts: 16 PASS, 1 existing SKIP
+  - Python CLI/MCP unit tests: 46/46 PASS
+  limitation: Atomic derivative/Motion/timeline Binding and history are implemented;
+    browser/WebGL playback, external Character acceptance and game runtime remain
+    unverified.
+- id: 1.3.4.7
+  parent_id: 1.3.4
+  name: Export, reimport và gửi Scene
+  dependencies:
+  - 1.3.4.4
+  - 1.3.4.5
+  - 1.3.4.6
+  implementation: partial_model_animation_glb_import_and_scene_character
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.7 trong mục 6 đặc tả
+  evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/ModelRebindPanel.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/modelUtils.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalGlb.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universalGlb.test.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  limitation: Studio can import the generated Model+Rig+Animation GLB and add its
+    Character to Scene. Texture/material fidelity, real-browser runtime and external
+    fixtures are not verified; transfer reports are shown in UI but not persisted
+    as a derivative; this is not yet a runtime acceptance gate.
+- id: 1.3.4.8
+  parent_id: 1.3.4
+  name: Runtime hai rig nguồn, Assignment model khác và hồi quy legacy
+  dependencies:
+  - 1.3.4.7
+  implementation: not_started
+  approval: approved
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/rig-animation-normalization.md
+  acceptance: Gate 1.3.4.8 trong mục 6 đặc tả
+  evidence: []
+revision: W01-PLAN-002
+source_bone_count_policy: arbitrary; no fixed source skeleton size
+minimum_distinct_source_rigs: 2
+source_review: ../WORKSPACE01_SOURCE_REVIEW.md
+source_registry: ../fixtures/workspace01-source-candidates.yaml
+current_work_mode: documentation_only_user_requested_no_code
+remaining_plan: workspace01-remaining.yaml
+remaining_spec: ../features/workspace01-remaining.md

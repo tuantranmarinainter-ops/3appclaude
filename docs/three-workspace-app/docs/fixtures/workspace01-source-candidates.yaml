@@ -1,0 +1,415 @@
+schema_version: '1'
+date: '2026-10-19'
+checkpoint: W01-PLAN-002
+status: candidate_plan_not_runtime_results
+source_review: ../WORKSPACE01_SOURCE_REVIEW.md
+spec: ../features/rig-animation-normalization.md
+minimum_distinct_source_rigs: 2
+passed_sources: 0
+samples:
+- id: W01-S01
+  family: iclone_cc
+  candidate: CC Base + walk/turn
+  selection_status: candidate_not_locked
+  proposed_route: FBX
+  reference: R1
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S02
+  family: ue4
+  candidate: UE4 Mannequin
+  selection_status: candidate_not_locked
+  proposed_route: FBX
+  reference: R2
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S03
+  family: ue5
+  candidate: UE5 Manny/Quinn
+  selection_status: candidate_not_locked
+  proposed_route: FBX
+  reference: R2
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S04
+  family: metahuman
+  candidate: MetaHuman body
+  selection_status: candidate_not_locked
+  proposed_route: FBX after bake
+  reference: R3
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S05
+  family: maya
+  candidate: Custom humanoid with twist/spine
+  selection_status: candidate_not_locked
+  proposed_route: FBX after bake
+  reference: R4
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S06
+  family: unity_humanoid
+  candidate: Avatar + Animator character, file pending
+  selection_status: candidate_not_locked
+  proposed_route: source FBX or evaluated bone bake
+  reference: R5
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S07
+  family: unity_generic
+  candidate: Custom Generic character, file pending
+  selection_status: candidate_not_locked
+  proposed_route: FBX verified export
+  reference: R5
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S08
+  family: sketchfab
+  candidate: Custom animated humanoid, UID pending
+  selection_status: candidate_not_locked
+  proposed_route: glTF archive then pack/resolve
+  reference: R6
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S09
+  family: warcraft3
+  candidate: Footman or equivalent humanoid
+  selection_status: candidate_not_locked
+  proposed_route: MDX/MDL
+  reference: R7
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S10
+  family: wow
+  candidate: Humanoid walk/turn, file pending
+  selection_status: candidate_not_locked
+  proposed_route: converter capability pending
+  reference: R8
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S11
+  family: lol
+  candidate: Ashe or humanoid with run/attack
+  selection_status: candidate_not_locked
+  proposed_route: SKN+SKL+ANM via converter
+  reference: R9
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S12
+  family: blender
+  candidate: Rigify/custom rig
+  selection_status: candidate_not_locked
+  proposed_route: FBX/GLB after bake
+  reference: null
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S13
+  family: mixamo
+  candidate: Existing Punch Combo/T-Pose baseline
+  selection_status: candidate_not_locked
+  proposed_route: FBX
+  reference: null
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []
+- id: W01-S14
+  family: dota
+  candidate: Humanoid, file pending
+  selection_status: candidate_not_locked
+  proposed_route: interchange preferred; native adapter pending
+  reference: null
+  source_path: null
+  source_sha256: null
+  software_version: null
+  converter_version: null
+  bone_count: null
+  node_count: null
+  action_count: null
+  import_result: NOT_RUN
+  mapping:
+    auto_mapped_target_slots: null
+    confirmed_mapped_target_slots: null
+    target_slots: 65
+    required_roles_covered: null
+    required_roles_total: null
+    auto_precision: null
+    rest_only_target_slots: null
+  retarget_quality: null
+  excluded_bones: null
+  incompatible_channels: null
+  assignment_target: null
+  runtime_result: NOT_RUN
+  reason: Chưa khóa file và chưa chạy engine universal theo scope mới
+  evidence: []

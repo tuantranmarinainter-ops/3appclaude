@@ -1,0 +1,176 @@
+schema_version: '1'
+date: '2026-10-18'
+fixtures:
+- id: FX-MIXAMO-TPOSE
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/source_assets/T-Pose.fbx
+  sha256: 0c3fd77e693707a1f6c99da95070d482c568b3b91d1f9a060f3b5b53db77768d
+  kind: input
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-MIXAMO-PUNCH
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/source_assets/Punch Combo.fbx
+  sha256: acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb
+  kind: input
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+  implementation_verification:
+    checkpoint: DOC-032
+    date: '2026-10-18'
+    hash_verified: true
+    actual: Builder 538/538 and Studio 25/25; local Chromium 153 workflow imports source, loads 2 skinned meshes at unit 0.01, edits/replays/undoes/clones/reloads; evidence/browser-smoke.yaml records artifacts and versions
+    limits: Single FBX fixture; not full visual/format/game parity. Intermittent clone 500 and production Next EPERM remain open.
+- id: FX-MIXAMO-THRILLER
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/source_assets/Thriller Part 2.fbx
+  sha256: 07314c0f96a49f0bd5274c14921a9463b012e36566d9d299c3b63e940bad28b2
+  kind: input
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-MC20-BOBJ
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/outputs/v9_12_regression/bobj/Thriller_Part_2.bobj
+  sha256: 85dbe2c89e1cc813e92b21011965ea3eea6cdb0273d15d0d3d233d14e12bd7d5
+  kind: historical-output
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-ANIM-FLAIR
+  path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/tests/fixtures/Flair.fbx
+  sha256: 901722ab1a4dc4276f0c69b5abfd3b61eff9d3ef0e48fb0cdcd0b2030c3f3f2b
+  kind: input
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-ICLONE-GENERATOR
+  path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/tests/fixtures/iclone_cc_base_rig.mjs
+  sha256: 16a18627b90eacf15f4c642c3bfba83fd3ba0cfda5443697dd6855df05fca8fd
+  kind: generator-source
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-ANIM-GRAPH
+  path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/tests/graph_regression_easing.cjs
+  sha256: 6f3d73d552d02fc69d53896edd55ce0c06ef16a4cf769e03addb4775542a321d
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-RETARGET-REPORT
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/outputs/v9_12_regression/results.json
+  sha256: 1f6888dae2618f632fffe260d4495ae6c4fb79946967fa51691560cf3c6c1294
+  kind: historical-report
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-SKIN-REPORT
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/outputs/v9_12_skin/results.json
+  sha256: cd163a0a45223976a4adcfd2280b61792f235e1f61b604c687c83472f0972adb
+  kind: historical-report
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-SCENE-CLONE
+  path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8/editor/packages/builder/src/sync/__tests__/cloneSelection.test.ts
+  sha256: f9428eeaecdbb6a4518867e108f140fe25e2cfff302502cbe283c408fa69c2e3
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-SCENE-CAMERA
+  path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8/editor/packages/builder/src/sync/__tests__/cameraTransformEdit.test.ts
+  sha256: 595b0fd3e3aac2a5c1b1ee550346a04ef38b93b2c4ce8cf9e516d5e21177a886
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-SCENE-POSE
+  path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8/editor/packages/builder/src/sync/__tests__/applyPosePresets.test.ts
+  sha256: 84b2aa53446c877b7757b27c0fe510e4fbca64852462c632eef07cb0e57a8477
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-SCENE-UNDO
+  path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8/editor/packages/builder/src/sync/__tests__/undoRedoSession.test.ts
+  sha256: 806ac90897410f2e264e76fe0bc8985610415af96615606e2811815500094194
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+- id: FX-FILM-SMOKE
+  path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/BBS_FS_MCP_MERGED_024/bbs-mcp-addon/src/test/java/local/bbsmerged/SmokeTest.java
+  sha256: 77638596b6f75f5ff68d227e150809586f1e6b163af8c48ccd22f6c007b6678c
+  kind: test-recipe
+  permission: local-test-only; redistribution rights not implied
+  run_in_docs: false
+recipes:
+- id: FX-METARIG
+  kind: recipe-not-generated
+  tool: Blender5.1.2 + Rigify human metarig
+  steps:
+  - Enable bundled Rigify only in isolated test config when test scope authorized
+  - Add standard human metarig, not generated control rig; unit scale1m; apply object transforms
+  - Record bone names/parents/rest matrices and hash; do not hardcode count
+  - Animate pelvis X0->1m over3s; right upper arm Z0->30deg->0 at0/1.5/3s; attach weighted strip mesh
+  - Export FBX/GLB through same bridge; run native importer before adapter comparison
+  expected: No missing essential role; extras explicit; rest mesh preserved; RIG-01 thresholds
+  golden_status: capture-on-implementation
+- id: FX-85-ACTIONS
+  kind: embedded-source-fixture
+  path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/lab/mobile_v9_12.html
+  sha256: 010c5519318d0272381ee35035170d234e0fb6ac737e10459215b943c98b850c
+  symbols:
+  - ACTIONS_BOBJ
+  - ACTION_LABELS
+  expected: 85 distinct IDs/data preserved; evaluate both directions per action
+  golden_status: source-locked; samples not captured
+- id: FX-E2E
+  kind: normative-recipe
+  duration_seconds: 3
+  fps: 30
+  display_frames:
+  - 0
+  - 89
+  film_ticks: 60
+  sample_ticks_including_boundary:
+  - 0
+  - 60
+  actors:
+  - id: A
+    asset: FX-MC20-BOBJ
+    position_start:
+    - 0
+    - 0
+    - 0
+    position_end:
+    - 1
+    - 0
+    - 0
+    root_policy: trajectory
+  - id: B
+    asset: same asset bytes, distinct CharacterID
+    position:
+    - 2
+    - 0
+    - 0
+    root_policy: in-place
+  camera:
+    id: C
+    position:
+    - 1
+    - 1.6
+    - 5
+    lookAt:
+    - 1
+    - 1
+    - 0
+    vertical_fov_degrees: 50
+    aspect: '16:9'
+    shot_frames:
+    - 0
+    - 89
+  motion: 'Deterministic derived clip: A root X=t/3m; all other bones rest except right upper arm local Z0deg@0,30deg@1.5,0deg@3 linear. B root
+    fixed, same arm curve. Use actual MC20 bone hierarchy, never overwrite source action.'
+  edit_after_import: At tick30 change A right upper arm Z+10deg in Film Editor; save/reopen; B/camera unchanged
+  expected_midpoint:
+    A_world:
+    - 0.5
+    - 0
+    - 0
+    B_world:
+    - 2
+    - 0
+    - 0
+    arm_degrees_before: 30
+    arm_degrees_after: 40
+  golden_status: analytic expected only; project/Film not generated
+rule: Test-source/recipe is not an executed fixture result. Record generated output hashes before comparison; historical report is not a current
+  pass.

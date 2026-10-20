@@ -1,0 +1,21 @@
+import { resolveProjectBlob } from '../../../../../../../../src/unifiedAssetFiles'
+import { readUnifiedProject, UnifiedStoreError } from '../../../../../../../../src/unifiedProjectStore'
+import { validateLocalRequest } from '../../../../../../../../src/unifiedSession'
+
+export const runtime = 'nodejs'
+
+export async function GET(request: Request, context: { params: Promise<{ id: string; sessionId: string }> }): Promise<Response> {
+  const rejected = validateLocalRequest(request)
+  if (rejected) return rejected
+  try {
+    const { id, sessionId } = await context.params
+    const project = await readUnifiedProject(id)
+    const session = project.retargetSessions[decodeURIComponent(sessionId)]
+    if (!session) throw new UnifiedStoreError('NOT_FOUND', 'Retarget session not found', 404)
+    const bytes = await resolveProjectBlob(id, session.nativeProject)
+    return new Response(bytes, { headers: { 'Content-Type': session.nativeProject.mediaType, 'Content-Length': String(bytes.byteLength), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
+  } catch (error) {
+    const status = error instanceof UnifiedStoreError ? error.status : 404
+    return Response.json({ error: { code: error instanceof UnifiedStoreError ? error.code : 'NOT_FOUND', message: error instanceof Error ? error.message : 'Native retarget project not found' } }, { status })
+  }
+}

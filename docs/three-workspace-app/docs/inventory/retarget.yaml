@@ -1,0 +1,296 @@
+schema_version: '1'
+inventory_id: '1.3'
+name: Mixamo Retarget Lab V9.12
+source_id: '1.3'
+source_file: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/lab/mobile_v9_12.html
+source_hash_sha256: 010C5519318D0272381EE35035170D234E0FB6AC737E10459215B943C98B850C
+hash_manifest: retarget-v9_12-sha256.yaml
+bundle_size_bytes: 11388129
+target_profiles:
+- Mixamo65
+- Minecraft20
+library: 85 Minecraft animations; 30 fps; Minecraft timing 20 ticks/s
+modules:
+- id: 1.3.1
+  name: FBX/BOBJ import and rig visualization
+  code_locations:
+  - loadFBX
+  - loadSourceMixamoFBX
+  - RigVisualizer
+  - FBXLoader
+  - bobjTextV99
+  - sourceFingerprintForFbxV99
+  inputs:
+  - FBX
+  - BOBJ
+  - Minecraft skin PNG
+  - source/target rig profile
+  outputs:
+  - source and target skeleton/mesh
+  - fingerprints and rig metadata
+  implementation: unknown
+  verification: automated
+  evidence: V9.12 regression and skin result JSON; game/physical phone not verified
+  merge_action: Extract rig parsing/normalization into modules; preserve Source immutability and rig fingerprint checks
+  source_module_key: retarget:1.3.1
+  target_ids: &id001
+  - 1.3.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id001
+  module: FBX/BOBJ import and rig visualization
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+  merged_app_evidence:
+    status: partial
+    files:
+    - three-workspace-app/editor/apps/studio/app/workbench/components/RetargetPreview.tsx
+    - three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+    - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+    - three-workspace-app/editor/apps/studio/public/retarget/v9.12/minecraft20-armature.bobj
+    checks:
+    - FBX load/clip playback/source and target skeleton WebGL preview in Edge
+    - Thriller Part 2.fbx and Flair.fbx: 65 bones, 13 source mappings, 20 finite animated target bones
+    - Mixamo FBX source import creates a content-hashed Motion asset and 65-bone Mixamo65 profile in one project revision; original bytes and clip metadata survive reload
+    remaining: compatible semantic mapping/calibration can drive the fixed V9.12 preview; native session JSON can be persisted and restored. The snapshot is not applied to arbitrary target-profile rest data; no bake or timeline placement
+- id: 1.3.2
+  name: 85-action Minecraft library and compare workspace
+  code_locations:
+  - ACTION_LABELS
+  - actionList
+  - ACTIONS_BOBJ
+  - loadCompare and view handlers
+  inputs:
+  - selected Minecraft clip
+  - Mixamo and Minecraft rigs
+  outputs:
+  - paired animation preview and comparison state
+  implementation: unknown
+  verification: automated
+  evidence: V9.12 result lists preservation of 85 actions; per-report coverage must be reviewed
+  merge_action: Reuse library data/compare logic; avoid copying bundled app chrome into React
+  source_module_key: retarget:1.3.2
+  target_ids: &id002
+  - 1.3.1
+  - 1.3.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id002
+  module: 85-action Minecraft library and compare workspace
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+  merged_app_evidence:
+    status: partial
+    files:
+    - three-workspace-app/editor/packages/retarget/src/index.ts
+    - three-workspace-app/editor/apps/studio/app/workbench/components/MinecraftActionPreview.tsx
+    - three-workspace-app/editor/apps/studio/test/retargetBobj.test.ts
+    checks:
+    - native V9.12 localDeltaMatrix order and rest-local/world hierarchy ported to a reusable sampler
+    - all85 actions evaluate to finite Minecraft20 poses and at least one bone changes from rest
+    remaining: no reference-golden matrix comparison or synchronized Mixamo comparison view; bake, timeline placement, and export remain absent
+- id: 1.3.3
+  name: Two-way retarget and corrections
+  code_locations:
+  - applyRetarget
+  - buildReverseCache
+  - applyReverseRetarget
+  - applyMappingV99
+  - applyFeetV99
+  - applyHandPresets
+  inputs:
+  - source/target rig
+  - mapping
+  - calibration/reference pose
+  - segment offsets
+  - foot IK
+  - root-motion mode
+  outputs:
+  - editable target pose and baked motion
+  implementation: unknown
+  verification: automated
+  evidence: V9.12 report lists mapping, calibration, feet, interpolation, Reverse and bake/export regressions
+  merge_action: Preserve math/evaluator and split bundled UI from engine; TypeScript adapter first
+  source_module_key: retarget:1.3.3
+  target_ids: &id003
+  - 1.3.2
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id003
+  module: Two-way retarget and corrections
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+  merged_app_evidence:
+    status: partial
+    files:
+    - three-workspace-app/editor/packages/retarget/src/reverse.ts
+    - three-workspace-app/editor/apps/studio/test/retargetBobj.test.ts
+    checks:
+    - BOBJ rest matrix round-trip for all 20 Minecraft bones
+    - intensity, source rotation, root in-place/follow, malformed input and finite output
+    - browser WebGL playback on a real Mixamo65 FBX
+    remaining: reverse preview uses the fixed V9.12 Minecraft20 armature; no forward solver, native-session replay into the evaluator, arbitrary target rest/mesh, feet/hands, UI/project integration for the new frame-bake primitive, timeline placement, or export
+- id: 1.3.4
+  name: Target timeline, project history and persistence
+  code_locations:
+  - applyInterpolationV98
+  - evaluateTargetV98
+  - undoRedoV99
+  - applyProjectV99
+  - validateProjectV99
+  - project JSON handlers
+  inputs:
+  - Target key edits
+  - versioned JSON project
+  - Undo/Redo actions
+  outputs:
+  - reloaded/editable project
+  - edited timeline and Target state
+  implementation: unknown
+  verification: automated
+  evidence: V9.12 result includes JSON roundtrip, Undo/Redo and timeline editing; no cross-workspace transaction tested
+  merge_action: Migrate project via adapter; merge transaction model only after behavioral parity checks
+  source_module_key: retarget:1.3.4
+  target_ids: &id004
+  - 1.3.3
+  - 1.2.5
+  - 1.2.6
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id004
+  module: Target timeline, project history and persistence
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.3.5
+  name: Export and Blender conversion bridge
+  code_locations:
+  - exportBobj
+  - exportBobjV9
+  - buildThreeClipFromBake
+  - exportBVH
+  - exportGLB
+  - exportFbxBridge
+  - exportFpsV99
+  inputs:
+  - baked target
+  - selected format/profile
+  - mesh/skin option
+  outputs:
+  - BOBJ with optional JSON
+  - BVH
+  - GLB
+  - FBX via Blender bridge
+  implementation: unknown
+  verification: automated
+  evidence: Regression reports parse/export outputs; real Minecraft roundtrip is unverified
+  merge_action: Keep format/Blender adapters behind common export API; do not claim arbitrary rig fidelity
+  source_module_key: retarget:1.3.5
+  target_ids: &id005
+  - 1.3.3
+  - 1.6.2
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id005
+  module: Export and Blender conversion bridge
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.3.6
+  name: Settings, locale and HTML delivery
+  code_locations:
+  - applyLanguage
+  - applyTheme
+  - applySkeletonPreferences
+  - build_v9_12.py
+  - listcode.md
+  inputs:
+  - user preferences
+  - locale
+  outputs:
+  - localized standalone HTML and display settings
+  implementation: unknown
+  verification: automated
+  evidence: Source/output hashes match; built artifact is one HTML file
+  merge_action: Rebuild React navigation; keep preference semantics and locale dictionary
+  source_module_key: retarget:1.3.6
+  target_ids: &id006
+  - 1.1.1
+  - 1.3.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.3'
+  parent_source_module_key: retarget:1.3
+  children: []
+  spec: ../features/retarget-workspace.md
+  listcode_ids: *id006
+  module: Settings, locale and HTML delivery
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+excluded_by_user: V9.12 explicitly removed standalone pose-animation workspace; keep pose creation in Animation workspace
+known_limits:
+- Minecraft runtime and physical mobile/touch acceptance absent
+- A prior root-coordinate diagnosis was withdrawn by the user; cause remains unresolved in source chat
+- V9.12 HTML has external Three.js imports; adapter must pin supported package versions
+id_namespace: source-module; id kept for historical references, never compare to target IDs without target_ids
+source_key: retarget

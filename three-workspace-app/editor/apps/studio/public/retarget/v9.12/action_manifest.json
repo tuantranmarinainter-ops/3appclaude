@@ -1,0 +1,2319 @@
+{
+  "source_file": "emoticons-1.4.1-1.20.jar",
+  "mod_version": "1.4.1-1.20",
+  "minecraft_range": ">=1.20.1 <=1.20.4",
+  "license": "GPL-3.0-only",
+  "authors": [
+    "McHorse (original Emoticons)",
+    "bay4lly (1.20 port)"
+  ],
+  "timing": {
+    "unit": "Minecraft tick",
+    "ticks_per_second": 20,
+    "note": "BOBJ fractional tick values preserve Blender 30 FPS timing (1 frame = 2/3 tick)."
+  },
+  "bone_count": 20,
+  "bones": [
+    {
+      "name": "anchor",
+      "parent": null,
+      "head": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "tail": [
+        0.0,
+        0.75,
+        0.25
+      ]
+    },
+    {
+      "name": "body",
+      "parent": "anchor",
+      "head": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "tail": [
+        0.0,
+        1.125,
+        0.0
+      ]
+    },
+    {
+      "name": "low_body",
+      "parent": "body",
+      "head": [
+        0.0,
+        1.125,
+        0.0
+      ],
+      "tail": [
+        0.0,
+        1.5,
+        0.0
+      ]
+    },
+    {
+      "name": "head",
+      "parent": "low_body",
+      "head": [
+        0.0,
+        1.5,
+        0.0
+      ],
+      "tail": [
+        0.0,
+        2.0,
+        0.0
+      ]
+    },
+    {
+      "name": "left_arm",
+      "parent": "low_body",
+      "head": [
+        0.375,
+        1.375,
+        0.0
+      ],
+      "tail": [
+        0.375,
+        1.125,
+        0.0
+      ]
+    },
+    {
+      "name": "low_left_arm",
+      "parent": "left_arm",
+      "head": [
+        0.375,
+        1.125,
+        0.0
+      ],
+      "tail": [
+        0.375,
+        0.875,
+        0.0
+      ]
+    },
+    {
+      "name": "low_left_arm.end",
+      "parent": "low_left_arm",
+      "head": [
+        0.375,
+        0.875,
+        0.0
+      ],
+      "tail": [
+        0.375,
+        0.75,
+        0.0
+      ]
+    },
+    {
+      "name": "right_arm",
+      "parent": "low_body",
+      "head": [
+        -0.375,
+        1.375,
+        0.0
+      ],
+      "tail": [
+        -0.375,
+        1.125,
+        0.0
+      ]
+    },
+    {
+      "name": "low_right_arm",
+      "parent": "right_arm",
+      "head": [
+        -0.375,
+        1.125,
+        0.0
+      ],
+      "tail": [
+        -0.375,
+        0.875,
+        0.0
+      ]
+    },
+    {
+      "name": "low_right_arm.end",
+      "parent": "low_right_arm",
+      "head": [
+        -0.375,
+        0.875,
+        0.0
+      ],
+      "tail": [
+        -0.375,
+        0.75,
+        0.0
+      ]
+    },
+    {
+      "name": "right_leg",
+      "parent": "body",
+      "head": [
+        -0.125,
+        0.75,
+        0.0
+      ],
+      "tail": [
+        -0.125,
+        0.375,
+        0.0
+      ]
+    },
+    {
+      "name": "low_leg_right",
+      "parent": "right_leg",
+      "head": [
+        -0.125,
+        0.375,
+        0.0
+      ],
+      "tail": [
+        -0.125,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "left_leg",
+      "parent": "body",
+      "head": [
+        0.125,
+        0.75,
+        0.0
+      ],
+      "tail": [
+        0.125,
+        0.375,
+        0.0
+      ]
+    },
+    {
+      "name": "low_left_leg",
+      "parent": "left_leg",
+      "head": [
+        0.125,
+        0.375,
+        0.0
+      ],
+      "tail": [
+        0.125,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "misc_bone_1",
+      "parent": "anchor",
+      "head": [
+        0.0,
+        0.0,
+        0.25
+      ],
+      "tail": [
+        0.0,
+        0.375,
+        0.25
+      ]
+    },
+    {
+      "name": "misc_bone_2",
+      "parent": "anchor",
+      "head": [
+        -0.125,
+        0.0,
+        0.25
+      ],
+      "tail": [
+        -0.125,
+        0.375,
+        0.25
+      ]
+    },
+    {
+      "name": "misc_bone_3",
+      "parent": "anchor",
+      "head": [
+        0.125,
+        0.0,
+        0.25
+      ],
+      "tail": [
+        0.125,
+        0.375,
+        0.25
+      ]
+    },
+    {
+      "name": "misc_gbone_1",
+      "parent": null,
+      "head": [
+        0.0,
+        0.0,
+        -0.25
+      ],
+      "tail": [
+        0.0,
+        0.375,
+        -0.25
+      ]
+    },
+    {
+      "name": "misc_gbone_2",
+      "parent": null,
+      "head": [
+        -0.125,
+        0.0,
+        -0.25
+      ],
+      "tail": [
+        -0.125,
+        0.375,
+        -0.25
+      ]
+    },
+    {
+      "name": "misc_gbone_3",
+      "parent": null,
+      "head": [
+        0.125,
+        0.0,
+        -0.25
+      ],
+      "tail": [
+        0.125,
+        0.375,
+        -0.25
+      ]
+    }
+  ],
+  "action_count": 85,
+  "emote_action_count": 64,
+  "dance_candidate_count": 26,
+  "actions": [
+    {
+      "name": "Action",
+      "bones": [
+        "low_left_leg",
+        "low_leg_right"
+      ],
+      "max_time": 19.333333,
+      "keyframes": 202,
+      "unknown_helper_bones": [],
+      "bone_count": 2,
+      "seconds": 0.9667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / other",
+      "preferred_preview": null
+    },
+    {
+      "name": "consume",
+      "bones": [
+        "head",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 20.0,
+      "keyframes": 21,
+      "unknown_helper_bones": [],
+      "bone_count": 3,
+      "seconds": 1.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / interaction",
+      "preferred_preview": null
+    },
+    {
+      "name": "crouching",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 33.333333,
+      "keyframes": 180,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.6667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "crouching_idle",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 40.0,
+      "keyframes": 144,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 2.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "dying",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 10.666667,
+      "keyframes": 167,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 0.5333,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / state",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_am_stuff",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 53.333333,
+      "keyframes": 165,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 2.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_best_mates",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 10.666667,
+      "keyframes": 157,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 0.5333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_bitchslap",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 66.666667,
+      "keyframes": 195,
+      "unknown_helper_bones": [],
+      "bone_count": 7,
+      "seconds": 3.3333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_boneless",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 38.666667,
+      "keyframes": 522,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 1.9333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_bongo_cat",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 158.666667,
+      "keyframes": 990,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 7.9333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_bow",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 43.333333,
+      "keyframes": 55,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 2.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_boy",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 29.333333,
+      "keyframes": 252,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 1.4667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_breathtaking",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 102.666667,
+      "keyframes": 624,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 5.1333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_calculated",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 33.333333,
+      "keyframes": 139,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_chicken",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 18.666667,
+      "keyframes": 341,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 0.9333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_clapping",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 14.666667,
+      "keyframes": 173,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 0.7333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_club",
+      "bones": [
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 20.666667,
+      "keyframes": 216,
+      "unknown_helper_bones": [],
+      "bone_count": 5,
+      "seconds": 1.0333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_confused",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 140.0,
+      "keyframes": 623,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 7.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_crying",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 26.666667,
+      "keyframes": 218,
+      "unknown_helper_bones": [],
+      "bone_count": 9,
+      "seconds": 1.3333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_dab",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 23.333333,
+      "keyframes": 202,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_default",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 139.333333,
+      "keyframes": 1879,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 6.9667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_disco_fever",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 175.333333,
+      "keyframes": 2355,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 8.7667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_disgusted",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 133.333333,
+      "keyframes": 257,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 6.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_electro_shuffle",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 168.666667,
+      "keyframes": 2666,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 8.4333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_exhausted",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 220.0,
+      "keyframes": 280,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 11.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_facepalm",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 103.333333,
+      "keyframes": 381,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 5.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_fist",
+      "bones": [
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 53.333333,
+      "keyframes": 153,
+      "unknown_helper_bones": [],
+      "bone_count": 5,
+      "seconds": 2.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_floss",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 32.0,
+      "keyframes": 308,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 1.6,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_free_flow",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 158.0,
+      "keyframes": 3190,
+      "unknown_helper_bones": [],
+      "bone_count": 14,
+      "seconds": 7.9,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_fresh",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 101.333333,
+      "keyframes": 1620,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 5.0667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_gangnam_style",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 17.333333,
+      "keyframes": 295,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_get_funky",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 172.0,
+      "keyframes": 3868,
+      "unknown_helper_bones": [],
+      "bone_count": 14,
+      "seconds": 8.6,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_get_funky_IK",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm_IK.end",
+        "low_left_leg",
+        "low_left_leg.IK",
+        "low_leg_right",
+        "low_leg_right.IK",
+        "low_right_arm_IK.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 172.0,
+      "keyframes": 2397,
+      "unknown_helper_bones": [
+        "low_left_arm_IK.end",
+        "low_left_leg.IK",
+        "low_leg_right.IK",
+        "low_right_arm_IK.end"
+      ],
+      "bone_count": 13,
+      "seconds": 8.6,
+      "is_emote": true,
+      "is_ik": true,
+      "category": "Dance candidate",
+      "preferred_preview": "emote_get_funky"
+    },
+    {
+      "name": "emote_hell_yeah",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 46.666667,
+      "keyframes": 375,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 2.3333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_hype",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 68.0,
+      "keyframes": 659,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 3.4,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_infinite_dab",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 18.666667,
+      "keyframes": 319,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.9333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_laughing",
+      "bones": [
+        "body",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 15.333333,
+      "keyframes": 157,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 0.7667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_no",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 30.0,
+      "keyframes": 124,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.5,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_nope",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 67.333333,
+      "keyframes": 213,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 3.3667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_orange_justice",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 129.333333,
+      "keyframes": 2506,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 6.4667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_paranoid",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 210.0,
+      "keyframes": 467,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 10.5,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_pointing",
+      "bones": [
+        "body",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 33.333333,
+      "keyframes": 67,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 1.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_popcorn",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 102.0,
+      "keyframes": 290,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 5.1,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_punch",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 38.666667,
+      "keyframes": 264,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.9333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_pure_salt",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 103.333333,
+      "keyframes": 369,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 5.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_rock_paper_scissors",
+      "bones": [
+        "body",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 60.0,
+      "keyframes": 222,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 3.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_salute",
+      "bones": [
+        "body",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 50.0,
+      "keyframes": 112,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 2.5,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_scared",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 33.333333,
+      "keyframes": 297,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 1.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_shimmer",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 155.333333,
+      "keyframes": 2945,
+      "unknown_helper_bones": [],
+      "bone_count": 14,
+      "seconds": 7.7667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_shimmer_IK",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm.end",
+        "low_left_arm_IK.end",
+        "low_left_leg",
+        "low_left_leg.IK",
+        "low_leg_right",
+        "low_leg_right.IK",
+        "low_right_arm.end",
+        "low_right_arm_IK.end",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 155.333333,
+      "keyframes": 1641,
+      "unknown_helper_bones": [
+        "low_left_arm_IK.end",
+        "low_left_leg.IK",
+        "low_leg_right.IK",
+        "low_right_arm_IK.end"
+      ],
+      "bone_count": 15,
+      "seconds": 7.7667,
+      "is_emote": true,
+      "is_ik": true,
+      "category": "Dance candidate",
+      "preferred_preview": "emote_shimmer"
+    },
+    {
+      "name": "emote_shrug",
+      "bones": [
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_left_arm.end",
+        "low_right_arm",
+        "low_right_arm.end",
+        "right_arm"
+      ],
+      "max_time": 50.0,
+      "keyframes": 126,
+      "unknown_helper_bones": [],
+      "bone_count": 7,
+      "seconds": 2.5,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_skibidi",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 16.0,
+      "keyframes": 229,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_slow_clap",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 133.333333,
+      "keyframes": 431,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 6.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_smug_dance_IK",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "leg_left.anchor",
+        "leg_right.anchor",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 19.333333,
+      "keyframes": 383,
+      "unknown_helper_bones": [
+        "leg_left.anchor",
+        "leg_right.anchor"
+      ],
+      "bone_count": 11,
+      "seconds": 0.9667,
+      "is_emote": true,
+      "is_ik": true,
+      "category": "Dance candidate",
+      "preferred_preview": "emote_smug_dance"
+    },
+    {
+      "name": "emote_smug_dance",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 19.333333,
+      "keyframes": 583,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.9667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_sneeze",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 133.333333,
+      "keyframes": 316,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 6.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_squat_kick",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 231.333333,
+      "keyframes": 2477,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 11.5667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_star_power",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 159.333333,
+      "keyframes": 2526,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 7.9667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_stick_bug",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 16.666667,
+      "keyframes": 224,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_t_pose",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 80.0,
+      "keyframes": 66,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 4.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_tada",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 60.0,
+      "keyframes": 228,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 3.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_take_the_l",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 16.0,
+      "keyframes": 244,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_thinking",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 100.0,
+      "keyframes": 88,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 5.0,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_threatening",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 46.666667,
+      "keyframes": 217,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 2.3333,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_tidy",
+      "bones": [
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 103.333333,
+      "keyframes": 1074,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 5.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_twerk",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 13.333333,
+      "keyframes": 212,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 0.6667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Dance candidate",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_wave",
+      "bones": [
+        "body",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 38.0,
+      "keyframes": 141,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 1.9,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_woah",
+      "bones": [
+        "head",
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 44.0,
+      "keyframes": 210,
+      "unknown_helper_bones": [],
+      "bone_count": 6,
+      "seconds": 2.2,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "emote_yes",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 23.333333,
+      "keyframes": 46,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 1.1667,
+      "is_emote": true,
+      "is_ik": false,
+      "category": "Emote / gesture",
+      "preferred_preview": null
+    },
+    {
+      "name": "falling",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 17.333333,
+      "keyframes": 119,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "flying",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 12.0,
+      "keyframes": 52,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 0.6,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "flying_idle",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 40.0,
+      "keyframes": 71,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 2.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "hurt",
+      "bones": [
+        "left_arm",
+        "low_body",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 10.0,
+      "keyframes": 54,
+      "unknown_helper_bones": [],
+      "bone_count": 5,
+      "seconds": 0.5,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / state",
+      "preferred_preview": null
+    },
+    {
+      "name": "idle",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 81.333333,
+      "keyframes": 108,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 4.0667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "jump",
+      "bones": [
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 8.666667,
+      "keyframes": 64,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 0.4333,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "land",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 8.0,
+      "keyframes": 110,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.4,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "riding",
+      "bones": [
+        "anchor",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 20.666667,
+      "keyframes": 64,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 1.0333,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "riding_idle",
+      "bones": [
+        "anchor",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 60.0,
+      "keyframes": 79,
+      "unknown_helper_bones": [],
+      "bone_count": 10,
+      "seconds": 3.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "running",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 17.333333,
+      "keyframes": 175,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.8667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "shoot",
+      "bones": [
+        "left_arm",
+        "low_left_arm",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 13.333333,
+      "keyframes": 24,
+      "unknown_helper_bones": [],
+      "bone_count": 4,
+      "seconds": 0.6667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / interaction",
+      "preferred_preview": null
+    },
+    {
+      "name": "sleeping",
+      "bones": [
+        "anchor",
+        "body",
+        "head",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 60.0,
+      "keyframes": 67,
+      "unknown_helper_bones": [],
+      "bone_count": 12,
+      "seconds": 3.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / state",
+      "preferred_preview": null
+    },
+    {
+      "name": "sprinting",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 13.333333,
+      "keyframes": 175,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 0.6667,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "swimming",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 22.0,
+      "keyframes": 89,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 1.1,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "swimming_idle",
+      "bones": [
+        "anchor",
+        "body",
+        "left_arm",
+        "left_leg",
+        "low_body",
+        "low_left_arm",
+        "low_left_leg",
+        "low_leg_right",
+        "low_right_arm",
+        "right_arm",
+        "right_leg"
+      ],
+      "max_time": 60.0,
+      "keyframes": 106,
+      "unknown_helper_bones": [],
+      "bone_count": 11,
+      "seconds": 3.0,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / locomotion",
+      "preferred_preview": null
+    },
+    {
+      "name": "swipe",
+      "bones": [
+        "low_body",
+        "low_right_arm",
+        "right_arm"
+      ],
+      "max_time": 12.666667,
+      "keyframes": 36,
+      "unknown_helper_bones": [],
+      "bone_count": 3,
+      "seconds": 0.6333,
+      "is_emote": false,
+      "is_ik": false,
+      "category": "Base / interaction",
+      "preferred_preview": null
+    }
+  ]
+}

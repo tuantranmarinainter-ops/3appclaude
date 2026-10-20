@@ -1,0 +1,266 @@
+schema_version: '1'
+status: specification-for-review
+transport:
+  owner: Node host của Studio là writer duy nhất; dùng chung package shared với UI. Python CLI gọi local broker; job converter là subprocess đọc
+    snapshot bất biến.
+  endpoint: POST /api/unified/commands; GET /api/unified/requests/<requestId>; GET /api/unified/projects/<projectId>
+  access: Bind127.0.0.1, session token tạo ngẫu nhiên; Host/Origin allowlist local; không bật CORS wildcard. Không log token hoặc absolute user
+    paths. File dialog cấp file handle, API không chạy shell tùy ý.
+  owner_lock: OS exclusive file handle trên .writer.lock trong root project; PID/time chỉ để thông tin, không dùng timeout để cướp lock. Hai host
+    không được cùng ghi. CLI Topview cũ dùng bản gốc hoặc export snapshot, không ghi project hợp nhất.
+envelope:
+  requestId: UUID, bắt buộc; cùng ID + cùng payload trả lại kết quả, khác payload -> REQUEST_ID_CONFLICT
+  projectId: UUID; required except project.create/import/restore which create a new project
+  expectedRevision: integer>=0 required for mutations of existing project; exact CAS; not required for create/import/restore/read/snapshot-job
+  command: tên chính xác trong commands
+  args: object theo contract của command; reject keys không biết ngoài native payload được schema nguồn cho phép
+  dryRun: boolean default false; validate/plan không tăng revision, không sửa file
+success: '{ok:true,requestId,projectId,revision,result,warnings:[{code,path,message}],changedIds:[string]}'
+failure: '{ok:false,requestId,projectId,revision,error:{code,message,path?,retryable,details?}}'
+errors:
+  VALIDATION_FAILED: 400; type/range/schema/reference
+  UNSUPPORTED_VERSION: 422; mở read-only/giữ original; không downgrade
+  NOT_FOUND: 404; project/node/asset/command
+  REVISION_CONFLICT: 409; details expected/actual; refresh rồi yêu cầu mới, không tự overwrite
+  REQUEST_ID_CONFLICT: 409; không tái dùng requestId cho payload mới
+  WRITER_BUSY: 423; read-only tới khi lock được giải phóng
+  ASSET_MISSING: 422; cần relink đúng hash/fingerprint
+  PROFILE_MISMATCH: 422; cần mapping hợp lệ
+  ROOT_MOTION_CONFLICT: 422; chỉnh ownership trước export
+  UNSUPPORTED_CAPABILITY: 422; format/channel/provider chưa hỗ trợ
+  CANCELLED: 409; chưa commit, không có thay đổi project
+  IO_FAILED: 500; giữ revision trước, report staged job ID
+  TOOL_UNAVAILABLE: 503; Blender/Java/renderer không sẵn, không tự tải
+transaction:
+  steps:
+  - validate envelope + token
+  - deduplicate requestId
+  - acquire project writer
+  - check exact revision
+  - validate all operations on clone
+  - evaluate preconditions
+  - write immutable blobs + journal
+  - atomic replace project manifest
+  - publish committed revision/result
+  revision: Mỗi accepted transaction tăng1; failure/dryRun/read/UI selection không tăng. Undo/Redo là transaction mới và tăng revision, không
+    quay revision counter về số cũ.
+  gesture: Một drag/text commit/Apply là một transaction; preview không lưu. Cancel phục hồi snapshot. Nhiều source ops trong batch vẫn chỉ tăng
+    shared revision1; sceneSequence giữ semantics nội bộ upstream.
+  history: Global ordered history UI/CLI chung; inverse snapshots/patches của cùng commit, gồm native motion blob references. Undo item cuối,
+    redo sau undo; mutation mới xóa redo branch. Duy trì ít nhất100 commits; không xóa original assets. Save không tự tạo action.
+  persistence: History/request result persist cùng journal; đọc lại sau restart. RequestId của job lỗi trước commit có thể retry cùng payload;
+    kết quả terminal đã commit luôn trả lại, không chạy lần2.
+  cancellation: 'Trước commit: cancel job, giữ manifest. Sau commit: trả result committed; user dùng Undo. Timeout mạng không hàm ý thất bại:
+    client query requestId trước retry.'
+commands:
+  project.create:
+    mode: mutation-new-project
+    args: '{name:string, outputDirectory:approved-directory-handle, fps?:number=30, aspectRatio?:string="16:9"}'
+    result: '{projectId,revision:0,manifestPath}'
+  project.import:
+    mode: job-new-project
+    args: '{source:file-handle, adapter:auto|animation|animation-scene|retarget|topview, outputDirectory:approved-directory-handle, relinks?:record<legacyRef,file-handle>,
+      acceptLossCodes?:string[]=[]}'
+    result: '{jobId,projectId?,migrationReport,manifestPath?}; blocking issues => no new committed project'
+  project.save:
+    mode: read-flush
+    args: '{}'
+    result: '{revision,sha256,manifestPath}; committed revisions already durable; no extra undo action'
+  project.inspect:
+    mode: read
+    args: '{include?:summary|document|references=summary}'
+    result: '{projectId,revision,documentOrSummary,issues}'
+  project.export:
+    mode: snapshot-job
+    args: '{format:unified, outputDirectory:approved-directory-handle, includeOriginals?:boolean=true}'
+    result: '{jobId,sourceRevision,outputManifest,sha256}'
+  project.restore:
+    mode: job-new-project
+    args: '{backup:file-handle, outputDirectory:approved-directory-handle}'
+    result: '{projectId,revision:0,restoredFrom,validationReport}; never overwrite live project'
+  asset.import:
+    mode: mutation-job
+    args: '{files:file-handle[], format:auto|fbx|gltf|glb|bobj|mdx|mdl|league|png|jpg|dds|pose-json, unitMeters?:number, basis?:9numbers}'
+    result: '{assetIds,skeletonIds,motionIds,issues}; uses native importer; unsupported format rejects'
+  asset.relink:
+    mode: mutation
+    args: '{assetId:AssetID, file:file-handle}'
+    result: '{assetId,matchedHash}; restores a missing source blob only when SHA-256 and byte length match; different hash requires asset.import + explicit remap'
+  character.add:
+    mode: mutation
+    args: '{assetId:AssetID,skeletonId:ID,name:string,transform?:Transform,parentNodeId?:NodeID}'
+    result: '{characterId,nodeId}'
+  prop.add:
+    mode: mutation
+    args: '{assetId:AssetID,name:string,transform?:Transform,parentNodeId?:groupNodeId}'
+    result: '{nodeId,assetId}; creates a Topview prop node; no Character/Skeleton record required'
+  scene.apply:
+    mode: mutation
+    args: '{operations:TopviewDirectorOperation[]}; validate against pinned director_operations/document contract; no arbitrary JS or JSON path
+      write'
+    result: '{nodeIds,sceneSequence}; shared references checked before delete/clone'
+  skeleton.mapping.set:
+    mode: mutation
+    args: '{mapping:SkeletonMappingDraft,calibration:RetargetCalibrationV1}; server stores immutable calibration JSON by SHA-256, derives confirmed from required semantic roles, and requires a reason for every unused bone'
+    result: '{mappingId,validationReport}; incomplete mappings save as unconfirmed drafts and cannot bake'
+  retarget.session.set:
+    mode: mutation
+    args: '{sessionId?:ID,sourceMotionId:ID,targetCharacterId:ID,mappingId:ID,nativeProject:RetargetProjectV1}'
+    result: '{sessionId}; validates with validateProjectV99 and fingerprints'
+  retarget.bake:
+    mode: mutation-job
+    args: '{sessionId:ID,sourceStartSeconds:number,sourceLengthSeconds:number,fps:number,rootPolicy:in-place|skeletal|trajectory}'
+    result: '{motionId,report}; creates new motion, never edits source'
+  motion.edit:
+    mode: mutation
+    args: '{characterId:UUID,motionId?:UUID,clipId?:ClipID,edit:AnimationStudioProjectV1,derivativeBase64:GLB<=64MiB}'
+    result: '{motionId,derivedFrom,affectedClipIds}; immutable native JSON + validated GLB, optional selected-clip rebind in one revision'
+  motion.place:
+    mode: mutation
+    args: '{characterId:ID,motionId:ID,startFrame:integer,endFrame:integer,sourceStartSeconds?:number=0,sourceLengthSeconds:number,speed?:number=1,loop?:boolean=false,reverse?:boolean=false,rootPolicy?:in-place|skeletal|trajectory=skeletal,alignment?:origin|continue=continue}'
+    result: '{clipId}; atomic native clip + binding'
+  motion.binding.set:
+    mode: mutation
+    args: '{binding:MotionBinding,clipPatch?:{frameStart,frameEnd,playback}}'
+    result: '{clipId}'
+    current_subset: Complete binding for an existing shared clip, same-fingerprint FBX/Character; zero fades, skeletal or imported-direct in-place/trajectory root policy; trajectory origin/continue alignment. clipPatch accepts inclusive frameStart/frameEnd and playback speed/loop. Without frameEnd, moving frameStart preserves the existing span; source-range changes alone preserve timeline span. Overlaps and locked Characters reject, with no change to source bytes or ClipID.
+  camera.shot.set:
+    mode: mutation
+    args: '{sequenceId:string,clip:EditSequenceClip}; retain native camera/path/curves via scene.apply'
+    result: '{sequenceId,shotId}'
+  history.undo:
+    mode: mutation
+    args: '{}'
+    result: '{undoneRequestId,changedIds}; empty history -> validation error'
+  history.redo:
+    mode: mutation
+    args: '{}'
+    result: '{redoneRequestId,changedIds}'
+  scene.evaluate:
+    mode: read
+    args: '{frame:number,cameraNodeId?:string,checks?:string[]}'
+    result: '{sourceRevision,transforms,transformSpace,poseSamples,skeletonSamples,skeletonMatrixOrder,boneLocalSpace,boneWorldSpace,checks,checkDiagnostics,issues}'
+  scene.render:
+    mode: snapshot-job
+    args: '{frames:unique integer[],cameraNodeIds:unique camera IDs,width:integer<=1024,height:integer<=1024,outputDirectory:{kind:client-directory,id:UUID}}; max 9 frame-camera samples'
+    result: '{jobId,sourceRevision,state,progress}; job.get returns hash-verified files/provenance; client writes into its user-approved local folder; broker never receives an absolute output path'
+  asset.convert:
+    mode: snapshot-job
+    args: '{assetId:AssetID,motionId?:ID,format:bobj|bobj-json|glb|bvh|fbx,content:model-motion|skeleton-motion|motion,fps?:number,outputDirectory:approved-directory-handle}'
+    result: '{jobId,sourceRevision,files,lossReport,toolVersions}; see conversion matrix'
+  film.export:
+    mode: snapshot-job
+    args: '{characterIds:ID[],sequenceId:string,range:{startFrame:integer,endFrame:integer},viewportAspect:number,filmName:safeASCII[1..64]}; fixed target BBS FS 2.4 editable export; client output path is not sent to broker'
+    result: '{jobId,sourceRevision,state,progress}; job.get returns one ZIP artifact with SHA-256/size and source provenance; staged package only, never publish to game'
+  job.get:
+    mode: read
+    args: '{jobId:UUID}'
+    result: '{state:queued|running|succeeded|failed|cancelled,sourceRevision,sourceSha256,progress,result:{files:[{id,name,mimeType,sizeBytes,sha256}],provenance,warnings,blockedRequests}?,error?}'
+  job.cancel:
+    mode: job-control
+    args: '{jobId:UUID}'
+    result: '{state,committed:boolean}'
+example:
+  request:
+    requestId: 00000000-0000-4000-8000-000000000001
+    projectId: 00000000-0000-4000-8000-000000000002
+    expectedRevision: 7
+    command: history.undo
+    args: {}
+    dryRun: false
+  success:
+    ok: true
+    requestId: 00000000-0000-4000-8000-000000000001
+    projectId: 00000000-0000-4000-8000-000000000002
+    revision: 8
+    result:
+      undoneRequestId: previous-request
+      changedIds:
+      - actor-a
+    warnings: []
+    changedIds:
+    - actor-a
+  stale:
+    ok: false
+    requestId: 00000000-0000-4000-8000-000000000003
+    projectId: 00000000-0000-4000-8000-000000000002
+    revision: 8
+    error:
+      code: REVISION_CONFLICT
+      message: Revision đã thay đổi
+      retryable: false
+      details:
+        expected: 7
+        actual: 8
+implementation:
+  phase: C-initial
+  status: partial-and-unverified
+  implemented:
+  - project.create
+  - project.import (scene-only manifest; rejects native blob references)
+  - project.inspect (API GET returns project and history summary)
+  - project.save (flush/status; committed writes are already durable)
+  - scene.apply with up to 64 validated node.transform.patch/node.flags.set/node.rename/node.clone/node.reparent/node.delete operations in one shared-history transaction, or one standalone document.replace
+  - camera.shot.set using Topview editorial operations under global history
+  - asset.import for staged GLB v2, embedded-resource glTF, PNG/JPEG and FBX; FBX clips create immutable source Motion records and a SkeletonProfile; files with mesh are model Assets supporting Character/Prop placement with explicit format/unit/material metadata in the same history transaction
+  - asset.relink for restoring an asset source blob by exact content hash and byte length; available from the Scene asset list and Python CLI
+  - character.add for imported GLB/glTF/FBX model asset + its source SkeletonProfile and explicit model unit, with shared CharacterID and Topview node in one transaction
+  - prop.add for imported model assets regardless of skin/profile, through pinned Topview buildPropNode and shared revision/history; it does not create Character/Skeleton records
+  - skeleton.mapping.set for exact profile fingerprints, unique target/role assignments, ignored-bone reasons and V9.12 calibration settings in shared project history
+  - retarget.session.set for a structurally validated V9.12 project snapshot, imported source fingerprint and matching Motion/Character/Mapping references; stores the native JSON by SHA-256 and updates shared history. The Retarget UI can import, save, load and download snapshots.
+  - motion.place for a source FBX clip only when the Character has the same skeleton fingerprint and unit; preserves the FBX clip index, adds a Topview timeline clip and MotionBinding in one undoable revision. Supports source range, reverse, speed 0.01–16 and looping within that range; it does not retarget or expose root-motion/alignment options.
+  - motion.binding.set updates an existing shared FBX clip and its binding together, preserving ClipID and native fields; validates source range, rig/unit, inclusive frame range, speed/loop, collision and locks; supports dry-run, request deduplication, exact revision and Undo/Redo
+  - Retarget reverse preview applies saved mapping/calibration only when source FBX hash, source unit and Minecraft20 target hierarchy match; output remains the fixed V9.12 armature
+  - scene.evaluate using the pinned Topview evaluateFrame/FCurveSet pipeline, returning a read-only snapshot with sourceRevision
+  - scene.render and job.get/job.cancel for immutable Topview snapshots; one active local render, at most nine frame-camera samples and three cameras; output stays under project .jobs until the UI, CLI or MCP client writes hash-verified files into a user-approved folder
+  - history.undo
+  - history.redo
+  - request deduplication and persisted results for accepted commands
+  not_implemented:
+  - Applying the persisted native session snapshot to the evaluator/target rest profile, FBX forward retarget and retarget.bake; BOBJ/MDX/MDL/League import and asset.convert
+  - General skeletal alignment, nonzero fade evaluation and headless root bake
+  - motion.place root-motion/alignment controls and cross-skeleton retarget placement
+  - Broker/API/MCP commands asset.convert and film.export and their converter/Film-specific jobs; a separate offline manifest-only Film CLI is available but is not project-bound
+  offline_cli: "film export MANIFEST --output-dir EXISTING_FOLDER; Java 17 worker; requires preconverted BOBJ assets"
+  transport: Local Studio API checks loopback Host/Origin and an HttpOnly SameSite session cookie; Studio dev/start bind 127.0.0.1. Render artifacts are served only by project/job/file ID after SHA verification; clients retain the real directory handle/path and the broker never accepts it.
+  mcp: agent/unified_mcp.py; stdio MCP protocol 2026-07-28; one generic broker command tool exposes 17 commands including motion.edit and scene.render/job.get/job.cancel; MCP requires an existing local output directory, stores it in the MCP process, and writes verified artifacts only after job success; V9.12 snapshot payloads are capped at 12 MiB; host owns mutation confirmation
+  verification: "DOC-042: Python CLI/MCP 38/38 and Film worker integration 2/2 with Java 17. DOC-041: Studio scene render/output/evaluate focused tests 7/7, optional real Punch Combo integration 12/12, director-cli 29/29, Studio typecheck/lint pass. Live Next two-camera render/OPFS write passed; OS folder picker and live MCP host are not verified; Next build remains blocked by the known AppData junction EPERM."
+  argument_subset:
+    project.create: '{name,scene,fcurves?,source?}; writes to local configured project root'
+    project.import: '{project:scene-only-unified-manifest,name?}; assigns a new projectId and never overwrites source'
+    scene.apply: '{operations:[{type:node.transform.patch,nodeId,position?,rotation?,scale?}|{type:node.flags.set,nodeId,visible?,locked?}|{type:node.rename,nodeId,name}|{type:node.clone,nodeId,delta?:{position?:Vec3,rotation?:Vec3,scale?:Vec3}}|{type:node.reparent,nodeId,parentId:string|null}|{type:node.delete,nodeId}]}; 1–64 operations; document.replace is a standalone single operation'
+    asset.import: '{files:uploadId[],format?:auto|glb|gltf|fbx|bobj|mdx|mdl|league|png|jpg|dds|pose-json,unitMeters?:number,basis?:number[9]}; current handler implements GLB v2, self-contained embedded-resource glTF, PNG/JPEG and FBX mesh/skin/source clips; FBX clips are stored as source Motion plus a source SkeletonProfile, unitMeters defaults to 1 and may be set for FBX, while glTF requires 1; basis is a finite orthonormal row-major 3×3 source-to-scene matrix, defaults to identity, and is persisted/applied to Character, Prop, CPU skeleton and Film conversion/bake; conflicting unit/basis for identical source bytes is rejected; unsupported formats are rejected'
+    asset.relink: '{assetId,file:uploadId}; exact source SHA-256 and byte length required; restores missing immutable source/original blobs when hashes match'
+    character.add: '{assetId,skeletonId,name,transform?:Transform,parentNodeId?:groupNodeId}; source asset/profile must exist'
+    prop.add: '{assetId,name,transform?:Transform,parentNodeId?:groupNodeId}; model asset must exist; inserts a Topview prop without a character binding'
+    skeleton.mapping.set: '{mapping:{id,sourceProfileId,targetProfileId,sourceFingerprint,targetFingerprint,pairs,ignored},calibration:RetargetCalibrationV1}; source/target profiles must exist; target bones and semantic roles are unique; stale fingerprints reject; missing required roles save as draft; every unused source/target bone needs an explicit ignored reason; calibration blob is generated and hash-addressed by the server'
+    retarget.session.set: '{sessionId?:UUID,sourceMotionId:UUID,targetCharacterId:UUID,mappingId:UUID,nativeProject:RetargetProjectV99}; exact V9.12 project structure and source fingerprint must match the imported Motion and profile/entity links; saves an immutable JSON snapshot under shared revision/history. Snapshot replay/bake is not implemented.'
+    motion.edit: '{characterId:UUID,motionId?:UUID,clipId?:ClipID,edit:AnimationStudioProjectV1,derivativeBase64:GLB<=64MiB}; exact revision; finite bounded native JSON and one-clip skinned GLB with matching skeleton names; content-addressed derivative/native edit, clone-on-edit and optional clip rebind under shared history'
+    motion.place: '{motionId:UUID,characterId:UUID,frameStart?:integer=0,sourceStartSeconds?:number=0,sourceLengthSeconds?:number,speed?:number=1,loop?:boolean=false,reverse?:boolean=false}; requires an imported FBX Motion with metadata.clipIndex and same Character skeleton fingerprint/unit; places the selected source window with speed 0.01–16, adjusts timeline duration to sourceLength/speed, and adds a MotionBinding under shared history. Root-motion/alignment and cross-skeleton retarget are unsupported.'
+    motion.binding.set: '{binding:MotionBinding,clipPatch?:{frameStart?:integer,frameEnd?:integer,playback?:{speed?:number,loop?:boolean}}}; existing shared ClipID required; exact profile/unit; rootPolicy=skeletal|in-place|trajectory (extraction requires imported direct rig), alignment=origin|continue (endpoint chaining for trajectory), fades=0; preserves span unless frameEnd is explicit; rejects inclusive frame overlaps and locked Characters.'
+    camera.shot.set: '{sequenceId,clip:EditSequenceClip}; insert/update through pinned Topview editorial operations'
+    scene.evaluate: '{frame:number,cameraNodeId?:string,checks?:("grounding"|"overlap"|"frustum")[]}; uses pinned Topview evaluator; read-only geometry checks return per-check complete|partial|unavailable status and diagnostics'
+
+headless_skeleton_doc035:
+  status: partial
+  result_contract: "skeletonSamples[] contains nodeId, metersPerUnit, placementMatrix, trajectoryMatrix, actorWorldMatrix and bones[{name,position,rotation,scale,worldMatrix}]; matrices column-major; bone local=model units; world=Scene meters. Existing transforms remain authored placement/path values."
+  runtime: "scene.evaluate verifies local source SHA/path, decodes supported sources, uses the same CPU rig/animator/root sampler as browser and leaves revision/history unchanged."
+  limits: "Direct shared Character rigs; unsupported textures/compression/missing assets or library poses return explicit issues. Grounding/overlap/frustum checks use measured geometry where supported; animated-mesh parity, range bake/export and full format parity remain pending."
+
+scene_checks_doc040:
+  status: partial
+  checks: "grounding reports mesh bottom offset using the Topview 0.02 m tolerance; overlap reports world-space AABB pairs; frustum reuses Topview camera evaluation and the scene.evaluate frame transforms"
+  assets: "Only referenced project source assets are SHA-256/path verified, copied to a private temporary directory and exposed to the offline renderer; temporary files are removed after the check. No project revision/history is written."
+  result: "checks is keyed by requested check name; each result is complete|partial|unavailable. checkDiagnostics reports renderer warnings and blocked external requests. Missing geometry produces CHECK_PARTIAL and CHECK_GEOMETRY_UNAVAILABLE; unavailable sources/renderer produce CHECK_UNAVAILABLE."
+  limits: "Checks currently measure character, prop and primitive nodes. Bounding-box overlap is axis-aligned and does not detect occlusion or contact. Animated FBX geometry, broad-format parity and render jobs need further validation."
+
+range_input_doc036:
+  status: partial-internal-only
+  api: "No new broker command. sampleProjectSkeletonRange(project,range,characterIds) prepares converter input. A separate offline film export worker accepts a typed manifest; project-generated manifests, asset.convert and broker Film jobs remain unimplemented."
+  sampling: "Inclusive editor start/end -> source Scene FPS -> sampleFps grid plus exactly one terminal left sample; each output has sourceRevision,frame,timeSeconds,side,skeletonSamples."
+  validation: "Unique existing selected Character IDs, finite positive FPS/range/sample count; all selected sources must resolve before yield; no partial artifact publication. Finally disposes the CPU evaluator."
+
+camera_input_doc037:
+  status: partial-internal-only
+  api: "No new command; sampleProjectCameraSequence(project,sequenceId,sampleFps,viewportAspect) supplies read-only sourceRevision camera/shot samples to future converters."
+  contract: "Each shot streams grid + terminal left endpoint; adjacent shot starts on right at the same sequence timestamp. Quaternion and vertical FOV use shared viewport camera application. Cut grid/codec/export remain pending."

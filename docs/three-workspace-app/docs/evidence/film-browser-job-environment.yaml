@@ -1,0 +1,29 @@
+checkpoint: DOC-056
+date: 2026-10-19
+scope:
+  - continue offline browser smoke from the Film export panel to a successful browser job
+  - use isolated project storage and a local generated two-bone FBX fixture
+environment:
+  browser: Chromium 153.0.8010.12 available locally
+  server: Next.js 15.1.9, loopback port 3002
+  project_storage: isolated temporary directory
+attempt:
+  server_start: stopped-before-route-compilation
+  trigger: "Next detected missing TypeScript package files and invoked pnpm auto-install."
+  missing_dependency: "@types/react@18.3.31 directory existed in local pnpm cache, but node_modules/@types/react did not."
+  npm_cache: "@types/react@19.2.18 was present; it does not match the lockfile version."
+  registry_result: EACCES
+  install_completed: false
+  browser_assertions: not-run
+cleanup:
+  server_stopped: true
+  temporary_dependency_junctions_removed: true
+  isolated_project_storage_removed: true
+  temporary_build_output_removed: true
+  local_pnpm_store_preserved: true
+  port_3002_listener: false
+  application_source_changed: false
+scope_confirmed:
+  original_animation_retarget_topview_workspaces_changed: false
+  release_or_site_changed: false
+  game_run: false

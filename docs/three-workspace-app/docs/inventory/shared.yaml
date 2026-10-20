@@ -1,0 +1,91 @@
+schema_version: '1'
+inventory_id: '1.2'
+name: Existing shared concepts and target contract
+status: implementation-started; phase-C partial; native integrations pending
+existing_implementations:
+- concept: Project and version validation
+  sources:
+  - Retarget V9.12 versioned JSON + validateProjectV99
+  - Topview director-document.schema.json and project sequence
+  - Animation Studio scene schema and scene_package.js
+  overlap: Separate formats and histories; no demonstrated migration between them
+- concept: Scene graph / transform / camera
+  sources:
+  - Topview director document
+  - Animation Studio scene_studio.js and scene_evaluator.js
+  - Retarget model display state
+  overlap: Topview has persisted camera/scene transforms; animation scene adds actors/clips/contacts; Retarget is a rig editor
+- concept: Motion evaluation / export
+  sources:
+  - Animation Studio core.js and scene_evaluator.js
+  - Retarget bundled evaluator and bake/export functions
+  - Topview compact fcurves
+  overlap: Different skeleton profiles, sample rates, root-motion and curve representations
+- concept: Undo / write safety
+  sources:
+  - Animation Studio draft/history
+  - Retarget undoRedoV99
+  - Topview atomic operations and expectedSceneSequence
+  overlap: No unified cross-workspace transaction log
+- concept: BBS Film, replay and editable pose keyframes
+  source_id: '1.7'
+  sources:
+  - Film.camera and Film.replays
+  - ReplayKeyframes channels
+  - UIReplaysEditorUtils.animationToPoseKeyframes
+  - UIReplaysEditorUtils.posesToLimbTracks
+  overlap: Static source confirms Film-side structures and an in-editor conversion for compatible model animations; an external app import/serialization
+    route and arbitrary FBX/BOBJ support are unverified
+  evidence: ../SOURCES.yaml source 1.7; features/bbs-film-export.md
+  status: partial static audit; no runtime roundtrip
+proposed_contract_groups:
+- id: 1.2.1
+  entities:
+  - AssetID
+  - CharacterID
+  - SkeletonProfile
+  - bone mapping
+  - rest pose
+  - source fingerprint
+- id: 1.2.2
+  entities:
+  - scene graph
+  - node ID
+  - XYZ transform
+  - unit and axis adapter
+  - asset reference
+- id: 1.2.3
+  entities:
+  - motion ID
+  - source clip
+  - edit layer
+  - timeline placement
+  - FPS/ticks
+  - root-motion policy
+- id: 1.2.4
+  entities:
+  - camera
+  - shot
+  - FOV
+  - frame aspect
+  - time range
+  - interpolation
+- id: 1.2.5
+  entities:
+  - shared commands
+  - validation
+  - revision
+  - undo/redo
+  - project migration version
+- id: 1.2.6
+  entities:
+  - project import adapters
+  - export profiles
+  - conversion warnings
+  - round-trip evidence
+design_rule: Reuse Topview DirectorDocument, native motion blobs and one shared commit boundary; see normative contracts.
+unit_axis_rule: Preserve each native representation behind explicit adapters; record unit, up axis, rotation convention and root-motion ownership
+  in every conversion.
+contracts:
+- ../contracts/project-v1.yaml
+- ../contracts/commands-v1.yaml

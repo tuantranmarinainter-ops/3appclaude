@@ -1,0 +1,36 @@
+checkpoint: DOC-044
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.6.2
+    - 1.7.3
+  summary: Preserve verified global BOBJ bind/rest matrices in the local FBX/GLB conversion profile for future rest-relative pose baking.
+implementation:
+  coordinator: three-workspace-app/agent/film_model_converter.py
+  blender_script: three-workspace-app/agent/film_worker/blender/convert_model.py
+  tests: three-workspace-app/agent/test_film_model_converter.py
+profile_contract:
+  field: bobjRestMatrixRowMajor
+  meaning: 16 finite row-major values copied from the corresponding exported BOBJ arm_bone record; matrix is global in BOBJ coordinates.
+  limits: No pose samples are baked or transformed by this checkpoint.
+runtime:
+  blender: 4.2.3
+  java: Microsoft OpenJDK 17.0.20.1
+  fixtures: Temporary FBX and GLB generated in Blender with a weighted armature, animation and embedded JPEG; BOBJ/PNG package passed the BBS FS 2.4 native worker/codec integration.
+  matrix_check: Each profile bone matrix exactly matched the last 16 numeric values of its generated BOBJ arm_bone line.
+checks:
+  - command: python -m unittest agent.test_film_model_converter agent.test_film_worker agent.test_unified_cli agent.test_unified_mcp -v
+    cwd: three-workspace-app
+    result: 47 passed in 50.560 s; no skips. Blender fixture conversion and Java native Film package/readback integration included.
+  - command: python -m py_compile agent/film_model_converter.py agent/film_worker/blender/convert_model.py agent/test_film_model_converter.py
+    cwd: three-workspace-app
+    result: passed
+  - result: Missing, 15-element and non-finite rest matrices rejected; converted sources remained unchanged in the integration fixture.
+source_hashes:
+  coordinator: 020600f5d63c955f08592c714595339e44890448a1703b8c3e17f5fcbc00e16a
+  blender_script: dcd9fe3ab8fab4e4778a7520a4b0278cc9b1b55a4f54786b81b6dffdc152a7b7
+  tests: 6ec499bc3b642746e527bb58dd51d34b9042db139ac90d66986b1a42796feb32
+limits:
+  - The matrix profile is not yet consumed by a project exporter or a BOBJ pose-track baker.
+  - Arbitrary third-party source parity, Film Editor reopen/edit/save and Minecraft playback were not tested.
+  - Animation, Retarget and Topview source workspaces were not modified.

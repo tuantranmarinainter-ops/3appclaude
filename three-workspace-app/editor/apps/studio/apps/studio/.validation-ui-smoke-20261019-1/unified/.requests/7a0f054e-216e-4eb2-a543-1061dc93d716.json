@@ -1,0 +1,15 @@
+{
+  "hash": "7cc29577d4d5e8abe6d261ac1c44ab426d6c8112d9d839eb0285cf744a98a884",
+  "response": {
+    "ok": true,
+    "requestId": "7a0f054e-216e-4eb2-a543-1061dc93d716",
+    "projectId": "7afe98d3-1e97-468e-b008-e48ca0cc6b20",
+    "revision": 0,
+    "result": {
+      "projectId": "7afe98d3-1e97-468e-b008-e48ca0cc6b20",
+      "manifestPath": "7afe98d3-1e97-468e-b008-e48ca0cc6b20/project.json"
+    },
+    "warnings": [],
+    "changedIds": []
+  }
+}

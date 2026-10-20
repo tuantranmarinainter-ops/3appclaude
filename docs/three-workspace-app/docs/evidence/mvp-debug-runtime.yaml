@@ -1,0 +1,36 @@
+checkpoint: DOC-063
+date: 2026-10-19
+scope: Local unified Studio debug runtime, isolated from user projects and game installs
+app:
+  directory: three-workspace-app/editor
+  startup: pnpm dev
+  url: http://127.0.0.1:3002
+  storage: three-workspace-app/editor/.mvp-runtime/projects
+  report: three-workspace-app/editor/.mvp-runtime/reports/diagnostics-browser.json
+  smoke_report: three-workspace-app/editor/.mvp-runtime/reports/pnpm-dev-smoke-pass.json
+  smoke:
+    browser: Chromium 153
+    fixture: three-workspace-app/editor/apps/studio/.test-runtime/doc042/projects/a9a99bb8-e231-4939-9486-dcd774ecf74b/assets/acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb/Punch Combo.fbx
+    flow: FBX import; Character creation; Motion placement/edit; Scene WebGL; CPU/WebGL pose parity; Undo/Redo; clone; reload
+    result: PASS
+    external_requests: 0
+    cpu_webgl_pose_delta: 4.44e-16
+  diagnostic_endpoint:
+    path: /api/unified/health
+    result: PASS
+    python: Python 3.12.8
+    blender: unavailable on PATH
+    java: unavailable on PATH
+checks:
+  studio_typecheck: PASS
+  builder_test_evaluate:
+    passed: 554
+    skipped: 1
+    failed_suites: 1
+    failure: sceneBasis.test.ts uses node:test and Vitest reports no test suite
+  full_build: not_run
+  full_lint: not_run
+limits:
+  - Same-rig imported FBX regression only; forward Minecraft20 BOBJ to Mixamo65 and persisted retarget Motion are not implemented/verified here.
+  - Native Film export and BBS FS game runtime are not verified; Blender and Java are unavailable in this host environment.
+  - Does not change LISTCODE acceptance count or overall project completion percentage.

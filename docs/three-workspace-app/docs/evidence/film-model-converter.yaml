@@ -1,0 +1,54 @@
+checkpoint: DOC-043
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.6.2
+    - 1.7.1
+  summary: Offline Blender conversion of one rigged FBX/GLB into BOBJ assets and a profile; no project/job integration.
+implementation:
+  cli: three-workspace-app/agent/unified_cli.py — film convert-model SOURCE --output-dir DIR [--unit-meters N]
+  coordinator: three-workspace-app/agent/film_model_converter.py
+  blender_script: three-workspace-app/agent/film_worker/blender/convert_model.py
+  tests:
+    - three-workspace-app/agent/test_film_model_converter.py
+    - three-workspace-app/agent/test_unified_cli.py — local conversion dispatch and missing-Blender exit code
+runtime:
+  blender: 4.2.3, C:/Program Files/Blender Foundation/blender.exe
+  java: Microsoft OpenJDK 17.0.20.1, used for adjacent native Film worker integration tests
+  fixture: Temporary FBX and GLB generated in Blender with one armature, one weighted cube mesh, one animated action, and one embedded JPEG image.
+  output: Both BOBJ outputs contained the root bone and weighted mesh; the GLB-only glTF_not_exported helper mesh was excluded. Profiles contained the imported action and source hash; model.png passed signature checks; both packages used separate hash-named folders. The GLB BOBJ and PNG then passed Java BBS FS 2.4 Film packaging and native codec read-back with byte-equal copied assets.
+  source_preservation: FBX and GLB SHA-256 values before and after conversion matched; source files remained unchanged.
+reuse:
+  exporter:
+    path: BBSFix-Blender512/bbsfix/bobj402/export_bobj.py
+    vendored_path: three-workspace-app/agent/film_worker/vendor/blender_bobj/bbsfix/bobj402/export_bobj.py
+    sha256: f96aa05e5b3ae4d924dd9424901065e9ef2ab18e723a4342499938569cb8deb1
+    license: GPL-2.0-or-later
+  animation_helper:
+    path: BBSFix-Blender512/bbsfix/animation_api.py
+    vendored_path: three-workspace-app/agent/film_worker/vendor/blender_bobj/bbsfix/animation_api.py
+    sha256: 1af171e221472aeac523801d7512486d12098ba99b0b083342075753ae3456ef
+    license: GPL-2.0-or-later
+checks:
+  - command: python -m unittest agent.test_film_model_converter agent.test_film_worker agent.test_unified_cli agent.test_unified_mcp -v
+    cwd: three-workspace-app
+    result: 46 passed in 51.6 s with Blender 4.2.3 and Microsoft OpenJDK 17.0.20.1; no skips. The integration test covers generated FBX and GLB inputs through conversion and native Film packaging.
+  - command: python -m py_compile agent/film_model_converter.py agent/film_worker/blender/convert_model.py agent/unified_cli.py agent/test_film_model_converter.py agent/test_unified_cli.py
+    cwd: three-workspace-app
+    result: passed
+  - command: python -m agent.unified_cli film convert-model --help
+    cwd: three-workspace-app
+    result: passed; CLI exposes source, output directory, and FBX unit option.
+  - result: Boundary cases rejected unsupported extensions, absent FBX units, non-meter GLB units, invalid output hash, and an existing output package without overwriting it.
+limits:
+  - Only generated FBX/GLB fixtures were integration-tested; arbitrary third-party files and Blender versions other than 4.2.3 remain unverified.
+  - Supports one armature, at least one linked mesh, at most 512 bones, and zero/one shared file-backed image. Rejects shape keys, vertex color attributes, unlinked meshes, missing UV for textured geometry, and multiple distinct image files.
+  - Does not sample a unified project, create conversion jobs or manifests, preserve multiple textures, export BVH/FBX from Retarget, or connect to Studio/API/MCP.
+  - BOBJ/texture loading and Film playback, Film Editor reopen/edit, browser/WebGL, user acceptance and game runtime were not checked.
+  - Source Animation, Retarget and Topview projects were not modified; no persistent conversion fixture or output remains.
+source_hashes:
+  coordinator: 602d2eef46aa741c3e11beb23d8702e585dd5ef62b2778ffaa025e03c61f3210
+  blender_script: 80cd9230c01542588a62299b32052e80d5687c810d668af4f1e0c7f0f7233695
+  converter_tests: 2f098287fd26e6d58379737775396e14e855ca7e4fd0e4d1e6fd0d201f0769be
+  cli_tests: 880bc30d0044333929adcd66835fee7927a59ed079033e18f635fff7ecf10f72
+  gpl_text: 56056e41ee03c2a2091dbE09d2c97435005a85edf9b4aff5d60c6395278f88a4

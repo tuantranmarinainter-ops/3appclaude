@@ -1,0 +1,376 @@
+schema_version: '1'
+date: '2026-10-20'
+plan_id: W01-PLAN-003
+baseline: DOC-108
+status: implementation_in_progress
+scope: Workspace01 remaining work; user authorized full implementation and multi-source checks; external rig fixtures are absent and browser/runtime acceptance remains not run
+parent_inventory: workspace01-normalization.yaml
+total_tasks: 17
+code_and_check_tasks: 15
+fixture_runtime_tasks: 2
+completed_remaining_tasks: 0
+accepted_gates: 0
+total_gates: 8
+items:
+- id: 1.3.4.1.1
+  parent_id: 1.3.4.1
+  name: Khóa fixture thật và reference
+  phase: P4
+  dependencies: []
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: external_fixture_and_reference
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.1.1
+  listcode: ../../LISTCODE#1.3.4.1.1
+  existing_file: ../fixtures/workspace01-source-candidates.yaml
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.2.1
+  parent_id: 1.3.4.2
+  name: Identity và chọn skeleton
+  phase: P0
+  dependencies: []
+  approval: implementation_authorized_by_user_goal
+  implementation: partial_identity_and_multi_skeleton_import_selection
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.2.1
+  listcode: ../../LISTCODE#1.3.4.2.1
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence:
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedRigInspection.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/hooks/useNormalization.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/ModelRebindPanel.tsx
+  - ../../../../three-workspace-app/editor/packages/shared/src/index.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/threeRigAdapter.ts
+  - ../evidence/workspace01-doc112-validation.yaml
+  checks:
+  - Multi-skin glTF importer test: duplicate labels, separate profiles, Action routing, ambiguous Action retained with actionIndex diagnostic.
+  - Profile inspection can explicitly select a profile; unique source-node IDs link duplicate labels.
+  - Retarget + Studio integration: 77 PASS, 1 SKIP.
+  - Workspace typecheck and lint/locales PASS.
+  limits:
+  - No source fixtures/runtime were run; FBX component split has no real-FBX fixture verification.
+  - Converter-version identity, native-format conversion, and full cross-workspace profile lifecycle remain open.
+- id: 1.3.4.2.2
+  parent_id: 1.3.4.2
+  name: Capability, losses và budget
+  phase: P0
+  dependencies:
+  - 1.3.4.2.1
+  approval: implementation_authorized_by_user_goal
+  implementation: partial_action_import_diagnostics_and_bake_budget
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.2.2
+  listcode: ../../LISTCODE#1.3.4.2.2
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/src/unifiedRigInspection.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/threeRigAdapter.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalBake.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/normalizeAnimation.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/index.tsx
+  - ../evidence/workspace01-doc111-validation.yaml
+  - ../evidence/workspace01-doc112-validation.yaml
+  checks:
+  - Retarget + unifiedAssetImport tests: 77 PASS, 1 SKIP
+  - Workspace typecheck PASS
+  - Workspace lint and locale checks PASS
+  - Builder evaluate: 557 PASS, 1 SKIP
+  - Import Actions with ambiguous/missing skeleton ownership are retained in source and reported with actionIndex; unrelated valid Actions remain assignable.
+- id: 1.3.4.2.3
+  parent_id: 1.3.4.2
+  name: Preview mesh và review sai lệch
+  phase: P4
+  dependencies:
+  - 1.3.4.3.1
+  - 1.3.4.4.2
+  - 1.3.4.5.2
+  - 1.3.4.6.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.2.3
+  listcode: ../../LISTCODE#1.3.4.2.3
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.3.1
+  parent_id: 1.3.4.3
+  name: Calibration reference pose và persistence
+  phase: P1
+  dependencies:
+  - 1.3.4.2.1
+  - 1.3.4.2.2
+  approval: implementation_authorized_by_user_goal
+  implementation: partial_universal_reference_calibration_persistence_preview
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.3.1
+  listcode: ../../LISTCODE#1.3.4.3.1
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/universalCalibration.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universalCalibration.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/src/normalizeAnimation.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - ../../../../three-workspace-app/editor/apps/studio/src/unifiedNormalizationPlan.ts
+  - ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/NormalizationPreview.tsx
+  - ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../evidence/workspace01-doc113-validation.yaml
+  checks:
+  - Studio integration and mapping tests: 26 PASS, 1 SKIP.
+  - Universal Retarget tests: 15 PASS.
+  - Studio and Retarget typecheck, workspace lint and locale checks PASS.
+  - Synthetic normalization reload verifies alignment changes the plan hash and output hash.
+  - Isolated Studio Next build blocked by EPERM scanning Windows Application Data junction.
+  limits:
+  - No browser, WebGL, external rig fixture, or game runtime was run by user choice.
+  - Target action reference shares the source preview playhead; separate target-action scrubber and target-pose comparison UI remain open.
+  - Preset v4 and CLI/MCP calibration parity remain open; task stays partial and user acceptance remains pending.
+- id: 1.3.4.3.2
+  parent_id: 1.3.4.3
+  name: Chain local composition
+  phase: P1
+  dependencies:
+  - 1.3.4.3.1
+  approval: implementation_authorized_by_user_goal
+  implementation: partial_solver_regression_fixed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.3.2
+  listcode: ../../LISTCODE#1.3.4.3.2
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence:
+  - ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  - ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+  - ../evidence/workspace01-doc116-validation.yaml
+  checks:
+  - Regression verifies shared-parent removal, ancestor-first local composition, weighted chain values, and distinct source/target rest calibration.
+  - All 59 Retarget tests pass, including the pinned Mixamo65 topology fixture and legacy catalogue85.
+  limits:
+  - This does not complete proportion/end-effector constraints or external-rig/browser runtime acceptance.
+- id: 1.3.4.3.3
+  parent_id: 1.3.4.3
+  name: Proportion và end-effector constraints
+  phase: P2
+  dependencies:
+  - 1.3.4.3.1
+  - 1.3.4.3.2
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.3.3
+  listcode: ../../LISTCODE#1.3.4.3.3
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.3.4
+  parent_id: 1.3.4.3
+  name: Gợi ý mapping hierarchy và geometry
+  phase: P1
+  dependencies:
+  - 1.3.4.2.1
+  - 1.3.4.3.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.3.4
+  listcode: ../../LISTCODE#1.3.4.3.4
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/mapping.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.4.1
+  parent_id: 1.3.4.4
+  name: Fit rig65 theo model nguồn
+  phase: P3
+  dependencies:
+  - 1.3.4.2.1
+  - 1.3.4.3.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.4.1
+  listcode: ../../LISTCODE#1.3.4.4.1
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/modelUtils.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.4.2
+  parent_id: 1.3.4.4
+  name: Exclusion policy và animated skin loss
+  phase: P3
+  dependencies:
+  - 1.3.4.4.1
+  - 1.3.4.5.2
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.4.2
+  listcode: ../../LISTCODE#1.3.4.4.2
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/rebindCanonicalModel.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.5.1
+  parent_id: 1.3.4.5
+  name: Action range batch và channel policy
+  phase: P2
+  dependencies:
+  - 1.3.4.2.2
+  - 1.3.4.3.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.5.1
+  listcode: ../../LISTCODE#1.3.4.5.1
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/normalizeAnimation.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.5.2
+  parent_id: 1.3.4.5
+  name: Quality report độc lập và roundtrip
+  phase: P2
+  dependencies:
+  - 1.3.4.3.3
+  - 1.3.4.5.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.5.2
+  listcode: ../../LISTCODE#1.3.4.5.2
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/normalizationMetrics.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.6.1
+  parent_id: 1.3.4.6
+  name: Assignment add/replace và isolation
+  phase: P2
+  dependencies:
+  - 1.3.4.5.2
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.6.1
+  listcode: ../../LISTCODE#1.3.4.6.1
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/src/unifiedAssignment.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.7.1
+  parent_id: 1.3.4.7
+  name: Model gửi Scene atomic
+  phase: P3
+  dependencies:
+  - 1.3.4.4.2
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.7.1
+  listcode: ../../LISTCODE#1.3.4.7.1
+  existing_file: ../../../../three-workspace-app/editor/apps/studio/app/workbench/components/normalization/ModelRebindPanel.tsx
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.7.2
+  parent_id: 1.3.4.7
+  name: Export reimport và material fidelity
+  phase: P3
+  dependencies:
+  - 1.3.4.4.2
+  - 1.3.4.5.1
+  - 1.3.4.6.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: extend
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.7.2
+  listcode: ../../LISTCODE#1.3.4.7.2
+  existing_file: ../../../../three-workspace-app/editor/packages/retarget/src/exportCanonicalModel.ts
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []
+- id: 1.3.4.8.1
+  parent_id: 1.3.4.8
+  name: Khôi phục gate kiểm tra code
+  phase: P0
+  dependencies: []
+  approval: implementation_authorized_by_user_goal
+  implementation: partial_builder_layer_and_test_runner_fixed_next_build_blocked
+  work_type: repair_checks
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.8.1
+  listcode: ../../LISTCODE#1.3.4.8.1
+  existing_file: ../../../../three-workspace-app/editor/package.json
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence:
+  - ../../../../three-workspace-app/editor/packages/builder/src/evaluate/sceneBasis.ts
+  - ../../../../three-workspace-app/editor/packages/builder/src/evaluatePublic.ts
+  - ../../../../three-workspace-app/editor/packages/builder/src/engine/objects/sceneBasisMatrix.ts
+  - ../../../../three-workspace-app/editor/packages/builder/src/evaluate/__tests__/sceneBasis.test.ts
+  - ../../../../three-workspace-app/editor/packages/builder/src/engine/objects/__tests__/sceneBasisMatrix.test.ts
+  - ../../../../three-workspace-app/editor/packages/builder/tsup.config.ts
+  - ../../../../three-workspace-app/editor/packages/builder/package.json
+  - ../evidence/workspace01-doc112-validation.yaml
+  checks:
+  - Builder evaluate: 557 PASS, 1 SKIP
+  - Workspace typecheck PASS
+  - Workspace lint/locales PASS
+  - Studio Next build still fails EPERM on Windows AppData junction scan; offline smoke not run
+  - Builder test:evaluate 557 PASS, 1 SKIP
+  - Builder build PASS
+  - Workspace pnpm typecheck PASS
+  - Workspace pnpm lint and locale checks PASS
+  - 'Workspace pnpm build: Builder passes; Studio Next build fails with EPERM scanning
+    AppData Local Application Data'
+- id: 1.3.4.8.2
+  parent_id: 1.3.4.8
+  name: Runtime đa nguồn và nghiệm thu
+  phase: P4
+  dependencies:
+  - 1.3.4.1.1
+  - 1.3.4.2.3
+  - 1.3.4.3.4
+  - 1.3.4.7.1
+  - 1.3.4.7.2
+  - 1.3.4.8.1
+  approval: implementation_authorized_by_user_goal
+  implementation: remaining_scope_not_completed
+  work_type: runtime_acceptance
+  runtime_acceptance: not_run
+  user_acceptance: not_accepted
+  spec: ../features/workspace01-remaining.md#1.3.4.8.2
+  listcode: ../../LISTCODE#1.3.4.8.2
+  existing_file: ../fixtures/workspace01-source-candidates.yaml
+  acceptance: Xem mục lỗi/nghiệm thu của task tại spec; không kế thừa PASS từ DOC-108.
+  completion_evidence: []

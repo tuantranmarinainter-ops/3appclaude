@@ -1,0 +1,68 @@
+checkpoint: DOC-048
+date: 2026-10-19
+scope:
+  listcode: [1.6.1, 1.6.3, 1.7.1, 1.7.2, 1.7.3]
+  summary: Connect shared-project Film sampling, model conversion and native BBS 2.4 worker behind one persisted local job, then expose it through CLI/MCP client transports.
+implementation:
+  job: three-workspace-app/editor/apps/studio/src/unifiedJobs.ts
+  broker: three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  panel: three-workspace-app/editor/apps/studio/app/workbench/components/film-export/index.tsx
+  panel_hook: three-workspace-app/editor/apps/studio/app/workbench/components/film-export/hooks/useFilmExport.ts
+  artifact_save: three-workspace-app/editor/apps/studio/app/workbench/components/scene-render/utils.ts
+  integration_test: three-workspace-app/editor/apps/studio/test/filmExportJob.integration.test.ts
+  cli: three-workspace-app/agent/unified_cli.py
+  mcp: three-workspace-app/agent/unified_mcp.py
+  behavior:
+    - Snapshot project revision/source hash, run existing 20 Hz Film preflight/sampling, verify model source bytes, invoke the local Blender converter, build the typed editable manifest and invoke the Java 17 BBS 2.4 worker.
+    - Persist progress and terminal state through the shared job store; reuse job.get/job.cancel and the one-active-local-job guard.
+    - Store a ZIP under the job file directory; downloads are allowed only after success and require matching byte length/SHA-256. Studio reuses this verified save flow under a new film-<jobId> folder.
+    - The Scene workspace panel selects Characters, camera sequence, frame range, viewport aspect and a safe Film name, then polls and can cancel the job.
+    - An opt-in integration test creates a shared project, imports a rigged FBX, adds a Character and camera sequence, executes the persisted broker job, downloads the ZIP and checks the archive signature and sampled duration.
+    - Keep output folders in CLI/MCP clients; MCP removes outputDirectory.path before sending film.export to the broker.
+    - Restrict filmName and validate converter profile/package paths stay under their staging directories; subprocess output is capped and local commands time out after 15 minutes.
+tests:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedSceneRender.test.ts apps/studio/test/sceneRenderOutput.test.ts apps/studio/test/filmManifest.test.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmCamera.test.ts
+    cwd: three-workspace-app/editor
+    result: 23 passed, 0 failed; includes film.export broker name/revision/preflight validation, ZIP save path, shared job controls and existing manifest/camera/pose tests.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: node node_modules/eslint/bin/eslint.js apps/studio/src/unifiedJobs.ts apps/studio/src/unifiedProjectStore.ts apps/studio/src/workspaceNavigation.ts apps/studio/test/unifiedSceneRender.test.ts apps/studio/test/sceneRenderOutput.test.ts apps/studio/app/workbench/components/film-export
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: python -m unittest agent.test_unified_cli agent.test_unified_mcp
+    cwd: three-workspace-app
+    result: 43 passed; includes project Film CLI payload/poll/artifact wiring and MCP path confinement/command registration.
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmExportJob.integration.test.ts
+    cwd: three-workspace-app/editor
+    environment: BBS_FILM_E2E_FBX points to a temporary rigged FBX generated with Blender 5.1.2; BBS_BLENDER_EXE uses Blender 5.1.2; BBS_JAVA_HOME uses Microsoft OpenJDK 17.0.20.1.
+    result: 1 passed in 11.3 s. Imported a static two-bone skinned FBX into a project, ran the actual project job through Blender converter and Java worker, then read the completed ZIP artifact from the job API. Worker success includes native codec readback. Project, asset, package and FBX fixture were removed with test/temp cleanup.
+  - command: Chromium Playwright inline smoke against Next dev server on 127.0.0.1:3002
+    cwd: three-workspace-app/editor/apps/studio
+    result: passed. Created an isolated empty project, opened the Film panel, found frame/aspect/name controls, confirmed Export ZIP was disabled without Characters and a sequence, and observed no page errors. No output directory picker or export was exercised.
+  - command: python -m agent.unified_cli film convert-model animated-two-bone.fbx --output-dir <temporary-folder> --unit-meters 1
+    cwd: three-workspace-app
+    environment: Generated two-bone skinned FBX with Blender 5.1.2; Root translation and Arm rotation animated across frames 0, 15 and 29; Blender set via BBS_BLENDER_EXE.
+    result: passed standalone conversion; profile reported two bones and one action. The same fixture in filmExportJob.integration.test.ts failed at progress 0.08 with FILM_EXPORT_FAILED; job errors intentionally hide subprocess/manifest details, so project sampling-to-manifest animation compatibility is unresolved.
+source_hashes:
+  unifiedJobs.ts: 945d392225d4be9a3dc7d1863ee74e28ad018a3a568ba6678d1982922bb7d89c
+  unifiedProjectStore.ts: 2a2916ee73b8bf82b3453c2d0732df79836fe9ce9d04878749f3d72ed5c4fa30
+  film-export-panel: 5f848b7c20a6edc64ddd6a707c21ed8447cd6d019ed21bce0e3ab7d5d94540b9
+  film-export-hook: 8ca8979e017203c82bfb4dd78a69ff3e315ad7997fb9979b1b8a7332f450e851
+  artifact-save: 881027663f40662cdfb5f5c9fbc250c0c800ba1ec9d38dfe5fd0e95cb1e19ae8
+  StudioOverlay.tsx: 6ae287b4116b99cbf79af013372261470dcdc67e65f4c79636fa7666ad83a1c2
+  workspaceNavigation.ts: e03bbe90c83ff899e060c27d53494961c38e73bc1f83b5d20e7daafa235d7ea4
+  styles.css: 0be19240b74aab6e9b70a6837c9d905fa15d9f47cdc4382171efc5905cc4cf10
+  unifiedSceneRender.test.ts: 0259011c603d587d7c374f52c2f14e5eccdf588c735ef4f28869666226050956
+  unified_cli.py: d797a989690be01fc6b1f6be175162346c807ed4e71a01c50d26670d699e5909
+  unified_mcp.py: 97302ca2e60833b06ec111364e95d09ba2290772a7c2d6abb01e019c95e3e4d6
+  test_unified_cli.py: c67559fef55af8f0a4e6a2632a340ce9db77192ad70dc5976723d97602ec3c7f
+  test_unified_mcp.py: ff38828c06542cd776de779b4653510e3a3203f4680e27dfb3d9478a93678ddc
+  sceneRenderOutput.test.ts: a32dfaccee6b52215b7637ad435dc0ad31883417c4af363f0ad4f64813beac4f
+  filmExportJob.integration.test.ts: 4b39e33b7ed3c8f4b0780cea5de401eb66496a0b18e163d853ab8c53095b2d65
+limits:
+  - The successful project-scoped job used a generated static two-bone FBX. Animated FBX standalone conversion passed, but the full animated project job failed at 8%; its generic public error does not identify the failed internal stage.
+  - Browser coverage only checks panel mounting, control presence, empty-project disabled state and absence of page errors; it does not run export or use the folder picker.
+  - Multiple Characters/camera cuts, broad third-party rig compatibility, arbitrary production assets, Film Editor open/edit/save/reopen, Minecraft playback and live MCP host remain unverified.
+  - DOC-047's generated one-bone smoke and DOC-048's static project job are native-readback evidence; no production-source or animated-project native readback exists yet.
+  - No original Animation/Retarget/Topview source, game, Site, release or commit was changed.

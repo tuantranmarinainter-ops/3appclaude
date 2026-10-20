@@ -1,0 +1,60 @@
+import { fileURLToPath } from 'node:url'
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js'
+
+/** @type {import('next').NextConfig} */
+// STUDIO_STANDALONE=1 builds the copy shipped inside the topview-3d-cli wheel
+// (scripts/stage-standalone.mjs). sharp is native and per-platform, so image optimization is off.
+const standalone = process.env.STUDIO_STANDALONE
+  ? {
+      output: 'standalone',
+      outputFileTracingRoot: fileURLToPath(new URL('../..', import.meta.url)),
+      outputFileTracingExcludes: { '*': ['**/node_modules/sharp/**', '**/node_modules/@img/**', 'drafts/**', 'unified-projects/**'] },
+      images: { unoptimized: true },
+    }
+  : {}
+
+const nextConfig = {
+  reactStrictMode: true,
+  serverExternalPackages: ['@topview/3d-director-cli'],
+  ...standalone,
+
+  // 以下两项经阶段 0 验收实测「当前并不必需」：three 0.184 的 package.json 带
+  // "./addons/*" exports 映射，webpack 5 能直接解析 three/addons/**/*.js，
+  // 删掉这两项后 next build 仍然通过。保留为防御性配置，因为阶段 0 只做了
+  // 顶层 import + typeof 探测，尚未跑真实的 GLTF/FBX 加载与 SkeletonUtils.clone。
+  // 阶段 1 搬入真实引擎后复核：若届时仍不必需，直接删除。
+  // 把包纳入 Next 的编译管线，使其产物能被注入 react-refresh runtime。
+  // 实测：加入本项后删除 packages/builder/dist，studio 构建仍报
+  // Can't resolve '@topview/3d-builder' —— transpilePackages 只扩大编译范围，
+  // 不改变模块解析，解析仍经 package.json exports 指向 dist。
+  transpilePackages: ['three', '@topview/3d-builder', '@bbs/animation-workspace-shared', '@bbs/retarget'],
+  webpack: (config, { dev, isServer, nextRuntime }) => {
+    if (isServer && nextRuntime !== 'edge') {
+      // Next's external-package matcher misses workspace symlinks; keep renderer paths and Playwright imports native.
+      config.externals.push(({ request }, callback) => {
+        if (/^@topview\/3d-director-cli\/(render|scene-checks)\.mjs$/.test(request ?? '')) return callback(null, `import ${request}`)
+        callback()
+      })
+    }
+    if (dev) {
+      config.resolve.extensionAlias = {
+        '.js': ['.js', '.ts', '.tsx'],
+      }
+      // webpack 默认假定 node_modules 内容不变，而本包经 pnpm workspace symlink
+      // 指向持续 watch 重建的 packages/builder/dist。不声明为 unmanaged，
+      // tsup 写了新产物页面也不会重编。
+      config.snapshot = {
+        ...(config.snapshot ?? {}),
+        unmanagedPaths: [/[\\/]packages[\\/](?:builder|shared|retarget)[\\/]/],
+      }
+    }
+    return config
+  },
+}
+
+// dev 与 build/start 不共享产物，避免构建覆盖正在运行的 webpack runtime/chunks。
+// 第二份开发服务（例如 mock 与 ms 并存）仍可用 NEXT_DIST_DIR 单独指定目录。
+export default (phase) => ({
+  ...nextConfig,
+  distDir: process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next'),
+})

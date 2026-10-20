@@ -1,0 +1,99 @@
+schema_version: '1'
+checkpoint: DOC-033
+run:
+  startedAt: '2026-10-18T12:21:04.917Z'
+  passed: true
+  projectId: 6dc08cd3-0879-49fc-9700-7e3c1ef00c7a
+  nodeId: user_chr_7sgsufs6
+  clipId: user_mc_b9zhm205
+  browserVersion: 153.0.8010.12
+  viewport:
+  - 1600
+  - 1000
+  rig: direct
+  unit: 0.01
+  meshes: 2
+  renderFrames: 1
+  rootPolicy: in-place
+  rootBoneName: mixamorigHips
+  rootPoses:
+  - position:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    rotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    restPosition:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    placement:
+    - 2
+    - 0
+    - 0
+  - position:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    rotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    restPosition:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    placement:
+    - 2
+    - 0
+    - 0
+  poseMaxComponentDelta: 0.13502441868597026
+  checks:
+  - FBX source import
+  - shared Character
+  - trim/reverse placement
+  - binding edit
+  - WebGL skinned mesh
+  - animated bone pose
+  - in-place root translation and rotation
+  - actor placement unchanged
+  - Undo/Redo
+  - server-side clone
+  - reload
+  externalRequests: 0
+runner: three-workspace-app/editor/apps/studio/scripts/unified-smoke.mjs
+artifacts:
+  report:
+    path: three-workspace-app/.test-runtime/browser/root-motion-report.json
+    sha256: 80716383c70dbecc8ed20e4298bbe08a6c39fdfd6c9e0d79520bdc81016b6122
+  screenshot:
+    path: three-workspace-app/.test-runtime/browser/root-motion.png
+    sha256: 5830b91747fd566a5f48ec3050d16db454c54b140f73477bb209001a37fc5ae9
+validation:
+  builder: 93 files; 539/539; real FBX; golden unchanged
+  studio_shared_retarget: 37/37; real FBX; no skips
+  typechecks: builder source/test, Studio and shared passed
+  lint: targeted touched files passed
+limitations:
+- In-place supports imported direct same-profile rigs only; placement defaults skeletal,
+  change root policy through binding edit.
+- Trajectory, origin alignment, endpoint chaining, fades and cross-rig bake remain
+  incomplete.
+- Earlier intermittent clone IO_FAILED cause remains unconfirmed. Production Next
+  AppData glob EPERM remains unresolved.
+- Native Animation editor/formats, MCP-host interoperability and Film/game acceptance
+  are not complete.

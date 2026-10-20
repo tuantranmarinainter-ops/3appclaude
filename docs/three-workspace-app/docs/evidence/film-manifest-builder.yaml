@@ -1,0 +1,42 @@
+checkpoint: DOC-047
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.7.1
+    - 1.7.2
+    - 1.7.3
+  summary: Build the pinned BBS 2.4 editable Film export manifest from immutable samples and verified converter profiles.
+implementation:
+  manifest_builder: three-workspace-app/editor/apps/studio/src/filmManifest.ts
+  project_sampling: three-workspace-app/editor/apps/studio/src/unifiedFilmSampling.ts
+  tests: three-workspace-app/editor/apps/studio/test/filmManifest.test.ts
+  behavior:
+    - Maps selected Characters to content-hash-bound converted model profiles and hashed BOBJ/texture paths.
+    - Bakes skeleton samples into pose_transform tracks and emits one actor transform key per 20 Hz tick.
+    - Converts Three actor world transforms to BBS yaw/pitch; blocks scale, roll, shear and non-finite values the Replay schema cannot represent.
+    - Preserves sampled camera clips and project/source provenance in worker manifest JSON.
+runtime:
+  fixture: Temporary one-bone rig generated/exported as FBX with Blender 5.1.2; converted by the real BBS model converter. FBXLoader rest data and converter profile passed through the Studio manifest builder and Java 17 native Film worker.
+  result: Builder emitted one actor, one BOBJ model, one camera and one editable bone track with two keys. Worker returned success with nativeReadback=true, actor=1, camera=1, poseTracks=1. All inputs and package lived in an auto-cleaned temporary directory.
+  limitation: Smoke sample was assembled manually and static; it does not exercise the full shared-project sampler, multi-shot cuts, 65-bone motion or UI/job/API wiring.
+checks:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmManifest.test.ts apps/studio/test/unifiedAssetImport.test.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmCamera.test.ts
+    cwd: three-workspace-app/editor
+    environment: BBS_TEST_MIXAMO_FBX points to the local Punch Combo FBX fixture
+    result: 28 passed, 0 failed, 0 skipped, including Punch Combo FBX source import, project sampling, synthetic 65-bone bake, manifest mapping and rejection cases.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: node node_modules/eslint/bin/eslint.js apps/studio/src/filmManifest.ts apps/studio/test/filmManifest.test.ts apps/studio/src/unifiedFilmSampling.ts
+    cwd: three-workspace-app/editor
+    result: passed. Direct ESLint was used because pnpm's environment preflight attempted a no-TTY dependency install.
+source_hashes:
+  project_sampling: 42da202fd8d4f480059e5adc8f8e54251fe5b91b72350517e3dfaa7a85ceb5f5
+  manifest_builder: 25269aac94af25e677932138e550433111b5a8c47e6df5489c9f05f28aed73e0
+  manifest_tests: 8fb5bd29cc05ce8317539313e4b45dcf23357f1fbd12ba4999bd990741261929
+limits:
+  - The builder is a pure internal module; no persisted project export job, API route, UI, CLI or MCP command invokes converter and worker from the project.
+  - Worker export is proven only for the generated one-bone static smoke fixture; Film Editor edit/save/reopen and Minecraft playback were not tested.
+  - Actor scale and roll are blocked until a verified BBS representation or model-bake path exists; orthographic camera and source restrictions from DOC-045 remain.
+  - Blender 2.79 on PATH is unsupported; smoke explicitly used workspace Blender 5.1.2 and Java 17.
+  - No original Animation Studio, Retarget or Topview source, game installation, Site, release or commit was changed.

@@ -1,0 +1,23 @@
+checkpoint: DOC-054
+date: 2026-10-19
+acceptance: FILM-01
+status: blocked-before-browser-assertions
+attempt:
+  server: "Next.js 15.1.9 dev, http://127.0.0.1:3002"
+  smoke: "apps/studio/scripts/offline-smoke.mjs"
+  result: "HTTP 500 on /; webpack could not resolve three imported by packages/retarget/src/index.ts"
+environment:
+  pnpm_probe: "pnpm exec attempted workspace package resolution for 427 packages and registry access failed with EACCES"
+  next_types: "Next attempted automatic installation of @types/react and @types/node; registry access failed with EACCES"
+  cached_links: "Temporary app/package junctions did not make webpack resolve the external workspace dependency"
+cleanup:
+  dev_server_stopped: true
+  temporary_junctions_removed: true
+  app_source_changed: false
+verification:
+  browser_assertions: not-run
+  export_job_ui: not-run
+  film_editor: not-run
+limitations:
+  - "No browser smoke assertion passed; this is an environment/dependency-resolution blocker, not evidence of feature behavior."
+  - "The attempted dev compile may have changed generated apps/studio/.next-dev output."

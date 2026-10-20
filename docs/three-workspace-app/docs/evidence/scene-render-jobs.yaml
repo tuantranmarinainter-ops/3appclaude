@@ -1,0 +1,141 @@
+schema_version: '1'
+checkpoint: DOC-041
+date: '2026-10-18'
+listcode:
+- 1.4.3
+- 1.6.1
+- 1.6.3
+result: partial
+behavior:
+- Immutable project and render-argument snapshots, source revision/SHA, persisted job state, progress, cancel, and ten retained terminal jobs.
+- One renderer slot is reserved before asynchronous I/O and held through cancellation/cleanup. Snapshot revision mismatch returns REVISION_CONFLICT.
+  Dry-run cancel does not cancel.
+- UI/CLI/MCP keep the chosen output folder local; broker receives only an opaque UUID. Repeat request IDs preserve the client capability and optional
+  original expectedRevision.
+- Local assets and output files are size/SHA verified. UI and Python verify downloaded bytes and refuse existing output directories.
+- Next webpack keeps the workspace renderer as a native ESM external; this fixes live-host MODULE_NOT_FOUND despite direct tests passing.
+- Render inputs support at most nine frame-camera samples, three cameras, 64..1024 dimensions. UI selects cameras and frames and reports save
+  errors.
+automated_checks:
+  studio_shared_retarget_navigation: 46 passed; 0 skipped; Punch Combo enabled
+  final_render_output_regressions: 5 passed after stale-revision and dry-run cancellation additions
+  builder_build: passed; tsup and finalize-dist
+  docs_validation: 28 YAML; 157 local links; 28 development IDs; source hashes matched at checkpoint
+  builder_evaluate: 96 files; 553 passed; 1 existing skip
+  python_unified_cli_mcp: 37 passed
+  director_cli: 29 passed
+  typechecks: Builder source/tests, shared, Retarget, Studio passed
+  lint: Root eslint and 1105 messages/15 locales passed; Studio lint passed; explicit next.config lint retains one existing anonymous-export warning
+  studio_production_build: 'FAILED: EPERM scandir C:/Users/Administrator/AppData/Local/Application Data; retried with native renderer externals
+    and isolated supported cache override'
+  legacy_python_pytest:
+    passed: 218
+    failed: 11
+    skipped: 4
+    errors: 10
+    environment: jsonschema/rpds reused read-only from existing Python 3.12 uv cache after default interpreter lacked jsonschema
+    blockers:
+    - Builtin asset manifest size/hash mismatch for copied pose JSON files
+    - Windows path separator assumptions in packaging tests
+    - Pose-import manifest mtime assertion
+    scope: Legacy source suite; not counted as passing unified-CLI acceptance
+browser:
+  passed: true
+  projectId: 82636f5e-3b81-4c76-8e61-a32b388636d0
+  jobId: 1817ec71-bb82-4dc4-b73a-b02dea329c65
+  browserVersion: 153.0.8010.12
+  files:
+  - name: render.json
+    sizeBytes: 2920
+    sha256: 1762bbd35af5d0954615dc781a2a05a391e6b0b0d95a47f6d333b17474a99c37
+  - name: camera-1-frame-89.png
+    sizeBytes: 62906
+    sha256: e5ba6753abb1d6ab26df18a16ee92bdead932c74b61023c2aebab8ce54341417
+  - name: camera-1-frame-45.png
+    sizeBytes: 62906
+    sha256: e5ba6753abb1d6ab26df18a16ee92bdead932c74b61023c2aebab8ce54341417
+  - name: camera-1-frame-0.png
+    sizeBytes: 62906
+    sha256: e5ba6753abb1d6ab26df18a16ee92bdead932c74b61023c2aebab8ce54341417
+  - name: camera-1-contact-sheet.png
+    sizeBytes: 96010
+    sha256: 66d110c38f5a6a424ed7bed792a86c530fde87b34c0579be433c1dafcfe66b49
+  - name: camera-0-frame-89.png
+    sizeBytes: 63146
+    sha256: ee3c22327df072807d4ed66ef9aee056fb0eabd3c246909b509d76fce811a44a
+  - name: camera-0-frame-45.png
+    sizeBytes: 63146
+    sha256: ee3c22327df072807d4ed66ef9aee056fb0eabd3c246909b509d76fce811a44a
+  - name: camera-0-frame-0.png
+    sizeBytes: 63146
+    sha256: ee3c22327df072807d4ed66ef9aee056fb0eabd3c246909b509d76fce811a44a
+  - name: camera-0-contact-sheet.png
+    sizeBytes: 95586
+    sha256: 550fa2cbf4c2b706421ec28b71a990d87e2897148cc312a55ad75abf8994c8de
+  cameras:
+  - cameraNodeId: camera_1
+    files:
+    - camera-0-frame-0.png
+    - camera-0-frame-45.png
+    - camera-0-frame-89.png
+    - camera-0-contact-sheet.png
+  - cameraNodeId: camera_2
+    files:
+    - camera-1-frame-0.png
+    - camera-1-frame-45.png
+    - camera-1-frame-89.png
+    - camera-1-contact-sheet.png
+  frames:
+  - 0
+  - 45
+  - 89
+  sourceRevision: 0
+  sourceSha256: cbba91756154e94d3caec0a12bc65abcfd925907642e18a646ebc5dd996c8571
+  errors: []
+  external: []
+  directory: real OPFS; OS picker substituted, not verified
+  checks:
+  - two cameras × three frames
+  - nine SHA-verified output files
+  - shared revision/history unchanged
+  - save-again error handled without overwriting
+other_browser_checks:
+  legacy_offline_smoke: passed on dev host; two characters, 28 pose search results, zero external requests
+  real_fbx_smoke: passed; import/clip/root/history/clone/reload, 65-bone CPU/WebGL parity delta 4.440892098500626e-16; zero external requests
+artifacts:
+  report: three-workspace-app/editor/apps/studio/.test-runtime/doc041/browser/report.json
+  screenshot: three-workspace-app/editor/apps/studio/.test-runtime/doc041/browser/render-panel.png
+  fbx_report: three-workspace-app/editor/apps/studio/.test-runtime/doc041/fbx-browser-report.json
+  build_log: three-workspace-app/editor/apps/studio/.test-runtime/doc041/next-build.log
+typesafe:
+  model: jev-1.13.0
+  acceptance: partial
+  confidence: 0.92
+  note: 'Build evidence classification was not adopted: production build actually failed; local browser runtime was observed directly.'
+not_verified:
+- Operating-system folder picker and permissions; browser used a real OPFS handle with picker substituted
+- Live MCP host interoperability
+- Crash recovery between render-job persistence and request receipt; crash during client file writing
+- Animated mesh bounds/render parity, broad formats and full SCENE-03/FX-E2E
+- Production bundle, complete native Animation/Retarget, converters and Film/game acceptance
+source_sha256:
+  three-workspace-app/editor/apps/studio/src/unifiedJobs.ts: b4fb18e7976823019f8e27879e8dc2b05d470116fca12bf705f34a5c433bdfeb
+  three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts: b83bc0ed23d7d46b7f2b287f8d549a2da374135ce946de94e9a5695240253c58
+  three-workspace-app/editor/apps/studio/src/unifiedApi.ts: d6c8d6a321bc640186906c719a8400738b0540077c984a955f107fe02a6fb8b0
+  three-workspace-app/editor/apps/studio/next.config.mjs: 28e2896c1899020e3b896d129231087b075a3f454355dcedd11adb01d90bfaff
+  three-workspace-app/editor/apps/studio/app/workbench/components/scene-render/index.tsx: 5e30d282ac457d35bd60e04e1cb3f26cdb8a40ede8ec651a9cd35d481f2106ca
+  three-workspace-app/editor/apps/studio/app/workbench/components/scene-render/utils.ts: eeff3228b1838548bdce7fa7bd67d958be65d8e9f3b92ce65d2f350980dac332
+  three-workspace-app/editor/apps/studio/app/workbench/components/scene-render/hooks/useSceneRender.ts: 68297a6697d94a5c8f0acad2f06cf31cd110cfb36d5055afabb048ba7f78d62e
+  three-workspace-app/editor/apps/studio/app/api/unified/projects/[id]/jobs/[jobId]/route.ts: e40823f3d1c65975a25d2f542edf05e40c166b6faa26c56be1fe90056d7139cc
+  three-workspace-app/editor/apps/studio/app/api/unified/projects/[id]/jobs/[jobId]/files/[fileId]/route.ts: c6ba18cca0eb5dfed3d1b16245f2bb0edf13e1d9252556b17e20d6bd1bf464d3
+  three-workspace-app/editor/apps/studio/test/unifiedSceneRender.test.ts: 985f56085162a40f2c94103b743a275cdf4c757a16316a809d6942680f572951
+  three-workspace-app/editor/apps/studio/test/sceneRenderOutput.test.ts: c8159fc9a7aa5ff6ef1ceb21f1ef1703e0a6242572f9bae79c6b3f454491190f
+  three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts: 876f326a91ebdd0e6f2917d50933e694a8de5dbedb07e097ac7687ef620df263
+  three-workspace-app/editor/apps/studio/scripts/scene-render-smoke.mjs: 343e10e1bf4ee91cada8468687d526ec9648252845cb81f630894b271d34d5ba
+  three-workspace-app/editor/packages/director-cli/render.mjs: 059dd804abb6e4a6775baff80554432c0be83aacf684f080507b35882b8c26ba
+  three-workspace-app/editor/packages/director-cli/render.d.mts: 0896afdb61e72cec8bd74e6495102dc24ba7489faa1ca973ebbf6c8e9c116cad
+  three-workspace-app/editor/packages/director-cli/test/render-output.test.mjs: 82f541c67ed46c450f2ce04969276f2a794aeac3d8ae799e492b726129eea371
+  three-workspace-app/agent/unified_cli.py: 61352eb7b7b4f4574e6e8d701b2d050a35c6d8f34670fc76ff323719e55b05d7
+  three-workspace-app/agent/unified_mcp.py: 67f72d0de5106cacbca417dad1bbf5a34f183153415c2f8d1dd92ece19c9f67a
+  three-workspace-app/agent/test_unified_cli.py: 74661598ffa72a641b6a200ef10b323cd71043ee1e0c9aa9fd10d87a8584882a
+  three-workspace-app/agent/test_unified_mcp.py: 568dadcd7e1f1f285f45b9e1c784e4462ed18cdf2da7f050d9b512ce2d44bc10

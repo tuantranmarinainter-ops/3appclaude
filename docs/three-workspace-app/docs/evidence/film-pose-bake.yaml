@@ -1,0 +1,42 @@
+checkpoint: DOC-046
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.7.1
+    - 1.7.3
+  summary: Bake shared-project skeleton samples into editable BBS pose_transform tracks using converter BOBJ global rest matrices.
+implementation:
+  pose_bake: three-workspace-app/editor/apps/studio/src/filmPoseBake.ts
+  project_integration: three-workspace-app/editor/apps/studio/src/unifiedFilmSampling.ts
+  tests:
+    - three-workspace-app/editor/apps/studio/test/filmPoseBake.test.ts
+    - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  behavior:
+    - Reconciles source rest hierarchy with each BOBJ global rest matrix and rejects bones that do not share one source-to-BOBJ basis.
+    - Removes actor world placement and derives each editable local pose delta from source rest to sampled pose.
+    - Emits finite BBS pose_transform translation, scale, rotation and auxiliary channels with continuous Euler angles.
+    - Rejects incompatible hierarchy, singular/sheared transforms and invalid scales instead of producing misleading Film keys.
+runtime:
+  fixture: Punch Combo FBX source-import and project-sampling integration; typed synthetic BOBJ profile generated from its source SkeletonProfile.
+  result: All 65 bones bake to 21 finite keys over ticks 0..20; project snapshot remains immutable. Three-bone Blender 4.2.3 FBX was converted by the actual BBS converter and its BOBJ global rest matrices were compared with Three FBXLoader rest matrices; one common basis held with maximum spread 3.469446951953614e-18.
+  limitation: The Blender converter probe compared matrices only and did not feed its profile through the pose baker. Project integration used synthetic typed BOBJ rest matrices; real converter-to-baker parity is not yet end-to-end verified.
+checks:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedAssetImport.test.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmCamera.test.ts
+    cwd: three-workspace-app/editor
+    result: 26 passed, 0 failed, 0 skipped. Includes Punch Combo project integration, 65-bone pose bake, camera tests and rejection/continuity cases.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+source_hashes:
+  sampler: 42da202fd8d4f480059e5adc8f8e54251fe5b91b72350517e3dfaa7a85ceb5f5
+  camera_conversion: f4a4413baa1c8a980e53e856151215114569465cb775d481c82cffd4d6f27dd4
+  pose_bake: 66eba03d894040563c7757e42d63fab57a104cc99c2289bed6cd3ab28be7b377
+  integration_tests: ecda04e316984d7fa7bdc28f856139252e35ff123861ceb7830a8f758356b0b2
+  camera_tests: 41e0896ea6406f67ab3a19521b7d4fd4c8f1f3ffc8092ef7207840d5489b4540
+  pose_bake_tests: 78b26190c00e6193c341ac6b0539e889fe428f749e0e9162c6775e9d501a5dd7
+limits:
+  - The pose baker is internal Studio code; it does not write or validate a worker manifest and is not connected to a conversion job.
+  - No project-scoped converter/worker invocation, persisted job, broker/API/UI/CLI/MCP export path is connected.
+  - Real converter profile to pose-bake integration and arbitrary-source parity remain unverified; Punch Combo itself is rejected by the converter because of unsafe BOBJ bone names.
+  - Film Editor reopen/edit/save and Minecraft playback/user acceptance were not run.
+  - No source Animation Studio, Retarget or Topview workspace was modified; no game, Site, release or commit was produced.

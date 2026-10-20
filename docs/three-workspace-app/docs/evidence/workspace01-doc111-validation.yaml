@@ -1,0 +1,43 @@
+date: '2026-10-20'
+document_id: DOC-111
+plan_id: W01-PLAN-003
+task_id: 1.3.4.2.2
+status: partial
+implementation:
+  action_diagnostics: per-track blocking issues are collected per Action during inspection
+  sampling_policy: a selected Action with unsupported channels is blocked; valid Actions remain usable
+  resource_budget:
+    max_node_samples: 50000000
+    estimated_working_set_limit_bytes: 805306368
+    existing_max_samples: 18000
+  plan_hash: includes action diagnostics and estimated cost
+checks:
+  retarget_and_studio_integration_tests:
+    status: pass
+    passed: 73
+    skipped: 1
+  workspace_typecheck: pass
+  workspace_lint: pass
+  locale_checks: pass
+  builder_evaluate:
+    status: pass
+    passed: 557
+    skipped: 1
+  studio_next_build:
+    status: blocked
+    reason: >-
+      EPERM while @vercel/nft scans C:/Users/Administrator/AppData/Local/**/*; Windows junctions
+      Application Data, History, and Temporary Internet Files deny scandir. The source that emits
+      this glob is not identified.
+  studio_offline_smoke:
+    status: not_run
+    reason: Studio production build did not complete.
+  browser_runtime_and_game:
+    status: not_run
+    reason: deferred by user's fixture/runtime choice.
+remaining:
+  - Complete identity-bound links and multiple-skeleton selection under 1.3.4.2.1.
+  - Extend format/action capability classification to import, plan, CLI and MCP boundaries.
+  - Validate raw influence/resource cases not covered by the current adapter-level tests.
+  - Resolve Studio Next build tracing failure, then run offline smoke.
+  - Runtime fixtures and acceptance remain deferred; accepted Workspace01 gates remain 0/8.

@@ -1,0 +1,190 @@
+schema_version: '1'
+status: target architecture specification, not implemented
+runtime: PC local; browser UI; local Python CLI/service
+technology:
+- TypeScript
+- React
+- Three.js
+- Python CLI
+tree:
+- id: '1'
+  parent_id: null
+  name: BBS Studio — three workspace application
+  path_status: new app; product name pending
+- id: '1.1'
+  parent_id: '1'
+  name: React studio shell
+  path: editor/apps/studio
+  source: Topview v0.1.8 Next.js Studio pinned at commit 631c08c8fd352b4ff83df33aa9a74a4563f4674b; full UI source mapped, runtime/parity audit
+    pending
+- id: 1.1.1
+  parent_id: '1.1'
+  name: Topview-style workbench, workspace switcher, responsive desktop viewport
+  code_state: new integration; reuse Topview UI only after source audit
+- id: 1.1.2
+  parent_id: '1.1'
+  name: Searchable collapsible feature tree and shared commands
+  spec: features/feature-navigation.md
+- id: 1.1.3
+  parent_id: '1.1'
+  name: Three workspaces
+  children:
+  - 1.1.3.1
+  - 1.1.3.2
+  - 1.1.3.3
+- id: 1.1.3.1
+  parent_id: 1.1.3
+  name: Normalize and retarget
+  package: editor/packages/retarget
+  package_ref: '1.3'
+  source: V9.12 engine extraction and adapters
+- id: 1.1.3.2
+  parent_id: 1.1.3
+  name: Scene, blocking and cameras
+  package: Topview director package retained under its upstream package name
+  package_ref: '1.4'
+  source: Topview v0.1.8 director document/operations/CLI at pinned commit; detailed builder/UI parity audit remains pending
+- id: 1.1.3.3
+  parent_id: 1.1.3
+  name: Animation, rig and motion editing
+  package: editor/packages/animation
+  package_ref: '1.5'
+  source: Animation Studio 1.31.8 candidate modules
+- id: '1.2'
+  parent_id: '1'
+  name: Shared project contract and APIs
+  package: editor/packages/shared
+  spec: features/shared-project-contract.md
+  children:
+  - 1.2.1
+  - 1.2.2
+  - 1.2.3
+  - 1.2.4
+  - 1.2.5
+  - 1.2.6
+- id: 1.2.1
+  parent_id: '1.2'
+  name: AssetID, CharacterID, SkeletonProfile, mappings and fingerprints
+- id: 1.2.2
+  parent_id: '1.2'
+  name: Scene graph, transforms, coordinate and unit adapters
+- id: 1.2.3
+  parent_id: '1.2'
+  name: Timeline, motion, FPS/ticks and root motion
+- id: 1.2.4
+  parent_id: '1.2'
+  name: Camera, shot, FOV and time ranges
+- id: 1.2.5
+  parent_id: '1.2'
+  name: Typed commands, schema/project versions, history and undo
+- id: 1.2.6
+  parent_id: '1.2'
+  name: Project migration and format adapters
+- id: '1.3'
+  parent_id: '1'
+  name: Retarget package
+  package: editor/packages/retarget
+  inventory: inventory/retarget.yaml
+  spec: features/retarget-workspace.md
+  source: V9.12 engine and UI; details split into the listed child modules
+  children:
+  - 1.3.1
+  - 1.3.2
+  - 1.3.3
+- id: 1.3.1
+  parent_id: '1.3'
+  name: V9.12 retarget math, loading, baking and format adapters
+- id: 1.3.2
+  parent_id: '1.3'
+  name: Skeleton mapping, calibration, reference pose and motion adjustment
+- id: 1.3.3
+  parent_id: '1.3'
+  name: Retarget workspace UI and shared-project adapter
+- id: '1.4'
+  parent_id: '1'
+  name: Scene / Topview package
+  package: preserve upstream Topview package boundary
+  inventory: inventory/topview.yaml
+  spec: features/scene-workspace.md
+  children:
+  - 1.4.1
+  - 1.4.2
+  - 1.4.3
+- id: 1.4.1
+  parent_id: '1.4'
+  name: Characters, props, poses and layout
+- id: 1.4.2
+  parent_id: '1.4'
+  name: Multi-camera shots and camera motion
+- id: 1.4.3
+  parent_id: '1.4'
+  name: Scene validation, framing, grounding and render
+- id: '1.5'
+  parent_id: '1'
+  name: Animation package
+  package: editor/packages/animation
+  inventory: inventory/animation.yaml
+  spec: features/animation-workspace.md
+  children:
+  - 1.5.1
+  - 1.5.2
+  - 1.5.3
+  source: Animation1.31.8 JS/CSS matched; evidence/animation-lineage.yaml
+- id: 1.5.1
+  parent_id: '1.5'
+  name: Rig, controller, IK and pose
+- id: 1.5.2
+  parent_id: '1.5'
+  name: Timeline, graph, layers and motion library
+- id: 1.5.3
+  parent_id: '1.5'
+  name: Evaluator, importers and exporters
+  spec: features/animation-workspace.md
+- id: '1.6'
+  parent_id: '1'
+  name: Python CLI and local agent API
+  source: Topview topview_3d_cli; API extensions need separate server/process design
+  children:
+  - 1.6.1
+  - 1.6.2
+  - 1.6.3
+- id: 1.6.1
+  parent_id: '1.6'
+  name: Project commands, schema validation and inspect/render
+- id: 1.6.2
+  parent_id: '1.6'
+  name: Format conversion/Blender tasks that require local tools
+  spec: features/local-conversion-cli.md
+- id: 1.6.3
+  parent_id: '1.6'
+  name: Shared commands for AI agent/MCP
+- id: '1.7'
+  parent_id: '1'
+  name: BBS FS export and acceptance adapter
+  spec: features/bbs-film-export.md
+  children:
+  - 1.7.1
+  - 1.7.2
+  - 1.7.3
+- id: 1.7.1
+  parent_id: '1.7'
+  name: Native Film package and asset delivery
+- id: 1.7.2
+  parent_id: '1.7'
+  name: Animation playback and camera/actor roundtrip
+- id: 1.7.3
+  parent_id: '1.7'
+  name: Editable pose keyframes in Film Editor
+coordinate_policy:
+  decision: Preserve upstream native representations and convert at explicit adapters
+  required_metadata:
+  - unit
+  - up-axis
+  - rotation convention
+  - fps/tick rate
+  - root-motion owner
+  canonical: Topview Y-up/metres scene; native rig basis/units preserved by adapters; contracts/project-v1.yaml
+data_authority:
+  decision: One project writer/operation boundary; do not let React and Python independently mutate the same Topview files
+  revision: Shared exact CAS revision above native Topview sceneSequence; Node host single writer; commands-v1.yaml
+preservation: Keep original project/asset bytes on import; write converted project separately and report lossy fields

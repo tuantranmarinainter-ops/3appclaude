@@ -1,0 +1,222 @@
+---
+name: topview-3d-cli
+description: >
+  Block out, edit, check and render 3D staging scenes on the local machine with the topview-3d-cli command:
+  simple primitive props, built-in mannequin characters, static library poses, story cameras plus a
+  bird's-eye layout camera, numerical checks and PNG renders; building and rendering run offline in a
+  project directory. After the renders it offers an image or video generation from the frames, run only
+  once the user confirms.
+  Use when the user asks to stage, block out, lay out or storyboard a scene in 3D; place people,
+  props or cameras; pose characters; check framing, grounding, spacing or collisions; render views
+  of a scene as a reference for video generation; or works in a directory that contains
+  `.topview-3d/`. Also use when a topview-3d-cli command fails or topview-3d-cli still has to be installed.
+  The Codex plugin is shown as Topview 3D Builder. Change the 3D scene only with topview-3d-cli.
+  After a scene is built, open the local Studio in the In-App Browser to view it, not to edit it.
+---
+
+# topview-3d-cli
+
+`topview-3d-cli` edits and renders a local director project: a directory with a `.topview-3d/` folder. The
+goal is an abstract, physically consistent staging reference for video generation: simple shapes,
+correct scale and support, clear blocking, one world seen from several static cameras. Character
+positions come first, then plausibility and camera continuity, then composition. Fine visual detail
+is not a goal; a phone can be a slab. Respond in the user's language.
+
+Scope in this version: primitive props, the four built-in characters (Child, Youth, Female, Man),
+121 static poses, static cameras and root keyframes. There is **no motion library**: never promise
+walk cycles or other body animation. To suggest movement, give the character a fitting static pose
+(for example a walking stride) and, only when the user asks for movement, add
+`transform.position` / `transform.rotation` keyframes (see `references/edit.md`). Preserve existing
+animation and editorial data rather than extending them.
+
+## Step 1: check the environment
+
+Run this before anything else in a session:
+
+```bash
+topview-3d-cli doctor --json
+```
+
+It always exits 0; gate on the top-level `ok`. When `ok` is false, read each failing
+`checks.<name>.hint` and follow `references/doctor-browser.md`:
+
+- **`topview-3d-cli` not found:** it is installed once per machine, in an environment every project
+  shares. Look there before installing anything: `~/.local/share/topview-3d-cli/venv/bin/topview-3d-cli`
+  on macOS and Linux, `$env:LOCALAPPDATA\topview-3d-cli\venv\Scripts\topview-3d-cli.exe` on Windows.
+  When it exists and its `doctor --json` reports the `cliVersion` of this skill's pin,
+  `topview-3d-cli==0.1.8`, use that path for every command.
+  Otherwise install it once as `references/doctor-browser.md` describes (Installing topview-3d-cli).
+  Never create a virtual environment inside the user's project or workspace, and do not use
+  `pip install --user`.
+- **`node` fails:** Node.js 20.6 or newer (with npm) is required; ask the user to install it.
+- **Checkout:** when the folder that holds this skill also has `agent/` and `editor/` (plugin installs
+  are checkouts), install by running its `scripts/install.sh` (or `install.ps1` on Windows) once. It
+  puts the CLI into the shared environment and installs the renderer and Studio's Next.js together.
+  Do not install only the renderer package.
+- **`playwright` or `chromium` fails:** run `topview-3d-cli browser ensure` once (it downloads the pinned
+  Chromium into the user cache).
+- **Rendering fails inside an agent sandbox** although `doctor` passes: the sandbox blocks the
+  browser, not topview-3d-cli. Say so, ask the user to approve running the render command outside the
+  sandbox, and keep working on everything that does not need a browser. Never build a substitute
+  renderer (image libraries, SVG, hand-drawn frames).
+
+## CLI contract
+
+- Every command prints one JSON object on stdout. Failures print `{"ok": false, "code", "error"}`
+  on stderr, with `details` (such as the failing `index`) when available. Exit 0 is success, 2 is
+  invalid input, including an id that names no existing node, asset, pose or camera (fix the
+  input), 1 is a command that could not
+  be carried out (conflict, missing dependency, renderer failure).
+- Spec files are JSON objects; `-` reads stdin. Write them to a temporary file first.
+- Validate before writing: `--dry-run` on `document apply`, `node batch` and `pose batch`, and
+  `topview-3d-cli evaluate <dir> plan.json` for a plan's numbers. Nothing is written when a command fails.
+- Pass `expectedSceneSequence` from the latest result. On `SCENE_SEQUENCE_CONFLICT` re-read and
+  re-plan; never bump the number blindly.
+- Copy ids (`libraryId`, `poseId`, `presetId`, node ids) verbatim from command output. Never invent
+  ids, dimensions or measurements.
+- After a render, open the returned PNG files and look at them before judging. A render that was
+  not viewed is not visual evidence.
+- Change the 3D scene with topview-3d-cli (`node batch`, `pose batch`, `document apply`). Do not
+  click, drag, or type in the Studio page, and do not use browser automation to move or edit
+  nodes. The In-App Browser only opens Studio so the user can look at the scene.
+- One writer at a time: do not run a writing command while Studio is saving the same project.
+  After the user edits in Studio, re-read with `document get` before planning the next change.
+  Studio writes back through `project adopt`, so the project on disk is the edited scene.
+
+## Each session starts with context
+
+```bash
+topview-3d-cli project status <dir>            # or: topview-3d-cli project init <dir> for a new scene
+topview-3d-cli document get <dir> --summary    # nodes, cameras, sceneSequence
+topview-3d-cli bom get <dir>                   # the plan record: intent, relations, cameras, verification
+```
+
+Read them before planning; re-read only after your own writes or a conflict. `topview-3d-cli document get
+<dir> --entity <nodeId>` returns one full node or clip.
+
+## Workflow stages
+
+Read the reference for a stage once per session, before its first command:
+
+### Guide the user at every stage boundary
+
+Core principle: guidance makes the next useful action clear. Pause at creative decision points;
+use progress updates for execution steps inside an already approved action.
+
+By default, complete one stage below, make its result reviewable, then ask whether the user wants
+to continue to the named next stage or revise the current result. Wait for their answer before
+starting that next stage. Do not silently run the entire table and ask only after rendering.
+This applies to new scenes, edits and revisions, including the final delivery.
+Exception: once the user authorizes video generation for the current task, Stage 10 proceeds through
+preparation, service submission and delivery without further stage-boundary approval questions.
+This authorization covers the current generation round, not every future version of the 3D plan.
+If feedback sends the work back to the scene, model, pose or camera stages, complete and verify the
+revised preview, then stop and ask whether to generate from it or adjust it further. Do not carry
+the previous round's yes across this decision point. An explicit request to revise AND regenerate
+already answers that choice; see `references/generate.md`.
+
+- Briefly state what is ready, show the relevant plan, preview or result, and mention any unresolved
+  limitation that affects the next choice. For nonvisual stages, a concise summary is enough.
+- Recommend a concrete next action and explain its purpose in one sentence. End with one clear
+  question in the user's language. Name the actual action and what can be revised, rather than
+  asking only “Continue?” or “What next?”. Examples (written in English; localize when responding):
+  - After the layout plan: “Would you like me to build this scene in 3D, or revise the layout first?”
+  - After scene construction: “Would you like me to set up the camera movement, or modify this scene first?”
+  - After camera setup: “Would you like me to render a preview video, or adjust the camera movement first?”
+  - After the reference and generation prompt are ready: “Would you like to proceed to video generation,
+    revise this scene, or edit the generation prompt first?”
+  - After revising the 3D preview following feedback: “The revised camera preview is ready. Would you
+    like me to generate a new realistic video from it, or adjust the scene or camera movement further?”
+  Use only options appropriate to the current result and available capabilities. If the reference
+  video is not ready, offer to render or export it before offering the generation handoff.
+- A stage is a user-facing milestone, not each CLI call. Finish the reads, measurements, dry-runs,
+  rendering and necessary corrections that make that stage reviewable before asking. Do not ask
+  permission for each tool invocation or stop on an unverified intermediate result.
+- If the user requests changes, make and verify those changes within the current stage, present the
+  updated result, then offer the next-stage-or-revise choice again. A request to revise does not by
+  itself authorize proceeding to later stages. Silence is not an answer.
+- Apply only stages relevant to the request: an edit does not restart completed setup or rebuild
+  unrelated objects. For the last applicable stage, offer a concrete follow-up or further revision;
+  respect “stop”, “not now”, or a request for no further questions.
+- If the user explicitly asks to complete several stages or the whole workflow without pauses,
+  honor that scope and ask at its end instead. Do not repeatedly reconfirm stages they have already
+  approved. Ordinary “build a scene” requests use the guided stage boundaries above.
+- At the rendered-output handoff, follow Stage 10: prepare and show the generation prompt. Ask whether
+  to generate only if the user has not already authorized generation from this version. An explicit
+  request such as “render and generate the video” already authorizes it. After authorization, use
+  progress updates rather than repeated approval questions about preparation or execution.
+
+| Stage | What to do | Reference |
+| --- | --- | --- |
+| 1. Understand | Resolve intent from the conversation and current state; record it in the BOM | `references/state-intent.md` |
+| 2. Layout | Relationships, support, facing, clearance; BOM fields | `references/layout.md` |
+| 3. Props | 1–4 primitives first; imported models only when needed | `references/add-prop.md` |
+| 4. People | Pick from the built-in characters; place before posing | `references/add-character.md` |
+| 5. Pose | Reviewed text mappings; seat fitting | `references/pose.md` |
+| 6. Cameras | Mandatory bird's-eye overview plus story coverage scaled to the number of people | `references/camera.md` |
+| 7. Edit | Change only what was asked; batch syntax; keyframes | `references/edit.md` |
+| 8. Check | Numbers, renders, look at the PNGs, revise | `references/checks.md` |
+| 9. Studio | Open the finished scene in the local Studio with the In-App Browser | `references/doctor-browser.md` |
+| 10. Generate | Write and show the prompt; obtain generation authorization once if missing, then generate and record the result without repeated confirmation | `references/generate.md`, `references/video-prompt.md` |
+
+## After the frames are ready
+
+Stage 10 is part of every workflow that ends in a rendered video or frames: do not close the session on
+the renders without it. Read `references/generate.md` and follow it. As soon as the video is rendered, you
+write the generation prompt yourself, without being asked, by following `references/video-prompt.md`,
+show it to the user, and ask whether to generate if authorization for this version is missing. Once authorized,
+complete service selection, generation and result recording without repeated approval prompts.
+A video generation uses the rendered or exported video as its reference.
+
+Building, checking and rendering stay offline. Stage 10 is the only stage that may reach an outside
+service, within the user's authorized generation task. Never contact a generation
+service from any other stage.
+
+Asset search rules for props, characters and poses are in `references/asset-selection.md`.
+Installation, the browser and sandbox limits are in `references/doctor-browser.md`.
+
+## Commands
+
+| Need | Command |
+| --- | --- |
+| New project / state | `topview-3d-cli project init <dir>`, `topview-3d-cli project status <dir>` |
+| Read the document | `topview-3d-cli document get <dir> --summary`, `topview-3d-cli document get <dir> --entity <id>` |
+| Add, change, delete nodes | `topview-3d-cli node batch <dir> changes.json [--dry-run]`, `topview-3d-cli node delete <dir> <id>` |
+| Low-level operations (scene settings, keyframes) | `topview-3d-cli document apply <dir> ops.json [--dry-run]` |
+| Find assets | `topview-3d-cli asset search <words> --kind character\|pose\|prop`, `topview-3d-cli asset show <id>` |
+| Pose list | `topview-3d-cli pose catalog [--category sit]` |
+| Pose people | `topview-3d-cli pose batch <dir> poses.json [--dry-run]`, `topview-3d-cli pose apply <dir> <nodeId> <poseId>` |
+| Camera presets | `topview-3d-cli camera presets` |
+| Numbers without a browser | `topview-3d-cli evaluate <dir> [plan.json] [--frames 0,24] [--camera <id>]` |
+| Mesh measurements | `topview-3d-cli inspect nodes <dir> <id>... [--frame N]` |
+| Numbers plus renders per camera | `topview-3d-cli inspect views <dir> --camera <id> ... --primary <id>` |
+| One render | `topview-3d-cli render <dir> [payload.json]` |
+| Find a rendered PNG | `topview-3d-cli renders list <dir>`, `topview-3d-cli renders show <dir> [runId] [--frame N]` |
+| Plan record | `topview-3d-cli bom get <dir>`, `topview-3d-cli bom checkpoint <dir> patch.json` |
+| Structural validation | `topview-3d-cli document validate <dir>` |
+| Open in Studio | `topview-3d-cli studio open <dir>`, then open the returned `url` in the In-App Browser |
+
+## Hard rules
+
+1. Coordinates are right-handed, Y up, metres; rotations are Euler degrees; scale is a positive
+   multiplier (`0.001` for a paper-thin axis). Node ids match `[A-Za-z0-9_-]{1,128}`.
+2. Measure before grounding or seating (`topview-3d-cli inspect nodes`); frustum and ground checks in
+   `evaluate` use node origins and primitive boxes only.
+3. Every scene keeps one dedicated bird's-eye camera (BOM camera role `layout_overview`), refitted
+   after layout changes. It is layout evidence, never the primary story image.
+4. Choose one BOM `story` camera as `--primary` for `inspect views`. Unless the user sets the
+   count, cover multi-person scenes per the minimums in `references/camera.md` (3 or more people:
+   a group master, one view per interacting group and one close-up per main character).
+5. Ordinary "sitting" means a chair, sofa, bench or stool unless floor sitting, cross-legged sitting
+   or kneeling is explicit. Reuse a seat or build one from 1–4 primitives first.
+6. Report gaps honestly: a simplified substitute is described as such; an unverified constraint
+   stays `unknown`.
+7. Thin lines, stripes, z-fighting and aliasing are renderer artifacts, not defects. Edit only with
+   a measurement or a failed BOM hard relation behind it. One `inspect views` per correction pass.
+8. Default timeline: 24 fps, 120 frames. Never paste image bytes or Base64 into messages; give
+   paths.
+9. Change the 3D scene with the CLI. Do not edit it through the Studio page or browser automation.
+10. Open the local Studio in the In-App Browser so the user can view it. `studio open` only starts
+   the server and returns `url`; open that `url` in the In-App Browser, not the system browser.
+   If it fails because Next.js is not installed, run `pnpm install` in the checkout's `editor/`
+   directory once and retry `studio open` once. See `references/doctor-browser.md`.

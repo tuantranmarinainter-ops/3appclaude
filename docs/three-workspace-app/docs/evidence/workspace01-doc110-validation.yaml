@@ -1,0 +1,17 @@
+date: '2026-10-20'
+checkpoint: DOC-110
+scope: builder scene-basis and test-runner gate
+status: PARTIAL
+checks:
+  builder_typecheck: PASS
+  builder_lint: PASS
+  builder_evaluate_tests: 557 PASS, 1 SKIP
+  builder_build: PASS
+  workspace_typecheck: PASS
+  workspace_lint_and_locales: PASS
+  workspace_build: 'BLOCKED: Studio Next EPERM scandir AppData Local Application Data'
+  runtime_browser_game: NOT_RUN
+remaining:
+- Identify and resolve Next.js EPERM cause
+- Run offline smoke after successful Studio build
+- W01 accepted gates remain 0/8

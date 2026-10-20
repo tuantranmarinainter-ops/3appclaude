@@ -1,0 +1,51 @@
+checkpoint: DOC-050
+date: 2026-10-19
+scope:
+  listcode: [1.7.1, 1.7.2, 1.7.3]
+  summary: Map unsafe source bone tokens to safe BOBJ IDs while retaining the FBXLoader-compatible source names needed for sampled editable pose tracks.
+implementation:
+  converter: three-workspace-app/agent/film_worker/blender/convert_model.py
+  profile_validation: three-workspace-app/agent/film_model_converter.py
+  manifest_and_pose_mapping:
+    - three-workspace-app/editor/apps/studio/src/filmManifest.ts
+    - three-workspace-app/editor/apps/studio/src/filmPoseBake.ts
+    - three-workspace-app/editor/apps/studio/src/unifiedFilmSampling.ts
+  tests:
+    - three-workspace-app/editor/apps/studio/test/filmPoseBake.test.ts
+    - three-workspace-app/editor/apps/studio/test/filmExportJob.integration.test.ts
+behavior:
+  - Assigns collision-free safe IDs to bone names outside the BOBJ identifier set and replaces exact whitespace-delimited tokens throughout exported BOBJ, including hierarchy, weights and action channels.
+  - Preserves a unique sourceName normalized with the Three.js FBXLoader PropertyBinding.sanitizeNodeName rule; the Studio validates it against its imported skeleton and emits pose tracks under BOBJ IDs.
+  - Retains hash, output-file, bone-count, hierarchy and bind-matrix validation; duplicate normalized source names are rejected.
+fixture:
+  name: Punch Combo FBX
+  source_sha256: acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb
+  converted_profile: 65 bones, 1 action, no texture; colon-bearing Mixamo source names mapped to safe BOBJ IDs and normalized source names.
+  source_immutability: Source hash stayed unchanged during standalone conversion.
+checks:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedSceneRender.test.ts apps/studio/test/sceneRenderOutput.test.ts apps/studio/test/filmManifest.test.ts apps/studio/test/filmPoseBake.test.ts apps/studio/test/filmCamera.test.ts apps/studio/test/unifiedAssetImport.test.ts apps/studio/test/filmExportJob.integration.test.ts
+    cwd: three-workspace-app/editor
+    environment: BBS_TEST_MIXAMO_FBX and BBS_FILM_E2E_FBX point to Punch Combo; BBS_BLENDER_EXE is Blender 4.2.3; BBS_JAVA_HOME is Microsoft OpenJDK 17.0.20.101-hotspot; BBS_UNIFIED_PROJECTS_DIR is a unique temporary folder.
+    result: 39 passed, 0 failed, 0 skipped. The opt-in export imports the FBX, adds two Characters sharing its source asset, places Motion on both, creates two contiguous camera shots with a cut, verifies both sampled poses change, runs real conversion/profile mapping and manifest, invokes the Java worker and reads the returned ZIP.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json; node node_modules/eslint/bin/eslint.js apps/studio/src/filmManifest.ts apps/studio/src/filmPoseBake.ts apps/studio/src/unifiedFilmSampling.ts apps/studio/test/filmPoseBake.test.ts
+    cwd: three-workspace-app/editor
+    result: TypeScript and ESLint passed.
+  - command: python -m unittest agent.test_film_model_converter
+    cwd: three-workspace-app
+    environment: BBS_BLENDER_EXE is Blender 4.2.3; BBS_JAVA_HOME is Microsoft OpenJDK 17.0.20.101-hotspot.
+    result: 5 passed, including the Blender-backed FBX/GLB converter integration.
+  - command: python -m agent.unified_cli film convert-model ".test-runtime/browser/projects/112cf5a6-5c39-4853-9c8e-6d65175194ba/assets/acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb/Punch Combo.fbx" --output-dir EXISTING_FOLDER --unit-meters 1
+    cwd: three-workspace-app
+    result: Converted to a fresh package with 65 bones and 1 action; output BOBJ names passed safe-name validation.
+source_hashes:
+  convert_model.py: b43af4486e14af8aabed667b7375364016803c65e4777ebf2a0118491c9fdeb7
+  film_model_converter.py: 0be12d667e684f7c944d5cfff8b92495497f917c4a2a2bdc78a26643b07517d8
+  filmManifest.ts: 8cf2ea7109e2cd14828767a4b43742f62e5baa719605a09f79a9befd6ce19d58
+  filmPoseBake.ts: 4297f0dbb30d3bdaf24a1d3f938144f40648d6c0499a9730b46f8b674547e2c1
+  unifiedFilmSampling.ts: fc6a9effa7af8a56ae83d69fb7c920104b95a8ddf9e8bf43371ce7b5b179d771
+  filmPoseBake.test.ts: 0ce621a63e9573e0434d4741aac3d1231f88b132af04fa791c428f8a94738b9b
+  filmExportJob.integration.test.ts: e1b1f67ae560d2019027499ee235cc1468aaf8ced3664c252e2783387cbc9620
+limits:
+  - This verifies one 65-bone source rig reused by two Characters across two camera shots; it does not prove arbitrary rig parity or production runtime behavior.
+  - Browser folder export, live MCP host, Film Editor open/edit/save/reopen and Minecraft playback were not run.
+  - No original Animation/Retarget/Topview workspace, Site, release, game installation or commit was changed.

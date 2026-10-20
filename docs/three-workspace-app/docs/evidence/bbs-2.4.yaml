@@ -1,0 +1,77 @@
+date: '2026-10-18'
+repo: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/bbs-fs-1.20.1
+target_commit: 0085f77ced9232dc4e26ac51fc7d98f95d1d5b0b
+version_evidence: git show <commit>:gradle.properties -> mod_version=2.4, minecraft_version=1.20.1
+checkout_head_is_not_target: true
+checkout_head: 998c9d585427b4cf0061940496ae1f6a7df1bb03
+checkout_version: '2.7'
+files:
+- path: gradle.properties
+  sha256_git_blob_bytes: 12e15fa75b298bcae4641e70fa821f34c5c919bfa7f6af583884ddbd1e29699e
+- path: src/main/java/mchorse/bbs_mod/film/FilmManager.java
+  sha256_git_blob_bytes: 36706be62a8b0b716442d9b9ad61ff197af0a26a6a53632e12de4972365cf5e4
+- path: src/main/java/mchorse/bbs_mod/film/Film.java
+  sha256_git_blob_bytes: 1e0f360a87591176fef4a354c1a7a28f91e501de7b60aacc0d46ecab52dec669
+- path: src/main/java/mchorse/bbs_mod/film/replays/Replay.java
+  sha256_git_blob_bytes: afdc928a22b06e151405b671076b9f614936074e0774454a1e7199e4303b7fcb
+- path: src/main/java/mchorse/bbs_mod/film/replays/ReplayKeyframes.java
+  sha256_git_blob_bytes: 7d823ffad4fedbe65fcc2503ed0f77552020ae146f18e320510c89dbb01a35dd
+- path: src/main/java/mchorse/bbs_mod/film/replays/FormProperties.java
+  sha256_git_blob_bytes: 1ee6552c22b799b2de8ae2d1036c26a9ee9b31f0d057030a3c78d93ab623de24
+- path: src/main/java/mchorse/bbs_mod/film/replays/PerLimbService.java
+  sha256_git_blob_bytes: 0fc3bfbc623db85d88912e3a882af97cf43014558c0328f09a9ec6cb514122db
+- path: src/main/java/mchorse/bbs_mod/camera/clips/overwrite/KeyframeClip.java
+  sha256_git_blob_bytes: 372a20ef5827e2fc39dd4cbed9b25148964bcbbd1091879cb9ca986d3b40d8b4
+- path: src/main/java/mchorse/bbs_mod/forms/forms/ModelForm.java
+  sha256_git_blob_bytes: dbb558ae4ac5133d2060616a60cd5bf52bd035276745b32a05e0d8273086935e
+- path: src/main/java/mchorse/bbs_mod/data/storage/DataStorage.java
+  sha256_git_blob_bytes: f18a041ab2689f9d5e4f9d70b71ba79f769fa41be613ae9b8e8e8573b815ff1f
+- path: src/main/java/mchorse/bbs_mod/data/storage/DataGzipStorage.java
+  sha256_git_blob_bytes: 33e59f7323c1edcf6bf3d5dd99d4a3968789f2a9bacde3f9ebba1a4b73e9ae74
+- path: src/main/java/mchorse/bbs_mod/data/DataStorageContext.java
+  sha256_git_blob_bytes: 9e2439ce54f7f6e2b729b294a40ae0c9538a4c75f19fc8dc0aaf2e01049ceb3d
+- path: src/main/java/mchorse/bbs_mod/utils/keyframes/Keyframe.java
+  sha256_git_blob_bytes: 92ad292d501f1948e87423e75a18fd65a9af1b5a3222ff11b61188c58ff66a6e
+- path: src/main/java/mchorse/bbs_mod/utils/keyframes/KeyframeChannel.java
+  sha256_git_blob_bytes: 895247e20c2ac90b5c4ae647d5a2ce03c9313c0a40e54f020cae21deadbd120c
+- path: src/main/java/mchorse/bbs_mod/utils/keyframes/factories/KeyframeFactories.java
+  sha256_git_blob_bytes: b464a6ed572713c539e342ce52f5c735f46c230aefc648d438f1a6a7c8b55b86
+- path: src/main/java/mchorse/bbs_mod/utils/pose/PoseTransform.java
+  sha256_git_blob_bytes: 5c0350df438a06cb99d7d1f8278c61fd38249b3a2bca1f393323a9e3d49d2efc
+- path: src/client/java/mchorse/bbs_mod/cubic/model/ModelManager.java
+  sha256_git_blob_bytes: 3748fd852103a83cc51d7b4fd7b3336f43be68051aa2e31846d1ca5c556bf1a8
+- path: src/client/java/mchorse/bbs_mod/cubic/model/loaders/BOBJModelLoader.java
+  sha256_git_blob_bytes: 8206477ad6caaf433d7bba1679531e2c9b55b84fd3ea6517da8c54c18a5d3d8a
+- path: src/client/java/mchorse/bbs_mod/ui/film/replays/UIReplaysEditorUtils.java
+  sha256_git_blob_bytes: f5e5e397d15cc6a0f3153942e9d535eb13e1a52a1e4dc9883d8e60d3d770b049
+- path: src/main/java/mchorse/bbs_mod/utils/pose/Transform.java
+  sha256_git_blob_bytes: 76c9c950ec8438904ef7882906dc93a9c716eeae6f32a136b71b0089d2751c06
+- path: src/main/java/mchorse/bbs_mod/bobj/BOBJBone.java
+  sha256_git_blob_bytes: e47067064be7ed8519191c659e1a27b3d3df282a976cfdc3092100b438e70cf0
+- path: src/client/java/mchorse/bbs_mod/cubic/model/bobj/BOBJModel.java
+  sha256_git_blob_bytes: bb1ab44fe18522f8f88b1514a7dd270893cf9fa198329f42ca61375735b8af9a
+- path: src/main/java/mchorse/bbs_mod/camera/data/Angle.java
+  sha256_git_blob_bytes: 95c5c4c85247c424b30901d60c144aa52626492cfb7598ed9b272e739d7f7528
+- path: src/client/java/mchorse/bbs_mod/film/Recorder.java
+  sha256_git_blob_bytes: 382b56ca47372b8f377b4f3d91c3a8e6a3b5bba78c3b9a4374d2f4311bca9d75
+- path: src/client/java/mchorse/bbs_mod/film/BaseFilmController.java
+  sha256_git_blob_bytes: 828ff33ae0cf1da725bcf5f4cca6e082325690f9faf11f03c8d16da957161387
+bridge_root: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/BBS_FS_MCP_MERGED_024
+bridge_files:
+- path: bbs-mcp-addon/vendor/bbs-animation-bridge-0.2.0-mc1.20.1.jar
+  sha256: 8cd0167a3f255877273aabff8455a713dbd1a9d5f179e83bf3cc308b90342010
+- path: bbs-mcp-addon/src/main/java/local/bbsmerged/DraftEditor.java
+  sha256: a449ad2c6e872ff53693b2da411b97a901bc7f74f48423dceb095a9cae183a64
+- path: bbs-mcp-addon/src/test/java/local/bbsmerged/SmokeTest.java
+  sha256: 77638596b6f75f5ff68d227e150809586f1e6b163af8c48ccd22f6c007b6678c
+- path: bbs-mcp-server/src/services/manifest-importer.ts
+  sha256: f1114714ac848dc660dbc02eddbf44cbb2c7fd9a25a17efeb1446de8a3bbac5a
+- path: bbs-mcp-server/src/models/scene-manifest.ts
+  sha256: 486679032190affb55f07ad716f0f1f76ef99aedb483d9962bebf5094e8ff59a
+serializer_decision: Reuse pinned BbsCodec/FilmEditor through isolated Java17 worker, Python orchestration; stage only
+runtime_status: not-run
+limitations:
+- Vendor source unavailable; binary API pinned and existing SmokeTest is reuse evidence only
+- No new Film generation or game roundtrip in docs phase
+pose_profile: Portable editable v1 uses exported BOBJ model; local M=restLocal*TRS(delta), pose rotations ZYX radians, translation same units
+  as BOBJ rest matrix; values t,s,r,r2,fix,color,lighting. Cubic Blockbench degree semantics are not reused blindly.

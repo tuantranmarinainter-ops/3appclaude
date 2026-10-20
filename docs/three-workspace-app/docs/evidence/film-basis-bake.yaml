@@ -1,0 +1,35 @@
+checkpoint: DOC-053
+date: 2026-10-19
+acceptance: DATA-02
+status: implementation-added-focused-verification-passed
+scope:
+  basis: source-to-scene row-major orthonormal 3x3
+  supported_sources: [FBX, GLB]
+  flow: asset.import -> Film sampling -> unified CLI -> Blender BOBJ conversion -> pose bake
+implementation:
+  - "Film sampling retains the Character profile basis in converter input and passes it to pose baking."
+  - "film convert-model --basis validates and forwards nine basis values; Blender applies the basis to BOBJ geometry and rest matrices."
+  - "Pose baking applies the same basis to source rest-world matrices before deriving per-bone rest-relative tracks."
+  - "Same-source Film conversion cache keys include both unit scale and basis; conflicts fail closed."
+tests:
+  - command: "python -m unittest agent.test_film_model_converter agent.test_unified_cli -v"
+    result: "35/35 passed; Blender 4.2.3 generated and converted FBX/GLB fixtures; rotations and an allowed reflection matched expected BOBJ rest matrices, vertices and normals with consistent face orientation; malformed bases were rejected"
+  - command: "node --experimental-strip-types --test apps/studio/test/filmPoseBake.test.ts"
+    result: "7/7 passed, including animated nonidentity-basis bake and actor placement cancellation; temporary junction exposed cached Three.js"
+  - project_job_test: "filmExportJob.integration.test.ts passed 1/1 with Z-up import, two Characters, two camera cuts, Blender 4.2.3, Java 17, successful Film job and downloaded ZIP"
+  - typecheck: not-run
+  - browser_or_game: not-run
+source_sha256:
+  agent/film_model_converter.py: 011d22d7f09fb6571d573f90d76ba2f5809cba7793577d7de011f133f3561747
+  agent/test_film_model_converter.py: b44508e8a643a83bf2827885902eef3abde92c1051359e236f464beb891c1acb
+  agent/unified_cli.py: c9745803aa7a2c8834e519b77334c83f48c8d95c0ba46f414e39371cc46380ff
+  agent/test_unified_cli.py: aff20079bb2c422a16ee06d8e85db57c0400ac2c583a7e90368feadb8a4ea0ba
+  agent/film_worker/blender/convert_model.py: bf19ec60eb50a9e70386e4b0171a53a9a7cb8ed1302d6bfcffb52d5a4b19e72b
+  editor/apps/studio/src/filmPoseBake.ts: 46502650d627f4c30c1de2adaaaa6c3041504a10302424256e33c943517d12d9
+  editor/apps/studio/src/unifiedFilmSampling.ts: 3f19bfafafbe6a1be75a106836ad6f7c5d5c77d30508dcca9823d36e7533c882
+  editor/apps/studio/src/unifiedJobs.ts: 0f8c9b560c9dd5723d7bc2e68d0c77f159d55953044c0e796f97b6d53eb85be8
+  editor/apps/studio/test/filmPoseBake.test.ts: 5fd470a93dada9c9498b3a57aadb97f998f9bcce34bf91ef7e6e8abca84fa75a
+  editor/apps/studio/test/filmExportJob.integration.test.ts: 8f4a16c2452df03ed3e64fc1bb992a622a23ad33cbdea5b9d0fd43198cf5b032
+limitations:
+  - Browser export/visual inspection of transformed BOBJ geometry, Film Editor save/reopen and Minecraft playback remain unverified.
+  - Cross-version Three.js skin/material parity and root-trajectory browser behavior with nonidentity basis remain outside this checkpoint.

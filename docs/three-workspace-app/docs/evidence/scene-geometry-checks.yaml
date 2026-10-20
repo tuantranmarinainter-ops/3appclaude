@@ -1,0 +1,59 @@
+schema_version: '1'
+checkpoint: DOC-040
+listcode: '1.4.3'
+result: partial
+behavior:
+  - scene.evaluate accepts grounding, overlap and frustum check names and rejects unknown names.
+  - Grounding reports measured mesh bottom offset using the Topview 0.02 m tolerance; overlap reports pairwise world AABB gap/intersection; frustum uses the requested/active Topview camera.
+  - Referenced source assets are size/path/SHA verified before being copied into a temporary directory for the offline Chromium measurement; cleanup runs on success or failure.
+  - Evaluated frame transforms are applied after Topview timeline seek for both mesh measurement and frustum checks.
+  - Checks are read-only: sourceRevision and project history remain unchanged. Missing source/renderer returns CHECK_UNAVAILABLE; unmeasured geometry returns CHECK_PARTIAL and CHECK_GEOMETRY_UNAVAILABLE.
+  - checkDiagnostics returns renderer warnings and blocked external requests.
+fixture:
+  primitive_scene:
+    nodes: [box_a, box_b, box_c]
+    verifies:
+      - box_a_and_box_b_grounded
+      - box_c_penetrating_ground
+      - intersecting_and_separated_world_aabbs
+      - box_a_and_box_b_inside_camera_frustum
+      - no_project_revision_or_history_change
+    blocked_requests: 0
+  fbx:
+    id: FX-MIXAMO-PUNCH
+    enabled_with: BBS_TEST_MIXAMO_FBX
+    verifies:
+      - hash_verified_local_fbx_mesh_measurement
+      - read_only_revision
+      - missing_source_returns_CHECK_UNAVAILABLE
+automated_checks:
+  studio_scene_evaluate_and_asset_import: 14 passed; 0 failed; Punch Combo FBX enabled
+  director_cli: 28 passed; 0 failed
+  studio_typecheck: passed
+  studio_next_lint: passed; no ESLint warnings or errors
+  studio_next_build: failed before compile with the existing Windows AppData junction EPERM
+  studio_offline_smoke: not run because the production build did not complete
+  workspace_install: pnpm stopped before changes because it requested node_modules purge without a TTY; no purge was allowed
+runtime:
+  primitive_scene: Chromium/Playwright measurement completed; blockedRequests empty
+  renderer_warning: Mediabunny reported a duplicate-load advisory; geometry results and assertions passed
+not_verified:
+  - Animated FBX pose mesh bounds against the browser viewport at multiple frames
+  - Broad-format parity, mesh contact/occlusion, PNG/contact-sheet jobs, and full SCENE-03 acceptance
+  - Site, release, source workspace changes, commit, or Minecraft playback
+source_sha256:
+  three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts: F8B852009C1F3414C7F33D606EC5120BECBAB3004AF1FD774D6AB07461F14D43
+  three-workspace-app/editor/apps/studio/test/sceneEvaluateCommand.test.ts: F7B81FB43BEC29EC67105DD0B5BB61A089D010FD0521FDEFE4F0F2EDA9BCF54A
+  three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts: B0F3F8742472A56EE3A74EDE84653603725B02217EAD87ED56B5A7A052B576FE
+  three-workspace-app/editor/apps/studio/package.json: FCF2532EBA76D75BC77E7C6E286C65AF26AD3542D59AA8AB5D9C9973E7B37782
+  three-workspace-app/editor/apps/studio/next.config.mjs: 62D66F222370C8CCEB491E16602F8BF93AC456BD70BC3C864E76F511EBD256D0
+  three-workspace-app/editor/packages/director-cli/scene-checks.mjs: D7C1D0434A83C564F3F9BDF1DF9C51E344A4013A01527A62F20326152F8A7E71
+  three-workspace-app/editor/packages/director-cli/scene-checks.d.mts: B0983269BD239709EFADCA158CD0F35D83B3EF25FE8F65C12E1AE3FCF63D6AFD
+  three-workspace-app/editor/packages/director-cli/render.mjs: 7BB52DA15245F9A7B8AFE878B9D02B7A8AC97F5AFF831316990D206067287635
+  three-workspace-app/editor/packages/director-cli/static/headless.html: 29CA1D20A191ED5A6BDB8FBAAB0770D44013403E9BFF56CCBEB3E5DD56CDCADD
+  three-workspace-app/editor/packages/director-cli/evaluate.mjs: AABFDE640C24C1C485B51408968253AD0C2487B46588BE9E3B8363285FBE3D78
+  three-workspace-app/editor/packages/director-cli/playwright.mjs: 9E53B5FAB74437BC904C34FA503AE4984D52FE70D217FA84A284803AF781D8AB
+  three-workspace-app/editor/packages/director-cli/test/evaluate.test.mjs: 8222834FC587EB3265493E3C3021CB17F541CE48F23BB9991F191EBE03CD27EB
+  three-workspace-app/editor/packages/director-cli/test/playwright.test.mjs: AF1DE21384AA277D49A7D524ED54ED8D5B4DEDC38E6B1F5F7744EFD03BEF2300
+  three-workspace-app/editor/packages/director-cli/package.json: 768E3ECF0B817802BE2157F05457DABD59A3CB91BB472D66DBE856B025774E01
+  three-workspace-app/editor/pnpm-lock.yaml: 59F05D69EE26738A07527D160DBA85A5ABDCAB62C6E6F17093A91B9B6DD69DF0

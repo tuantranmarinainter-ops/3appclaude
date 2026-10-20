@@ -1,0 +1,32 @@
+checkpoint: DOC-060
+date: 2026-10-19
+scope: deterministic frame sampling through the existing V9.12 Mixamo65-to-Minecraft20 reverse solver
+implementation:
+  source: three-workspace-app/editor/packages/retarget/src/bake.ts
+  source_sha256: F551E341ADBF73DD8624ADF54BA2258B0C036D504CB0BA68913DF4BE1B1DBAA7
+  public_export: three-workspace-app/editor/packages/retarget/src/index.ts
+  test: three-workspace-app/editor/packages/retarget/test/bake.test.ts
+  test_sha256: 72AC3C0F7F832A4D86B0C039614A913A498B48FACBA620EC43841D6019647B51
+  behavior:
+    - inclusive target-frame range at 15, 24, or 30 fps
+    - source sampler receives exact frame time in seconds
+    - each sampled source pose is evaluated by the existing V9.12 solver
+    - invalid ranges, more than 18000 frames, and non-finite output are rejected
+    - return value is produced only after every frame succeeds
+verification:
+  node_tests:
+    command: node --experimental-strip-types --test packages/retarget/test/bake.test.ts packages/retarget/test/reverse.test.ts
+    passed: 5
+    failed: 0
+  typecheck:
+    command: node_modules/.bin/tsc --noEmit -p packages/retarget/tsconfig.json
+    passed: true
+  v9_12_armature:
+    bones: 20
+    changing_source_pose_produces_changing_target_pose: true
+limits:
+  - UI does not call the bake function yet; project/history storage and Motion placement are not connected.
+  - No native V9.12 frame-by-frame golden comparison, 85-action matrix, target-profile rest binding, feet/hands, or mesh rebind was run.
+  - Aggregate direct Node test invocation is incompatible with extensionless imports in the existing Studio and mapping suites; those suites were not counted as passing.
+source_workspaces_modified: false
+game_modified: false

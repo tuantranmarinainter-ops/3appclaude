@@ -1,0 +1,30 @@
+checkpoint: DOC-051
+date: 2026-10-19
+scope:
+  listcode: [1.2.2]
+  acceptance: DATA-02
+  summary: Verify world-transform-preserving reparent of a static primitive between rotated parents with different nonuniform scales.
+implementation:
+  operation: three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts#reparentStaticPrimitive
+  test: three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  behavior:
+    - Source and target groups both rotate 25 degrees around Z and have distinct nonuniform scales.
+    - The static child is reparented while its composed world matrix is checked elementwise against the original with tolerance 1e-6.
+    - The test also verifies parent-child references, Undo restoration and rejection of keyed nodes without advancing the project revision.
+checks:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedAssetImport.test.ts
+    cwd: three-workspace-app/editor
+    result: 11 passed, 0 failed, 1 optional Mixamo fixture skipped; includes reparent, world-matrix, Undo and keyed-node cases.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+  - command: node node_modules/eslint/bin/eslint.js apps/studio/test/unifiedAssetImport.test.ts
+    cwd: three-workspace-app/editor
+    result: passed.
+source_hashes:
+  unifiedProjectStore.ts: 2a2916ee73b8bf82b3453c2d0732df79836fe9ce9d04878749f3d72ed5c4fa30
+  unifiedAssetImport.test.ts: 66174d5f190dfd9458b2bbbae2cfd0f87e2d860a26f47add59451ac0cb8ecc12
+limits:
+  - This demonstrates only a representable static TRS case; the store deliberately rejects reparent operations that require a sheared local matrix.
+  - It does not verify the required general Z-up inverse conversion, model-unit adapter roundtrip, cross-version Three.js bridge, or skinned mesh/material parity from DATA-02.
+  - No original workspace, user project, Site, release or game installation was changed.

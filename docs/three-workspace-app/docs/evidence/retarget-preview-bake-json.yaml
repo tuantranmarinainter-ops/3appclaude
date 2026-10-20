@@ -1,0 +1,29 @@
+checkpoint: DOC-061
+date: 2026-10-19
+scope: Retarget Preview frame bake to downloadable Three.js AnimationClip JSON
+implementation:
+  - path: three-workspace-app/editor/packages/retarget/src/bake.ts
+    sha256: 112E32023A8DE63693E649A3C9BFEDF4B1AC3E60A300DEB9A5A08283B066590A
+  - path: three-workspace-app/editor/packages/retarget/src/index.ts
+    sha256: 5ABFED9A0FB32B8B56CBCCBA3D5FC92B661DF0F44CE7346291B97DEBE103DEAE
+  - path: three-workspace-app/editor/apps/studio/app/workbench/components/RetargetPreview.tsx
+    sha256: C645775D3D3ABB8149F5CA8779A7BD1EB9D5107C8F00BC354C5B2A0760E114BB
+test:
+  path: three-workspace-app/editor/packages/retarget/test/bake.test.ts
+  sha256: 35DC6556A8BC6AC5BBBA1823AD16B1A501E1D38E7992DD7EF20BAFB6DDB0BC3B
+  command: node --experimental-strip-types --test packages/retarget/test/bake.test.ts packages/retarget/test/reverse.test.ts
+  result: 6 passed, 0 failed
+  assertions:
+    - Exact inclusive frame sample times and invalid-range/frame rejection.
+    - V9.12 Minecraft20 output contains 20 finite bones and changes with source pose.
+    - Converted AnimationClip changes a Three.js Bone transform under AnimationMixer playback.
+    - A target bone name containing a period resolves to its exact bone in Three.js PropertyBinding.
+typecheck:
+  retarget: node_modules/.bin/tsc --noEmit -p packages/retarget/tsconfig.json
+  studio: node_modules/.bin/tsc --noEmit -p apps/studio/tsconfig.json
+  result: passed
+not_run:
+  - Browser interaction/WebGL preview bake and downloaded JSON loadback.
+  - Generated project Motion, immutable blob, history undo/redo and timeline playback.
+  - Target-profile rest/hierarchy parity, all BOBJ actions, native V9.12 golden parity and Minecraft playback.
+outcome: partial

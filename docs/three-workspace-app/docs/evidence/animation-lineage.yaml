@@ -1,0 +1,176 @@
+date: '2026-10-18'
+kind: static-source-artifact-correspondence
+source_root: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/sites/animation-studio-mdx-alpha-1318/work/material_alpha_v1_31_8/src
+artifact: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/outputs/Animation_Studio_v1_31_8.html
+artifact_sha256: 3cb0cc252128eac9d1ecc4cd59e01e5e01bc36cbfc201fef6e61d53d829c8684
+host_runtime_patch:
+  file: three-workspace-app/editor/apps/studio/public/animation-studio/v1.31.8/index.html
+  sha256: e682bc6fe8e477a6550eb7b1fe24af74d88b3c710e6e8833760b5a8c9d10e9c1
+  change: host-controlled pause/resume of the native requestAnimationFrame loop; pinned upstream artifact remains unchanged
+normalization: CRLF/LF; builder import aliases ./file.js -> @studio, Three/tween aliases; escape closing script; strip outer whitespace only
+modules:
+- file: smoothing_panel.js
+  alias: '@studio/smoothing-panel'
+  match: true
+  normalized_sha256: 064114cdf252aace3f6d7d4a6e5496b182226365bc9519fc9b7727226aad30eb
+- file: easing.js
+  alias: '@studio/easing'
+  match: true
+  normalized_sha256: 1a7d48bf0fad6524f270084110129644e8fdd71d966884d84b0a94411e16f0f0
+- file: easing_panel.js
+  alias: '@studio/easing-panel'
+  match: true
+  normalized_sha256: a71a38fc357c98553b5c55feeb5be8650742da47e68509cfa1fb55fb4e73d42b
+- file: skin_shape.js
+  alias: '@studio/skin-shape'
+  match: true
+  normalized_sha256: 6ec467caa7d2c2b413a9b29553e0cf0bfb284647f04e831392f4380be7565049
+- file: rig_kinematics.js
+  alias: '@studio/rig-kinematics'
+  match: true
+  normalized_sha256: 3c3ec8c5e87a9dff2179253d48f7749bcf9709d773964bcecdf370e3dba9b724
+- file: motion_lab.js
+  alias: '@studio/motion-lab'
+  match: true
+  normalized_sha256: d8eef98455377eebf6006ebf8b3dec6f06cc0ad9031aa055971b8b3a61e4dcd9
+- file: graph_curves.js
+  alias: '@studio/graph-curves'
+  match: true
+  normalized_sha256: 0319eb9dc1fd80d8d68eeb2bf6bd761b938fc1fd8a3da78ca78b625cfb3d4c43
+- file: motion_smoothing.js
+  alias: '@studio/motion-smoothing'
+  match: true
+  normalized_sha256: 17d996e3706614b8e0de406f64cfab8babfc85bc0c4f9e69232374d63262bd79
+- file: graph_editor.js
+  alias: '@studio/graph-editor'
+  match: true
+  normalized_sha256: adbc1c10e91c3adf05d2c5fa354c5d7d418750cab24794e7856784598065df29
+- file: joint_limits.js
+  alias: '@studio/joint-limits'
+  match: true
+  normalized_sha256: 8233808d616ac7aeb3198b344e96596392d698b7fba8b3196394eb7a658d0f09
+- file: core.js
+  alias: '@studio/core'
+  match: true
+  normalized_sha256: d25ed1e1ef1a23154b558e30e028598d0f7e1eea056b15e2060b85ce00ac778b
+- file: control_rig.js
+  alias: '@studio/control-rig'
+  match: true
+  normalized_sha256: d014cf8f0e43866cb2cb572b25e568e0160ce88cf445085f099a3df2802e3452
+- file: onion_skin.js
+  alias: '@studio/onion-skin'
+  match: true
+  normalized_sha256: 9da99cda49dc036c4777c7b99cd60dc9cb5794e8e6e983c1efc3bb8c629c12c6
+- file: viewport_display.js
+  alias: '@studio/viewport-display'
+  match: true
+  normalized_sha256: 30e22f506a96d2ff2e3d2c4216d3582cab60ef06324e001a7f1b7596bcf43e91
+- file: ground_environment.js
+  alias: '@studio/ground-environment'
+  match: true
+  normalized_sha256: f8b4719d03c5f51d1156304b6d4342d0b6b832879e9ccc03c0c66f885c8bb0de
+- file: viewport_toolbar.js
+  alias: '@studio/viewport-toolbar'
+  match: true
+  normalized_sha256: f6c8196d16f58defffba79550c77a05c39798d717fe2aeb0d62d39ce6eeb99e6
+- file: motion_panel.js
+  alias: '@studio/motion-panel'
+  match: true
+  normalized_sha256: 5429ce9fbd3c2c54d99b620f437205fd9ab7232a0e98194cb6c34860e118fb61
+- file: animation_export.js
+  alias: '@studio/animation-export'
+  match: true
+  normalized_sha256: bb529e1335a91357230e99776f3879fbffe1e7e78b6f4baa2f0163897673ffdb
+- file: fbx_loader_native.js
+  alias: '@studio/fbx-native'
+  match: true
+  normalized_sha256: f30a5cd93546f97edd169a45c6786ea34f7479c9d75bf3ab483612ae481ba9d4
+- file: bobj_loader.js
+  alias: '@studio/bobj-loader'
+  match: true
+  normalized_sha256: 67d8fd6748d274c0e09dabcc02b98b1743f2c94b5e25ed6ef6056555021da853
+- file: compare_space.js
+  alias: '@studio/compare-space'
+  match: true
+  normalized_sha256: f87b26c90c7874c4bd90722fd21a47de02fd7a2e507b47f15f8d148cfb7e412e
+- file: texture_assets.js
+  alias: '@studio/texture-assets'
+  match: true
+  normalized_sha256: caf4c955fe33654a35bf689dace875abaeb474987934ddee665504f87f8ac5a9
+- file: source_preview.js
+  alias: '@studio/source-preview'
+  match: true
+  normalized_sha256: 4414aef43be6ce3ee60a3755129faaab6f03a3262f0426042e387ba2f097f893
+- file: warcraft_loader.js
+  alias: '@studio/warcraft-loader'
+  match: true
+  normalized_sha256: b2321297f87763199e5526cf2aedfca79a01f3f8df91fb3c34943d271dcc2e92
+- file: league_loader.js
+  alias: '@studio/league-loader'
+  match: true
+  normalized_sha256: a76e1d48106a0d716f109a8f4d6c31feb8125f935c861f62f9d8ef2301657fac
+- file: bobj_export.js
+  alias: '@studio/bobj-export'
+  match: true
+  normalized_sha256: 786becc3b338fe841bb0ff40c31cf932a0c55f12ee348e1710d9dbc413dc23d2
+- file: warcraft_reforged.js
+  alias: '@studio/warcraft-reforged'
+  match: true
+  normalized_sha256: 8d7aeda17065570ea90fbfa59c07fea9a4ade76286f49fa80f8f10e4c801ac43
+- file: director_schema.js
+  alias: '@studio/director-schema'
+  match: true
+  normalized_sha256: 990ca9046caff77e0ed17001512639d7ad1ee3addf64ba935c1ed20e6ec93c14
+- file: animation_director.js
+  alias: '@studio/animation-director'
+  match: true
+  normalized_sha256: a86cc9e8c78cde74e62d01e9689fa884cf5026508ce54fa4b302d2f3a462c1dd
+- file: director_panel.js
+  alias: '@studio/director-panel'
+  match: true
+  normalized_sha256: 30132123001d774bb9a2cb79e4c1fb2fca25e1a5649f752f483b57bbfdfa5f52
+- file: studio_bridge.js
+  alias: '@studio/studio-bridge'
+  match: true
+  normalized_sha256: cb470f85430f5bfb1d195e127e87b654ec7c079307c26f3796ef693878171b17
+- file: scene_studio.js
+  alias: '@studio/scene-studio'
+  match: true
+  normalized_sha256: 1d3c4546321a56c0ff333a5461918907dff71754fffaa49e5d9028461047258a
+- file: scene_evaluator.js
+  alias: '@studio/scene-evaluator'
+  match: true
+  normalized_sha256: 813664dced4dc6ff585ba3c2c9e55d5070c9bb2c35dbdadf1b1d88de33ee6883
+- file: scene_package.js
+  alias: '@studio/scene-package'
+  match: true
+  normalized_sha256: bd779fead770f2ea711a987c85a68c1946d892ca2a614cf59a76ad63f2045f4d
+- file: scene_panel.js
+  alias: '@studio/scene-panel'
+  match: true
+  normalized_sha256: 6b522c6a7de1af3a9e532044058c67ad9019eff2a8c49527783581627e15b7e0
+app:
+  files:
+  - app.js
+  - workspace_ui.js
+  - quick_animation.js
+  - dual_editor.js
+  - director_controller.js
+  - scene_controller.js
+  embedded_element: studioModule type=text/plain
+  match: true
+  normalized_sha256: 3a27bc78275af9f206f7be05adc4aeb8f12e921c06502b32adcaec05ba4f0a8d
+styles:
+- file: style.css
+  embedded: true
+- file: workspace_ui.css
+  embedded: true
+supporting_files:
+- index.html
+- build.mjs
+- fetch-vendor.mjs
+- locale.txt
+limitations:
+- No product rebuild or runtime test
+- index template/vendor/license/sample reconstruction not compared byte-for-byte
+- package label1.31.5 and documented derivation1.31.7 remain metadata history; runtime JS/CSS correspondence confirmed

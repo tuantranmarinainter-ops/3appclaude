@@ -1,0 +1,36 @@
+{
+  "name": "@topview/3d-studio",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/copy-draco.cjs",
+    "dev": "next dev --hostname 127.0.0.1 --port 3002",
+    "prebuild": "node scripts/copy-draco.cjs",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3002",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "test:offline": "node scripts/offline-smoke.mjs",
+    "smoke:native-animation": "node scripts/native-animation-runtime-smoke.mjs",
+    "test:locales": "node scripts/check-locales.mjs"
+  },
+  "dependencies": {
+    "@bbs/animation-workspace-shared": "workspace:*",
+    "@bbs/retarget": "workspace:*",
+    "@topview/3d-builder": "workspace:*",
+    "@topview/3d-director-cli": "workspace:*",
+    "mediabunny": "^1.56.3",
+    "next": "15.1.9",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/three": "^0.184.0",
+    "playwright": "1.63.0",
+    "typescript": "5.3.3"
+  }
+}

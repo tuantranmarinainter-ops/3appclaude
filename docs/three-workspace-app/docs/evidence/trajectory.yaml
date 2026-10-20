@@ -1,0 +1,319 @@
+schema_version: '1'
+checkpoint: DOC-034
+run:
+  startedAt: '2026-10-18T12:29:39.927Z'
+  passed: true
+  projectId: 8180403c-6118-465f-bfab-14619d8f1288
+  nodeId: user_chr_u18lvl6i
+  clipId: user_mc_363c0ff3
+  browserVersion: 153.0.8010.12
+  viewport:
+  - 1600
+  - 1000
+  rig: direct
+  unit: 0.01
+  meshes: 2
+  renderFrames: 1
+  rootPolicy: trajectory
+  rootBoneName: mixamorigHips
+  rootPoses:
+  - position:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    rotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    restPosition:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    placement:
+    - 2
+    - 0
+    - 0
+  - position:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    rotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    restPosition:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRotation:
+    - 0.006458545995471647
+    - 0
+    - 0
+    - 0.9999791433743129
+    placement:
+    - 2
+    - 0
+    - 0
+  worldPoseMaxDelta: 6.625060056109078e-09
+  trajectory:
+  - root:
+    - 0.0071050373965366505
+    - 0.00046728165284370135
+    - 0.007021402384903693
+    - 0
+    - -0.00013270173504121888
+    - 0.0099850509789112
+    - -0.0005302331544344543
+    - 0
+    - -0.0070356828981508746
+    - 0.00028355741122411204
+    - 0.0071006169697574294
+    - 0
+    - 1.9937356382608413
+    - 0.8779237365722656
+    - 0.14888678550720216
+    - 0.9999999999999999
+    arm:
+    - 0.00841113123474233
+    - 0.0037062478490580866
+    - 0.003939111065940687
+    - 0
+    - -0.002921253764373715
+    - -0.0030162916731079443
+    - 0.009075696010922235
+    - 0
+    - 0.004551828978548385
+    - -0.008784401371718003
+    - -0.001454353071390137
+    - 0
+    - 1.8647990318103551
+    - 1.28727953386151
+    - 0.14328784285856339
+    - 0.9999999999999999
+    localRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    trajectory:
+    - 0.7105037396536651
+    - 0.04672816528437014
+    - 0.7021402384903693
+    - 0
+    - -0.00418119965623737
+    - 0.9980555308942073
+    - -0.06219063290332701
+    - 0
+    - -0.7036810026621374
+    - 0.04125088872543577
+    - 0.7093175668709822
+    - 0
+    - 0.009033058790091125
+    - -0.16343855449420894
+    - 0.20271100745884504
+    - 0.9999999999999999
+    placement:
+    - 2
+    - 0
+    - 0
+  - root:
+    - 0.005619343945259352
+    - -0.00024266482896923055
+    - 0.008268257821673095
+    - 0
+    - 0.0004589895961819942
+    - 0.009989443253559934
+    - -1.8762582513178014e-05
+    - 0
+    - -0.00825907392965299
+    - 0.0003900477723141209
+    - 0.00562454980952601
+    - 0
+    - 2.0178255629539485
+    - 0.8974632263183592
+    - 0.09832232475280761
+    - 0.9999999999999999
+    arm:
+    - 0.0004871570666290557
+    - 0.004004632407153295
+    - 0.009150169367344006
+    - 0
+    - -0.007739786643375653
+    - -0.005639210524968067
+    - 0.002880105918307434
+    - 0
+    - 0.0063133495536287975
+    - -0.007222342062563062
+    - 0.0028247819567824343
+    - 0
+    - 1.9633509616952567
+    - 1.2886106520498402
+    - -0.04114571836159239
+    - 0.9999999999999999
+    localRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    trajectory:
+    - 0.5619343945259353
+    - -0.024266482896923056
+    - 0.8268257821673096
+    - 0
+    - 0.056563229734189695
+    - 0.9983571700061412
+    - -0.009141232923732583
+    - 0
+    - -0.825245622400269
+    - 0.05190470985509885
+    - 0.5623838224949669
+    - 0
+    - -0.02832870578718684
+    - -0.14437919805712615
+    - 0.09911317691834373
+    - 0.9999999999999999
+    placement:
+    - 2
+    - 0
+    - 0
+  - root:
+    - 0.0071050373965366505
+    - 0.00046728165284370135
+    - 0.007021402384903693
+    - 0
+    - -0.00013270173504121888
+    - 0.0099850509789112
+    - -0.0005302331544344543
+    - 0
+    - -0.0070356828981508746
+    - 0.00028355741122411204
+    - 0.0071006169697574294
+    - 0
+    - 1.9937356382608413
+    - 0.8779237365722656
+    - 0.14888678550720216
+    - 0.9999999999999999
+    arm:
+    - 0.00841113123474233
+    - 0.0037062478490580866
+    - 0.003939111065940687
+    - 0
+    - -0.002921253764373715
+    - -0.0030162916731079443
+    - 0.009075696010922235
+    - 0
+    - 0.004551828978548385
+    - -0.008784401371718003
+    - -0.001454353071390137
+    - 0
+    - 1.8647990318103551
+    - 1.28727953386151
+    - 0.14328784285856339
+    - 0.9999999999999999
+    localRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    restRoot:
+    - -7.727290721959434e-06
+    - 104.27487182617188
+    - 1.5543158054351807
+    trajectory:
+    - 0.7105037396536651
+    - 0.04672816528437014
+    - 0.7021402384903693
+    - 0
+    - -0.00418119965623737
+    - 0.9980555308942073
+    - -0.06219063290332701
+    - 0
+    - -0.7036810026621374
+    - 0.04125088872543577
+    - 0.7093175668709822
+    - 0
+    - 0.009033058790091125
+    - -0.16343855449420894
+    - 0.20271100745884504
+    - 0.9999999999999999
+    placement:
+    - 2
+    - 0
+    - 0
+  poseMaxComponentDelta: 0.13502441868597026
+  checks:
+  - FBX source import
+  - shared Character
+  - trim/reverse placement
+  - binding edit
+  - WebGL skinned mesh
+  - animated bone pose
+  - in-place root translation and rotation
+  - actor placement unchanged
+  - Undo/Redo
+  - server-side clone
+  - reload
+  - trajectory/skeletal world pose parity
+  - backward seek
+  - trajectory reload
+  externalRequests: 0
+fixture:
+  id: FX-MIXAMO-PUNCH
+  sha256: acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb
+  permission: local-test-only
+artifacts:
+  report:
+    path: three-workspace-app/.test-runtime/browser/trajectory-report.json
+    sha256: 233cc5f9fd9c1913b06fe218c01f80286fec71383c795f309e19fc45af93b599
+  screenshot:
+    path: three-workspace-app/.test-runtime/browser/trajectory.png
+    sha256: d8c91ddcca74e5234e55644c541d2b536fe51aa4f5de6779d373878c8995f3df
+  builder_engine:
+    path: three-workspace-app/editor/packages/builder/dist/engine/index.js
+    sha256: 9c8dbfbbccb09090c036e199cd88e98b55af310184ba81a636a7918ceab4841f
+source_hashes:
+  three-workspace-app/editor/packages/builder/src/engine/objects/rootMotion.ts: 509fe2354091f3a20fa870c3da2c5096cbb66993fb47cc6c38e08043eea65a2c
+  three-workspace-app/editor/packages/builder/src/engine/objects/CharacterObject.ts: da191078ca304d1e82d00d8c54039f3880b553cd973ea649e917530385fd40e9
+  three-workspace-app/editor/packages/builder/src/engine/objects/applySnapshot.ts: 7a23013f9424a9bb0064b39df6e9106060dd9f5879628aba8c686a3efec9f77c
+  three-workspace-app/editor/packages/builder/src/engine/objects/types.ts: 8621f5b79428be2d238c864af2197356c9255c0b8b24887dc84276d162ba2627
+  three-workspace-app/editor/packages/builder/src/engine/__tests__/rootMotion.test.ts: a195fd7def281ea1e44734d5967c2d4a49e8e26dee55cd31bfc397bccc319b8f
+  three-workspace-app/editor/packages/builder/src/contract/types.ts: 4623f84d0b5ac443a10ef308078ef73de1ab937617d472bcf041cc8bbac06cee
+  three-workspace-app/editor/packages/builder/src/contract/validate.ts: 6fc11d8ce6a4cbd96498492341ef0821bcfc35c6b284ced3bf3bbde953701689
+  three-workspace-app/editor/packages/builder/src/evaluate/FrameSnapshot.ts: aef83575ab1a4d9bdd8e6e1661eed502a946aa54879d0765f847d983c70ef8de
+  three-workspace-app/editor/packages/builder/src/evaluate/evaluateFrame.ts: 32b22bd26904dab0a6e29acd03b6d71a376170e640efe1a320a78449604ce551
+  three-workspace-app/editor/packages/shared/src/index.ts: e1d94d8439cfd011b0331b895a70cc97b0ba09991780cda70a2f50bc231629ff
+  three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts: 15fafd55961422611231bee998cd6a65b9a37f8b54424288f3775bc3690bfbb1
+  three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx: 78d8243369cf9d40a2bec52b6639f9ae618fd51d1e32bae7ea7cae5a9d870370
+  three-workspace-app/editor/apps/studio/scripts/unified-smoke.mjs: 787909b8f42d2bef04df240019b0c715d4674731cc292befd13700ff04b58839
+  three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts: ab6ef298de40225e4dae14cf008213c49554745033eacce19abcca64b61bcd80
+verification:
+  builder: 93 files; 542/542; real FBX; golden unchanged
+  studio_shared_retarget: 37/37 with real FBX; expanded final import tests 12/12
+  checks: Builder build/finalize, source/test typechecks, Studio/shared typecheck
+    and targeted lint passed
+  python: Not rerun; unchanged by DOC-034
+limitations:
+- Imported same-profile direct rigs only. Non-direct Retarget output and native Animation
+  remain incomplete.
+- Trajectory origin/continue are implemented; general skeletal clip alignment is not
+  implemented. No fades.
+- Headless scene.evaluate returns authored placement/path transforms and SKELETON_EVALUATION_UNAVAILABLE;
+  root bake/export not connected.
+- Camera subject follow, trajectory gizmo/autosave interactions and full E2E Film/game
+  were not verified.
+- Conflicts are detected from explicit path derivedSource.motionClipId or motionId
+  provenance; identical numerical paths without provenance cannot be identified semantically.
+- Production Next AppData glob EPERM and earlier intermittent clone IO_FAILED cause
+  remain unresolved.

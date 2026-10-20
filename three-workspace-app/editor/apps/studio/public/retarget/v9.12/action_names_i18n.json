@@ -1,0 +1,354 @@
+{
+  "language_default": "vi",
+  "total_actions": 85,
+  "categories": {
+    "Base / other": 1,
+    "Base / interaction": 3,
+    "Base / locomotion": 14,
+    "Base / state": 3,
+    "Emote / gesture": 38,
+    "Dance candidate": 26
+  },
+  "actions": {
+    "Action": {
+      "en": "Action",
+      "vi": "Hành động mặc định"
+    },
+    "consume": {
+      "en": "Consume",
+      "vi": "Ăn / uống"
+    },
+    "crouching": {
+      "en": "Crouching",
+      "vi": "Cúi người"
+    },
+    "crouching_idle": {
+      "en": "Crouching Idle",
+      "vi": "Giữ tư thế cúi"
+    },
+    "dying": {
+      "en": "Dying",
+      "vi": "Chết"
+    },
+    "emote_am_stuff": {
+      "en": "I Am Stuff",
+      "vi": "Tôi là Stuff (I Am Stuff)"
+    },
+    "emote_best_mates": {
+      "en": "Best Mates",
+      "vi": "Bạn thân (Best Mates)"
+    },
+    "emote_bitchslap": {
+      "en": "Bitch Slap",
+      "vi": "Cú tát mạnh (Bitch Slap)"
+    },
+    "emote_boneless": {
+      "en": "Boneless",
+      "vi": "Không xương (Boneless)"
+    },
+    "emote_bongo_cat": {
+      "en": "Bongo Cat",
+      "vi": "Bongo Cat"
+    },
+    "emote_bow": {
+      "en": "Bow",
+      "vi": "Cúi chào"
+    },
+    "emote_boy": {
+      "en": "Boy!",
+      "vi": "Boy!"
+    },
+    "emote_breathtaking": {
+      "en": "Breathtaking",
+      "vi": "Tuyệt vời! (Breathtaking)"
+    },
+    "emote_calculated": {
+      "en": "Calculated",
+      "vi": "Đã tính toán (Calculated)"
+    },
+    "emote_chicken": {
+      "en": "Chicken",
+      "vi": "Điệu gà (Chicken)"
+    },
+    "emote_clapping": {
+      "en": "Clapping",
+      "vi": "Vỗ tay"
+    },
+    "emote_club": {
+      "en": "Club Dance",
+      "vi": "Điệu nhảy câu lạc bộ"
+    },
+    "emote_confused": {
+      "en": "Confused",
+      "vi": "Bối rối"
+    },
+    "emote_crying": {
+      "en": "Crying",
+      "vi": "Khóc"
+    },
+    "emote_dab": {
+      "en": "Dab",
+      "vi": "Dab"
+    },
+    "emote_default": {
+      "en": "Default Dance",
+      "vi": "Điệu nhảy mặc định"
+    },
+    "emote_disco_fever": {
+      "en": "Disco Fever",
+      "vi": "Cơn sốt Disco (Disco Fever)"
+    },
+    "emote_disgusted": {
+      "en": "Disgusted",
+      "vi": "Ghê tởm"
+    },
+    "emote_electro_shuffle": {
+      "en": "Electro Shuffle",
+      "vi": "Shuffle điện tử (Electro Shuffle)"
+    },
+    "emote_exhausted": {
+      "en": "Exhausted",
+      "vi": "Kiệt sức"
+    },
+    "emote_facepalm": {
+      "en": "Facepalm",
+      "vi": "Ôm mặt / Facepalm"
+    },
+    "emote_fist": {
+      "en": "Fist",
+      "vi": "Nắm đấm"
+    },
+    "emote_floss": {
+      "en": "Floss",
+      "vi": "Floss"
+    },
+    "emote_free_flow": {
+      "en": "Free Flow",
+      "vi": "Nhịp tự do (Free Flow)"
+    },
+    "emote_fresh": {
+      "en": "Fresh",
+      "vi": "Tươi mới (Fresh)"
+    },
+    "emote_gangnam_style": {
+      "en": "Gangnam Style",
+      "vi": "Gangnam Style"
+    },
+    "emote_get_funky": {
+      "en": "Get Funky",
+      "vi": "Quẩy lên (Get Funky)"
+    },
+    "emote_get_funky_IK": {
+      "en": "Get Funky (IK)",
+      "vi": "Quẩy lên (Get Funky, IK)"
+    },
+    "emote_hell_yeah": {
+      "en": "Hell Yeah!",
+      "vi": "Quá đã! (Hell Yeah!)"
+    },
+    "emote_hype": {
+      "en": "Hype",
+      "vi": "Phấn khích (Hype)"
+    },
+    "emote_infinite_dab": {
+      "en": "Infinite Dab",
+      "vi": "Dab vô tận"
+    },
+    "emote_laughing": {
+      "en": "Laughing",
+      "vi": "Cười"
+    },
+    "emote_no": {
+      "en": "No",
+      "vi": "Không"
+    },
+    "emote_nope": {
+      "en": "Nope",
+      "vi": "Không đời nào"
+    },
+    "emote_orange_justice": {
+      "en": "Orange Justice",
+      "vi": "Công lý Cam (Orange Justice)"
+    },
+    "emote_paranoid": {
+      "en": "Paranoid",
+      "vi": "Đa nghi / hoang tưởng"
+    },
+    "emote_pointing": {
+      "en": "Pointing",
+      "vi": "Chỉ tay"
+    },
+    "emote_popcorn": {
+      "en": "Popcorn",
+      "vi": "Ăn bỏng ngô"
+    },
+    "emote_punch": {
+      "en": "Punch",
+      "vi": "Đấm"
+    },
+    "emote_pure_salt": {
+      "en": "Pure Salt",
+      "vi": "Muối nguyên chất (Pure Salt)"
+    },
+    "emote_rock_paper_scissors": {
+      "en": "Rock Paper Scissors",
+      "vi": "Oẳn tù tì"
+    },
+    "emote_salute": {
+      "en": "Salute",
+      "vi": "Chào kiểu quân đội"
+    },
+    "emote_scared": {
+      "en": "Scared",
+      "vi": "Sợ hãi"
+    },
+    "emote_shimmer": {
+      "en": "Shimmer",
+      "vi": "Lấp lánh (Shimmer)"
+    },
+    "emote_shimmer_IK": {
+      "en": "Shimmer (IK)",
+      "vi": "Lấp lánh (Shimmer, IK)"
+    },
+    "emote_shrug": {
+      "en": "Shrug",
+      "vi": "Nhún vai"
+    },
+    "emote_skibidi": {
+      "en": "Skibidi",
+      "vi": "Skibidi"
+    },
+    "emote_slow_clap": {
+      "en": "Slow Clap",
+      "vi": "Vỗ tay chậm"
+    },
+    "emote_smug_dance_IK": {
+      "en": "Smug Dance (IK)",
+      "vi": "Điệu nhảy đắc ý (IK)"
+    },
+    "emote_smug_dance": {
+      "en": "Smug Dance",
+      "vi": "Điệu nhảy đắc ý"
+    },
+    "emote_sneeze": {
+      "en": "Sneeze",
+      "vi": "Hắt hơi"
+    },
+    "emote_squat_kick": {
+      "en": "Squat Kick",
+      "vi": "Đá chân ngồi xổm (Squat Kick)"
+    },
+    "emote_star_power": {
+      "en": "Star Power",
+      "vi": "Sức mạnh ngôi sao (Star Power)"
+    },
+    "emote_stick_bug": {
+      "en": "Stick Bug",
+      "vi": "Điệu bọ que (Stick Bug)"
+    },
+    "emote_t_pose": {
+      "en": "T-Pose",
+      "vi": "T-Pose"
+    },
+    "emote_tada": {
+      "en": "Ta-da!",
+      "vi": "Ta-da!"
+    },
+    "emote_take_the_l": {
+      "en": "Take the L",
+      "vi": "Nhận thua đi (Take the L)"
+    },
+    "emote_thinking": {
+      "en": "Thinking",
+      "vi": "Suy nghĩ"
+    },
+    "emote_threatening": {
+      "en": "Threatening",
+      "vi": "Đe dọa"
+    },
+    "emote_tidy": {
+      "en": "Tidy",
+      "vi": "Gọn gàng (Tidy)"
+    },
+    "emote_twerk": {
+      "en": "Twerk",
+      "vi": "Lắc hông (Twerk)"
+    },
+    "emote_wave": {
+      "en": "Wave",
+      "vi": "Vẫy tay"
+    },
+    "emote_woah": {
+      "en": "Woah",
+      "vi": "Động tác Woah"
+    },
+    "emote_yes": {
+      "en": "Yes",
+      "vi": "Đồng ý / Có"
+    },
+    "falling": {
+      "en": "Falling",
+      "vi": "Rơi"
+    },
+    "flying": {
+      "en": "Flying",
+      "vi": "Bay"
+    },
+    "flying_idle": {
+      "en": "Flying Idle",
+      "vi": "Lơ lửng khi bay"
+    },
+    "hurt": {
+      "en": "Hurt",
+      "vi": "Bị thương"
+    },
+    "idle": {
+      "en": "Idle",
+      "vi": "Đứng yên"
+    },
+    "jump": {
+      "en": "Jump",
+      "vi": "Nhảy"
+    },
+    "land": {
+      "en": "Land",
+      "vi": "Tiếp đất"
+    },
+    "riding": {
+      "en": "Riding",
+      "vi": "Đang cưỡi"
+    },
+    "riding_idle": {
+      "en": "Riding Idle",
+      "vi": "Ngồi yên khi cưỡi"
+    },
+    "running": {
+      "en": "Running",
+      "vi": "Chạy"
+    },
+    "shoot": {
+      "en": "Shoot",
+      "vi": "Bắn"
+    },
+    "sleeping": {
+      "en": "Sleeping",
+      "vi": "Ngủ"
+    },
+    "sprinting": {
+      "en": "Sprinting",
+      "vi": "Chạy nước rút"
+    },
+    "swimming": {
+      "en": "Swimming",
+      "vi": "Bơi"
+    },
+    "swimming_idle": {
+      "en": "Swimming Idle",
+      "vi": "Bơi tại chỗ"
+    },
+    "swipe": {
+      "en": "Swipe",
+      "vi": "Vung tay"
+    }
+  }
+}

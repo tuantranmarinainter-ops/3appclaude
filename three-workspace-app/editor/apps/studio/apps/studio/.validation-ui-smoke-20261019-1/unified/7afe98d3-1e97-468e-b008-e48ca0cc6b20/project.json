@@ -1,0 +1,190 @@
+{
+  "type": "three-workspace-project",
+  "version": 1,
+  "projectId": "7afe98d3-1e97-468e-b008-e48ca0cc6b20",
+  "name": "UI shell smoke",
+  "revision": 0,
+  "scene": {
+    "type": "biz/scene3d-director-document",
+    "pippitAssetId": "",
+    "extra": {
+      "customDraftName": "UI shell smoke",
+      "initialSeed": "default-character-v1"
+    },
+    "content": {
+      "version": 1,
+      "aspectRatio": "auto",
+      "activeShotCameraNodeId": "camera_1",
+      "environment": {
+        "background": {
+          "mode": "color",
+          "skyColor": "#0d0d0d"
+        },
+        "display": {
+          "characterLabelsVisible": true,
+          "groundVisible": true,
+          "groundHeight": 0,
+          "groundOpacity": 0.7
+        }
+      },
+      "asset": {
+        "motionPath": []
+      },
+      "nodes": [
+        {
+          "id": "camera_1",
+          "type": "camera",
+          "name": "Main Camera",
+          "visible": true,
+          "locked": false,
+          "transform": {
+            "position": {
+              "x": 0,
+              "y": 1.2,
+              "z": 5
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "scale": {
+              "x": 1,
+              "y": 1,
+              "z": 1
+            }
+          },
+          "camera": {
+            "projection": "perspective",
+            "fov": 50,
+            "fovAxis": "vertical",
+            "near": 0.1,
+            "far": 2000,
+            "isPrimary": true,
+            "lookAt": {
+              "x": 0,
+              "y": 1.2,
+              "z": 0
+            }
+          }
+        },
+        {
+          "id": "user_chr_7ilkk09l",
+          "type": "character",
+          "name": "Female_1",
+          "visible": true,
+          "locked": false,
+          "transform": {
+            "position": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "scale": {
+              "x": 1,
+              "y": 1,
+              "z": 1
+            }
+          },
+          "metadata": {
+            "modelUrl": "3d-builder/library/characters/a3d_char_30ec53c93eae4173946b38639691ebe0-d4ce3fb1.glb",
+            "assetId": "a3d_char_30ec53c93eae4173946b38639691ebe0",
+            "rig": "mixamorig"
+          },
+          "character": {
+            "placeholder": false,
+            "gender": "female",
+            "motionId": null,
+            "appearance": {
+              "color": "#bababa"
+            },
+            "label": {
+              "showLabel": true,
+              "scale": 1,
+              "yOffset": 0
+            },
+            "animation": {
+              "mode": "pose",
+              "posePresetId": "stand",
+              "controlValues": {
+                "bodyBend": 0,
+                "bodyTilt": 0,
+                "bodyTurn": 0,
+                "torsoBend": 2,
+                "torsoTilt": 0,
+                "torsoTurn": 0,
+                "headNod": -10,
+                "headTilt": 0,
+                "headTurn": 0,
+                "lArmRaise": -5,
+                "lArmStraddle": 12,
+                "lArmTurn": 0,
+                "lElbowBend": 15,
+                "rArmRaise": -5,
+                "rArmStraddle": 14,
+                "rArmTurn": 0,
+                "rElbowBend": 15,
+                "lLegRaise": 0,
+                "lLegStraddle": 0,
+                "lLegTurn": 0,
+                "lKneeBend": 0,
+                "rLegRaise": 0,
+                "rLegStraddle": 0,
+                "rLegTurn": 0,
+                "rKneeBend": 0
+              },
+              "rootPositionOffset": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          }
+        }
+      ],
+      "physicalConstraints": [],
+      "editorial": {
+        "version": 1,
+        "activeSequenceId": "sequence_1",
+        "sequences": [
+          {
+            "id": "sequence_1",
+            "clips": []
+          }
+        ]
+      },
+      "timeline": {
+        "version": 1,
+        "fps": 30,
+        "frameStart": 0,
+        "frameEnd": 300,
+        "usePreviewRange": false,
+        "animation": {
+          "fcurves": [],
+          "cameraMotionClips": [],
+          "motionTransitions": [],
+          "motionClips": [],
+          "pathMotionClips": []
+        }
+      }
+    }
+  },
+  "assets": {},
+  "characters": {},
+  "skeletons": {},
+  "mappings": {},
+  "motions": {},
+  "bindings": {},
+  "retargetSessions": {},
+  "extensions": {
+    "topview": {
+      "fcurves": null
+    }
+  },
+  "origins": []
+}

@@ -1,0 +1,88 @@
+checkpoint: DOC-058
+date: 2026-10-19
+scope: animated project Film export through integration and browser UI
+fixture:
+  type: generated FBX
+  source_sha256: 88135f34c6cadd03a61f85010eaa545b5502081128461d5d1a49096e9e0f4cd8
+  blender_profile:
+    bones: 2
+    actions: 1
+  characters: 2
+  sampled_pose_change_asserted_for_each_character: true
+  camera_sequence: film-e2e-sequence
+  camera_cuts:
+    - [0, 14]
+    - [15, 29]
+  frame_range: [0, 29]
+  duration_ticks: 20
+integration:
+  command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmExportJob.integration.test.ts
+  result: passed_1_of_1
+  test_file_sha256: c1d587f59baa184aa167b90d4b3c1e9079dd9761a84c58fd411c32e545632f1d
+  project_id: 4843f27c-33c0-4f0b-87e2-fc5c3a538af3
+  job_id: eb4f6e53-3979-48e3-92c2-f346e3e13ae4
+  source_revision: 6
+  archive:
+    name: film-e2e.zip
+    size_bytes: 5160
+    sha256: d123ef78f1c310283cbf2aca2916fe21157780f9ddfea69d849a704cee8f67fd
+browser:
+  browser: Chromium 153
+  studio: Next.js 15.1.9
+  url: http://127.0.0.1:3002
+  project_id: 4843f27c-33c0-4f0b-87e2-fc5c3a538af3
+  ui_action: Film panel export, both Character options selected
+  command:
+    type: film.export
+    request_id: ed4d5f61-daba-45cf-bceb-973f89433f02
+    source_revision: 6
+    character_ids:
+      - 06e8dd51-5a7a-4246-b8ad-dbfcc526ce2c
+      - b04398fc-6f2a-4529-be46-5880ff83bdec
+    sequence_id: film-e2e-sequence
+    range: [0, 29]
+    viewport_aspect: 1.7777777777777777
+    film_name: film-animated-browser
+  job:
+    id: 54d505fa-d6e0-4d75-84e5-660db1e1fd4e
+    state: succeeded
+    source_revision: 6
+    duration_ticks: 20
+    warnings: []
+    blocked_requests: []
+  saved_archive:
+    name: film-animated-browser.zip
+    size_bytes: 5194
+    sha256: 2ba233fb5a4fb5ad3aed22fff524696d2d6f2fc384cdb12f4cda00f4eada3abb
+    job_record_hash_matches: true
+    in_memory_saved_bytes_hash_matches: true
+    destination: in-memory FileSystemDirectoryHandle stub
+  page_errors: 0
+  external_requests: 0
+  failed_http_responses: 0
+checks:
+  model_conversion: passed
+  project_sampling_and_pose_change: passed
+  native_java_worker_job: passed
+  browser_ui_job_and_verified_save: passed
+  source_fixture_hash_unchanged: true
+  actual_os_directory_picker_and_disk_write: not_run
+  film_editor: not_run
+  minecraft_playback: not_run
+  live_mcp_host: not_run
+observed_nonblocking_dev_console_warnings:
+  investigated: false
+  items:
+  - CSS autoprefixer mixed-support warning at styles.css:770
+  - duplicate Mediabunny load warning
+cleanup:
+  server_port_3002: stopped
+  temporary_project_directories: removed
+  temporary_conversion_output: removed
+  custom_next_output: removed
+  smoke_harness: removed
+limits:
+  - Synthetic two-bone fixture with one action; not a production rig or broad compatibility result.
+  - Directory picker/write behavior used an in-memory stub, not an operating-system folder.
+  - This verifies export packaging and editable action data generation, not Film Editor behavior or in-game playback parity.
+  - No LISTCODE implementation status was promoted by this checkpoint.

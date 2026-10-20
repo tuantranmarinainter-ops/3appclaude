@@ -1,0 +1,44 @@
+checkpoint: DOC-045
+date: 2026-10-19
+scope:
+  listcode:
+    - 1.4.2
+    - 1.6.2
+    - 1.7.1
+    - 1.7.2
+  summary: Prepare immutable shared-project input by sampling selected Characters and an ordered camera sequence on the BBS 20 Hz grid.
+implementation:
+  sampler: three-workspace-app/editor/apps/studio/src/unifiedFilmSampling.ts
+  camera_conversion: three-workspace-app/editor/apps/studio/src/filmCamera.ts
+  integration_tests: three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  camera_tests: three-workspace-app/editor/apps/studio/test/filmCamera.test.ts
+  behavior:
+    - Hashes the selected project snapshot and verified model/motion dependencies; preserves the source revision.
+    - Reuses existing CPU SkeletonFrameSample and effective-world camera samplers; camera quaternions convert to BBS yaw/pitch/roll while preserving shot cuts.
+    - Checks project IDs, rig/profile/unit/basis, contiguous shot source ranges, perspective cameras, 20 Hz duration/cut boundaries, worker sample caps and memory budget before yielding converter input.
+    - Keeps all sampled matrices in the source Three.js coordinate convention; no BOBJ pose-track manifest is emitted.
+runtime:
+  fixture: Existing generated/imported Punch Combo FBX integration fixture; one Character, one camera shot, 30 editor frames at 30 FPS.
+  result: 21 actor samples and 21 camera samples cover ticks 0..20; terminal sample uses left boundary; project JSON stays unchanged. Two contiguous 15-frame shots retain outgoing-left and incoming-right cut records in separate camera clips.
+  model: Blender/BOBJ profile DOC-044 supplies a separate bind-matrix fixture; DOC-045 does not combine it with actor pose samples.
+checks:
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/unifiedAssetImport.test.ts
+    cwd: three-workspace-app/editor
+    result: 12 passed, 0 skipped, including Punch Combo FBX source import, project sampling, source revision/hash, immutable input, cut, validation and cancellation cases.
+  - command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmCamera.test.ts
+    cwd: three-workspace-app/editor
+    result: 11 passed, 0 skipped. Quaternion reconstruction checks Three forward/up/right over cardinal, tilted, rolled, pole and 100 generated rotations; boundary, cut, tick-grid, worker-limit and malformed-input cases pass.
+  - command: node node_modules/typescript/bin/tsc --noEmit -p apps/studio/tsconfig.json
+    cwd: three-workspace-app/editor
+    result: passed.
+source_hashes:
+  sampler: 42da202fd8d4f480059e5adc8f8e54251fe5b91b72350517e3dfaa7a85ceb5f5
+  camera_conversion: f4a4413baa1c8a980e53e856151215114569465cb775d481c82cffd4d6f27dd4
+  integration_tests: ecda04e316984d7fa7bdc28f856139252e35ff123861ceb7830a8f758356b0b2
+  camera_tests: 41e0896ea6406f67ab3a19521b7d4fd4c8f1f3ffc8092ef7207840d5489b4540
+limits:
+  - Output is internal film-sampling-input, not the Film worker manifest; converter does not yet bake BOBJ rest-relative pose_transform channels.
+  - No converter/worker process, persisted conversion job, broker command, UI, CLI or MCP Film export path is connected.
+  - Supports direct FBX/GLB Characters with imported scene basis, perspective cameras and ordered contiguous source shots. It rejects multi-shot discontinuous source ranges and unresolved library poses.
+  - Does not confirm BBS Film Editor reopen/edit/save, camera framing, Minecraft playback, broad third-party model parity or user acceptance.
+  - No source Animation Studio, Retarget or Topview workspace was modified; no game, Site, release or commit was produced.

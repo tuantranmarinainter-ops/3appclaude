@@ -1,0 +1,78 @@
+schema_version: '1'
+date: '2026-10-20'
+checkpoint: DOC-116
+scope: Workspace01 universal retarget solver regression, Character C Assignment isolation, and compatibility checks
+changes:
+  - file: ../../../../three-workspace-app/editor/packages/retarget/src/universal.ts
+    result: Local-chain quaternion conjugation now computes with an immutable calibration frame; local rotation deltas no longer collapse to identity.
+  - file: ../../../../three-workspace-app/editor/packages/retarget/test/universal.test.ts
+    result: Regression assertion includes actual/expected quaternions; two source hierarchies retarget into canonical65; pinned GLB resolves from the test module URL.
+  - file: ../../../../three-workspace-app/editor/packages/retarget/test/catalog85.test.ts
+    result: Legacy catalogue inputs resolve from the test module URL instead of process working directory.
+  - file: ../../../../three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+    result: Host job integration creates Character A/B/C, assigns the derivative only to C, preserves source Motion, and verifies A/B receive no binding.
+checks:
+  retarget:
+    command: node tsx-cli --test all packages/retarget/test/*.test.ts from packages/retarget
+    result: PASS
+    passed: 59
+    failed: 0
+  studio_normalization_import:
+    command: node tsx --test apps/studio/test/unifiedAssetImport.test.ts apps/studio/test/mappedSkinOwners.test.ts apps/studio/test/modelRebindUtils.test.ts apps/studio/test/normalizationPreviewUtils.test.ts apps/studio/test/skeletonMappingCommand.test.ts
+    result: PASS_WITH_SKIP
+    passed: 33
+    skipped: 1
+    failed: 0
+  python_cli_mcp:
+    command: python -m unittest agent.test_unified_cli agent.test_unified_mcp
+    result: PASS
+    passed: 47
+    failed: 0
+  builder_evaluate:
+    command: pnpm test:evaluate
+    result: PASS_WITH_SKIP
+    passed: 557
+    skipped: 1
+    failed: 0
+  typecheck_targeted:
+    result: PASS
+    packages:
+      - '@bbs/retarget'
+      - '@topview/3d-studio'
+  lint_and_locales:
+    command: pnpm lint
+    result: PASS
+  workspace_typecheck:
+    command: pnpm typecheck
+    result: PASS_ON_SEQUENTIAL_RERUN
+    details: First attempt overlapped with Builder's clean dist build and raced generated declarations; serial rerun after the build passed all five workspace typechecks.
+  production_build:
+    command: pnpm build
+    result: BLOCKED
+    details: Builder build passes; Studio Next build fails with EPERM scandir on C:\Users\Administrator\AppData\Local\Application Data.
+  offline_smoke:
+    command: pnpm --filter @topview/3d-studio test:offline
+    result: NOT_VALID_RUN
+    details: Started concurrently before a production build existed; failed because .next had no production build ID. Retry only after a successful Studio build.
+  dev_demo_server:
+    result: UNVERIFIED
+    details: Port 3118 was already occupied; health request timed out and a second server was not started to avoid disrupting the existing process.
+runtime:
+  cc_ue_external_fixture_files_found: 0
+  local_builtin_canonical_glb_count: 4
+  local_project_fbx_candidate:
+    import: parsed
+    observed_profile_family: custom-preserved
+    acceptance: NOT_COUNTED_AS_MIXAMO_OR_EXTERNAL_RIG_FIXTURE
+  external_rig_import: NOT_RUN
+  browser_webgl: NOT_RUN
+  game: NOT_RUN_BY_USER_REQUEST
+  multi_topology_synthetic_tests: PASS
+  canonical_mixamo65_topology_fixture: PASS
+  legacy_animation_catalogue_85: PASS
+  minecraft20_mapping_bake: PASS
+acceptance:
+  workspace01_tasks_completed: 0
+  workspace01_gates_accepted: 0
+  total_workspace01_gates: 8
+  note: Code/test fixes are partial evidence only; do not count as real-source runtime or user acceptance.

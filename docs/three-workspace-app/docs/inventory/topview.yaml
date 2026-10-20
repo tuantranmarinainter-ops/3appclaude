@@ -1,0 +1,642 @@
+schema_version: '1'
+inventory_id: '1.5'
+name: Topview 3D Builder v0.1.8
+source_id: '1.5'
+checkout_status: complete; tag v0.1.8 resolves to commit 631c08c8fd352b4ff83df33aa9a74a4563f4674b
+checkout_root: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8
+package_root: C:/Users/Administrator/AppData/Local/uv/cache/archive-v0/lIxZ5ah1gSSvldDA/topview_3d_cli
+hash_manifest: topview-cli-sha256.yaml
+module_path_base: The 1.5.1–1.5.5 Python file paths are relative to package_root; editor/ and repository paths are relative to checkout_root
+repository_tracked_file_count: 929
+technology:
+  cli: Python >=3.11, jsonschema
+  editor: TypeScript 5.3.3, React 18, Next.js 15.1.9, Three.js 0.184
+  builder_package: '@topview/3d-builder 1.0.12; React component/library with document, engine, evaluation, editor UI and exports'
+  local_renderer: Node.js >=20.6, Playwright/Chromium; packaged or workspace renderer
+  source_match: All 26 cached Python/schema files match v0.1.8 checkout after CRLF/LF normalization
+status_vocabulary:
+  implementation:
+  - complete
+  - incomplete
+  - needs-repair
+  - unknown
+  verification:
+  - source-mapped
+  - tests-present-not-run
+  - runtime
+  - user-accepted
+  - unknown
+modules:
+- id: 1.5.1
+  name: Director project/document contract
+  source_base: package_root; all 26 package Python/schema files match checkout content after newline normalization
+  files:
+  - director_document.py
+  - director_operations.py
+  - director_static.py
+  - director_geometry.py
+  - director_camera_view.py
+  - contracts/director-v1/schema/director-document.schema.json
+  - contracts/director-v1/schema/fcurves-compact-v1.schema.json
+  responsibilities:
+  - normalize and validate scene documents
+  - camera/character/prop/group nodes
+  - atomic versioned operations
+  - timeline fcurves and scene sequence
+  inputs:
+  - scene project
+  - validated operations
+  outputs:
+  - authoritative entities and derived document/fcurves views
+  - scene revision/sequence
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - agent/topview_3d_cli/tests/test_director_document.py
+  - agent/topview_3d_cli/tests/test_director_operations.py
+  - agent/topview_3d_cli/tests/test_director_static.py
+  evidence: Package code reviewed; cached source lacks tests; upstream test suite unavailable
+  merge_action: Primary candidate for retaining scene document/operation semantics; add app-level adapter after full source audit
+  source_module_key: topview:1.5.1
+  target_ids: &id001
+  - 1.2.2
+  - 1.2.3
+  - 1.2.4
+  - 1.6.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id001
+  module: Director project/document contract
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.2
+  name: Local CLI and project file persistence
+  source_base: package_root; matching source files are under checkout_root/agent/topview_3d_cli/
+  files:
+  - local_cli.py
+  - local_project.py
+  - local_read.py
+  - local_edit.py
+  - local_errors.py
+  responsibilities:
+  - init/open/status/adopt
+  - document read/validate/apply
+  - CLI dispatch and JSON contracts
+  - single-writer project store and stale sequence checks
+  inputs:
+  - project directory
+  - JSON command/spec from stdin or file
+  outputs:
+  - JSON response and exit code
+  - atomic project updates
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - agent/topview_3d_cli/tests/test_local_cli.py
+  - agent/topview_3d_cli/tests/test_packaging.py
+  - agent/topview_3d_cli/tests/test_local_references.py
+  evidence: Code and CLI contract available; package dependencies unavailable in base Python (`jsonschema` import failed)
+  merge_action: Retain CLI contracts or wrap as a separate process; do not introduce a second writer to project files
+  source_module_key: topview:1.5.2
+  target_ids: &id002
+  - 1.6.1
+  - 1.6.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id002
+  module: Local CLI and project file persistence
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.3
+  name: Assets, catalog and import
+  source_base: package_root for Python; checkout_root for builtin-assets/
+  files:
+  - local_assets.py
+  - local_catalog.py
+  responsibilities:
+  - built-in/project asset manifest
+  - search/show/import models and poses
+  - local asset paths and validation
+  inputs:
+  - asset manifest and FBX/GLB or pose files
+  outputs:
+  - project asset entries and resolved local files
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - agent/topview_3d_cli/tests/test_local_assets.py
+  - agent/topview_3d_cli/tests/test_packaging.py
+  evidence: Package code available; asset test provenance/rights unreviewed
+  merge_action: Reuse manifest/pipeline semantics after inspecting full upstream assets and licenses
+  source_module_key: topview:1.5.3
+  target_ids: &id003
+  - 1.4.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id003
+  module: Assets, catalog and import
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.4
+  name: Scene authoring, poses and render checks
+  source_base: package_root for Python; checkout_root/editor/packages/builder/src/ for TS/TSX
+  files:
+  - node_batch.py
+  - node_runtime.py
+  - local_inspect.py
+  - local_generation.py
+  responsibilities:
+  - atomic node and pose batches
+  - scene numerical evaluation
+  - framing/ground/overlap checks
+  - generation records
+  inputs:
+  - scene graph
+  - camera and pose operations
+  - frame list
+  outputs:
+  - evaluated scene
+  - measurements and warnings
+  - provenance records
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - agent/topview_3d_cli/tests/test_local_edit_inspect.py
+  - agent/topview_3d_cli/tests/test_local_references.py
+  - agent/topview_3d_cli/tests/test_bom.py
+  - agent/topview_3d_cli/tests/test_local_generation.py
+  evidence: Package code reviewed; UI gesture behavior not observed
+  merge_action: Preserve operation/error semantics and add CharacterID/asset adapter; type UI contract when editor source arrives
+  source_module_key: topview:1.5.4
+  target_ids: &id004
+  - 1.4.1
+  - 1.4.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id004
+  module: Scene authoring, poses and render checks
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.5
+  name: Camera, render and Studio runtime
+  source_base: package_root; editor renderer sources are described under 1.5.6/1.5.9
+  files:
+  - local_render.py
+  - renderer.py
+  - local_studio.py
+  - runtime.py
+  - local_bom.py
+  - bom.py
+  responsibilities:
+  - multi-camera frame render
+  - browser/runtime startup
+  - build-of-materials checkpoint
+  - render evidence and hashes
+  inputs:
+  - project, camera ID, frame, render dimensions
+  outputs:
+  - PNG frames/contact sheet, render metadata, Studio URL
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - agent/topview_3d_cli/tests/test_runtime.py
+  - agent/topview_3d_cli/tests/test_node_runtime.py
+  - agent/topview_3d_cli/tests/test_local_reads.py
+  - agent/topview_3d_cli/tests/test_bom.py
+  evidence: CLI reference inspected; package render not run in this documentation task
+  merge_action: Keep local render/CLI boundary; map camera shots and evidence into shared project
+  source_module_key: topview:1.5.5
+  target_ids: &id005
+  - 1.4.2
+  - 1.4.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id005
+  module: Camera, render and Studio runtime
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.6
+  name: Packaged JavaScript renderer and runtime selection
+  files:
+  - agent/topview_3d_cli/runtime.py
+  - agent/topview_3d_cli/renderer.py
+  - editor/packages/director-cli/
+  responsibilities:
+  - select packaged/workspace renderer
+  - Playwright and Chromium orchestration
+  - headless scene evaluation/render and mesh measurement
+  inputs:
+  - director document/fcurves and local assets
+  - frame/camera render request
+  outputs:
+  - offline rendered frames, measurements and structured result
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - editor/packages/director-cli/test/
+  - agent/topview_3d_cli/tests/test_runtime.py
+  - agent/topview_3d_cli/tests/test_packaging.py
+  evidence: Source and tests present in pinned checkout; no suite/runtime was run
+  merge_action: Preserve offline render boundary; installed _runtime bundle is a packaged artifact in local cache, not tracked TypeScript source
+  source_module_key: topview:1.5.6
+  target_ids: &id006
+  - 1.4.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id006
+  module: Packaged JavaScript renderer and runtime selection
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.7
+  name: Next.js/React Studio application and local APIs
+  files:
+  - editor/apps/studio/app/
+  - editor/apps/studio/src/
+  - editor/apps/studio/package.json
+  - editor/apps/studio/scripts/
+  responsibilities:
+  - project/draft workbench and Studio launch
+  - draft/project/fcurves APIs
+  - local asset APIs/search
+  - Topview Canvas callbacks
+  - locale preferences and app shell
+  inputs:
+  - local project/draft IDs
+  - asset requests
+  - Studio session/canvas callbacks
+  outputs:
+  - workbench UI and editor launch
+  - local project/draft/asset API responses
+  implementation: unknown
+  verification: tests-present-not-run
+  entrypoints:
+  - editor/apps/studio/app/page.tsx
+  - editor/apps/studio/app/workbench/WorkbenchClient.tsx
+  - editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - editor/apps/studio/src/localProjects.ts
+  - editor/apps/studio/src/draftStore.ts
+  - editor/apps/studio/src/localAssets.ts
+  api_routes:
+  - editor/apps/studio/app/api/drafts/
+  - editor/apps/studio/app/api/projects/
+  - editor/apps/studio/app/api/local-assets/
+  - editor/apps/studio/app/api/topview-canvas/
+  tests:
+  - editor/apps/studio/src/canvasPlacement.test.ts
+  - editor/apps/studio/scripts/offline-smoke.mjs
+  - editor/apps/studio/scripts/check-locales.mjs
+  key_symbols:
+  - file: editor/apps/studio/app/workbench/WorkbenchClient.tsx
+    symbols:
+    - WorkbenchClient
+  - file: editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+    symbols:
+    - StudioOverlay
+  - file: editor/apps/studio/src/localProjects.ts
+    symbols:
+    - projectStateDir
+    - projectId
+    - projectRoots
+    - listProjects
+    - projectSummaries
+  - file: editor/apps/studio/src/draftStore.ts
+    symbols:
+    - isValidDraftId
+    - summarizeDraft
+    - listUserDrafts
+    - readDraft
+  - file: editor/apps/studio/src/localAssets.ts
+    symbols:
+    - LOCAL_ASSET_ROUTE
+    - LocalAssetKind
+    - LocalAsset
+    - builtinAssetRoot
+    - normalizeKey
+  symbol_coverage: Representative entrypoints only; not a complete per-file/component inventory
+  merge_action: Use as React/Next shell baseline; add the requested shared feature tree/workspaces without replacing project semantics
+  source_module_key: topview:1.5.7
+  target_ids: &id007
+  - 1.1.1
+  - 1.1.3
+  - 1.4.1
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id007
+  module: Next.js/React Studio application and local APIs
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.8
+  name: Embeddable Three.js director editor and domain package
+  files:
+  - editor/packages/builder/src/
+  - editor/packages/builder/package.json
+  - editor/packages/builder/schema/
+  responsibilities:
+  - React viewport/timeline/film/inspector/library UI
+  - Three.js scene engine, camera, interaction, rig/pose and playback
+  - document commands/history and MobX store
+  - camera/clip/path/curve evaluation
+  - schema/validation, locale and host bridge
+  - GLB/video/render export paths
+  inputs:
+  - DirectorDocument and fcurves
+  - host asset/motion resolution
+  - user edits and staged commands
+  outputs:
+  - editable Three.js scene, versioned document operations, evaluated frames and export/render results
+  directories:
+  - src/components/ (157 tracked files)
+  - src/engine/ (102)
+  - src/evaluate/ (52)
+  - src/sync/ (25)
+  - src/locale/ (25)
+  - src/document/ (15)
+  - src/contract/ (9)
+  - src/data/ (6)
+  - src/stores/ (5)
+  - src/bridge/ (5)
+  - src/host/ (3)
+  - src/styles/ (17)
+  - src/headless/
+  public_entrypoints:
+  - src/index.ts
+  - src/DirectorStudio.tsx
+  - src/evaluate/index.ts
+  - src/engine/index.ts
+  - src/headless/index.ts
+  key_symbols:
+  - file: editor/packages/builder/src/DirectorStudio.tsx
+    symbols:
+    - DirectorStudioProps
+    - DirectorStudio
+    - DEFAULT_AUTO_SAVE_INTERVAL_MS
+  - file: editor/packages/builder/src/engine/index.ts
+    symbols:
+    - Stage
+    - DirectorEngine
+    - loadDocument
+    - AssetLoader
+    - makeOffscreenRenderer
+    - renderExportFrame
+    - exportFramePng
+  - file: editor/packages/builder/src/document/DirectorDoc.ts
+    symbols:
+    - DirectorDoc
+  - file: editor/packages/builder/src/document/History.ts
+    symbols:
+    - History
+    - MAX_HISTORY
+    - MERGE_WINDOW_MS
+  - file: editor/packages/builder/src/evaluate/index.ts
+    symbols:
+    - evaluateFrame
+    - sceneFromDocument
+    - FCurveSet
+    - bakeCameraMotionClip
+    - evaluatePathMotion
+    - createSequence
+    - insertEditClip
+    - moveEditClip
+    - parseDirectorDocument
+    - applyStudioIntent
+  - file: editor/packages/builder/src/engine/FilmPlaybackController.ts
+    symbols:
+    - FilmPlaybackController
+  - file: editor/packages/builder/src/sync/DocumentSync.ts
+    symbols:
+    - DocumentSync
+  - file: editor/packages/builder/src/sync/filmWorkspace.ts
+    symbols:
+    - FilmWorkspace
+    - filmClipDuration
+    - canPlayFilm
+  symbol_coverage: Representative public/internal entrypoints only; the 434-file package and all 87 test files are not mapped symbol-by-symbol
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files: 87 source test files; document history, engine/interaction, evaluate/golden, locale and sync coverage
+  merge_action: Primary scene editor reuse candidate. Preserve @topview/3d-builder API/schema; extend through adapters after compatibility tests
+  source_module_key: topview:1.5.8
+  target_ids: &id008
+  - 1.4.1
+  - 1.4.2
+  - 1.4.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id008
+  module: Embeddable Three.js director editor and domain package
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+- id: 1.5.9
+  name: Node director CLI and headless renderer package
+  files:
+  - editor/packages/director-cli/cli.mjs
+  - editor/packages/director-cli/render.mjs
+  - editor/packages/director-cli/evaluate.mjs
+  - editor/packages/director-cli/browser.mjs
+  - editor/packages/director-cli/static/
+  responsibilities:
+  - headless evaluate/render commands
+  - Playwright browser setup
+  - camera/pose mesh measurement
+  - runtime staging
+  inputs:
+  - project document/fcurves
+  - evaluation or render request
+  outputs:
+  - JSON checks, rendered frames and mesh measurements
+  implementation: unknown
+  verification: tests-present-not-run
+  test_files:
+  - editor/packages/director-cli/test/apply-intent.test.mjs
+  - editor/packages/director-cli/test/edit-sequence.test.mjs
+  - editor/packages/director-cli/test/evaluate.test.mjs
+  - editor/packages/director-cli/test/mediaUrl.test.mjs
+  - editor/packages/director-cli/test/render-output.test.mjs
+  merge_action: Reuse with Python CLI only behind one writer/command contract; avoid duplicate renderer processes
+  source_module_key: topview:1.5.9
+  target_ids: &id009
+  - 1.4.3
+  code_presence: present
+  legacy_implementation_label: complete
+  user_acceptance: unknown
+  runtime_verification_this_phase: not-run
+  status_reason: Source present and historical reports mapped; full behavior of merged app not implemented or accepted. Prior completeness label
+    retained only as provenance.
+  parent_id: '1.5'
+  parent_source_module_key: topview:1.5
+  children: []
+  spec: ../features/scene-workspace.md
+  listcode_ids: *id009
+  module: Node director CLI and headless renderer package
+  folder: Resolve files against source_root/source_file/checkout_root or package_root as declared above
+  depends_on: []
+  dependency_note: Boundary dependencies in spec/source-index; no full static callgraph claimed
+  callers: Native app entrypoint and source modules; integration callers mapped in development.yaml
+  tests_this_phase: Documentation/reference/hash checks only; native regression reports retain original version/date
+available_cli_capabilities:
+- project init/status/adopt
+- document get/validate/apply
+- node batch/delete
+- pose catalog/apply/batch
+- evaluate
+- inspect nodes/views
+- render and renders list/show
+- asset list/search/show/import
+- generation records
+- BOM checkpoint
+- doctor
+- Studio open
+supporting_areas:
+  tests:
+    python_cli: 16 pytest modules under agent/topview_3d_cli/tests; fixtures include local project and operation JSON
+    builder: 87 test files under editor/packages/builder/src; package script test:evaluate uses Vitest
+    studio:
+    - canvasPlacement.test.ts
+    - scripts/offline-smoke.mjs
+    - scripts/check-locales.mjs
+    director_cli: 5 node:test files under editor/packages/director-cli/test
+    status: Source test map inspected; no suites run in this documentation task
+  assets:
+    directory: builtin-assets/
+    contents:
+    - 4 built-in characters
+    - 121 pose assets and 121 cover images
+    - 5 primitives
+    - manifest.json
+    - LICENSE
+    - NOTICE
+    license: Code Apache-2.0; built-in assets CC-BY-4.0; fonts/vendor files require per-file notice review
+    motion_library: No built-in motion library in this version; unavailable motion emits warning and retains base pose/fcurves
+  packaged_runtime_artifact:
+    path: C:/Users/Administrator/AppData/Local/uv/cache/archive-v0/lIxZ5ah1gSSvldDA/topview_3d_cli/_runtime
+    status: Present in installed package cache; packaged/generated artifact, not tracked TypeScript source
+    verification: Not run; excluded from Python/schema hash manifest
+  package_scripts:
+    editor:
+    - pnpm build
+    - pnpm typecheck
+    - pnpm lint
+    - pnpm test:evaluate
+    studio:
+    - build
+    - typecheck
+    - test:offline
+    - test:locales
+    python:
+    - pytest (optional test extra)
+    - topview-3d-cli doctor
+    director_cli:
+    - node --test test/*.test.mjs
+  license_files:
+  - LICENSE
+  - NOTICE
+  - agent/LICENSE
+  - agent/LICENSE-ASSETS
+  - agent/NOTICE
+  - builtin-assets/LICENSE
+  - builtin-assets/NOTICE
+repository_tree:
+  tracked_files: 929
+  agent: 57
+  studio_app: 75
+  builder_package: 434
+  director_cli_package: 22
+  builtin_assets: 249
+  TypeScript: 352
+  TSX: 106
+  Python: 47
+known_limits:
+- Supported local model import is GLB/GLTF; this is not a scene FBX exporter
+- No built-in motion library; animation authoring and retargeting remain separate workspace responsibilities
+- CLI requires a single writer; no cross-process lock is taken, so concurrent writers to one project are unsupported
+- Installed Python/schema package matches tag content after newline normalization; browser rendering and Studio UI were not run here
+id_namespace: source-module; id kept for historical references, never compare to target IDs without target_ids
+source_key: topview

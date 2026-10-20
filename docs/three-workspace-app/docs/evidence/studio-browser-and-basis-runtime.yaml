@@ -1,0 +1,76 @@
+checkpoint: DOC-055
+date: 2026-10-19
+scope:
+  - offline Studio browser smoke
+  - Film export panel empty-project behavior
+  - asset.import persistence of source-to-scene basis
+  - Builder sceneBasisMatrix runtime exports
+environment:
+  browser: Chromium 153.0.8010.12
+  server: Next.js 15.1.9 development server on loopback
+  dependencies: temporary junctions to the existing local pnpm store; no package install completed
+results:
+  offline_browser_smoke:
+    status: passed
+    observations:
+      characters: 2
+      pose_search_hits: 28
+      external_requests: 0
+      draft_cleanup: passed
+  film_panel:
+    status: passed
+    observations:
+      blank_project_character_options: 0
+      export_button_disabled: true
+      default_name_tracks_project_name: true
+      page_errors: 0
+      external_requests: 0
+    limit: "Panel empty-state only; no successful Film job was started through the browser."
+  z_up_asset_import:
+    status: passed
+    fixture: generated two-bone FBX, removed after test
+    endpoint: asset.import
+    authenticated: true
+    bone_count: 2
+    persisted_basis: [1, 0, 0, 0, 0, 1, 0, -1, 0]
+    asset_created: true
+    project_cleanup: passed
+  scene_basis_runtime:
+    status: passed
+    checks:
+      - ESM export exists
+      - CJS export exists
+      - source Y-up vector maps to scene Z-up as expected
+      - malformed basis rejected
+    packaging_change:
+      kind: manual local dist synchronization
+      files:
+        - three-workspace-app/editor/packages/builder/dist/evaluate/sceneBasis.mjs
+        - three-workspace-app/editor/packages/builder/dist/evaluate/sceneBasis.js
+        - three-workspace-app/editor/packages/builder/dist/evaluate/index.mjs
+        - three-workspace-app/editor/packages/builder/dist/evaluate/index.js
+        - three-workspace-app/editor/packages/builder/dist/evaluate/index.d.mts
+        - three-workspace-app/editor/packages/builder/dist/evaluate/index.d.ts
+      source_already_present: three-workspace-app/editor/packages/builder/src/evaluate/sceneBasis.ts
+      note: "The package source already implemented sceneBasisMatrix, while the local-copy dist exports were stale. Cached TypeScript transpileModule was used; this does not establish a successful tsup package build."
+verification_limits:
+  package_build: "not passed; tsup could not load the cached esbuild JavaScript module"
+  typecheck: not-run
+  film_browser_job: not-run
+  film_editor: not-run
+  live_mcp_host: not-run
+  minecraft_playback: not-run
+warnings:
+  - "Autoprefixer mixed-support CSS warning at styles.css:770; not investigated."
+  - "Mediabunny loaded twice warning under temporary dependency links; not investigated."
+cleanup:
+  dev_server_stopped: true
+  temporary_app_junctions_removed: true
+  smoke_output_directories_removed: true
+  temporary_dist_backup_removed: true
+  local_pnpm_store_preserved: true
+  next_dev_output_assessed: false
+scope_confirmed:
+  original_animation_retarget_topview_workspaces_changed: false
+  release_or_site_changed: false
+  game_run: false

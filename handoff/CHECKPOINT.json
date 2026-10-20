@@ -1,0 +1,159 @@
+{
+  "type": "workspace01-source-handoff",
+  "captured_at": "2026-10-19T22:28:14.875417+00:00",
+  "source_checkpoint": "DOC-116",
+  "code_modified_during_packaging": false,
+  "package_kind": "source_snapshot_with_shared_app_dependencies_not_standalone_release",
+  "progress": {
+    "remaining_tasks_total": 17,
+    "code_and_check_tasks": 15,
+    "fixture_runtime_tasks": 2,
+    "completed_remaining_tasks": 0,
+    "accepted_gates": 0,
+    "total_gates": 8
+  },
+  "packaging_test": {
+    "name": "local chain composition",
+    "passed": 1,
+    "failed": 0
+  },
+  "historical_checks_source": "docs/three-workspace-app/docs/evidence/workspace01-doc116-validation.yaml",
+  "tasks": [
+    {
+      "id": "1.3.4.1.1",
+      "name": "Khóa fixture thật và reference",
+      "phase": "P4",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "external_fixture_and_reference",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.2.1",
+      "name": "Identity và chọn skeleton",
+      "phase": "P0",
+      "implementation": "partial_identity_and_multi_skeleton_import_selection",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.2.2",
+      "name": "Capability, losses và budget",
+      "phase": "P0",
+      "implementation": "partial_action_import_diagnostics_and_bake_budget",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.2.3",
+      "name": "Preview mesh và review sai lệch",
+      "phase": "P4",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.3.1",
+      "name": "Calibration reference pose và persistence",
+      "phase": "P1",
+      "implementation": "partial_universal_reference_calibration_persistence_preview",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.3.2",
+      "name": "Chain local composition",
+      "phase": "P1",
+      "implementation": "partial_solver_regression_fixed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.3.3",
+      "name": "Proportion và end-effector constraints",
+      "phase": "P2",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.3.4",
+      "name": "Gợi ý mapping hierarchy và geometry",
+      "phase": "P1",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.4.1",
+      "name": "Fit rig65 theo model nguồn",
+      "phase": "P3",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.4.2",
+      "name": "Exclusion policy và animated skin loss",
+      "phase": "P3",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.5.1",
+      "name": "Action range batch và channel policy",
+      "phase": "P2",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.5.2",
+      "name": "Quality report độc lập và roundtrip",
+      "phase": "P2",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.6.1",
+      "name": "Assignment add/replace và isolation",
+      "phase": "P2",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.7.1",
+      "name": "Model gửi Scene atomic",
+      "phase": "P3",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.7.2",
+      "name": "Export reimport và material fidelity",
+      "phase": "P3",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "extend",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.8.1",
+      "name": "Khôi phục gate kiểm tra code",
+      "phase": "P0",
+      "implementation": "partial_builder_layer_and_test_runner_fixed_next_build_blocked",
+      "work_type": "repair_checks",
+      "runtime_acceptance": "not_run"
+    },
+    {
+      "id": "1.3.4.8.2",
+      "name": "Runtime đa nguồn và nghiệm thu",
+      "phase": "P4",
+      "implementation": "remaining_scope_not_completed",
+      "work_type": "runtime_acceptance",
+      "runtime_acceptance": "not_run"
+    }
+  ]
+}

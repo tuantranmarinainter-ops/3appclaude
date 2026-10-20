@@ -1,0 +1,91 @@
+checkpoint: DOC-059
+date: 2026-10-19
+scope: Punch Combo 65-bone Film export through integration pipeline and browser UI
+fixture:
+  source_path: three-workspace-app/.test-runtime/browser/projects/112cf5a6-5c39-4853-9c8e-6d65175194ba/originals/acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb/Punch Combo.fbx
+  source_sha256: acd9e347686dfabda0a3cac3207885d96f466795753882284f3b4ddfb29fabeb
+  size_bytes: 1916352
+  converter_profile:
+    blender: 5.1.2
+    bones: 65
+    actions: 1
+    texture_required: false
+  source_read_only: true
+  source_hash_after_tests_matches: true
+project:
+  characters: 2
+  frame_range: [0, 29]
+  camera_sequence: film-e2e-sequence
+  camera_cuts:
+    - [0, 14]
+    - [15, 29]
+  duration_ticks: 20
+integration:
+  command: node --import ./packages/builder/node_modules/tsx/dist/loader.mjs --test apps/studio/test/filmExportJob.integration.test.ts
+  result: passed_1_of_1
+  test_file_sha256: c1d587f59baa184aa167b90d4b3c1e9079dd9761a84c58fd411c32e545632f1d
+  project_id: 69a82b7d-bccf-4e47-9831-8ff476bf2cdd
+  job_id: 5ba32428-d4b9-4e75-a289-c922c94f03ba
+  source_revision: 6
+  archive:
+    name: film-e2e.zip
+    size_bytes: 1286591
+    sha256: b87fabf8c37232a30cc717d8407d64d53278cf7cdbefa8f2550c76727fc656e1
+browser:
+  browser: Chromium 153
+  studio: Next.js 15.1.9
+  url: http://127.0.0.1:3002
+  project_id: 69a82b7d-bccf-4e47-9831-8ff476bf2cdd
+  character_ids:
+    - 873012a9-29a7-45d3-a145-ccdc22e10945
+    - c591584d-b356-4bd9-b67d-cd04caa36ec6
+  command:
+    type: film.export
+    request_id: c5830d77-edf8-44ad-bef0-e53bda744ba6
+    source_revision: 6
+    sequence_id: film-e2e-sequence
+    range: [0, 29]
+    viewport_aspect: 1.7777777777777777
+    film_name: film-punchcombo-browser
+  job:
+    id: a7270753-2ed4-424f-80e0-41284fd6afbc
+    state: succeeded
+    source_revision: 6
+    duration_ticks: 20
+    warnings: []
+    blocked_requests: []
+  saved_archive:
+    name: film-punchcombo-browser.zip
+    size_bytes: 1286590
+    sha256: 998be98134bfefae234b96f405a4a77a6b0608ad49ef33853c461ff0c636300c
+    job_record_hash_matches: true
+    in_memory_saved_bytes_hash_matches: true
+    destination: in-memory FileSystemDirectoryHandle stub
+  page_errors: 0
+  external_requests: 0
+  failed_http_responses: 0
+checks:
+  converter_profile: passed_65_bones_1_action
+  integration_sampling_and_native_worker_zip: passed
+  browser_ui_job_and_verified_save: passed
+  fixture_hash_unchanged: true
+  actual_os_directory_picker_and_disk_write: not_run
+  film_editor: not_run
+  minecraft_playback: not_run
+  live_mcp_host: not_run
+observed_nonblocking_dev_console_warnings:
+  investigated: false
+  items:
+    - CSS autoprefixer mixed-support warning at styles.css:770
+    - duplicate Mediabunny load warning
+cleanup:
+  server_port_3002: stopped
+  isolated_project_data: removed
+  custom_next_output: removed
+  smoke_harness: removed
+  converter_profile_output: removed
+limits:
+  - This fixture is a 65-bone/one-action test FBX; it does not establish arbitrary production-rig compatibility.
+  - The browser directory picker and disk write used an in-memory stub.
+  - No Film Editor acceptance, live MCP host, or Minecraft playback was run.
+  - No LISTCODE implementation status was promoted by this checkpoint.

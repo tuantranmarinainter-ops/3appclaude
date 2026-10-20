@@ -1,0 +1,1600 @@
+schema_version: '1'
+namespace: target-listcode
+status: implementation-started; phase-C subset; verification pending
+parents: ../ARCHITECTURE.yaml for1.*; LISTCODE section2 for2.*
+source_namespaces: animation:<legacy-id>, retarget:<legacy-id>, topview:<legacy-id>; numbers alone not equivalent
+modules:
+- id: 1.1.1
+  parent_id: '1.1'
+  name: Shell React/Topview
+  description: Topview shell lacks three-workspace selection
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - project snapshot/session
+  outputs:
+  - workbench and one active viewport
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.5
+  source_modules:
+  - animation:1.1.1
+  - retarget:1.3.6
+  - topview:1.5.7
+  code_reference: three-workspace-app/agent/film_model_converter.py, agent/film_worker/blender/convert_model.py, agent/film_worker/vendor/blender_bobj/bbsfix/; three-workspace-app/agent/test_film_model_converter.py; source-index.yaml + source inventory for original format handlers
+  implementation_status: partial
+  status_reason: Shell/Scene UI and dev HTTP route exist; browser interaction and acceptance remain unverified.
+  verification:
+    source_presence: mapped
+    automated: studio-typecheck; targeted-eslint; dev-workbench-route
+    runtime: dev-http-route; browser-hydration-not-run
+    user_acceptance: not-recorded
+  merge_action: reuse-host+new-shell
+  reuse_rationale: Topview shell lacks three-workspace selection
+  spec: ../features/workspace-integration.md
+  listcode: ../../LISTCODE#1.1.1
+  phase: C
+  acceptance:
+  - UI-01
+  - UI-02
+  affected_ids:
+  - 1.1.2
+  - 1.1.3
+  ui:
+    panel_id: shell
+    workspace: shared
+    label: Shell React/Topview
+    keywords:
+    - shell
+    - react/topview
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/WorkbenchClient.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+- id: 1.1.2
+  parent_id: '1.1'
+  name: Cây tìm kiếm chức năng
+  description: No unified feature registry exists
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - feature manifest/query/locale
+  outputs:
+  - search tree/panel focus
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.1.1
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Search now folds Vietnamese diacritics, matches workspace feature IDs/keywords, and supports tree keyboard navigation; leaf-to-panel routing and browser acceptance remain incomplete.
+  verification:
+    source_presence: mapped
+    automated: studio-typecheck; targeted-eslint; workspaceNavigation.test.ts
+    runtime: dev-http-route; browser-hydration-not-run
+    user_acceptance: not-recorded
+  merge_action: new
+  reuse_rationale: No unified feature registry exists
+  spec: ../features/feature-navigation.md
+  listcode: ../../LISTCODE#1.1.2
+  phase: C
+  acceptance:
+  - NAV-01
+  affected_ids: []
+  ui:
+    panel_id: feature-tree
+    workspace: shared
+    label: Cây tìm kiếm chức năng
+    keywords:
+    - cây
+    - tìm
+    - kiếm
+    - chức
+    - năng
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - three-workspace-app/editor/apps/studio/src/workspaceNavigation.ts
+  - three-workspace-app/editor/apps/studio/src/workspaceNavigation.test.ts
+- id: 1.1.3
+  parent_id: '1.1'
+  name: Chuyển ba workspace
+  description: Three apps have separate lifecycles
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - workspace+selection+draft
+  outputs:
+  - same project and preserved state
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.1.1
+  - 1.2.5
+  source_modules:
+  - animation:1.1.1
+  - topview:1.5.7
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Scene uses Topview editor; Retarget and Animation are placeholders.
+  verification:
+    source_presence: mapped
+    automated: not-run-this-phase
+    runtime: not-run
+    user_acceptance: not-recorded
+  merge_action: adapter
+  reuse_rationale: Three apps have separate lifecycles
+  spec: ../features/workspace-integration.md
+  listcode: ../../LISTCODE#1.1.3
+  phase: C-D
+  acceptance:
+  - UI-01
+  - HISTORY-01
+  affected_ids:
+  - 1.4.1
+  - 1.5.1
+  - '2.2'
+  ui:
+    panel_id: workspace-switcher
+    workspace: shared
+    label: Chuyển ba workspace
+    keywords:
+    - chuyển
+    - ba
+    - workspace
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+- id: 1.2.1
+  parent_id: '1.2'
+  name: Asset Character Skeleton
+  description: Native identities differ
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - asset bytes/rig rest+hierarchy
+  outputs:
+  - Assets/Characters/Profiles/IDs
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on: []
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "FBX source meshes now become model Assets plus Motion records with the same source profile; Character and Prop preserve skin/material groups and explicit unit/format metadata. Legacy source-only FBX can upgrade on reimport. Broader asset formats and native skeleton adapters remain incomplete."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow; DOC-055 authenticated asset.import smoke passed for a generated two-bone Z-up FBX and persisted basis. Not full browser/format acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: new-contract+reuse-native-fingerprint
+  reuse_rationale: Native identities differ
+  spec: ../features/shared-project-contract.md
+  listcode: ../../LISTCODE#1.2.1
+  phase: C
+  acceptance:
+  - DATA-01
+  - RIG-01
+  affected_ids:
+  - 1.2.2
+  - 1.2.3
+  - 1.2.6
+  - 1.3.1
+  - 1.4.1
+  - 1.5.1
+  - 1.6.2
+  ui:
+    panel_id: asset-profile
+    workspace: shared
+    label: Asset Character Skeleton
+    keywords:
+    - asset
+    - character
+    - skeleton
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/shared/src/index.ts
+  - three-workspace-app/editor/packages/shared/test/projectValidation.test.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - three-workspace-app/editor/apps/studio/app/api/unified/uploads/route.ts
+  - three-workspace-app/editor/apps/studio/app/api/unified/projects/[id]/assets/[assetId]/[variant]/route.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+- id: 1.2.2
+  parent_id: '1.2'
+  name: Scene Graph Transform
+  description: Animation Z-up differs from scene Y-up
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - native basis/unit/transform
+  outputs:
+  - Topview scene nodes+inverse mapping
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.1
+  source_modules:
+  - topview:1.5.1
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "DOC-052 adds finite orthonormal source-to-scene basis persistence and one-time adapters for imported Character, Prop and CPU skeleton models; DOC-053 carries the same basis through Film BOBJ conversion and pose bake. Static primitive reparent preserves world transforms for covered representable parents. Browser root-trajectory basis, cross-version object/skin/material parity, shear-producing reparent cases and full acceptance remain incomplete."
+  verification:
+    source_presence: mapped
+    automated: "DOC-053: Blender 4.2.3 FBX/GLB fixtures verify rotation/reflection bases across BOBJ rest matrices, vertices, normals and face orientation; converter/Python CLI tests 35/35; isolated pose-bake suite 7/7; basis-enabled two-Character/two-shot Film export job passed 1/1 with Java 17 and downloaded ZIP. DOC-052: basis point/inverse 2/2, imported Character/Prop 3/3, shared project validation 6/6 and focused Studio asset-import/Prop regressions 6/6 passed through temporary Node harnesses using cached modules. The integration check caught/fixed duplicate CPU basis application. Standard Studio typechecks and broader suite remain unrun because workspace dependency links are incomplete and offline pnpm lacks supply-chain metadata. DOC-051 prior result: unifiedAssetImport 11 passed/1 optional skip; Studio TypeScript/ESLint pass. Full DATA-02 adapter matrix remains incomplete."
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-topview+axis-adapter
+  reuse_rationale: Animation Z-up differs from scene Y-up
+  spec: ../features/shared-project-contract.md
+  listcode: ../../LISTCODE#1.2.2
+  phase: C-D1
+  acceptance:
+  - DATA-02
+  affected_ids:
+  - 1.2.3
+  - 1.2.4
+  - 1.2.6
+  - 1.4.1
+  ui:
+    panel_id: transform
+    workspace: shared
+    label: Scene Graph Transform
+    keywords:
+    - scene
+    - graph
+    - transform
+    requires:
+    - project-open
+    - selected-node
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/shared/src/index.ts
+  - three-workspace-app/editor/packages/shared/test/projectValidation.test.ts
+  - three-workspace-app/editor/apps/studio/src/LocalHostAdapter.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - ../evidence/scene-parent-transform.yaml
+- id: 1.2.3
+  parent_id: '1.2'
+  name: Timeline Motion Root
+  description: Timelines and root ownership differ
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - native motion/edit/placement/root policy
+  outputs:
+  - evaluated pose/root delta
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.1
+  - 1.2.2
+  source_modules:
+  - animation:1.1.4
+  - topview:1.5.1
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Same-profile FBX mesh or motion Assets support source-window/reverse/speed/loop placement and binding edits under shared history. Actual browser pose changes and reload verified. Root-motion/alignment/fade evaluation and different-rig retarget remain incomplete."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-evaluators+binding
+  reuse_rationale: Timelines and root ownership differ
+  spec: ../features/shared-project-contract.md
+  listcode: ../../LISTCODE#1.2.3
+  phase: C-D2
+  acceptance:
+  - DATA-03
+  affected_ids:
+  - 1.2.6
+  - 1.3.1
+  - 1.5.2
+  - 1.6.2
+  ui:
+    panel_id: motion-binding
+    workspace: shared
+    label: Timeline Motion Root
+    keywords:
+    - timeline
+    - motion
+    - root
+    requires:
+    - project-open
+    - motion
+    - character
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/shared/src/index.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - three-workspace-app/editor/packages/builder/src/engine/io/AssetLoader.ts
+  doc033_evidence: "DOC-033: in-place cho FBX direct rig qua motion.binding.set và form Sửa clip; root translation/quaternion về rest theo SkeletonProfile, giữ limb animation, unit và actor placement. Native rootMotion/inPlace và shared binding được ghi cùng transaction; validation chặn sai bone/policy/rig và document.replace xóa policy. Builder 93 files/539 tests; Studio/shared/Retarget 37/37 với FBX thật; build/typechecks/targeted lint đạt. Browser Chromium153 xác nhận root rest tại frame30/40, actor(2,0,0), tay đổi pose, Undo/Redo, clone/reload và 0 external requests. Trajectory/alignment/fades, cross-rig bake, native Animation và Film/game chưa hoàn tất; clone500 ngắt quãng và production build EPERM chưa sửa."
+  doc033_report: ../evidence/root-motion.yaml
+  doc034_evidence: "DOC-034: trajectory cho imported direct FBX tách root translation/rotation sang motionRoot dưới actor; placement/path authored không bị ghi đè. Native interpolants và rest/unit hierarchy được tái sử dụng. Loop tích lũy cả góc xoay, reverse/trim/speed giữ fractional time, origin dùng anchor nguồn và continue nối end-exclusive endpoint clip trước; seek/gap không dựa frame đã render. Shared binding/native metadata cùng revision/history; provenance path trùng nguồn trả ROOT_MOTION_CONFLICT; overlap và loop count vượt precision bị chặn. 93 file/542 Builder test; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Browser FBX thật đạt skeletal→trajectory world-matrix parity, max delta6.625060056109078e-9, seek lùi/reload và0 external requests. Chưa có headless root bake/export, general skeletal alignment, fades, khác-rig bake, native Animation hay Film/game acceptance; camera follow và gizmo/autosave trajectory chưa kiểm. Clone500/production EPERM chưa sửa."
+  doc034_report: ../evidence/trajectory.yaml
+  doc035_evidence: "DOC-035: scene.evaluate đọc asset đã kiểm SHA/path và trả skeletonSamples CPU gồm đủ bone local pose/world matrices, placementMatrix, trajectoryMatrix, actorWorldMatrix và metersPerUnit. Dùng chung buildCharacterRig, CharacterAnimator/MotionPlayer và root sampler với browser; entrypoint /skeleton riêng không kéo renderer/MediaBunny. Native model/motion templates không bị sửa; đọc không đổi revision/history. Browser/API đối chiếu65 bone FBX thật đạt max world-matrix delta4.440892098500626e-16. Builder94 files/544 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Thiếu source, texture/compression không decode được, rig không hỗ trợ hoặc library pose chưa nạp trả issue rõ ràng; loader chặn tài nguyên ngoài. Còn thiếu range bake/export, native Animation, Retarget khác rig, geometry checks/render và Film/game; production EPERM/clone500 chưa sửa."
+  doc035_report: ../evidence/headless-skeleton.yaml
+  doc036_evidence: "DOC-036: sampler CPU stream range inclusive sang grid20Hz + một endpoint left; 3s@30 cho61 mẫu, đoạn1s cho21. Endpoint chọn clip trước tại cut, loop/reverse không wrap về pose đầu; trajectory/path cùng ownership, trim/speed/fractional time giữ nguyên. Host chọn CharacterID tường minh, preflight source một lần và dispose trong finally; không tạo artifact sản phẩm/job. API/range nay áp saved user keys như browser mặc định. Range FBX thật phát hiện pose reset làm hỏng64 alias; applyPose bỏ qua alias và stopAll dừng cả action đã clamped. Browser kiểm đủ64 alias identity sau gap và giữ CPU/browser65-bone parity. Builder95 files/549 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Chưa có converter/export/job/Film codec hoàn chỉnh hoặc camera/shot export endpoint; full acceptance còn thiếu."
+  doc036_report: ../evidence/range-sampling.yaml
+- id: 1.2.4
+  parent_id: '1.2'
+  name: Camera Shot
+  description: Adapt identity/time only; preserve source behavior
+  workspace: scene
+  module: editor/packages/builder
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - camera curves/editorial
+  outputs:
+  - native scene camera/shot references
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.2
+  source_modules:
+  - topview:1.5.1
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: camera.shot.set inserts/updates Topview-native editorial clips transactionally with global undo; UI/CLI camera editing and full camera/path evaluation remain.
+  verification:
+    source_presence: mapped
+    automated: cameraShotCommand.test.ts; studio-typecheck
+    runtime: store-level-only
+    user_acceptance: not-recorded
+  merge_action: reuse-topview
+  reuse_rationale: Adapt identity/time only; preserve source behavior
+  spec: ../features/shared-project-contract.md
+  listcode: ../../LISTCODE#1.2.4
+  phase: C-D1
+  acceptance:
+  - DATA-04
+  affected_ids:
+  - 1.2.6
+  - 1.4.2
+  ui:
+    panel_id: camera-shot
+    workspace: scene
+    label: Camera Shot
+    keywords:
+    - camera
+    - shot
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/shared/src/index.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/test/cameraShotCommand.test.ts
+  doc037_evidence: "DOC-037: camera/shot CPU sampler dùng CameraRig và helper applyEvaluatedCamera chung với viewport; xuất position/quaternion/lookAt/verticalFov/aspect/near/far, sourceFrame và thời gian shot/sequence. Giữ left/right riêng tại cut, loop endpoint không wrap, manual roll/user keys/own aspect/path/orbit được kiểm. sampleProjectCameraSequence gắn sourceRevision và saved overlays; không mutate project. Camera bám target có trajectory bị chặn tới khi effective-world subject evaluation được nối. Builder96 files/554 tests; Studio/shared/Retarget37/37; build/source-test typechecks/targeted lint đạt. Browser FBX regression đạt65-bone CPU parity và64 aliases identity sau gap. Snapshot hai shot3s tạo62 mẫu gồm hai endpoint, cut t=1 giữ previous-left/next-right. Chưa có Film codec/assets/export jobs, grid20Hz cut preflight hoặc game acceptance."
+  doc037_report: ../evidence/camera-sampling.yaml
+- id: 1.2.5
+  parent_id: '1.2'
+  name: Commands History Version
+  description: No shared single-writer/history across apps
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - commands+expectedRevision
+  outputs:
+  - atomic new revision+undo journal
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on: []
+  source_modules:
+  - retarget:1.3.4
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: CAS, atomic manifest writes, request dedupe and durable undo/redo now cover Scene replace, camera shots, asset import and character creation; retarget/motion/scene evaluation/export commands remain unsupported.
+  verification:
+    source_presence: mapped
+    automated: final-schema-store-smoke; dev-api-smoke; cameraShotCommand.test.ts; unifiedAssetImport.test.ts; studio-typecheck
+    runtime: local-store-tests; browser-not-run
+    user_acceptance: not-recorded
+  merge_action: new-broker+reuse-operations
+  reuse_rationale: No shared single-writer/history across apps
+  spec: ../features/shared-project-contract.md
+  listcode: ../../LISTCODE#1.2.5
+  phase: C
+  acceptance:
+  - HISTORY-01
+  - HISTORY-02
+  affected_ids:
+  - 1.1.1
+  - 1.1.3
+  - 1.2.6
+  - 1.3.3
+  - 1.5.1
+  - 1.6.1
+  - 1.6.3
+  ui:
+    panel_id: history
+    workspace: shared
+    label: Commands History Version
+    keywords:
+    - commands
+    - history
+    - version
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - three-workspace-app/editor/apps/studio/app/api/unified/commands/route.ts
+- id: 1.2.6
+  parent_id: '1.2'
+  name: Migration project
+  description: Legacy formats incompatible
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - legacy files/relinks/destination
+  outputs:
+  - new project+id/loss report
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.1
+  - 1.2.2
+  - 1.2.3
+  - 1.2.4
+  - 1.2.5
+  source_modules:
+  - retarget:1.3.4
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: CLI creates a new project from Topview drafts/projects and imports/exports scene-only manifests; asset.relink restores missing source bytes only by exact SHA-256 and size, while generic binary migration and Animation/Retarget adapters remain absent.
+  verification:
+    source_presence: mapped
+    automated: asset-relink-hash-test-passed
+    runtime: Studio UI interaction not-run
+    user_acceptance: not-recorded
+  merge_action: new-adapters+reuse-validators
+  reuse_rationale: Legacy formats incompatible
+  spec: ../features/project-migration.md
+  listcode: ../../LISTCODE#1.2.6
+  phase: C-E
+  acceptance:
+  - MIGRATE-01
+  - MIGRATE-02
+  affected_ids:
+  - 1.3.3
+  - 1.7.1
+  - '2.4'
+  ui:
+    panel_id: project-import
+    workspace: shared
+    label: Migration project
+    keywords:
+    - migration
+    - project
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/agent/unified_cli.py
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+- id: 1.3.1
+  parent_id: '1.3'
+  name: Retarget engine85actions
+  description: HTML global state must be isolated from React
+  workspace: retarget
+  module: editor/packages/retarget + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - V9.12 BOBJ text and selected action ID
+  - channel sample time in source ticks
+  outputs:
+  - parsed action/group/channel/keyframe records
+  - interpolated scalar channel sample
+  - saved Mixamo FBX source Motion and SkeletonProfile with shared revision/history
+  callers:
+  - Studio RetargetWorkspace catalog/load UI
+  - Retarget parser/evaluator tests
+  depends_on:
+  - 1.2.1
+  - 1.2.3
+  source_modules:
+  - retarget:1.3.1
+  - retarget:1.3.2
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Extracted V9.12's 85-action BOBJ library/parser; reverse Mixamo65→Minecraft20 preview is implemented. DOC-060 adds inclusive frame sampling through that solver at 15/24/30 FPS; DOC-061 connects the selected preview clip to a 30 FPS AnimationClip JSON download. The generated clip is not stored as a project Motion, added to shared history, or placed on the timeline. FBX import persists original bytes, clip Motion records, source profile and the native V9.12 clip fingerprint. GLB recognizes the same Mixamo65 core signature. Compatible saved semantic mappings/calibration drive preview; native session JSON can be saved/restored, but its target rest profile is not applied. DOC-031 verifies canonical FBX source identities despite loader mesh aliases and preserves original clip indices while skipping completely empty animation stacks; source bytes/skins remain unchanged.
+  verification:
+    source_presence: mapped
+    automated: DOC-061-retarget-bake/reverse-tests-6-pass-including-Three-mixer-clip-playback; Retarget-and-Studio-typechecks-pass; DOC-031-Builder-91-files-535-pass; Studio-5-files-25-pass-real-FBX-no-skip
+    runtime: Edge WebGL preview tested before this session panel; DOC-061 bake download has no browser smoke; mapping/session browser API flow not exercised
+    user_acceptance: not-recorded
+  merge_action: extract-source-data+port-parser/interpolator; preserve original FBX and import clip metadata; connect frame-bake to project Motion/history and timeline
+  reuse_rationale: Preserve the V9.12 BOBJ source data and interpolation semantics without importing its DOM/global-state application shell.
+  spec: ../features/retarget-workspace.md
+  listcode: ../../LISTCODE#1.3.1
+  phase: D2
+  acceptance:
+  - RETARGET-01
+  affected_ids:
+  - 1.3.2
+  - 1.3.3
+  ui:
+    panel_id: retarget-source
+    workspace: retarget
+    label: Retarget engine85actions
+    keywords:
+    - retarget
+    - engine85actions
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/retarget/src/index.ts
+  - three-workspace-app/editor/apps/studio/app/workbench/components/RetargetWorkspace.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/RetargetPreview.tsx
+  - three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/test/retargetBobj.test.ts
+  - three-workspace-app/editor/apps/studio/public/retarget/v9.12/minecraft-actions.bobj
+  - three-workspace-app/editor/apps/studio/public/retarget/v9.12/NOTICE.md
+  - three-workspace-app/editor/packages/retarget/src/bake.ts
+  - three-workspace-app/editor/packages/retarget/test/bake.test.ts
+- id: 1.3.2
+  parent_id: '1.3'
+  name: Mapping Calibration Metarig
+  description: Metarig and mapped skin derivative not proven in V9.12
+  workspace: retarget
+  module: editor/packages/retarget
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - profiles/mapping/calibration/settings
+  outputs:
+  - fingerprint-bound mapping draft, V9.12 calibration blob, and semantic validation report
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.3.1
+  source_modules:
+  - retarget:1.3.3
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Mapping editor suggests only unique exact aliases, exposes stable bone IDs, preserves unused bones with explicit reasons, and saves hash-addressed calibration under project revision/history. Compatible saved mapping/calibration is applied to the reverse preview only for the exact imported FBX hash, matching unit, and V9.12 Minecraft20 target hierarchy. retarget.session.set validates the V9.12 JSON structure, imported source fingerprint and entity/profile links, stores the native snapshot by SHA-256, and participates in shared history; UI can save, load and download it. The preview applies loaded sourcePose quaternions only for its matching mapping, FBX SHA-256, and unit. DOC-060 adds a frame-bake engine primitive but does not yet consume target rest profile or generate project Motion. Metarig skin rebind, feet/hands, UI bake, timeline and export remain incomplete.
+  verification:
+    source_presence: mapped
+    automated: DOC-060-retarget-bake/reverse-tests-5-pass; Retarget-package-and-Studio-typechecks-pass; focused-ESLint-pass; DOC-031-Builder-91-files-535-pass; Studio-5-files-25-pass-real-FBX-no-skip
+    runtime: mapping-and-session-browser-interaction-not-smoked
+    user_acceptance: not-recorded
+  merge_action: reuse-v9.12+new-metarig-mapping
+  reuse_rationale: Metarig and mapped skin derivative not proven in V9.12
+  spec: ../features/retarget-workspace.md
+  listcode: ../../LISTCODE#1.3.2
+  phase: D2
+  acceptance:
+  - RETARGET-02
+  - RIG-01
+  affected_ids:
+  - 1.3.3
+  ui:
+    panel_id: retarget-mapping
+    workspace: retarget
+    label: Mapping Calibration Metarig
+    keywords:
+    - xương
+    - skeleton
+    - mapping
+    - calibration
+    - metarig
+    requires:
+    - project-open
+    - motion
+    - two-profiles
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/retarget/src/mapping.ts
+  - three-workspace-app/editor/packages/retarget/src/project.ts
+  - three-workspace-app/editor/packages/retarget/src/reverse.ts
+  - three-workspace-app/editor/packages/retarget/test/reverse.test.ts
+  - three-workspace-app/editor/apps/studio/app/workbench/components/SkeletonMappingEditor.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/RetargetSessionPanel.tsx
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedAssetFiles.ts
+  - three-workspace-app/editor/apps/studio/test/skeletonMappingCommand.test.ts
+  - three-workspace-app/editor/apps/studio/app/api/unified/projects/[id]/retarget-sessions/[sessionId]/native-project/route.ts
+- id: 1.3.3
+  parent_id: '1.3'
+  name: Retarget UI project export
+  description: Native DOM/history need shared boundary
+  workspace: retarget
+  module: editor/packages/retarget
+  path_status: partial implementation; native modules referenced separately
+  children: []
+  inputs:
+  - session controls/project/export request
+  outputs:
+  - shared session/motion/artifact
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.3.1
+  - 1.3.2
+  - 1.2.5
+  - 1.2.6
+  source_modules:
+  - retarget:1.3.2
+  - retarget:1.3.4
+  - retarget:1.3.5
+  - retarget:1.3.6
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Native V9.12 session JSON can be saved/loaded/downloaded and participates in history. DOC-061 adds a UI download of a baked Three.js AnimationClip JSON, but it is not a project Motion and has no history/timeline integration. Full native Retarget workspace export and target-profile parity remain incomplete."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: adapter
+  reuse_rationale: Native DOM/history need shared boundary
+  spec: ../features/retarget-workspace.md
+  listcode: ../../LISTCODE#1.3.3
+  phase: D2
+  acceptance:
+  - RETARGET-03
+  - FORMAT-01
+  affected_ids: []
+  ui:
+    panel_id: retarget-target
+    workspace: retarget
+    label: Retarget UI project export
+    keywords:
+    - retarget
+    - ui
+    - project
+    - export
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+- id: 1.4.1
+  parent_id: '1.4'
+  name: Scene assets pose layout
+  description: Add identity binding; retain builder interactions
+  workspace: scene
+  module: editor/packages/builder
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - asset/node/pose edits
+  outputs:
+  - scene document+character bindings
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.1.3
+  - 1.2.1
+  - 1.2.2
+  source_modules:
+  - animation:1.1.4
+  - topview:1.5.3
+  - topview:1.5.4
+  - topview:1.5.7
+  - topview:1.5.8
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Scene can load raw FBX models through metadata, preserving skin/materials/units, alongside GLB/glTF. Browser source import, Character add, transform, clip playback, clone/history/reload verified on Punch Combo. Full catalog, hierarchy and Scene acceptance remain partial."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-topview+character-binding
+  reuse_rationale: Add identity binding; retain builder interactions
+  spec: ../features/scene-workspace.md
+  listcode: ../../LISTCODE#1.4.1
+  phase: D1
+  acceptance:
+  - SCENE-01
+  affected_ids:
+  - 1.4.2
+  - 1.4.3
+  ui:
+    panel_id: scene-layout
+    workspace: scene
+    label: Scene assets pose layout
+    keywords:
+    - scene
+    - assets
+    - pose
+    - layout
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/builder/src/evaluate/studioIntents.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  - three-workspace-app/agent/unified_cli.py
+  - three-workspace-app/agent/unified_mcp.py
+- id: 1.4.2
+  parent_id: '1.4'
+  name: Camera shots motion
+  description: Retain native semantics; link shared IDs
+  workspace: scene
+  module: editor/packages/builder
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - native camera/path/subject/shot edits
+  outputs:
+  - evaluated camera/sequence
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.4.1
+  - 1.2.4
+  source_modules:
+  - topview:1.5.5
+  - topview:1.5.8
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: CameraRig/editorial sampling and effective-world trajectory subject follow are reused; selected verified direct-rig assets are preloaded and sampled through the shared skeleton evaluator. Portable tick preflight and full camera acceptance remain incomplete; the shared render job is tracked under 1.4.3.
+  verification:
+    source_presence: mapped
+    automated: DOC-039 Builder 96 files (553 passed, 1 skipped); Builder source/test typecheck and build; Studio camera command 1/1 and real-FBX integration 12/12; Studio typecheck and targeted ESLint
+    runtime: DOC-039 Punch Combo CPU trajectory/camera samples numerically match actor world matrices including yaw-relative offset and left endpoint; browser framing and multi-shot visual comparison not run
+    user_acceptance: not-recorded
+  merge_action: reuse-topview
+  reuse_rationale: Retain native semantics; link shared IDs
+  spec: ../features/scene-workspace.md
+  listcode: ../../LISTCODE#1.4.2
+  phase: D1
+  acceptance:
+  - SCENE-02
+  affected_ids:
+  - 1.4.3
+  - 1.7.1
+  ui:
+    panel_id: scene-camera
+    workspace: scene
+    label: Camera shots motion
+    keywords:
+    - camera
+    - shots
+    - motion
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/packages/builder/src/evaluate/camera/CameraRig.ts
+  - three-workspace-app/editor/packages/builder/src/headless/sampleCameraSequence.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedSkeletonEvaluation.ts
+  - three-workspace-app/editor/apps/studio/test/cameraShotCommand.test.ts
+  - three-workspace-app/editor/packages/builder/src/evaluate/evaluateFrame.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts
+  doc037_evidence: "DOC-037: camera/shot CPU sampler dùng CameraRig và helper applyEvaluatedCamera chung với viewport; xuất position/quaternion/lookAt/verticalFov/aspect/near/far, sourceFrame và thời gian shot/sequence. Giữ left/right riêng tại cut, loop endpoint không wrap, manual roll/user keys/own aspect/path/orbit được kiểm. sampleProjectCameraSequence gắn sourceRevision và saved overlays; không mutate project. Camera bám target có trajectory bị chặn tới khi effective-world subject evaluation được nối. Builder96 files/554 tests; Studio/shared/Retarget37/37; build/source-test typechecks/targeted lint đạt. Browser FBX regression đạt65-bone CPU parity và64 aliases identity sau gap. Snapshot hai shot3s tạo62 mẫu gồm hai endpoint, cut t=1 giữ previous-left/next-right. Chưa có Film codec/assets/export jobs, grid20Hz cut preflight hoặc game acceptance."
+  doc037_report: ../evidence/camera-sampling.yaml
+  doc039_evidence: "DOC-039: Added per-sample effective-world camera subject transforms through the shared direct-rig CPU evaluator. Project sampling preloads selected Character/Motion assets once, uses actor-world translation/yaw before camera bindings, and disposes on completion/cancel; unsupported or missing subject sources fail before output. The real Punch Combo FBX integration matches all 21 camera samples to skeleton actor-world matrices, including camera offset rotation and the terminal left sample. Camera sampler is now async. Builder 96 files/553 passed/1 skipped; Studio command1/1 and FBX integration12/12; typechecks/build/targeted lint pass. Browser framing, renderer and Film/game remain unverified."
+  doc039_report: ../evidence/camera-subject-sampling.yaml
+- id: 1.4.3
+  parent_id: '1.4'
+  name: Evaluate render scene
+  description: Retain renderer, add sourceRevision
+  workspace: scene
+  module: editor/packages/director-cli + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - snapshot/frame/camera/checks
+  outputs:
+  - measurements/images/provenance
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.4.1
+  - 1.4.2
+  source_modules:
+  - topview:1.5.4
+  - topview:1.5.5
+  - topview:1.5.6
+  - topview:1.5.8
+  - topview:1.5.9
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: scene.evaluate reuses Topview inspection/evaluation for grounding, AABB overlap and frustum. DOC-041 adds immutable snapshot render jobs, persisted status/cancel, verified file downloads, and UI/CLI/MCP client-side output writers. Live Next two-camera OPFS render verified after native ESM external fix. OS picker, animated-mesh parity and broad-format validation remain.
+  verification:
+    source_presence: mapped
+    automated: "DOC-041: scene render/evaluate 4/4; unifiedAssetImport 12/12 with Punch Combo; director-cli 29/29; Python CLI/MCP 35/35; Studio typecheck and lint"
+    runtime: Chromium primitive render, offline frame/contact-sheet generation, PNG hash download and real Punch Combo FBX render; browser folder picker and live MCP host not exercised
+    user_acceptance: not-recorded
+  merge_action: reuse-cli-renderer
+  reuse_rationale: Retain renderer, add sourceRevision
+  spec: ../features/scene-workspace.md
+  listcode: ../../LISTCODE#1.4.3
+  phase: D1
+  acceptance:
+  - SCENE-03
+  affected_ids: []
+  ui:
+    panel_id: scene-checks
+    workspace: scene
+    label: Evaluate render scene
+    keywords:
+    - evaluate
+    - render
+    - scene
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/src/unifiedProjectStore.ts
+  - three-workspace-app/editor/apps/studio/src/unifiedJobs.ts
+  - three-workspace-app/editor/apps/studio/test/sceneEvaluateCommand.test.ts
+  - three-workspace-app/editor/apps/studio/test/unifiedSceneRender.test.ts
+  - three-workspace-app/editor/packages/director-cli/scene-checks.mjs
+  - three-workspace-app/editor/packages/director-cli/render.mjs
+  - three-workspace-app/editor/apps/studio/app/workbench/components/scene-render/index.tsx
+  doc041_evidence: "DOC-041: pinned Topview renderFrames backs a persisted scene.render job. UI, Python CLI and MCP keep the actual output folder client-side; API sees only an opaque UUID, serves only completed job files by ID, and verifies metadata/hash before download. Limits: one active job, ten retained terminal jobs, <=9 frame-camera samples, <=3 cameras, <=1024 dimensions. See render-job evidence."
+  doc041_report: ../evidence/scene-render-jobs.yaml
+  doc035_evidence: "DOC-035: scene.evaluate đọc asset đã kiểm SHA/path và trả skeletonSamples CPU gồm đủ bone local pose/world matrices, placementMatrix, trajectoryMatrix, actorWorldMatrix và metersPerUnit. Dùng chung buildCharacterRig, CharacterAnimator/MotionPlayer và root sampler với browser; entrypoint /skeleton riêng không kéo renderer/MediaBunny. Native model/motion templates không bị sửa; đọc không đổi revision/history. Browser/API đối chiếu65 bone FBX thật đạt max world-matrix delta4.440892098500626e-16. Builder94 files/544 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Thiếu source, texture/compression không decode được, rig không hỗ trợ hoặc library pose chưa nạp trả issue rõ ràng; loader chặn tài nguyên ngoài. Còn thiếu range bake/export, native Animation, Retarget khác rig, geometry checks/render và Film/game; production EPERM/clone500 chưa sửa."
+  doc035_report: ../evidence/headless-skeleton.yaml
+  doc036_evidence: "DOC-036: sampler CPU stream range inclusive sang grid20Hz + một endpoint left; 3s@30 cho61 mẫu, đoạn1s cho21. Endpoint chọn clip trước tại cut, loop/reverse không wrap về pose đầu; trajectory/path cùng ownership, trim/speed/fractional time giữ nguyên. Host chọn CharacterID tường minh, preflight source một lần và dispose trong finally; không tạo artifact sản phẩm/job. API/range nay áp saved user keys như browser mặc định. Range FBX thật phát hiện pose reset làm hỏng64 alias; applyPose bỏ qua alias và stopAll dừng cả action đã clamped. Browser kiểm đủ64 alias identity sau gap và giữ CPU/browser65-bone parity. Builder95 files/549 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Chưa có converter/export/job/Film codec hoàn chỉnh hoặc camera/shot export endpoint; full acceptance còn thiếu."
+  doc036_report: ../evidence/range-sampling.yaml
+- id: 1.5.1
+  parent_id: '1.5'
+  name: Rig Pose IK Skin
+  description: DOM state to workspace adapter
+  workspace: animation
+  module: editor/packages/animation
+  path_status: partial integration; Topview editor is mounted in Animation workspace
+  children: []
+  inputs:
+  - rig/native project/control edits
+  outputs:
+  - pose/skin/native edit blob
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.1.3
+  - 1.2.1
+  - 1.2.5
+  source_modules:
+  - animation:1.1.1
+  - animation:1.1.2
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Animation workspace reuses Topview DirectorStudio on the shared project adapter, exposing its viewport, character rig tools and pose/timeline editing. Animation 1.31.8 control rig, IK, skin shaping, compare/onion-skin parity and native edit blob are not integrated.
+  verification:
+    source_presence: mapped
+    automated: DOC-038 Studio typecheck, targeted ESLint and browser smoke passed
+    runtime: DOC-038 Chromium 153 real-FBX workflow mounted the editor in Animation; native function parity not tested
+    user_acceptance: not-recorded
+  merge_action: reuse-js+typed-adapter
+  reuse_rationale: DOM state to workspace adapter
+  spec: ../features/animation-workspace.md
+  listcode: ../../LISTCODE#1.5.1
+  phase: D3
+  acceptance:
+  - ANIM-01
+  - RIG-01
+  affected_ids:
+  - 1.5.2
+  - 1.5.3
+  ui:
+    panel_id: animation-rig
+    workspace: animation
+    label: Rig Pose IK Skin
+    keywords:
+    - rig
+    - pose
+    - ik
+    - skin
+    requires:
+    - project-open
+    - selected-character
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx
+  - three-workspace-app/editor/packages/builder/src/DirectorStudio.tsx
+  doc038_evidence: "DOC-038: Animation workspace embeds the existing Topview DirectorStudio with the shared project adapter, alongside the clip control panel. Chromium153 real-FBX smoke confirms the editor viewport mounts in Animation and the full import/bind/edit/history/CPU-WebGL workflow passes with zero external requests/errors. This does not implement Animation1.31.8-specific IK, skin, compare/onion-skin or native edit data."
+  doc038_report: ../evidence/animation-workspace.yaml
+- id: 1.5.2
+  parent_id: '1.5'
+  name: Timeline Graph Layers Library
+  description: Preserve native evaluator; shared placement
+  workspace: animation
+  module: editor/packages/animation
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - keys/curves/layers/library/contacts
+  outputs:
+  - edited native motion
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.5.1
+  - 1.2.3
+  source_modules:
+  - animation:1.1.3
+  - animation:1.1.4
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Animation UI places/edits compatible FBX bindings and reuses Topview DirectorStudio for timeline and keyframe editing in the same project. Animation 1.31.8 Graph/layer/motion-lab/library parity remains unintegrated."
+  verification:
+    source_presence: mapped
+    automated: "DOC-038: Studio typecheck, targeted ESLint, and smoke script syntax passed"
+    runtime: "DOC-038 local Chromium 153 real-FBX workflow mounted the shared editor in Animation and passed existing FBX/scene/history checks; not full acceptance"
+    user_acceptance: not-recorded
+  merge_action: reuse-native-editors
+  reuse_rationale: Preserve native evaluator; shared placement
+  spec: ../features/animation-workspace.md
+  listcode: ../../LISTCODE#1.5.2
+  phase: D3
+  acceptance:
+  - ANIM-02
+  affected_ids:
+  - 1.5.3
+  ui:
+    panel_id: animation-motion
+    workspace: animation
+    label: Timeline Graph Layers Library
+    keywords:
+    - timeline
+    - graph
+    - layers
+    - library
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/app/workbench/components/StudioOverlay.tsx
+  - three-workspace-app/editor/apps/studio/app/workbench/components/AnimationWorkspace.tsx
+  - three-workspace-app/editor/apps/studio/scripts/unified-smoke.mjs
+  doc038_evidence: "DOC-038: shared Topview timeline/pose editor is now reachable in Animation while preserving clip placement and binding edits. Chromium153 real-FBX smoke passed; Animation1.31.8-specific graph/layer/motion-lab modules remain unintegrated."
+  doc038_report: ../evidence/animation-workspace.yaml
+  doc033_evidence: "DOC-033: in-place cho FBX direct rig qua motion.binding.set và form Sửa clip; root translation/quaternion về rest theo SkeletonProfile, giữ limb animation, unit và actor placement. Native rootMotion/inPlace và shared binding được ghi cùng transaction; validation chặn sai bone/policy/rig và document.replace xóa policy. Builder 93 files/539 tests; Studio/shared/Retarget 37/37 với FBX thật; build/typechecks/targeted lint đạt. Browser Chromium153 xác nhận root rest tại frame30/40, actor(2,0,0), tay đổi pose, Undo/Redo, clone/reload và 0 external requests. Trajectory/alignment/fades, cross-rig bake, native Animation và Film/game chưa hoàn tất; clone500 ngắt quãng và production build EPERM chưa sửa."
+  doc033_report: ../evidence/root-motion.yaml
+  doc034_evidence: "DOC-034: trajectory cho imported direct FBX tách root translation/rotation sang motionRoot dưới actor; placement/path authored không bị ghi đè. Native interpolants và rest/unit hierarchy được tái sử dụng. Loop tích lũy cả góc xoay, reverse/trim/speed giữ fractional time, origin dùng anchor nguồn và continue nối end-exclusive endpoint clip trước; seek/gap không dựa frame đã render. Shared binding/native metadata cùng revision/history; provenance path trùng nguồn trả ROOT_MOTION_CONFLICT; overlap và loop count vượt precision bị chặn. 93 file/542 Builder test; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Browser FBX thật đạt skeletal→trajectory world-matrix parity, max delta6.625060056109078e-9, seek lùi/reload và0 external requests. Chưa có headless root bake/export, general skeletal alignment, fades, khác-rig bake, native Animation hay Film/game acceptance; camera follow và gizmo/autosave trajectory chưa kiểm. Clone500/production EPERM chưa sửa."
+  doc034_report: ../evidence/trajectory.yaml
+- id: 1.5.3
+  parent_id: '1.5'
+  name: Evaluate Import Export Texture
+  description: Reuse native handlers, adapt IO
+  workspace: animation
+  module: editor/packages/animation
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - asset/texture/motion/export profile
+  outputs:
+  - rig/mesh/materials/artifacts
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.5.1
+  - 1.5.2
+  source_modules:
+  - animation:1.1.5
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Shared FBX source/model/skin/material and same-profile playback are implemented and exercised in a local browser. Native Animation evaluators/importers for other formats, full texture parity and native exporters remain unintegrated."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-handlers
+  reuse_rationale: Reuse native handlers, adapt IO
+  spec: ../features/animation-workspace.md
+  listcode: ../../LISTCODE#1.5.3
+  phase: D3
+  acceptance:
+  - ANIM-03
+  - FORMAT-01
+  affected_ids:
+  - 1.7.1
+  ui:
+    panel_id: animation-io
+    workspace: animation
+    label: Evaluate Import Export Texture
+    keywords:
+    - evaluate
+    - import
+    - export
+    - texture
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence: []
+- id: 1.6.1
+  parent_id: '1.6'
+  name: Python CLI compatibility
+  description: Shared project uses broker, legacy still supported
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - legacy CLI or unified command
+  outputs:
+  - JSON result/exit code
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.5
+  source_modules:
+  - topview:1.5.1
+  - topview:1.5.2
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "CLI asset import accepts FBX with mandatory finite positive unit and forwards Character/Prop/Motion commands. scene render and Film project-export poll shared snapshot jobs, download artifacts by file ID, verify size/SHA and write beneath a new explicitly requested output folder. Live project Film pipeline and full CLI compatibility remain unverified."
+  verification:
+    source_presence: mapped
+    automated: "DOC-048 Python CLI/MCP 43/43; Studio Film/job/camera/pose/output tests 23/23; Studio typecheck and targeted ESLint"
+    runtime: "Generated static two-bone project Film job passed with Blender 5.1.2/Java 17; CLI host process and browser panel not live-tested; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-cli+broker-client
+  reuse_rationale: Shared project uses broker, legacy still supported
+  spec: ../features/local-agent-api.md
+  listcode: ../../LISTCODE#1.6.1
+  phase: C-D1
+  acceptance:
+  - API-01
+  affected_ids:
+  - '2.4'
+  ui:
+    panel_id: local-cli
+    workspace: shared
+    label: Python CLI compatibility
+    keywords:
+    - python
+    - cli
+    - compatibility
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/agent/unified_cli.py
+  - three-workspace-app/agent/test_unified_cli.py
+  - ../evidence/film-project-export-job.yaml
+  doc035_evidence: "DOC-035: scene.evaluate đọc asset đã kiểm SHA/path và trả skeletonSamples CPU gồm đủ bone local pose/world matrices, placementMatrix, trajectoryMatrix, actorWorldMatrix và metersPerUnit. Dùng chung buildCharacterRig, CharacterAnimator/MotionPlayer và root sampler với browser; entrypoint /skeleton riêng không kéo renderer/MediaBunny. Native model/motion templates không bị sửa; đọc không đổi revision/history. Browser/API đối chiếu65 bone FBX thật đạt max world-matrix delta4.440892098500626e-16. Builder94 files/544 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Thiếu source, texture/compression không decode được, rig không hỗ trợ hoặc library pose chưa nạp trả issue rõ ràng; loader chặn tài nguyên ngoài. Còn thiếu range bake/export, native Animation, Retarget khác rig, geometry checks/render và Film/game; production EPERM/clone500 chưa sửa."
+  doc035_report: ../evidence/headless-skeleton.yaml
+- id: 1.6.2
+  parent_id: '1.6'
+  name: Local conversion jobs
+  description: Job orchestration missing
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: "partial: local FBX/GLB-to-BOBJ converter emits and validates BOBJ bind/rest matrices; project-bound jobs and other format handlers remain missing"
+  children: []
+  inputs:
+  - asset/motion/format/content/tool config
+  outputs:
+  - atomic artifact+loss report
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.1
+  - 1.2.3
+  source_modules:
+  - animation:1.1.5
+  - retarget:1.3.5
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: DOC-044 verifies global BOBJ bind/rest matrices for one skinned FBX/GLB; shared-project job orchestration, pose baking, non-BOBJ formats, multi-texture, shape keys and broad format parity remain incomplete
+  verification:
+    source_presence: mapped
+    automated: "DOC-044: converter/Film worker/CLI/MCP 47/47; generated FBX/GLB BOBJ profile matrices match exported arm_bone records; malformed matrix cases rejected"
+    runtime: Blender integration fixture passed; arbitrary GLB and game runtime not-run
+    user_acceptance: not-recorded
+  merge_action: reuse-exporters+job-orchestration
+  reuse_rationale: Job orchestration missing
+  spec: ../features/local-conversion-cli.md
+  listcode: ../../LISTCODE#1.6.2
+  phase: D2-D3
+  acceptance:
+  - FORMAT-01
+  - FORMAT-02
+  affected_ids:
+  - 1.7.1
+  ui:
+    panel_id: conversion
+    workspace: shared
+    label: Local conversion jobs
+    keywords:
+    - local
+    - conversion
+    - jobs
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - ../evidence/range-sampling.yaml
+  - ../evidence/film-model-converter.yaml
+  - ../evidence/bobj-rest-profile.yaml
+  doc036_evidence: "DOC-036: sampler CPU stream range inclusive sang grid20Hz + một endpoint left; 3s@30 cho61 mẫu, đoạn1s cho21. Endpoint chọn clip trước tại cut, loop/reverse không wrap về pose đầu; trajectory/path cùng ownership, trim/speed/fractional time giữ nguyên. Host chọn CharacterID tường minh, preflight source một lần và dispose trong finally; không tạo artifact sản phẩm/job. API/range nay áp saved user keys như browser mặc định. Range FBX thật phát hiện pose reset làm hỏng64 alias; applyPose bỏ qua alias và stopAll dừng cả action đã clamped. Browser kiểm đủ64 alias identity sau gap và giữ CPU/browser65-bone parity. Builder95 files/549 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Chưa có converter/export/job/Film codec hoàn chỉnh hoặc camera/shot export endpoint; full acceptance còn thiếu."
+  doc036_report: ../evidence/range-sampling.yaml
+  doc037_evidence: "DOC-037: camera/shot CPU sampler dùng CameraRig và helper applyEvaluatedCamera chung với viewport; xuất position/quaternion/lookAt/verticalFov/aspect/near/far, sourceFrame và thời gian shot/sequence. Giữ left/right riêng tại cut, loop endpoint không wrap, manual roll/user keys/own aspect/path/orbit được kiểm. sampleProjectCameraSequence gắn sourceRevision và saved overlays; không mutate project. Camera bám target có trajectory bị chặn tới khi effective-world subject evaluation được nối. Builder96 files/554 tests; Studio/shared/Retarget37/37; build/source-test typechecks/targeted lint đạt. Browser FBX regression đạt65-bone CPU parity và64 aliases identity sau gap. Snapshot hai shot3s tạo62 mẫu gồm hai endpoint, cut t=1 giữ previous-left/next-right. Chưa có Film codec/assets/export jobs, grid20Hz cut preflight hoặc game acceptance."
+  doc037_report: ../evidence/camera-sampling.yaml
+- id: 1.6.3
+  parent_id: '1.6'
+  name: UI CLI MCP boundary
+  description: Transport auth/dedup/CAS is new
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: partial implementation; see completion_evidence
+  children: []
+  inputs:
+  - UI/CLI/MCP envelope
+  outputs:
+  - same validation/commit/result
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.2.5
+  source_modules:
+  - topview:1.5.2
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: Loopback session/Node broker serves UI, CLI and stdio MCP 2026-07-28 with validation, request dedupe and exact CAS. MCP exposes 17 commands including scene.render/film.export/job.get/job.cancel; Film output folder remains on MCP client and verified ZIP is saved after success. DOC-059 browser Film panel completed a Punch Combo 65-bone/one-action, two-Character/two-shot export and verified ZIP through an in-memory directory stub; live MCP host and keyframe editing remain unverified.
+  verification:
+    source_presence: mapped
+    automated: "DOC-048 Python CLI/MCP 43/43; Studio job/Film targeted suite 23/23 plus generated-FBX integration 1/1; typecheck/targeted lint"
+    runtime: DOC-059 Chromium Film panel completed the Punch Combo 65-bone animated, two-Character/two-shot job and checked ZIP size/SHA; save used an in-memory directory stub. Live MCP host not run.
+    user_acceptance: not-recorded
+  merge_action: new-transport+shared-dispatch
+  reuse_rationale: Transport auth/dedup/CAS is new
+  spec: ../features/local-agent-api.md
+  listcode: ../../LISTCODE#1.6.3
+  phase: C
+  acceptance:
+  - API-02
+  - API-03
+  affected_ids: []
+  ui:
+    panel_id: local-api
+    workspace: shared
+    label: UI CLI MCP boundary
+    keywords:
+    - ui
+    - cli
+    - mcp
+    - boundary
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - three-workspace-app/editor/apps/studio/src/unifiedSession.ts
+  - three-workspace-app/editor/apps/studio/app/api/unified/commands/route.ts
+  - three-workspace-app/editor/apps/studio/app/workbench/components/film-export/index.tsx
+  - three-workspace-app/agent/unified_mcp.py
+  - three-workspace-app/agent/test_unified_mcp.py
+  - three-workspace-app/editor/apps/studio/test/filmExportJob.integration.test.ts
+  - ../evidence/film-project-export-job.yaml
+  - ../evidence/film-browser-export.yaml
+  - ../evidence/film-animated-browser-export.yaml
+  - ../evidence/film-punch-combo-browser-export.yaml
+  doc035_evidence: "DOC-035: scene.evaluate đọc asset đã kiểm SHA/path và trả skeletonSamples CPU gồm đủ bone local pose/world matrices, placementMatrix, trajectoryMatrix, actorWorldMatrix và metersPerUnit. Dùng chung buildCharacterRig, CharacterAnimator/MotionPlayer và root sampler với browser; entrypoint /skeleton riêng không kéo renderer/MediaBunny. Native model/motion templates không bị sửa; đọc không đổi revision/history. Browser/API đối chiếu65 bone FBX thật đạt max world-matrix delta4.440892098500626e-16. Builder94 files/544 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Thiếu source, texture/compression không decode được, rig không hỗ trợ hoặc library pose chưa nạp trả issue rõ ràng; loader chặn tài nguyên ngoài. Còn thiếu range bake/export, native Animation, Retarget khác rig, geometry checks/render và Film/game; production EPERM/clone500 chưa sửa."
+  doc035_report: ../evidence/headless-skeleton.yaml
+- id: 1.7.1
+  parent_id: '1.7'
+  name: Native Film assets package
+  description: Animation manifest is not Film; existing importer omits scale/pose
+  workspace: shared
+  module: editor/apps/studio/src/unifiedJobs.ts + agent/unified_cli.py + agent/film_worker.py + Java Film worker
+  path_status: shared-project film.export snapshot job calls local converter and BBS2.4 worker, persists verified ZIP; Punch Combo unsafe names map to safe BOBJ IDs and its 65-bone, two-Character/two-shot animated integration passed; production acceptance remains open
+  children: []
+  inputs:
+  - typed export manifest with project revision and asset paths/hashes
+  outputs:
+  - native dat+models+checksums
+  callers:
+  - Studio command broker
+  - Python CLI project-export
+  - MCP film.export
+  depends_on:
+  - 1.2.6
+  - 1.4.2
+  - 1.5.3
+  - 1.6.2
+  source_modules:
+  - animation:1.1.4
+  code_reference: three-workspace-app/agent/unified_cli.py, agent/film_model_converter.py, agent/film_worker/blender/convert_model.py, agent/film_worker.py, agent/film_worker/src/main/java/local/bbsmerged/{FilmExportWorker,DraftEditor}.java; pinned BBS 2.4 bridge and BBSFix exporter
+  implementation_status: partial
+  status_reason: DOC-050 Punch Combo (65 bones, 1 action) converts and its two-Character/two-shot project job reaches native ZIP readback with source-to-safe BOBJ mapping; DOC-059 also verifies that same FBX through animated two-Character/two-shot browser export and ZIP save. Production assets, Film Editor and runtime acceptance remain open.
+  verification:
+    source_presence: mapped
+    automated: DOC-050 Studio suite 39/39 with Punch Combo and opt-in export enabled; TypeScript/ESLint passed; converter tests 5/5 with Blender 4.2.3
+    runtime: DOC-059 Punch Combo 65-bone/two-Character/two-shot browser job produced a size/SHA-verified ZIP; native worker integration also passed. Film Editor and game runtime not-run.
+    user_acceptance: not-recorded
+  merge_action: reuse-java-codec+new-export-worker
+  reuse_rationale: Animation manifest is not Film; existing importer omits scale/pose
+  spec: ../features/bbs-film-export.md
+  listcode: ../../LISTCODE#1.7.1
+  phase: E
+  acceptance:
+  - FILM-01
+  affected_ids:
+  - 1.7.2
+  - 1.7.3
+  ui:
+    panel_id: film-export
+    workspace: shared
+    label: Native Film assets package
+    keywords:
+    - native
+    - film
+    - assets
+    - package
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - ../evidence/film-export-worker.yaml
+  - ../evidence/film-model-converter.yaml
+  - ../evidence/film-project-sampling.yaml
+  - ../evidence/film-pose-bake.yaml
+  - ../evidence/film-manifest-builder.yaml
+  - ../evidence/film-project-export-job.yaml
+  - ../evidence/film-pose-frame-calibration.yaml
+  - ../evidence/film-safe-bone-names.yaml
+  - ../evidence/film-browser-export.yaml
+  - ../evidence/film-animated-browser-export.yaml
+  - ../evidence/film-punch-combo-browser-export.yaml
+- id: 1.7.2
+  parent_id: '1.7'
+  name: Film playback parity
+  description: External conversion parity not demonstrated
+  workspace: shared
+  module: agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java
+  path_status: transform, camera and action tracks can be emitted from manifest; runtime parity remains open
+  children: []
+  inputs:
+  - typed actor transforms, optional action keyframes and camera samples
+  outputs:
+  - playback comparison report
+  callers:
+  - Python CLI film export
+  depends_on:
+  - 1.7.1
+  source_modules: []
+  code_reference: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java and DraftEditor.java
+  implementation_status: partial
+  status_reason: DOC-050 two Punch Combo Characters with placed Motion and a two-shot camera cut pass native ZIP readback; DOC-059 passes the same 65-bone animated asset through browser export. Numerical runtime parity, Film Editor framing and in-game playback remain open.
+  verification:
+    source_presence: mapped
+    automated: DOC-042 two-actor/one-camera native codec integration passed; DOC-048 static, DOC-049 generated animated and DOC-050 two-Character/two-shot Punch Combo project jobs passed native readback; placed-Motion samples confirmed changing bone world matrices
+    runtime: DOC-059 65-bone animated browser export and native worker ZIP succeeded; Minecraft playback not-run.
+    user_acceptance: not-recorded
+  merge_action: reuse-replay-camera+mapping
+  reuse_rationale: External conversion parity not demonstrated
+  spec: ../features/bbs-film-export.md
+  listcode: ../../LISTCODE#1.7.2
+  phase: E
+  acceptance:
+  - FILM-02
+  - E2E-01
+  affected_ids:
+  - 1.7.3
+  ui:
+    panel_id: film-playback
+    workspace: shared
+    label: Film playback parity
+    keywords:
+    - film
+    - playback
+    - parity
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - ../evidence/film-export-worker.yaml
+  - ../evidence/film-project-sampling.yaml
+  - ../evidence/film-pose-bake.yaml
+  - ../evidence/film-manifest-builder.yaml
+  - ../evidence/film-project-export-job.yaml
+  - ../evidence/film-pose-frame-calibration.yaml
+  - ../evidence/film-safe-bone-names.yaml
+  - ../evidence/film-punch-combo-browser-export.yaml
+- id: 1.7.3
+  parent_id: '1.7'
+  name: Film editable keys
+  description: Existing in-editor conversion is not external exporter
+  workspace: shared
+  module: agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java + DraftEditor.java
+  path_status: Per-bone BOBJ bind-frame calibration emits rest-relative pose_transform tracks and maps safe BOBJ IDs to source samples; Punch Combo project job reaches native ZIP readback; Film Editor acceptance remains open
+  children: []
+  inputs:
+  - compatible bone pose samples
+  outputs:
+  - editable pose_transform tracks
+  callers:
+  - UI
+  - CLI/API via command boundary
+  depends_on:
+  - 1.7.1
+  - 1.7.2
+  source_modules: []
+  code_reference: three-workspace-app/agent/film_worker/src/main/java/local/bbsmerged/FilmExportWorker.java and DraftEditor.java
+  implementation_status: partial
+  status_reason: DOC-050 two Punch Combo Characters complete the actual converter-to-pose-bake-to-worker flow with safe BOBJ IDs and changing sampled poses across a two-shot cut; DOC-059 also completes the 65-bone animated two-Character/two-shot browser export. Film Editor open, edit, save, reopen and playback remain unverified.
+  verification:
+    source_presence: mapped
+    automated: DOC-050 safe-ID/source-name mapping and Punch Combo real converter→project-job integration passed; per-bone/nested-frame bake and placed-Motion change checks passed before ZIP native readback
+    runtime: DOC-059 Punch Combo 65-bone animated project passed browser ZIP save and native worker job. Production-source and Film Editor acceptance not-run.
+    user_acceptance: not-recorded
+  merge_action: reuse-pose-schema+new-external-track-writer
+  reuse_rationale: Existing in-editor conversion is not external exporter
+  spec: ../features/bbs-film-export.md
+  listcode: ../../LISTCODE#1.7.3
+  phase: E
+  acceptance:
+  - FILM-03
+  - E2E-01
+  affected_ids: []
+  ui:
+    panel_id: film-editable
+    workspace: shared
+    label: Film editable keys
+    keywords:
+    - film
+    - editable
+    - keys
+    requires:
+    - project-open
+    product_panel: true
+  completion_evidence:
+  - ../evidence/film-export-worker.yaml
+  - ../evidence/bobj-rest-profile.yaml
+  - ../evidence/film-pose-bake.yaml
+  - ../evidence/film-manifest-builder.yaml
+  - ../evidence/film-project-export-job.yaml
+  - ../evidence/film-pose-frame-calibration.yaml
+  - ../evidence/film-safe-bone-names.yaml
+  - ../evidence/film-punch-combo-browser-export.yaml
+  - ../evidence/film-animated-browser-export.yaml
+- id: '2.1'
+  parent_id: '2'
+  name: Characterization regressions
+  description: New adapter needs exact-source characterization
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - locked artifacts/fixtures/new adapter
+  outputs:
+  - per-case comparisons
+  callers:
+  - release/test workflow
+  depends_on: []
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Full Builder suite passes 538 tests including unchanged golden and real-FBX numerical pose parity; Studio/shared/Retarget tests pass. Full native Animation/Retarget/source behavioral characterization and conversion golden outputs remain incomplete."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-tests+adapter-cases
+  reuse_rationale: New adapter needs exact-source characterization
+  spec: ../features/quality-validation.md
+  listcode: ../../LISTCODE#2.1
+  phase: C-F
+  acceptance:
+  - QA-01
+  affected_ids:
+  - '2.4'
+  ui:
+    panel_id: diagnostics-tests
+    workspace: shared
+    label: Characterization regressions
+    keywords:
+    - characterization
+    - regressions
+    requires:
+    - diagnostics
+    product_panel: false
+  completion_evidence: []
+  doc036_evidence: "DOC-036: sampler CPU stream range inclusive sang grid20Hz + một endpoint left; 3s@30 cho61 mẫu, đoạn1s cho21. Endpoint chọn clip trước tại cut, loop/reverse không wrap về pose đầu; trajectory/path cùng ownership, trim/speed/fractional time giữ nguyên. Host chọn CharacterID tường minh, preflight source một lần và dispose trong finally; không tạo artifact sản phẩm/job. API/range nay áp saved user keys như browser mặc định. Range FBX thật phát hiện pose reset làm hỏng64 alias; applyPose bỏ qua alias và stopAll dừng cả action đã clamped. Browser kiểm đủ64 alias identity sau gap và giữ CPU/browser65-bone parity. Builder95 files/549 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Chưa có converter/export/job/Film codec hoàn chỉnh hoặc camera/shot export endpoint; full acceptance còn thiếu."
+  doc036_report: ../evidence/range-sampling.yaml
+- id: '2.2'
+  parent_id: '2'
+  name: Desktop WebGL Site private
+  description: Build cannot prove rendering or interaction
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - build+browser+WebGL+Site version
+  outputs:
+  - manual/runtime evidence
+  callers:
+  - release/test workflow
+  depends_on:
+  - 1.1.3
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: partial
+  status_reason: "Legacy offline and unified FBX browser workflows passed locally, with screenshots/versions and zero external requests. Full UI/keyboard/context-loss/visual parity, Site delivery and production runtime acceptance remain incomplete; intermittent clone 500 is unresolved."
+  verification:
+    source_presence: mapped
+    automated: "DOC-032: Builder 538; Studio 25; shared/Retarget 12; Python CLI/MCP 30; build/typechecks/targeted lint pass"
+    runtime: "DOC-032 selected local Chromium 153 FBX workflow verified; not full acceptance; intermittent clone IO_FAILED unresolved"
+    user_acceptance: not-recorded
+  merge_action: reuse-sites-workflow+new-version-evidence
+  reuse_rationale: Build cannot prove rendering or interaction
+  spec: ../features/quality-validation.md
+  listcode: ../../LISTCODE#2.2
+  phase: D-F
+  acceptance:
+  - UI-02
+  - QA-02
+  affected_ids:
+  - '2.4'
+  ui:
+    panel_id: diagnostics-runtime
+    workspace: shared
+    label: Desktop WebGL Site private
+    keywords:
+    - desktop
+    - webgl
+    - site
+    - private
+    requires:
+    - diagnostics
+    product_panel: false
+  completion_evidence: []
+  doc036_evidence: "DOC-036: sampler CPU stream range inclusive sang grid20Hz + một endpoint left; 3s@30 cho61 mẫu, đoạn1s cho21. Endpoint chọn clip trước tại cut, loop/reverse không wrap về pose đầu; trajectory/path cùng ownership, trim/speed/fractional time giữ nguyên. Host chọn CharacterID tường minh, preflight source một lần và dispose trong finally; không tạo artifact sản phẩm/job. API/range nay áp saved user keys như browser mặc định. Range FBX thật phát hiện pose reset làm hỏng64 alias; applyPose bỏ qua alias và stopAll dừng cả action đã clamped. Browser kiểm đủ64 alias identity sau gap và giữ CPU/browser65-bone parity. Builder95 files/549 tests; Studio/shared/Retarget37/37; build/typechecks/targeted lint đạt. Chưa có converter/export/job/Film codec hoàn chỉnh hoặc camera/shot export endpoint; full acceptance còn thiếu."
+  doc036_report: ../evidence/range-sampling.yaml
+- id: '2.3'
+  parent_id: '2'
+  name: Licenses function preservation
+  description: Need proof no feature or attribution dropped
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - source file/symbol/license index
+  outputs:
+  - coverage/notice ledger
+  callers:
+  - release/test workflow
+  depends_on: []
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: null
+  status_reason: Not implemented in phase C; specification complete and implementation remains in its roadmap phase
+  verification:
+    source_presence: mapped
+    automated: not-run-this-phase
+    runtime: not-run
+    user_acceptance: not-recorded
+  merge_action: reuse-notices+mapping-audit
+  reuse_rationale: Need proof no feature or attribution dropped
+  spec: ../features/quality-validation.md
+  listcode: ../../LISTCODE#2.3
+  phase: A-F
+  acceptance:
+  - QA-03
+  affected_ids:
+  - '2.4'
+  ui:
+    panel_id: diagnostics-licenses
+    workspace: shared
+    label: Licenses function preservation
+    keywords:
+    - licenses
+    - function
+    - preservation
+    requires:
+    - diagnostics
+    product_panel: false
+  completion_evidence: []
+- id: '2.4'
+  parent_id: '2'
+  name: Local package restore
+  description: Unified app has no release package yet
+  workspace: shared
+  module: editor/packages/shared + editor/apps/studio
+  path_status: planned integration; existing modules referenced separately
+  children: []
+  inputs:
+  - validated builds+dependencies/project
+  outputs:
+  - portable package+restore proof
+  callers:
+  - release/test workflow
+  depends_on:
+  - 1.2.6
+  - 1.6.1
+  - '2.1'
+  - '2.2'
+  - '2.3'
+  source_modules: []
+  code_reference: source-index.yaml + workspace inventory code_locations/files; exact versions in SOURCES
+  implementation_status: null
+  status_reason: Not implemented in phase C; specification complete and implementation remains in its roadmap phase
+  verification:
+    source_presence: mapped
+    automated: not-run-this-phase
+    runtime: not-run
+    user_acceptance: not-recorded
+  merge_action: new-packaging+reuse-upstream-build
+  reuse_rationale: Unified app has no release package yet
+  spec: ../features/quality-validation.md
+  listcode: ../../LISTCODE#2.4
+  phase: F
+  acceptance:
+  - QA-03
+  - MIGRATE-02
+  affected_ids: []
+  ui:
+    panel_id: diagnostics-package
+    workspace: shared
+    label: Local package restore
+    keywords:
+    - local
+    - package
+    - restore
+    requires:
+    - diagnostics
+    product_panel: false
+  completion_evidence: []

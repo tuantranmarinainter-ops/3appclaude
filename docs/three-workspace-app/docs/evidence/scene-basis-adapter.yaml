@@ -1,0 +1,72 @@
+checkpoint: DOC-052
+date: 2026-10-19
+acceptance: DATA-02
+status: implementation-added-verification-pending
+scope:
+  command: asset.import.basis
+  convention: row-major 3x3 source-to-scene matrix
+  validation: finite orthonormal basis; reflection is allowed by the shared skeleton profile contract
+  z_up_to_y_up: [1, 0, 0, 0, 0, 1, 0, -1, 0]
+expected_numeric_check:
+  source_point: [1, 2, 3]
+  scene_point: [1, 3, -2]
+  inverse_roundtrip: [1, 2, 3]
+  evidence_type: test assertion authored; execution pending
+implementation:
+  - Basis is persisted in the imported SkeletonProfile and extensions.assetImportModels.
+  - Character, Prop and headless CPU skeleton inputs apply the source-to-scene matrix once around the source model.
+  - CPU evaluation relies on buildCharacterRig for the adapter; a redundant pre-wrap in the project loader was removed after an integration assertion exposed double rotation.
+  - Shared project validation checks orthonormal node metadata and enforces Character/profile basis equality.
+  - Identical source bytes cannot be imported with conflicting unit or basis interpretation.
+  - DOC-053 passes nonidentity basis through Film sampling, Blender conversion and pose bake; see evidence/film-basis-bake.yaml.
+tests:
+  authored:
+    - editor/packages/builder/src/evaluate/__tests__/sceneBasis.test.ts
+    - editor/packages/builder/src/engine/__tests__/importedModel.test.ts
+    - editor/apps/studio/test/unifiedAssetImport.test.ts
+    - editor/packages/shared/test/projectValidation.test.ts
+  execution: partial
+  attempts:
+    - command: "node --import tsx --test test/unifiedAssetImport.test.ts"
+      result: "failed before test discovery: tsx could not be resolved"
+    - command: "pnpm exec vitest run src/engine/__tests__/importedModel.test.ts src/evaluate/__tests__/sceneBasis.test.ts"
+      result: "pnpm aborted because it attempted to recreate node_modules without a TTY"
+    - command: "CI=true pnpm install --offline --ignore-scripts --frozen-lockfile"
+      result: "failed supply-chain policy check: offline metadata for @typescript-eslint/project-service was unavailable"
+    - command: "CI=true pnpm exec vitest run src/engine/__tests__/importedModel.test.ts src/evaluate/__tests__/sceneBasis.test.ts"
+      result: "interrupted after pnpm began recreating builder/node_modules and produced no further output"
+    - command: "node <cached-vitest>/vitest.mjs run src/engine/__tests__/importedModel.test.ts"
+      result: "failed before test discovery because cached Vite could not resolve the missing esbuild package link"
+    - command: "Node 24 --experimental-strip-types with a temporary extension resolver --test src/evaluate/__tests__/sceneBasis.test.ts"
+      result: "passed 2/2 basis conversion and validation tests"
+    - command: "Node 24 with temporary TypeScript transpile loader, cached workspace package junctions, node:test shim and label stub --test src/engine/__tests__/importedModel.test.ts"
+      result: "passed 3/3 imported Character/Prop unit, material and basis adapter assertions; uses a focused harness instead of the Vitest runner"
+    - command: "Node 24 with temporary TypeScript transpile loader and cached workspace package junctions --test packages/shared/test/projectValidation.test.ts"
+      result: "passed 6/6 shared project validation tests, including invalid/mismatched model basis assertions"
+    - command: "Node 24 focused Studio import test with temporary TS transpiler, current Builder evaluate/skeleton sources and render stub --test-name-pattern='asset.import persists a validated Z-up'"
+      result: "passed 1/1: basis profile/node metadata persisted, source bytes unchanged, CPU spine world position mapped from source Y=1 to scene Z=-1, Prop metadata persisted"
+    - command: "Node 24 Studio tests with temporary TS transpiler, current Builder evaluate/skeleton sources and unused render stub --test-name-pattern='asset.import|prop.add|unsupported import|self-contained glTF'"
+      result: "passed 6/6 import/Prop regressions, including the Z-up headless CPU evaluator assertion; no render test matched"
+  typecheck: not-run
+  studio_import_integration: "passed 6 focused import/Prop regressions; broader Studio suite not run"
+  syntax_parse: "Node 24 --check --experimental-strip-types passed for the new helper, tests and touched Studio TypeScript files"
+  browser_or_game: not-run
+source_sha256:
+  editor/packages/builder/src/evaluate/sceneBasis.ts: 66835354e3374bf5610fa271d055030ff851107d8316cf93e2d85642d0270982
+  editor/packages/builder/src/evaluate/index.ts: af280a714e28efef972fba25b37fa712d81759907120df81727ddf50da350c76
+  editor/packages/builder/src/engine/objects/modelBasis.ts: 15fb0d8f4468ac219c9cfd17c10d674fe991d051ccdc02c0edd96065755f0766
+  editor/packages/builder/src/engine/objects/CharacterObject.ts: c1a66820f0c1ba808a013c3c4465bd75992eb411177eea9230c0eda3ffd09d89
+  editor/packages/builder/src/engine/objects/PropObject.ts: abbf756741e8501a21eeb89d4a40e04c10ef11ff711aae6d581489fc4b2303dd
+  editor/apps/studio/src/unifiedAssetFiles.ts: af6d80bedbcea85b9179cf67251f3afc5869c71a534b94e57d4ac28e39cf2d55
+  editor/apps/studio/src/unifiedProjectStore.ts: 06dd66d022cfd45f650f682f708d2770885292a8b556275063fb4cf4a6e31c88
+  editor/apps/studio/src/unifiedSkeletonEvaluation.ts: d087b6509134d0ef7bfb35677bbc0a1d4f444671ad5e33dbb7049b030bc1a7fe
+  editor/apps/studio/src/unifiedFilmSampling.ts: 3f19bfafafbe6a1be75a106836ad6f7c5d5c77d30508dcca9823d36e7533c882
+  editor/packages/builder/src/evaluate/__tests__/sceneBasis.test.ts: cd7625ea706b12a9f93bfc249f8a0a2411708256bf255f6079899b7cc5da4b2d
+  editor/packages/builder/src/engine/__tests__/importedModel.test.ts: a66556dc23d42b8f8104ffdaa301cc07f80c29a484243897e83a19c4bb986fa9
+  editor/apps/studio/test/unifiedAssetImport.test.ts: 20a5afdd08d5537ed134ed5612546a6aeacbd1768c51d0745f2d5cb6008ffa4a
+  editor/packages/shared/src/index.ts: 77541dd7ef3db9e8518dcc7f8eaed8680a4c18d9f924237b16108dcb8f7c873d
+  editor/packages/shared/test/projectValidation.test.ts: 5e9743cc8cd25ae649c4a09b6a0a9f2da144822e16047765847759d31a37d59e
+limitations:
+  - Browser root-trajectory extraction/playback with nonidentity basis has not been verified.
+  - Three.js 0.186 to host 0.184 object reconstruction and skinned mesh/material parity remain unverified.
+  - Full DATA-02 acceptance and browser/game behavior are not claimed.

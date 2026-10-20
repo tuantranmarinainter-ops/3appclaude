@@ -1,0 +1,38 @@
+schema_version: '1'
+checkpoint: DOC-039
+listcode: '1.4.2'
+result: passed
+behavior:
+  - Frame evaluation resolves effective subject world position and yaw before camera subject/look-at bindings.
+  - Project sampling preloads the selected shared Character and Motion sources once, evaluates each sampled frame with the shared direct-rig evaluator, and disposes it on completion or cancellation.
+  - Unsupported or missing source assets fail before output; project data and revision remain unchanged.
+  - sampleProjectCameraSequence is an async generator to support verified local asset loading.
+fixture:
+  id: FX-MIXAMO-PUNCH
+  checks:
+    camera_samples: 21
+    matched_actor_world_matrix: every sample, including terminal left endpoint
+    offset_rotation: followed actor world yaw
+    position_tolerance_meters: 0.000001
+    look_at_tolerance_meters: 0.000001
+automated_checks:
+  builder_tests: 96 files; 553 passed; 1 existing skipped test
+  builder_typechecks: source and tsconfig.test passed
+  builder_build: tsup and finalize-dist passed
+  studio_camera_command: 1 passed
+  studio_fbx_integration: 12 passed with Punch Combo fixture enabled; 0 skipped
+  studio_typecheck: passed
+  targeted_eslint: Builder changed source/test files and Studio changed source/test files passed
+not_verified:
+  - Visual browser framing or multi-shot camera composition
+  - Renderer jobs, Film export, Film playback, editable keys, or in-game acceptance
+  - Production Next build, which remains blocked by the previously documented AppData junction EPERM
+source_sha256:
+  three-workspace-app/editor/packages/builder/src/evaluate/FrameSnapshot.ts: 196C313356B986A9CCCE096D077B17DD75851D658B5E9F515A2A253C0B1C7D3F
+  three-workspace-app/editor/packages/builder/src/evaluate/evaluateFrame.ts: 753047F475BE846F23DB351B64D126BEFC147C673B8E4A3DEE4A5F22806D5CDB
+  three-workspace-app/editor/packages/builder/src/evaluate/sceneFromDocument.ts: 7B28746AAB11C8A7AB4B7BE27D04B2AC4C6F67228A4D7B7732D56E2392E231EC
+  three-workspace-app/editor/packages/builder/src/headless/sampleCameraSequence.ts: 9C172923855B575A66137FBBA28F2DC32F3A8E2E07E77905EAAC933F07869602
+  three-workspace-app/editor/packages/builder/src/headless/__tests__/cameraSequence.test.ts: 44CA40D1D6F11B0841935AFBAEEA67686C80130F89DB3605D72EB2F5C9EAA517
+  three-workspace-app/editor/apps/studio/src/unifiedSkeletonEvaluation.ts: D087B6509134D0EF7BFB35677BBC0A1D4F444671AD5E33DBB7049B030BC1A7FE
+  three-workspace-app/editor/apps/studio/test/cameraShotCommand.test.ts: 5CB3B4EBBE5E00575D7575BD46D36A57BC92B54CB9290668F914AF12562FBE04
+  three-workspace-app/editor/apps/studio/test/unifiedAssetImport.test.ts: B99A6A3D5BCAE0E3C09514111804F557FDEBF596EC457B21D90CCBDFD5E2CDE3

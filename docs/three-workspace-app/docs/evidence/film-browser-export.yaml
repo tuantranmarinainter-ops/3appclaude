@@ -1,0 +1,68 @@
+checkpoint: DOC-057
+date: 2026-10-19
+scope: isolated local browser smoke for one static two-bone FBX Film export
+environment:
+  browser: Chromium 153
+  studio: Next.js 15.1.9
+  url: http://127.0.0.1:3002
+  dependencies: frozen pnpm lockfile; 427 packages reused locally; 0 downloaded; lifecycle scripts disabled
+  blender: local Blender 5.1.2
+  java: local JDK 17.0.20.1
+fixture:
+  source: generated two-bone FBX from DOC-055 local fixture
+  sha256: 3065eec33d09573b57b707fd66925b894fa610b77e8ad5ebf94f03cf941da004
+  basis_to_scene: [1, 0, 0, 0, 0, 1, 0, -1, 0]
+  characters: 1
+  camera_shots: 1
+  frame_range: [0, 29]
+  exported_duration_ticks: 20
+ui_flow:
+  - create isolated project
+  - upload and import FBX as Z-up Character
+  - configure one camera shot
+  - run Film export from the Film panel
+  - download and verify ZIP through saveJob
+project_id: 590566db-0de6-4d19-b9f5-b1bce561dbe5
+job:
+  id: 53c295aa-53f1-4314-b9ff-141ee2123895
+  type: film.export
+  state: succeeded
+  revision: 3
+  progress: 1.0
+  target: 2.4
+  warnings: []
+  blocked_requests: []
+artifact:
+  filename: Film-browser-smoke.zip
+  size_bytes: 2846
+  sha256: 44a8aebb800052990ca6d7820f679d97a6eb4ebfdda566142c362072e3984527
+  zip_signature_verified: true
+  save_job_size_and_sha_verified: true
+  destination: in-memory FileSystemDirectoryHandle stub
+browser:
+  page_errors: 0
+  external_requests: 0
+checks:
+  workspace_typecheck: passed
+  builder_package_build: passed
+  builder_basis_runtime_esm: passed
+  builder_basis_runtime_cjs: passed
+  basis_checks: Z-up mapping and malformed/non-orthonormal basis rejection
+  browser_film_job: passed
+  actual_os_directory_picker_and_disk_write: not_run
+  film_editor: not_run
+  minecraft_playback: not_run
+  live_mcp_host: not_run
+  autoprefixer_css_warning: observed_not_investigated
+  duplicate_mediabunny_load_warning: observed_not_investigated
+cleanup:
+  dev_server_port_3002: stopped
+  isolated_project_storage: removed
+  isolated_next_output: removed
+  smoke_script: removed
+  temporary_tsconfig_include: removed
+  frozen_install_node_modules: kept
+limits:
+  - One generated static two-bone FBX, one Character and one camera shot only.
+  - Does not verify animated/multi-Character browser export, Film Editor behavior, actual OS folder picker, Minecraft playback, or user acceptance.
+  - No LISTCODE implementation status was promoted by this smoke.

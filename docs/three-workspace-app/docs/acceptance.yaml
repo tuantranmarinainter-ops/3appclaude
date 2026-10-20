@@ -1,0 +1,605 @@
+schema_version: '1'
+status: normative-test-spec; partial implementation evidence, no full acceptance
+tolerances:
+  exact: IDs/names/hierarchy/flags/counts/hash/native JSON data exact (ignore property order only); error codes exact
+  adapter: position max1e-5m, quaternion angular max0.001deg using2acos(abs(dot)), scale max1e-6, time max1e-6s; compare all bones/frames not
+    mean only
+  retarget: native parity adapter thresholds; semantic foot-lock drift<=0.005m for locked interval on selected ground fixture; disclose model
+    constraints
+  format: position max0.001m, rotation max0.1deg, scale max1e-4; duration<=half output sample interval; geometry rest displacement<=0.001m; topology/bone/action
+    names exact; texture bytes hash exact unless explicit conversion
+  film: world position max0.001block, pose rotation max0.1deg, FOV max0.1deg; shot bounds exact integer ticks; sampled animation time<=0.025s;3s
+    shot exactly60ticks; key edit persistence exact within numeric thresholds
+  visual: Same GPU/browser/render size required; compare numeric transforms first; silhouette/framing edge<=2px at1366x768; material alpha/occlusion
+    must match; differences require review, no broad pixel-percent waiver
+cases:
+- id: DATA-01
+  target_ids:
+  - 1.2.1
+  fixture_ids:
+  - FX-MIXAMO-TPOSE
+  - FX-MC20-BOBJ
+  procedure: Import twice, create two characters from same asset, clone/edit one, save/reopen
+  expected: Same AssetID; distinct CharacterID/NodeID; edits do not change original or second character; fingerprint changes when rest hierarchy
+    changes
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: DATA-02
+  target_ids:
+  - 1.2.2
+  fixture_ids:
+  - FX-E2E
+  - FX-METARIG
+  procedure: Roundtrip p=(1,2,3) Z-up to Y-up and back; parent rotation/nonuniform scale; FBX unit handling; compare native Three186 objects to
+    numeric adapter reconstructed in hostThree184, including skin/material descriptors
+  expected: Y-up=(1,3,-2); inverse equals source; 100cm=1m only at model adapter; world matrices include parent once
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: "DOC-051 verifies static primitive reparenting under rotated parents with different nonuniform scales, world-matrix preservation within 1e-6, undo and keyed-node rejection. DOC-052 basis math passes 2/2; Character/Prop runtime and project validation pass 9/9; six focused Studio asset-import/Prop regressions pass 6/6 and verify source Y=1 maps to scene Z=-1 once. DOC-053 carries basis through Film conversion and bake: Blender 4.2.3 FBX/GLB fixtures verify rotation and reflection across rest matrices, vertices, normals and face orientation; Python converter/CLI tests 35/35 and pose-bake tests 7/7 pass; the Z-up two-Character/two-shot project Film job passed 1/1 with Java 17 and downloaded ZIP. Tests used temporary Node loaders/package links; standard Studio typecheck and broader suite remain unrun. Browser root-trajectory behavior and cross-version Three.js/skin/material parity remain unverified. Full DATA-02 remains incomplete; 100cm=1m is handled separately by existing unit adapters. Intermittent clone IO_FAILED and production build issue remain open."
+- id: DATA-03
+  target_ids:
+  - 1.2.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Evaluate root policies at0,1.5,3s; trim/speed2/loop/reverse; independent path; save/reopen
+  expected: A midpoint0.5m,end1m, never2m; in-place fixed; skeletal/trajectory same world pose with different owner; conflict rejected
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+  doc034_partial_evidence: "Direct FBX trajectory/origin world-pose parity and numerical loop/reverse/trim/continue cases passed; see evidence/trajectory.yaml. Not full FX-E2E, general alignment, path camera follow or Film acceptance."
+  doc035_partial_evidence: "CPU/API/browser 65-bone FBX parity and read-only missing-source checks passed; see evidence/headless-skeleton.yaml. Not full E2E, geometric checks/render, broad format or Film acceptance."
+  doc036_partial_evidence: "Range/endpoint/source preflight and missing source checks passed; see evidence/range-sampling.yaml. No full converter/job/cancel/staging or Film acceptance."
+- id: DATA-04
+  target_ids:
+  - 1.2.4
+  fixture_ids:
+  - FX-E2E
+  - FX-SCENE-CAMERA
+  procedure: Two adjacent shots0..44,45..89 and ms curves; evaluate cut, near/far, FOV/aspect
+  expected: 45frames each, 90frames total; cut at1.5s, no duplicate/gap; milliseconds converted once
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: HISTORY-01
+  target_ids:
+  - 1.1.3
+  - 1.2.5
+  fixture_ids:
+  - FX-E2E
+  - FX-SCENE-UNDO
+  procedure: Scene move→Retarget Apply→Animation key edit; undo3,redo3; reopen
+  expected: Global order and native data restored, selection resolves; revision increases every undo/redo, never decreases
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: HISTORY-02
+  target_ids:
+  - 1.2.5
+  fixture_ids:
+  - FX-E2E
+  procedure: Second writer, staleCAS, duplicate request, crash before/after manifest replacement
+  expected: One writer; failed request no change; duplicate once; recovery uses last committed manifest+journal, no mixed references
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: UI-01
+  target_ids:
+  - 1.1.1
+  - 1.1.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Switch workspaces20times during selection/draft/job, invalid input and drag cancel
+  expected: One active canvas; preserved identity/time/draft, no orphan listener/timer growth; no revision increment solely on switch
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: UI-02
+  target_ids:
+  - 1.1.1
+  - '2.2'
+  fixture_ids:
+  - FX-E2E
+  procedure: 1366x768 and1920x1080; keyboard/zoom200%, focus, context loss/retry, two rigs/textures
+  expected: Critical controls reachable; no accidental edits from shortcuts; errors recover without project loss; visual comparisons same GPU/browser
+  tolerance: visual
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: NAV-01
+  target_ids:
+  - 1.1.2
+  fixture_ids:
+  - FX-E2E
+  procedure: Search xuong/xương/camera/1.3.2, clear, collapse, keyboard, missing rig capability
+  expected: Same accent-insensitive results, ancestors/panel/selection correct; disabled reason visible; no mutation on navigate
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: MIGRATE-01
+  target_ids:
+  - 1.2.6
+  fixture_ids:
+  - FX-ANIM-FLAIR
+  - FX-85-ACTIONS
+  - FX-SCENE-CLONE
+  procedure: Generate native project with source serializers for Animation+scene+Retarget+Topview; import/reopen/export-native when supported
+  expected: Original bytes unchanged; native payload/curves/IK/layers/metadata preserved; Retarget buildV9.9 accepted by type/version
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: MIGRATE-02
+  target_ids:
+  - 1.2.6
+  - '2.4'
+  fixture_ids:
+  - FX-MIXAMO-TPOSE
+  procedure: Missing asset/relink wrong hash, duplicate/cyclic IDs, unknown fields/version, interrupted write; backup restore new folder
+  expected: Blocking errors commit nothing; metadata retained; unsupported behavior read-only; restored project newID retains content, original
+    unchanged
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: RETARGET-01
+  target_ids:
+  - 1.3.1
+  fixture_ids:
+  - FX-85-ACTIONS
+  - FX-MIXAMO-TPOSE
+  - FX-MIXAMO-THRILLER
+  procedure: Run native HTML and extracted engine on every85actions in both directions; sample each native frame+midpoint
+  expected: IDs/count85 and evaluated transforms match golden, no NaN/missing track; same settings and native dependencies
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: RETARGET-02
+  target_ids:
+  - 1.3.2
+  fixture_ids:
+  - FX-MIXAMO-PUNCH
+  - FX-MC20-BOBJ
+  procedure: Change mapping/reference/calibration, local/world offsets, segments fades, hand L/R/both, feet locks and root modes
+  expected: Native parity; missing essential mappings block bake, source unchanged; foot displacement checked over locked interval
+  tolerance: retarget
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: RETARGET-03
+  target_ids:
+  - 1.3.3
+  fixture_ids:
+  - FX-85-ACTIONS
+  - FX-RETARGET-REPORT
+  - FX-SKIN-REPORT
+  procedure: JSON save/open fingerprints, target keys/interpolation/A-B loop, undo/redo, PNG skin; compare to source
+  expected: Controls/context/sides/movement preserved; preview speed not export speed; pose creation UI absent
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: RIG-01
+  target_ids:
+  - 1.2.1
+  - 1.3.2
+  - 1.5.1
+  fixture_ids:
+  - FX-METARIG
+  - FX-MIXAMO-TPOSE
+  - FX-MC20-BOBJ
+  - FX-ICLONE-GENERATOR
+  procedure: Metarig/65/20 import and rest pose; mapping new profile; weight rebind derivative; unmapped weighted bone
+  expected: Name/parent/rest/fingerprint recorded; no auto-loss bones; weights sum1±1e-6; rest mesh displacement<=0.001m; unmapped weights block
+  tolerance: format
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: SCENE-01
+  target_ids:
+  - 1.4.1
+  fixture_ids:
+  - FX-SCENE-CLONE
+  - FX-SCENE-POSE
+  procedure: Asset import/catalog, node select/clone/parent/lock/hide/delete, pose presets, paths/groups/primitives
+  expected: Topview behavior preserved, character bindings valid; unsupported delete reference rejected or explicit transaction
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: SCENE-02
+  target_ids:
+  - 1.4.2
+  fixture_ids:
+  - FX-SCENE-CAMERA
+  - FX-E2E
+  procedure: Camera primary/overview, lookAt/follow/rotation/path, shots/cuts/transitions, negative axis direction
+  expected: Match upstream evaluated camera at each frame; no overview orbit changing shot; render framing tolerance
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: SCENE-03
+  target_ids:
+  - 1.4.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Grounding/overlap/frustum positive+negative examples; render both cameras at0/45/89
+  expected: Reports retain upstream thresholds/units; no automatic scene mutation; PNG metadata has source revision/camera/hash
+  tolerance: visual
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  doc035_partial_evidence: "CPU/API/browser 65-bone FBX parity and read-only missing-source checks passed; see evidence/headless-skeleton.yaml. Not full E2E, geometric checks/render, broad format or Film acceptance."
+- id: ANIM-01
+  target_ids:
+  - 1.5.1
+  fixture_ids:
+  - FX-ANIM-FLAIR
+  - FX-ICLONE-GENERATOR
+  - FX-METARIG
+  procedure: Rig/IK limits/pose/skin/dualview/onion and undo on locked source artifact vs adapter
+  expected: Evaluated transforms and saved native settings match, display controls stay available
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: ANIM-02
+  target_ids:
+  - 1.5.2
+  fixture_ids:
+  - FX-ANIM-GRAPH
+  - FX-ANIM-FLAIR
+  procedure: Graph handles/easing/smoothing/layer/motion lab/quick tools; markers/contact/template and trim/loop
+  expected: Native keys/curves/layers retained; midpoint samples match; cross-workspace placement does not flatten edit data
+  tolerance: adapter
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: ANIM-03
+  target_ids:
+  - 1.5.3
+  fixture_ids:
+  - FX-ANIM-FLAIR
+  - FX-MC20-BOBJ
+  procedure: Import all source-supported model/texture variants using source test fixtures; MDX alpha/DDS source report reproduction
+  expected: No importer function removed; rig/UV/material/alpha match source; unavailable fixture marked blocked per format, never universal pass
+  tolerance: format
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: FORMAT-01
+  target_ids:
+  - 1.3.3
+  - 1.5.3
+  - 1.6.2
+  fixture_ids:
+  - FX-MIXAMO-THRILLER
+  - FX-MC20-BOBJ
+  - FX-ANIM-FLAIR
+  - FX-METARIG
+  procedure: Roundtrip every supported profile×format×content from conversion matrix; parse using target/native reader
+  expected: Hierarchy/count/action duration/pose within format thresholds; texture path/hash preserved; unsupported cells rejected
+  tolerance: format
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: FORMAT-02
+  target_ids:
+  - 1.6.2
+  fixture_ids:
+  - FX-MIXAMO-TPOSE
+  procedure: Missing Blender, timeout, cancel, output collision/path escape, broken input
+  expected: No source overwrite/partial published output; structured loss/error; cleanup confined to own job directory
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  doc036_partial_evidence: "Range/endpoint/source preflight and missing source checks passed; see evidence/range-sampling.yaml. No full converter/job/cancel/staging or Film acceptance."
+- id: API-01
+  target_ids:
+  - 1.6.1
+  fixture_ids:
+  - FX-E2E
+  procedure: Same inspect/evaluate/render call via legacy CLI and unified CLI as applicable
+  expected: Legacy behavior unchanged; unified structured JSON, exit codes and revisions agree with UI
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: API-02
+  target_ids:
+  - 1.6.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Submit same command UI/CLI/MCP; dry-run, invalid batch, duplicate/retry, stale revision
+  expected: Identical validation/result and one shared history; dry-run/failed batch no commit
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: API-03
+  target_ids:
+  - 1.6.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Invalid token/Origin/Host/path, second broker, long job cancel, network timeout then query request
+  expected: Rejected unauthorized boundary; dedup after restart; no leaked token; timeout does not duplicate mutation
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: FILM-01
+  target_ids:
+  - 1.7.1
+  fixture_ids:
+  - FX-FILM-SMOKE
+  - FX-MC20-BOBJ
+  - FX-E2E
+  procedure: Offline worker write native Film, decompress/read via pinned codec, validate models and checksum manifest
+  expected: GZIP thenBBS1; native typed fields/refs correct; all assets present; no writes to game/profile; do not count parse as runtime
+  tolerance: format
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: FILM-02
+  target_ids:
+  - 1.7.2
+  fixture_ids:
+  - FX-E2E
+  procedure: Open staged Film in allowed BBS2.4 profile, playback0..60, inspect actor/camera/framing/root/texture
+  expected: 2characters,1camera,3seconds; A0.5m at tick30; no double root; correct FOV/cuts and endpoint
+  tolerance: film
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: FILM-03
+  target_ids:
+  - 1.7.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Select A right upper-arm pose.bones track at tick30; change30deg→40deg,save,reopen,play
+  expected: Key selectable/editable and change persists; B/camera/other keys unchanged; no simultaneous action doubling pose; BOBJ native r radians
+    (pi/6 before,2pi/9 after), not degrees or cubic-model semantics
+  tolerance: film
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: E2E-01
+  target_ids:
+  - 1.7.2
+  - 1.7.3
+  fixture_ids:
+  - FX-E2E
+  procedure: Retarget two rigs→Scene layout/shot→Animation edit→Film export→edit/save/reopen in Film Editor
+  expected: Both playback and editable acceptance separately pass; original projects/assets and game films untouched until explicit import
+  tolerance: film
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+- id: QA-01
+  target_ids:
+  - '2.1'
+  fixture_ids:
+  - FX-85-ACTIONS
+  - FX-ANIM-FLAIR
+  - FX-SCENE-CAMERA
+  procedure: Run applicable upstream+adapter checks; compare hash/version/fixture and per-case results
+  expected: No skipped case reported pass; every target/task has evidence or blocker; changed golden requires explicit approved behavior change
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: QA-02
+  target_ids:
+  - '2.2'
+  fixture_ids:
+  - FX-E2E
+  procedure: Build new Animation version, create new owner-private Site, verify version/hash/URL/browser capabilities
+  expected: No overwrite prior Site; actual WebGL verification recorded; local Blender/Film jobs not falsely claimed on hosted Site
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: "partial"
+  runtime_required: true
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+  implementation_evidence: DOC-032 and evidence/browser-smoke.yaml provide selected Punch Combo workflow/unit/pose/history/clone checks; normative fixture matrix and all assertions in this case are not yet verified. Intermittent clone IO_FAILED and production build issue remain open.
+- id: QA-03
+  target_ids:
+  - '2.3'
+  - '2.4'
+  fixture_ids:
+  - FX-E2E
+  procedure: Audit977source entries and license/asset notices; portable start/stop/doctor and backup/restore new folder
+  expected: No lost source module mapping; redistribution rights resolved; no tokens/locks in package; restore refs/hashes correct
+  tolerance: exact
+  evidence_required:
+  - source+build hash
+  - fixture/output hashes
+  - measured values or steps/screenshots
+  - runner/tool/browser version
+  state: not-run
+  runtime_required: false
+  completion_rule: All assertions in case pass; missing fixture/capability reports blocked, not pass
+negative_cases_default:
+- NaN/infinite values
+- unknown version
+- missing required reference
+- read/write interruption
+runtime_permission: Do not run game or publish Site in docs phase; future authorized scope controls execution

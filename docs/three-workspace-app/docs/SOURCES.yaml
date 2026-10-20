@@ -1,0 +1,175 @@
+schema_version: '1'
+updated: '2026-10-18'
+selection:
+  animation: Animation Studio 1.31.8
+  retarget: Mixamo Retarget Lab V9.12
+  topview: topview-3d-cli 0.1.8
+  minecraft_target: BBS FS2.4 / Minecraft1.20.1; source revision0085f77ced9232dc4e26ac51fc7d98f95d1d5b0b
+workspace: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT
+sources:
+- id: '1.5'
+  project: Topview 3D Builder
+  version: v0.1.8
+  upstream: https://github.com/topviewai/topview-3d-builder
+  cli_contract: https://github.com/topviewai/topview-3d-builder/blob/main/docs/topview-3d-cli.md
+  cli_contract_path: docs/topview-3d-cli.md in the pinned checkout
+  source_path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/topview-3d-builder-v0.1.8
+  implementation_copy_path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/three-workspace-app/editor
+  implementation_copy_rule: New app changes are made only in this copy; pinned checkout above remains unchanged.
+  upstream_tag: v0.1.8
+  upstream_tag_object: 9005bd860917f0dd2815f8cfa764611140a58ef5
+  upstream_commit: 631c08c8fd352b4ff83df33aa9a74a4563f4674b
+  local_path: C:/Users/Administrator/AppData/Local/uv/cache/archive-v0/lIxZ5ah1gSSvldDA/topview_3d_cli
+  version_evidence: Installed package metadata/__version__ == 0.1.8; GitHub tag v0.1.8 peels to commit 631c08c8fd352b4ff83df33aa9a74a4563f4674b;
+    all 26 local Python/schema files match the checkout after CRLF/LF normalization
+  source_status: available-pinned
+  source_file_count: 929
+  access_limit: Source checkout complete. Browser rendering and Studio/UI runtime were not run in this docs phase; tracked tests were mapped but
+    not executed.
+  entrypoints:
+    python: topview_3d_cli/__main__.py -> local_cli.main
+    studio: editor/apps/studio/app/page.tsx; workbench and local API routes
+  source_files: 929 tracked files in the tag; Python CLI, React/Next Studio, Three.js builder package, Node renderer, tests, docs, scripts and
+    assets; see inventory/topview.yaml
+  tests: 87 builder test files / 524 tests passed in implementation copy; 16 Python CLI modules and 5 Node renderer files mapped, not run; Studio locale check passed, other offline checks not run
+  technology_evidence:
+    studio: 'v0.1.8 editor/apps/studio/package.json: Next.js 15.1.9, React 18, Three.js 0.184, TypeScript 5.3.3'
+    cli: Python >=3.11; jsonschema dependency; project entrypoint topview_3d_cli.local_cli:main
+  source_match: 26 installed Python/schema files byte-differ only in line endings versus tag; content matches after CRLF/LF normalization
+  additional_current_main_references:
+    cli_contract: https://github.com/topviewai/topview-3d-builder/blob/main/docs/topview-3d-cli.md
+    cli_manifest: https://raw.githubusercontent.com/topviewai/topview-3d-builder/main/agent/pyproject.toml
+    studio_manifest: https://raw.githubusercontent.com/topviewai/topview-3d-builder/main/editor/apps/studio/package.json
+  license: Code Apache-2.0; built-in characters/poses/covers CC-BY-4.0; package declares Apache-2.0 AND CC-BY-4.0 AND OFL-1.1. Check per-file
+    NOTICE/license before redistribution.
+  revision_lock: Exact tag v0.1.8; commit 631c08c8fd352b4ff83df33aa9a74a4563f4674b
+  local_hash_manifest: inventory/topview-cli-sha256.yaml (26 installed Python/schema files, newline-translated local cache)
+  source_key: topview
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+- id: '1.3'
+  project: Mixamo Retarget Lab
+  version: V9.12
+  project_path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html
+  source_path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/Emoticons_Mixamo_Full_Project/lab/mobile_v9_12.html
+  delivery_path: C:/Users/Administrator/Documents/Codex/2026-10-08/retarget-anim-65-20-html/outputs/mobile_v9_12.html
+  sha256: 010C5519318D0272381EE35035170D234E0FB6AC737E10459215B943C98B850C
+  version_evidence: V9.12 project status and V9_12_CHANGES.md; source and output hashes match
+  source_status: available
+  entrypoint: bundled HTML ES module; Three.js, OrbitControls, FBXLoader and GLTFExporter imports
+  builder: work/build_v9_12.py (rebuilds both HTML artifacts from V9.11 and removes pose workspace)
+  tests:
+    regression: outputs/v9_12_regression/results.json; 16 listed browser regression groups
+    skin: outputs/v9_12_skin/results.json; 7 PNG skin checks
+    runtime_limit: No Minecraft game runtime or physical phone/touch acceptance recorded
+  profile: Mixamo65 and Minecraft20; 85 Minecraft actions; 30 FPS
+  hash_manifest: inventory/retarget-v9_12-sha256.yaml (27 selected source/build/report/fixture artifacts)
+  license: Retarget V9.12 action manifest identifies the Emoticons BOBJ data as GPL-3.0-only; derived action assets include attribution and GPL text at three-workspace-app/editor/apps/studio/public/retarget/v9.12/.
+  extracted_data:
+    - path: three-workspace-app/editor/apps/studio/public/retarget/v9.12/minecraft-actions.bobj
+      source_region: mobile_v9_12.html#bobj-actions
+      action_count: 85
+      byte_length: 3357829
+      sha256: 0CAA59054918F19AE42536D21BA530CDA25CF37D9E7C60BE074B0F56A07244A3
+      license: GPL-3.0-only
+    - path: three-workspace-app/editor/apps/studio/public/retarget/v9.12/minecraft20-armature.bobj
+      source_region: mobile_v9_12.html#bobj-default (20 arm_bone records)
+      bone_count: 20
+      byte_length: 2843
+      sha256: 86C47894747B96C8C3A000A267E07796F72C4B6D4367CEBF38B3C4F6586DDE2D
+      license: GPL-3.0-only; see extracted-data NOTICE.md and LICENSE-GPL-3.0.txt
+    - path: three-workspace-app/editor/apps/studio/public/retarget/v9.12/action_manifest.json
+      source_path: Emoticons_Mixamo_Full_Project/lab/action_manifest.json
+      sha256: 3917817FE4546CF78379BB7F6A003F9BB2D34A4EFA7159BAC6E6A9F35C5AD407
+    - path: three-workspace-app/editor/apps/studio/public/retarget/v9.12/action_names_i18n.json
+      source_path: Emoticons_Mixamo_Full_Project/lab/action_names_i18n.json
+      sha256: 39CCDD2A4383606C8EE5B1BB545291DEE91B7C61CD49DDFD7FDDF5AF776AF0DD
+  source_key: retarget
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+  three_evidence: HTML imports https://cdn.jsdelivr.net/npm/three@0.186.1; differs from Topview0.184
+- id: '1.5'
+  project: Topview sample scenes
+  version: Local scene data, not source
+  project_path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/topview-projects
+  source_status: scene-data-only
+  scenes:
+  - episode15-slide04-hero-arrival
+  - episode15-slide05-rainbow-strike
+  - slide-11-chichi-blocks-ga
+  - slide-24-verity-clash
+  access_limit: Samples demonstrate saved Topview project data; they do not substitute for editor source
+  source_key: topview-scenes
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+- id: '1.5'
+  project: Topview local CLI runtime
+  version: 0.1.8
+  local_path: C:/Users/Administrator/AppData/Local/uv/cache/archive-v0/lIxZ5ah1gSSvldDA/topview_3d_cli/_runtime
+  source_status: packaged-runtime
+  access_limit: JavaScript runtime bundle, not original TypeScript/React source
+  source_key: topview-runtime
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+- id: '1.1'
+  project: Animation Studio
+  version: 1.31.8
+  project_path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio
+  source_path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/sites/animation-studio-mdx-alpha-1318/work/material_alpha_v1_31_8/src
+  output_path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/outputs/Animation_Studio_v1_31_8.html
+  site_output_path: C:/Users/Administrator/Documents/Codex/2026-10-09/animation-studio/sites/animation-studio-mdx-alpha-1318/outputs/Animation_Studio_v1_31_8.html
+  sha256: 3CB0CC252128EAC9D1ECC4CD59E01E5E01BC36CBFC201FEF6E61D53D829C8684
+  version_evidence: v1_31_8 build report and matching output hashes; built from separate 1.31.7 source worktree
+  source_status: available-runtime-source-artifact-matched
+  mismatch: package.json label1.31.5 and documented1.31.7 derivation retained;35module+6app+2CSS static correspondence to1.31.8 confirmed. No
+    rebuild/runtime proof.
+  entrypoint: src/index.html; src/app.js; src/build.mjs
+  source_file_count: 47
+  source_hash_manifest: inventory/animation-source-sha256.yaml (all 47 files under src/)
+  builder: src/build.mjs; Site wrapper scripts/build-material-site.mjs
+  tests:
+    selected_evidence: outputs/TEST_REPORT_v1_31_8.md; Fel Orc MDX alpha/KMTA/DDS browser test at 1366x768
+    broader_history: tests/ contains 138 files; results are per-version and are not all tests of 1.31.8
+    runtime_limit: GPU/interactive Edge, 1920x1080 and Minecraft/game not verified for 1.31.8
+  technology: Browser JavaScript modules and Three.js; standalone bundled HTML output
+  license: Project vendor licenses include Three.js and other dependencies; preserve bundled notices and review files individually
+  source_key: animation
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+  correspondence_evidence: evidence/animation-lineage.yaml
+  three_evidence: Decoded artifact @vendor/build/three.core.js declares REVISION186; patch not inferred
+- id: '1.7'
+  project: BBS FS 2.4 Film/replay API reference
+  version: 2.4 / MC1.20.1
+  source_path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/bbs-fs-1.20.1
+  source_status: pinned-reference-revision
+  files_inspected:
+  - gradle.properties
+  - src/main/java/mchorse/bbs_mod/film/FilmManager.java
+  - src/main/java/mchorse/bbs_mod/film/Film.java
+  - src/main/java/mchorse/bbs_mod/film/replays/Replay.java
+  - src/main/java/mchorse/bbs_mod/film/replays/ReplayKeyframes.java
+  - src/main/java/mchorse/bbs_mod/film/replays/FormProperties.java
+  - src/main/java/mchorse/bbs_mod/film/replays/PerLimbService.java
+  - src/main/java/mchorse/bbs_mod/camera/clips/overwrite/KeyframeClip.java
+  - src/main/java/mchorse/bbs_mod/forms/forms/ModelForm.java
+  - src/main/java/mchorse/bbs_mod/data/storage/DataStorage.java
+  - src/main/java/mchorse/bbs_mod/data/storage/DataGzipStorage.java
+  - src/main/java/mchorse/bbs_mod/data/DataStorageContext.java
+  - src/main/java/mchorse/bbs_mod/utils/keyframes/Keyframe.java
+  - src/main/java/mchorse/bbs_mod/utils/keyframes/KeyframeChannel.java
+  - src/main/java/mchorse/bbs_mod/utils/keyframes/factories/KeyframeFactories.java
+  - src/main/java/mchorse/bbs_mod/utils/pose/PoseTransform.java
+  - src/client/java/mchorse/bbs_mod/cubic/model/ModelManager.java
+  - src/client/java/mchorse/bbs_mod/cubic/model/loaders/BOBJModelLoader.java
+  - src/client/java/mchorse/bbs_mod/ui/film/replays/UIReplaysEditorUtils.java
+  - src/main/java/mchorse/bbs_mod/utils/pose/Transform.java
+  - src/main/java/mchorse/bbs_mod/bobj/BOBJBone.java
+  - src/client/java/mchorse/bbs_mod/cubic/model/bobj/BOBJModel.java
+  - src/main/java/mchorse/bbs_mod/camera/data/Angle.java
+  - src/client/java/mchorse/bbs_mod/film/Recorder.java
+  - src/client/java/mchorse/bbs_mod/film/BaseFilmController.java
+  evidence: evidence/bbs-2.4.yaml:25 pinned git blobs +5 bridge artifacts
+  limitation: Static2.4 source and existing binary bridge API/SmokeTest inspected. Offline worker and full external Film/editable pose roundtrip
+    not yet implemented/tested.
+  source_key: bbs-2.4
+  id_namespace: legacy-source-group; use source_key + inventory target_ids
+  repo_path: C:/Users/Administrator/Documents/ChatGPT/BBS MINECRAFT/.build-tools/bbs-fs-1.20.1
+  commit: 0085f77ced9232dc4e26ac51fc7d98f95d1d5b0b
+  read_rule: git show <commit>:<path>; current checkout HEAD declares2.7 and MUST NOT be used as2.4
+source_index: inventory/source-index.yaml

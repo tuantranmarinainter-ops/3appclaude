@@ -1,0 +1,389 @@
+schema_version: '1'
+status: specification-for-review
+scope:
+- 1.2.1
+- 1.2.2
+- 1.2.3
+- 1.2.4
+- 1.2.5
+- 1.2.6
+notation: Field là bắt buộc trừ khi có optional; default chỉ dùng khi tạo mới, không âm thầm sửa dữ liệu import. number phải hữu hạn; record có
+  key bằng id của value.
+upstream:
+  source_key: topview
+  commit: 631c08c8fd352b4ff83df33aa9a74a4563f4674b
+  document_schema: editor/packages/builder/schema/director-document.schema.json
+  types: editor/packages/builder/src/contract/types.ts
+  rule: Giữ DirectorDocument, compact fcurves, editorial, extra, pippitAssetId và public HostAdapter. Không tạo scene store thứ hai.
+storage:
+  project_file: project.json
+  asset_files: assets/<sha256>/<sanitized-basename>
+  original_files: originals/<sha256>/<sanitized-basename>
+  edit_files: motions/<motionId>/<sha256>.json
+  transaction_files: .history/<revision>.json
+  rule: project.json là commit point duy nhất. Ghi blob bất biến trước, fsync/temp/atomic replace manifest sau; không sửa blob cũ. Không ghi trực
+    tiếp .topview-3d của bản nguồn.
+  recovery: 'Manifest cũ và journal giữ tới khi manifest mới được đọc lại/hash đúng. Crash trước commit: bỏ transaction chưa commit; crash sau:
+    phục hồi history từ journal. Không tự xóa asset mồ côi của người dùng.'
+primitives:
+  ID: string UUID v4 tạo một lần; legacy IDs chỉ có trong provenance. NodeID/ClipID giữ nguyên string của Topview; namespace source ngăn collision
+    khi merge.
+  AssetID: sha256:<64 lowercase hex>; hash bytes nguồn, không hash tên file
+  Vec3: '[number, number, number]'
+  Quaternion: '[x,y,z,w]; norm trong 1e-6; quaternion q và -q cùng rotation'
+  Transform: Topview {position:{x,y,z},rotation:{x,y,z},scale:{x,y,z}}; Y-up, mét, Euler XYZ độ; scale khác 0
+  BoneTransform: '{position:Vec3,rotation:Quaternion,scale:Vec3}; native skeleton units/basis theo Profile'
+  BlobRef: '{path:string tương đối trong project, sha256:64 hex, mediaType:string, byteLength:integer>=0}'
+  Provenance: '{sourceKey:string, sourceVersion:string, sourceHash:string, original:BlobRef, legacyId?:string, nativeFingerprint?:string}'
+entities:
+  Project:
+    fields:
+      type:
+        type: string
+        const: three-workspace-project
+      version:
+        type: integer
+        const: 1
+      projectId:
+        type: ID
+      name:
+        type: string
+        min_length: 1
+        default: Dự án mới
+      revision:
+        type: integer
+        minimum: 0
+        default: 0
+      scene:
+        type: DirectorDocument
+      assets:
+        type: record<AssetID,Asset>
+        default: {}
+      characters:
+        type: record<ID,Character>
+        default: {}
+      skeletons:
+        type: record<ID,SkeletonProfile>
+        default: {}
+      mappings:
+        type: record<ID,SkeletonMapping>
+        default: {}
+      motions:
+        type: record<ID,Motion>
+        default: {}
+      bindings:
+        type: record<ClipID,MotionBinding>
+        default: {}
+      retargetSessions:
+        type: record<ID,RetargetSession>
+        default: {}
+      extensions:
+        type: record<sourceKey,JSON>
+        default: {}
+      origins:
+        type: Provenance[]
+        default: []
+  Asset:
+    fields:
+      id:
+        type: AssetID
+      kind:
+        type: enum
+        values:
+        - model
+        - motion
+        - texture
+        - pose
+        - other
+      displayName:
+        type: string
+      source:
+        type: BlobRef
+      derivatives:
+        type: record<format,BlobRef>
+        default: {}
+      provenance:
+        type: Provenance
+      license:
+        type: string|null
+        default: null
+      dependencies:
+        type: AssetID[]
+        default: []
+  Character:
+    fields:
+      id:
+        type: ID
+      assetId:
+        type: AssetID
+      nodeId:
+        type: NodeID
+      skeletonId:
+        type: ID
+      name:
+        type: string
+    rule: Nhiều CharacterID dùng chung AssetID nhưng có node, motion binding, edits riêng. Transform chỉ lưu tại scene.content.nodes. Clone nhân
+      vật tạo CharacterID/NodeID mới; không sửa asset nguồn.
+  SkeletonProfile:
+    fields:
+      id:
+        type: ID
+      family:
+        type: enum
+        values:
+        - metarig
+        - mixamo65
+        - minecraft20
+        - custom-preserved
+      bones:
+        type: Bone[]; thứ tự parent trước child; tên không trùng
+      rootBoneId:
+        type: string
+      metersPerUnit:
+        type: number
+        exclusive_minimum: 0
+      basisToScene:
+        type: 9 numbers; orthonormal matrix, determinant +1 or -1
+      fingerprint:
+        type: sha256 of canonical profile described below
+      nativeFingerprint:
+        type: string|null
+        default: null
+      provenance:
+        type: Provenance
+    canonical_hash: UTF-8 JSON, keys sorted, ordered bones in parent-first/name order, numbers quantized 1e-6 (negative zero -> zero), including
+      names, parent IDs, rest TRS, unit, basis. Save canonical bytes; do not compare only bone count.
+    rule: family là phân loại, không chứng minh tương thích; không ép tên xương vào 65/20. custom-preserved được mở bằng importer hiện có nhưng
+      retarget/export chỉ bật khi mapping được kiểm.
+  Bone:
+    fields:
+      id:
+        type: string
+      name:
+        type: string
+      parentId:
+        type: string|null
+      rest:
+        type: BoneTransform
+      deform:
+        type: boolean
+        default: true
+  SkeletonMapping:
+    fields:
+      id:
+        type: ID
+      sourceProfileId:
+        type: ID
+      targetProfileId:
+        type: ID
+      sourceFingerprint:
+        type: string
+      targetFingerprint:
+        type: string
+      pairs:
+        type: array<{sourceBoneId:string,targetBoneId:string,role:string,enabled:boolean}>
+      ignored:
+        type: array<{side:source|target,boneId:string,reason:string}>
+        default: []
+      calibration:
+        type: BlobRef
+      referencePose:
+        type: BlobRef|null
+        default: null
+      confirmed:
+        type: boolean
+        default: false
+    rule: Target không nhận hai source; mỗi role chỉ xuất hiện một lần. Xương chưa map phải có ignored reason. Calibration là BlobRef JSON hash-addressed trong project;
+      đổi fingerprint làm mapping stale. confirmed chỉ đúng khi đủ semantic roles bắt buộc theo target family. Mapping không đổi topology/skin weights.
+  SkeletonMappingDraft:
+    fields:
+      id: ID
+      sourceProfileId: ID
+      targetProfileId: ID
+      sourceFingerprint: SHA256
+      targetFingerprint: SHA256
+      pairs: array<{sourceBoneId:string,targetBoneId:string,role:string,enabled:boolean}>
+      ignored: array<{side:source|target,boneId:string,reason:string}>
+    rule: Command input; server adds calibration BlobRef, referencePose=null, and derives confirmed from required semantic roles.
+  RetargetCalibrationV1:
+    fields:
+      type:
+        const: bbs.retarget-calibration
+      version:
+        const: 1
+      engine:
+        const: retarget-9.12
+      sourceFingerprint:
+        type: SHA256
+      targetFingerprint:
+        type: SHA256
+      settings:
+        type: ReverseRetargetSettings
+        fields:
+          intensity: number in [0,2]
+          stride: number in [0,2]
+          vertical: number in [0,2]
+          mirror: boolean
+          proportionSide: both|left|right
+          motionSide: both|left|right
+          rootMotion: boolean
+          rootTravelMode: inPlace|follow
+          shoulderWidth: number in [0.7,1.4]
+          upperArm: number in [0.7,1.4]
+          forearm: number in [0.7,1.4]
+          legLength: number in [0.8,1.25]
+          armSpace: number in [-0.5,1]
+    rule: Fingerprints must match source/target SkeletonProfile; unsupported controls or non-finite/out-of-range values reject.
+  Motion:
+    fields:
+      id:
+        type: ID
+      assetId:
+        type: AssetID
+      skeletonId:
+        type: ID
+      durationSeconds:
+        type: number
+        exclusive_minimum: 0
+      sourceFps:
+        type: number
+        exclusive_minimum: 0
+      sourceClip:
+        type: BlobRef
+      evaluator:
+        type: enum
+        values:
+        - animation-1.31.8
+        - retarget-9.12
+        - topview-0.1.8
+      edit:
+        type: BlobRef|null
+        default: null
+      derivedFrom:
+        type: ID|null
+        default: null
+    rule: Edit lưu native versioned project/curve/layer data; evaluator gốc giữ easing/IK/graph. Không flatten khi lưu. Sửa clip shared phải chọn
+      nhân bản motion hay sửa mọi instance; mặc định clone-on-edit.
+  MotionBinding:
+    fields:
+      clipId:
+        type: ClipID
+      characterId:
+        type: ID
+      motionId:
+        type: ID
+      sourceStartSeconds:
+        type: number
+        minimum: 0
+        default: 0
+      sourceLengthSeconds:
+        type: number
+        exclusive_minimum: 0
+      reverse:
+        type: boolean
+        default: false
+      fadeInSeconds:
+        type: number
+        minimum: 0
+        default: 0
+      fadeOutSeconds:
+        type: number
+        minimum: 0
+        default: 0
+      rootPolicy:
+        type: enum
+        values:
+        - in-place
+        - skeletal
+        - trajectory
+        default: skeletal
+      alignment:
+        type: enum
+        values:
+        - origin
+        - continue
+        default: continue
+    rule: Placement, speed, loop chỉ lưu trong scene.content.timeline.animation.motionClips; binding giữ phần upstream chưa biểu diễn. Hai record
+      được sửa trong một transaction, không thể tham chiếu clip mất. Native layer blend được evaluator xử lý; overlap khác evaluator phải bake
+      có báo cáo trước khi ghép.
+  RetargetSession:
+    fields:
+      id:
+        type: ID
+      sourceMotionId:
+        type: ID
+      targetCharacterId:
+        type: ID
+      mappingId:
+        type: ID
+      nativeProject:
+        type: BlobRef
+      generatedMotionId:
+        type: ID|null
+        default: null
+    rule: NativeProject giữ toàn bộ context/controls/sides/movement V9.12; UI preview không commit cho tới Apply. Source luôn bất biến.
+coordinates:
+  scene: Topview right-handed Y-up, mét; ground XZ; 1 mét = 1 block khi xuất Film
+  animation_scene_to_shared: p=(x,z,-y); q=(qx,qz,-qy,qw); scale hoán vị (sx,sz,sy); phép nghịch (x,-z,y). Dùng C*M*C^-1, không đổi Euler từng
+    thành phần.
+  rig_units: Đọc metadata/importer; FBX không được mặc định centimet nếu không biết. Profile thiếu unit yêu cầu chọn một lần và lưu. Transform
+    actor scene_studio đã theo mét; actor.units chỉ là đơn vị model, không nhân lại placement.
+  reflection: 'det(C)=-1: đổi winding/normals ở asset adapter; không biểu diễn reflection bằng quaternion. Negative scale upstream giữ nguyên,
+    export đích không hỗ trợ phải bake mesh hoặc báo lỗi.'
+  root_motion: 'Gọi evaluator nguồn trả root delta D(t) tại source time sau trim/speed/loop. in-place: bỏ delta khỏi skeleton, node giữ placement.
+    skeletal: giữ delta trong skeleton, node chỉ placement/path độc lập. trajectory: lấy delta ra skeleton và nhân vào node; không thêm lại path
+    chứa cùng delta. Rotation delta xử lý cùng translation.'
+  root_validation: trajectory + cùng root delta trên path = ROOT_MOTION_CONFLICT. Parent transforms nhân theo hierarchy. Continue nối tại endpoint
+    clip trước, origin về anchor của clip. Export bake world position và loại phần root đã đưa vào replay.
+time:
+  scene_clock: FPS từ Topview timeline; mặc định project mới 30, không đổi FPS import. FrameStart/frameEnd và editorial sourceFrameEnd inclusive
+    như source.
+  api_interval: Các command range dùng startFrame/endFrame inclusive; duration=(end-start+1)/fps. 3s@30 = frame0..89; export boundary sample t=3s
+    riêng, không tạo frame hiển thị90.
+  sampling: SourceTime=sourceStart+(frame-startFrame)/fps*speed; reverse tính từ cuối source window; loop modulo sourceLength; không loop clamp
+    endpoint. Giữ fractional source time. Preview speed không ghi vào clip speed.
+  camera: Curves native milliseconds; ms=1000*frame/fps. Không coi ms là frame. Shot giữ cameraNodeId, sequence offset và source range; camera
+    cuts không crossfade trừ source đã có transition.
+  export: 'tick=tSeconds*20; camera clip [startTick,endTick), thêm endpoint tại relativeTick=duration. API bridge nhận integer ticks: sample ở
+    grid20Hz; không round từng key30fps rồi để trùng tick. Film codec hỗ trợ float tick nhưng profile portable v1 xuất grid20Hz.'
+  boundary_sampling: Export endpoint at endExclusive seconds uses owning clip source window endpoint before active-range filtering; do not evaluate
+    frame90 as an inactive clip/rest pose for a0..89 clip. At a cut keep each shot own left-limit endpoint and next shot start separately.
+validation:
+- Kiểm version, type, finite numbers, unique IDs, tất cả references; reject cycles/duplicate parent/asset path traversal/prototype keys.
+- Quat sai norm >1e-3 reject; trong 1e-3 normalize và report; dữ liệu lưu mới phải trong1e-6. Không âm thầm normalize nguyên bản.
+- Camera perspective fov vertical (0,180), near>0, far>near; aspect>0. Orthographic giữ trong Scene nhưng Film export chặn nếu chưa convert có
+  chấp thuận.
+- 'Không mất extra/native fields: extensions giữ unknown dữ liệu an toàn; field ảnh hưởng hành vi không hỗ trợ -> read-only + migration issue,
+  không giả vờ chỉnh được.'
+- Giới hạn JSON mới 64MiB, depth64; legacy Retarget giữ12MiB/depth15/200000nodes. Binary asset streaming, không nhét base64 vào command JSON.
+references:
+  api: commands-v1.yaml
+  spec: ../features/shared-project-contract.md
+  acceptance: ../acceptance.yaml
+runtime_interop:
+  host_three: Topview0.184
+  retarget_three: HTML pins0.186.1 external imports
+  animation_three: embedded three.core REVISION186; exact patch not inferred
+  rule: Do not pass Object3D/Skeleton/Material/AnimationMixer instances across Three copies. Native evaluators keep isolated objects; boundary
+    transfers numeric pose arrays, geometry attributes, bone hierarchy and material/texture descriptors; host reconstructs with its Three version.
+    Shared GPU scene uses host objects only. Converge dependency version only after parity tests, not by global import replacement.
+implementation:
+  phase: C-D-incremental
+  status: partial; selected local browser workflows verified, full acceptance incomplete
+  manifest: "<BBS_UNIFIED_PROJECTS_DIR>/<projectId>/project.json; default is Studio working directory unified-projects/<projectId>/project.json"
+  fcurves: Retained atomically under extensions.topview.fcurves with the Topview DirectorDocument
+  implemented: Shared project/Topview validation, immutable asset/source storage, GLB/glTF/FBX model and motion import, exact-hash relink, Character/Prop source binding, motion placement/edit subset, Scene/camera operations and global revision/history; selected local browser workflow verified at DOC-032
+  not_implemented: General native migration and blob copying; BOBJ/MDX/MDL/League handlers; headless root bake/general skeletal alignment/fades; native Animation editor; browser-verified Film export and broad conversion/render job coverage; production packaging and full runtime parity
+  model_metadata: extensions.assetImportModels[AssetID] stores format, metersPerUnit and basisToScene (row-major source-to-scene 3x3); scene node metadata modelFormat/modelUnitMeters/modelBasisToScene/preserveMaterials selects loader, unit and basis adapters; Character unit and basis must match its source profile. Model Assets may own Motion records. Film passes the same source basis to model conversion and pose baking so rest matrices and samples share one frame.
+
+  root_motion_incremental_doc033: "DOC-033: optional MotionClip.motion.rootMotion stores policy skeletal|in-place and profile root boneName; inPlace matches policy. Same-profile direct FBX in-place resets root position/quaternion to rest after deterministic native sampling; placement, unit and limbs remain. No trajectory, endpoint chaining, origin or fades yet. Legacy clips without metadata retain prior playback."
+
+  root_motion_incremental: "DOC-034: direct same-profile FBX supports in-place and trajectory, native rootMotion has optional origin|continue alignment. Trajectory uses native interpolants, model-parent/unit matrix conjugation, cyclic turns and end-exclusive predecessor chaining; source root is reset to rest. Transient motionRoot under the actor owns delta; authored placement/path stays separate. Headless evaluation reports unavailable root bake. General skeletal alignment, fades and export are pending."
+  root_motion_conflict_provenance: "Path derivedSource.motionClipId or motionId identifies duplicated source root delta; independent paths remain permitted. No numeric-equivalence inference without provenance."
+
+  cpu_skeleton_doc035: "Single-frame scene.evaluate returns local bone transforms and world matrices with authored placement and trajectory ownership kept separate; /skeleton CPU export reuses native rig/playback, no DOM/WebGL. Direct supported sources verified on 65-bone FBX. Range bake/export and broad formats remain incomplete."
+
+  range_sampler_doc036: "Internal CPU API sampleSkeletonRange(scene,{startFrame,endFrame,sampleFps},evaluate) streams grid + one left endpoint. Range frames inclusive, relative seconds, explicit left/right ownership. Scene exportSampleBoundary and playback clampSource are runtime-only; no wire schema change. Host selected Character preflight loads once and disposes in finally. Not a converter/job/Film artifact."
+  saved_keys_doc036: "CPU single-frame/range use saved FCurveSet userKeys enabled by default, matching editor defaults; transient UI muting is not a persisted project option."
+
+  camera_sampling_doc037: "Internal sampleCameraSequence streams per-shot sourceFrame,shot/sequence seconds,left/right,position,quaternion,lookAt,verticalFov,aspect,near,far using native CameraRig and viewport transform helper. Perspective-only with explicit viewport aspect; trajectory subject/lookAt target blocked. Film codec and BBS angle conversion pending."
