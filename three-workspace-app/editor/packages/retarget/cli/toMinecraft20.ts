@@ -24,6 +24,74 @@ function continuousEuler(rotation: Quaternion, previous: readonly number[] | nul
   return candidates.map(unwrap).sort((a, b) => distance(a) - distance(b))[0]!
 }
 
+/** Upper → lower limb segments of the Minecraft20 rig (the right shin is spelled `low_leg_right`). */
+const LIMBS = [['left_arm', 'low_left_arm'], ['right_arm', 'low_right_arm'], ['left_leg', 'low_left_leg'], ['right_leg', 'low_leg_right']] as const
+type Armature = ReturnType<typeof parseBobjArmature>
+const rotationOf = (matrix: Matrix4) => { const q = new Quaternion(); matrix.decompose(new Vector3(), q, new Vector3()); return q }
+const degreesOf = (q: Quaternion) => 2 * Math.acos(Math.min(1, Math.abs(q.w))) * 180 / Math.PI
+
+/**
+ * Lower-limb rotation relative to the upper limb, measured from the rest pose and split about the lower bone's own axis:
+ * q = swing·twist. Minecraft limbs are boxes skinned across the elbow/knee, so a relative twist wrings the joint into a
+ * wedge (the original Emoticons emotes stay ≤ ~11° even at 84° of elbow bend).
+ */
+function limbParts(armature: Armature, worlds: ReadonlyMap<string, Matrix4>, upper: string, lower: string) {
+  const bone = (name: string) => armature.bones.find((item) => item.name === name)!
+  const restUpper = rotationOf(new Matrix4().fromArray([...bone(upper).restWorld])), restLower = rotationOf(new Matrix4().fromArray([...bone(lower).restWorld]))
+  const deltaUpper = rotationOf(worlds.get(upper)!).multiply(restUpper.clone().invert())
+  const relative = deltaUpper.clone().invert().multiply(rotationOf(worlds.get(lower)!).multiply(restLower.clone().invert())).normalize()
+  const axis = new Vector3(...bone(lower).localTail).normalize().applyQuaternion(restLower).normalize()
+  const projected = new Vector3(relative.x, relative.y, relative.z).projectOnVector(axis)
+  const twist = new Quaternion(projected.x, projected.y, projected.z, relative.w)
+  if (twist.lengthSq() < 1e-12) twist.identity(); else twist.normalize()
+  return { deltaUpper, restLower, twist, swing: relative.clone().multiply(twist.clone().invert()).normalize() }
+}
+
+/** Twist (degrees) of each lower limb relative to its upper limb in a world pose. */
+export function limbTwistDegrees(armature: Armature, worlds: ReadonlyMap<string, Matrix4>): Record<string, number> {
+  return Object.fromEntries(LIMBS.filter(([upper, lower]) => worlds.has(upper) && worlds.has(lower))
+    .map(([upper, lower]) => [lower, degreesOf(limbParts(armature, worlds, upper, lower).twist)]))
+}
+
+/** Minecraft has no wrists or fingers: the hand tips follow the forearm rigidly (the 85 original emotes: p95 0°). */
+const HANDS = ['low_left_arm.end', 'low_right_arm.end'] as const
+
+/**
+ * Hinge-like elbows/knees and rigid hands: keeps each lower limb's swing (its direction, hence elbow and hand
+ * positions) and drops its twist about its own axis; the hand tips get their rest transform relative to the forearm
+ * back (the Mixamo hand rotation is not applied at all). Every descendant is re-derived from its local transform.
+ */
+export function untwistLimbs(armature: Armature, worlds: ReadonlyMap<string, Matrix4>) {
+  const result = new Map([...worlds].map(([name, world]) => [name, world.clone()]))
+  const parentOf = new Map(armature.bones.map((bone) => [bone.name, bone.parent]))
+  const locals = new Map(armature.bones.map((bone) => {
+    const parent = bone.parent ? result.get(bone.parent) : undefined
+    return [bone.name, parent ? parent.clone().invert().multiply(result.get(bone.name)!) : result.get(bone.name)!.clone()]
+  }))
+  let maxBeforeDegrees = 0, maxHandDegrees = 0
+  for (const hand of HANDS) {
+    const bone = armature.bones.find((item) => item.name === hand)
+    if (!bone || !locals.has(hand)) continue
+    const restLocal = new Matrix4().fromArray([...bone.restLocal])
+    maxHandDegrees = Math.max(maxHandDegrees, degreesOf(rotationOf(restLocal.clone().invert().multiply(locals.get(hand)!))))
+    locals.set(hand, restLocal)
+  }
+  for (const [upper, lower] of LIMBS) {
+    if (!result.has(upper) || !result.has(lower)) continue
+    const { deltaUpper, restLower, twist, swing } = limbParts(armature, result, upper, lower)
+    maxBeforeDegrees = Math.max(maxBeforeDegrees, degreesOf(twist))
+    const position = new Vector3(), scale = new Vector3()
+    result.get(lower)!.decompose(position, new Quaternion(), scale)
+    const world = new Matrix4().compose(position, deltaUpper.clone().multiply(swing).multiply(restLower).normalize(), scale)
+    locals.set(lower, result.get(parentOf.get(lower)!)!.clone().invert().multiply(world))
+  }
+  for (const bone of armature.bones) { // parents precede children in a BOBJ armature
+    const parent = bone.parent ? result.get(bone.parent) : undefined
+    result.set(bone.name, parent ? parent.clone().multiply(locals.get(bone.name)!) : locals.get(bone.name)!.clone())
+  }
+  return { worlds: result, maxBeforeDegrees, maxHandDegrees }
+}
+
 const formatNumber = (value: number) => (Math.abs(value) < 5e-7 ? 0 : value).toFixed(6)
 
 /**
@@ -33,7 +101,7 @@ const formatNumber = (value: number) => (Math.abs(value) < 5e-7 ? 0 : value).toF
  * at their default are omitted. The written text is parsed and re-evaluated with `evaluateBobjAction`, and the joint
  * positions are compared with the solver output — the report states that error rather than trusting the writer.
  */
-export async function exportMinecraft20(glb: Uint8Array, armatureText: string, settings: Partial<ReverseRetargetSettings> = {}, previewAnimation = 0) {
+export async function exportMinecraft20(glb: Uint8Array, armatureText: string, settings: Partial<ReverseRetargetSettings> = {}, previewAnimation = 0, untwist = true) {
   const armature = parseBobjArmature(armatureText)
   const solver = createReverseRetargeter(armature)
   const restLocalInverse = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restLocal]).invert()]))
@@ -61,6 +129,7 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
     return candidate
   }
   let previewFrames: PreviewFrame[] = []
+  let maxBeforeDegrees = 0, maxAfterDegrees = 0, maxHandBeforeDegrees = 0
   try {
     const mixamo = new Map(adapter.rig.bones.flatMap((bone) => {
       const name = MIXAMO65_BONE_PARENTS.find(([joint]) => canonical(joint) === canonical(bone.name ?? ''))?.[0]
@@ -87,7 +156,12 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
             worldPosition: position.toArray(), worldQuaternion: rotation.toArray() as [number, number, number, number] }]
         })
         const result = solver.evaluate(pose, settings)
-        const worlds = new Map(result.map((bone) => [bone.name, new Matrix4().fromArray(bone.worldMatrix)]))
+        const solved = new Map(result.map((bone) => [bone.name, new Matrix4().fromArray(bone.worldMatrix)]))
+        // The V9.12 solver swings each segment by the shortest arc on its own, leaving forearm/shin twist arbitrary.
+        const untwisted = untwist ? untwistLimbs(armature, solved) : { worlds: solved, maxBeforeDegrees: Math.max(0, ...Object.values(limbTwistDegrees(armature, solved))), maxHandDegrees: 0 }
+        const worlds = untwisted.worlds
+        maxBeforeDegrees = Math.max(maxBeforeDegrees, untwisted.maxBeforeDegrees); maxHandBeforeDegrees = Math.max(maxHandBeforeDegrees, untwisted.maxHandDegrees)
+        maxAfterDegrees = Math.max(maxAfterDegrees, ...Object.values(limbTwistDegrees(armature, worlds)))
         samples.push({ ticks: tick, worlds: new Map([...worlds].map(([name, world]) => [name, new Vector3().setFromMatrixPosition(world)])),
           tips: new Map(leaves.map((name) => [name, new Vector3(...localTail.get(name)!).applyMatrix4(worlds.get(name)!)])) })
         for (const bone of armature.bones) {
@@ -138,5 +212,5 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
   }
   const status = parsed.size === actions.length && roundtripMaxErrorBlocks < 1e-3 ? 'PASS' as const : 'FAIL' as const
   return { bobj, previewFrames, previewParents, report: { status, format: 'bobj-v9.12 (BBSFix: 20 Hz integer ticks, Euler XYZ, LINEAR)', ticksPerSecond: TICKS_PER_SECOND,
-    settings: { ...settings }, actions, roundtripMaxErrorBlocks } }
+    settings: { ...settings }, actions, roundtripMaxErrorBlocks, limbTwist: { untwist, maxBeforeDegrees, maxAfterDegrees, handsLocked: untwist, maxHandBeforeDegrees } } }
 }

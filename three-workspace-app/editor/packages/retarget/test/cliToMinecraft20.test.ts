@@ -11,7 +11,7 @@ import { parseBobjArmature } from '../src/reverse.ts'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { runNormalize } from '../cli/normalizeCore.ts'
 import { mergeAnimationGlbs } from '../cli/glbContract.ts'
-import { exportMinecraft20 } from '../cli/toMinecraft20.ts'
+import { exportMinecraft20, limbTwistDegrees, untwistLimbs } from '../cli/toMinecraft20.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
@@ -81,6 +81,52 @@ test('duplicate GLB animation names (WC3 has two "Stand 2") get Blender-style .0
   assert.equal(exported.report.status, 'PASS')
   assert.deepEqual([...parseBobjActions(exported.bobj).keys()], ['running', 'running.001', 'running.002'])
   assert.deepEqual(exported.report.actions.map((item) => [item.name, item.glbName]), [['running', 'running'], ['running.001', 'running'], ['running.002', 'running']])
+})
+
+test('untwistLimbs removes the forearm twist relative to the upper arm but keeps its bend, elbow and hand positions', () => {
+  const rest = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restWorld])]))
+  // Bend the left forearm 60° and twist it 90° about its own axis (pivot = elbow); the hand end follows.
+  const elbow = new Vector3().setFromMatrixPosition(rest.get('low_left_arm')!)
+  const axis = new Vector3(...armature.bones.find((bone) => bone.name === 'low_left_arm')!.localTail).applyMatrix4(rest.get('low_left_arm')!).sub(elbow).normalize()
+  const bend = new Matrix4().makeRotationAxis(new Vector3().crossVectors(axis, new Vector3(0, 0, 1)).normalize(), Math.PI / 3)
+  const twist = new Matrix4().makeRotationAxis(axis, Math.PI / 2)
+  const about = (rotation: Matrix4) => new Matrix4().makeTranslation(elbow.x, elbow.y, elbow.z).multiply(rotation).multiply(new Matrix4().makeTranslation(-elbow.x, -elbow.y, -elbow.z))
+  const pose = new Map(rest)
+  for (const name of ['low_left_arm', 'low_left_arm.end']) pose.set(name, about(bend).multiply(about(twist)).multiply(rest.get(name)!))
+  const hand = new Vector3().setFromMatrixPosition(pose.get('low_left_arm.end')!)
+  const before = limbTwistDegrees(armature, pose)
+  assert.ok(Math.abs(before.low_left_arm! - 90) < 1, `twist measured ${before.low_left_arm}`)
+  const fixed = untwistLimbs(armature, pose)
+  assert.ok(Math.abs(fixed.maxBeforeDegrees - 90) < 1)
+  const after = limbTwistDegrees(armature, fixed.worlds)
+  assert.ok(after.low_left_arm! < 0.5, `twist left after ${after.low_left_arm}`)
+  assert.ok(new Vector3().setFromMatrixPosition(fixed.worlds.get('low_left_arm')!).distanceTo(elbow) < 1e-6, 'elbow stays')
+  assert.ok(new Vector3().setFromMatrixPosition(fixed.worlds.get('low_left_arm.end')!).distanceTo(hand) < 1e-6, 'hand stays')
+})
+
+test('hands (`low_*_arm.end`) are locked to the forearm like the original emotes (no wrist wedge)', () => {
+  const rest = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restWorld])]))
+  const wrist = new Vector3().setFromMatrixPosition(rest.get('low_right_arm.end')!)
+  const pose = new Map(rest)
+  pose.set('low_right_arm.end', new Matrix4().makeTranslation(wrist.x, wrist.y, wrist.z).multiply(new Matrix4().makeRotationX(1.2))
+    .multiply(new Matrix4().makeTranslation(-wrist.x, -wrist.y, -wrist.z)).multiply(rest.get('low_right_arm.end')!))
+  const fixed = untwistLimbs(armature, pose)
+  assert.ok(fixed.maxHandDegrees > 60, `hand rotation measured ${fixed.maxHandDegrees}`)
+  const hand = new Matrix4().copy(fixed.worlds.get('low_right_arm.end')!), restHand = rest.get('low_right_arm.end')!
+  assert.ok(hand.elements.every((value, index) => Math.abs(value - restHand.elements[index]!) < 1e-6), 'hand back to its rest relation with the forearm')
+})
+
+test('exported .bobj keeps forearm/shin twist low (no wedge-shaped Steve arms) and reports before/after', async () => {
+  const exported = await exportMinecraft20(await mixamoFromMinecraft(['emote_floss', 'running', 'emote_dab']), armatureText)
+  assert.equal(exported.report.status, 'PASS')
+  assert.ok(exported.report.limbTwist.maxAfterDegrees <= 15, `max twist after ${exported.report.limbTwist.maxAfterDegrees}`)
+  assert.ok(exported.report.limbTwist.maxBeforeDegrees >= exported.report.limbTwist.maxAfterDegrees)
+  assert.equal(exported.report.limbTwist.handsLocked, true)
+  // measured again on what was written
+  for (const action of parseBobjActions(exported.bobj).values()) for (let tick = 0; tick <= action.durationTicks; tick += 2) {
+    const worlds = new Map(evaluateBobjAction(armature, action, tick).map((bone) => [bone.name, new Matrix4().fromArray(bone.worldMatrix)]))
+    for (const [bone, degrees] of Object.entries(limbTwistDegrees(armature, worlds))) assert.ok(degrees <= 15, `${action.name}@${tick} ${bone} ${degrees.toFixed(1)}°`)
+  }
 })
 
 test('CLI --bobj writes <stem>.minecraft20.bobj and its preview next to the GLB', async () => {
