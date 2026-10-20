@@ -2,10 +2,13 @@ import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { applyMixamo65MappingPreset } from '../src/mappingPreset.ts'
 import type { MappingSkeleton } from '../src/mapping.ts'
 import type { RetargetBonePair, RetargetRig } from '../src/universal.ts'
+import { suggestGeometryMapping } from './geometryMapping.ts'
 
 export type SourceFamily = 'mixamo' | 'ue' | 'cc' | 'lol' | 'wc3r' | 'wow' | 'minecraft20' | 'unknown'
 export interface MappedJoint { target: string; targetId: string; source: string | null; sourceId: string | null; via: string | null; ambiguous?: boolean }
-export interface AutoMapping { family: SourceFamily; joints: MappedJoint[]; pairs: RetargetBonePair[]; missingRequired: string[]; requiredTargetIds: string[]; notInSourceRig: string[] }
+export interface AutoMapping { family: SourceFamily; joints: MappedJoint[]; pairs: RetargetBonePair[]; missingRequired: string[]; requiredTargetIds: string[]; notInSourceRig: string[]
+  /** Only set when joints came from hierarchy/rest geometry (`via: 'geometry'`): 0..1 trust, and notes the user must read. */
+  confidence?: number; notes?: string[] }
 
 /** Losing any of these blocks export (DECISIONS: "thiếu role chính"). */
 export const MIXAMO65_REQUIRED_JOINTS = Object.freeze(['Hips', 'Spine', 'Head',
@@ -170,6 +173,19 @@ export function buildAutoMapping(source: RetargetRig, target: RetargetRig): Auto
     resolveShoulderParent(source, joints)
     resolveBetween(source, joints, 'Spine1', 'Spine', 'Spine2')
     for (const side of ['Left', 'Right']) resolveBetween(source, joints, `${side}Leg`, `${side}UpLeg`, `${side}Foot`)
+  }
+  if (family === 'unknown' && joints.some((joint) => MIXAMO65_REQUIRED_JOINTS.includes(joint.target) && !joint.sourceId)) {
+    const suggestion = suggestGeometryMapping(source)
+    if (suggestion) {
+      const used = new Set(joints.flatMap((joint) => joint.sourceId ? [joint.sourceId] : [])), sourceName = new Map(source.bones.map((bone) => [bone.id, bone.name ?? bone.id]))
+      let filled = 0
+      for (const joint of joints) {
+        const id = suggestion.assignments.get(joint.target)
+        if (!id || joint.sourceId || joint.ambiguous || used.has(id)) continue
+        Object.assign(joint, { source: sourceName.get(id)!, sourceId: id, via: 'geometry' }); used.add(id); filled++
+      }
+      if (filled) return { ...finish(family, joints), confidence: suggestion.confidence, notes: suggestion.notes }
+    }
   }
   return finish(family, joints)
 }

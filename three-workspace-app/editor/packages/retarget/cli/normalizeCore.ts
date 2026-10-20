@@ -160,6 +160,7 @@ export async function runNormalize(request: NormalizeRequest) {
   } finally { src.dispose(); dst.dispose() }
   const mappingReport = { family: mapping.family, mapped: mapping.pairs.length, missingRequired: mapping.missingRequired, notInSourceRig: mapping.notInSourceRig,
     ...(mapping.fingerprintsMatch === undefined ? {} : { presetFingerprintsMatch: mapping.fingerprintsMatch }),
+    ...(mapping.confidence === undefined ? {} : { confidence: mapping.confidence, needsUserConfirmation: true, notes: mapping.notes }),
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
 
   if (!actions.length) return blocked('NO_ACTION', 'Source has no Action', { input, actions })

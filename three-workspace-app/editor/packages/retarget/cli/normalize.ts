@@ -75,6 +75,7 @@ try {
   if (report.blocker) console.log(`blocker ${report.blocker.code}: ${report.blocker.message}`)
   if (report.gates) console.log(`gates ${JSON.stringify(report.gates)} contract ${JSON.stringify(report.contract)}`)
   if (report.mapping) console.log(`mapping ${report.mapping.family} ${report.mapping.mapped}/65`)
+  if (report.mapping?.needsUserConfirmation) console.log(`mapping GEOMETRY confidence ${report.mapping.confidence.toFixed(2)} - inferred from structure, confirm before use`)
   if (report.calibration) console.log(`calibration ${report.calibration.mode} facing ${report.calibration.facingYawDegrees.toFixed(0)}°${report.calibration.facingAmbiguous ? ` (AMBIGUOUS: measured ${report.calibration.measuredFacingYawDegrees.toFixed(0)}°, set --facing)` : ''} max ${report.calibration.maxDegrees.toFixed(1)}° over ${report.calibration.corrections.length} joints`)
   if (report.proportions?.suggestedRootScale) console.log(`hips source=${report.proportions.sourceHipsHeightMeters.toFixed(2)}m target=${report.proportions.targetHipsHeightMeters.toFixed(2)}m suggested --root-scale ${report.proportions.suggestedRootScale.toFixed(3)}`)
   if (report.roundtrip) console.log(`actions exported=${report.exportedActions} skipped=${report.skippedActions.length} (${[...new Set(report.skippedActions.map((item: { code: string }) => item.code))].join(', ') || '-'})`)
