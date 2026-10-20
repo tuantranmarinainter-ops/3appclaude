@@ -3,7 +3,7 @@ import { AnimationClip, Matrix4, PropertyBinding, type Bone, type Object3D, type
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
-import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping } from './autoMapping.ts'
+import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
 import { glbNodeNames, mergeAnimationGlbs } from './glbContract.ts'
 import { loadAsset } from './loadAsset.ts'
@@ -35,6 +35,10 @@ export interface NormalizeRequest {
   /** Source→target facing yaw override in degrees (default: measured, quarter turns only). */
   facingDegrees?: number
   preview?: boolean
+  /** Optional progress callback (Workbench); never affects the result. */
+  onProgress?: NormalizeProgress
+  /** With `mappingPreset`: the family to report/assume (a preset itself carries none), e.g. keeps minecraft20's absent Foot roles non-required. */
+  presetFamily?: SourceFamily
 }
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
@@ -134,8 +138,19 @@ function blocked(code: string, message: string, extra: Record<string, unknown> =
   return { status: 'BLOCKED' as const, report: { status: 'BLOCKED' as GateStatus, blocker: { code, message }, ...extra } }
 }
 
-export async function runNormalize(request: NormalizeRequest) {
-  const started = Date.now()
+/** Idle-time hook for long runs: `stage` names the phase, `done`/`total` count its units (Actions, mostly). */
+export type NormalizeProgress = (stage: string, done: number, total: number) => void | Promise<void>
+
+/** Source/target rig facts the Workbench needs to edit a mapping: bone ids are the adapter's, names are what presets store. */
+export interface InspectRigs { source: { fingerprint: string; bones: Array<{ id: string; name: string; parentId: string | null }> }
+  target: { fingerprint: string; bones: Array<{ id: string; name: string; parentId: string | null }> } }
+
+/**
+ * The mapping -> prune -> calibration front half of `runNormalize`, with no baking. `blocker` is set when the request cannot be
+ * normalized as given (the same gates runNormalize reports); the mapping/Action facts are still returned so a UI can show why.
+ * `ready` exists only without a blocker. NOTE: when ready, `request.source.animations` has been pruned in place (reported in `ready.prune`).
+ */
+export async function inspectNormalize(request: NormalizeRequest) {
   const rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
   const basis = sourceToScene(request.unitMeters ?? 1, request.upAxis ?? 'y')
   const jointNames = sourceJointNames(request.source)
@@ -150,23 +165,30 @@ export async function runNormalize(request: NormalizeRequest) {
   let targetRest: Map<string, number[]>
   let sourceBones: Map<string, { name?: string; parentId: string | null }>
   let sourceHipsHeight: number | null = null
+  let rigs: InspectRigs
   const actions = src.actions.map((action) => ({ index: action.index, name: action.name, durationSeconds: action.durationSeconds, ready: action.ready, issues: action.issues }))
   try {
-    mapping = request.mappingPreset ? buildPresetMapping(request.mappingPreset, src.rig, dst.rig) : buildAutoMapping(src.rig, dst.rig)
+    mapping = request.mappingPreset ? buildPresetMapping(request.mappingPreset, src.rig, dst.rig, request.presetFamily) : buildAutoMapping(src.rig, dst.rig)
     sourceBones = new Map(src.rig.bones.map((bone) => [bone.id, bone]))
     const hipsId = mapping.joints.find((joint) => joint.target === 'Hips')?.sourceId
     sourceHipsHeight = hipsId ? src.rig.bones.find((bone) => bone.id === hipsId)!.restWorld[13]! : null
     targetRest = new Map(dst.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[name, bone.restWorld] as const] : [] }))
+    const list = (rig: typeof src.rig) => ({ fingerprint: rig.fingerprint, bones: rig.bones.map((bone) => ({ id: bone.id, name: bone.name ?? bone.id, parentId: bone.parentId })) })
+    rigs = { source: list(src.rig), target: list(dst.rig) }
   } finally { src.dispose(); dst.dispose() }
   const mappingReport = { family: mapping.family, mapped: mapping.pairs.length, missingRequired: mapping.missingRequired, notInSourceRig: mapping.notInSourceRig,
     ...(mapping.fingerprintsMatch === undefined ? {} : { presetFingerprintsMatch: mapping.fingerprintsMatch }),
     ...(mapping.confidence === undefined ? {} : { confidence: mapping.confidence, needsUserConfirmation: true, notes: mapping.notes }),
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
+  const targetHipsHeight = targetRest.get('Hips')?.[13] ?? null
+  const suggestedRootScale = sourceHipsHeight && sourceHipsHeight > 0 && targetHipsHeight ? targetHipsHeight / sourceHipsHeight : null
+  const base = { input, actions, mapping, mappingReport, rigs, sourceHipsHeight, targetHipsHeight, suggestedRootScale, targetRest }
 
-  if (!actions.length) return blocked('NO_ACTION', 'Source has no Action', { input, actions })
-  if (mapping.missingRequired.length) return blocked('MISSING_REQUIRED_JOINTS', `Missing main joints: ${mapping.missingRequired.join(', ')}`, { input, actions, mapping: mappingReport })
   const missing = (request.actions ?? []).filter((index) => !actions[index])
-  if (missing.length) return blocked('NO_ACTION', `Action ${missing.join(', ')} does not exist (source has ${actions.length})`, { input, actions })
+  const blocker = !actions.length ? { code: 'NO_ACTION', message: 'Source has no Action', extra: { input, actions } as Record<string, unknown> }
+    : mapping.missingRequired.length ? { code: 'MISSING_REQUIRED_JOINTS', message: `Missing main joints: ${mapping.missingRequired.join(', ')}`, extra: { input, actions, mapping: mappingReport } as Record<string, unknown> }
+    : missing.length ? { code: 'NO_ACTION', message: `Action ${missing.join(', ')} does not exist (source has ${actions.length})`, extra: { input, actions } as Record<string, unknown> } : null
+  if (blocker) return { ...base, blocker, ready: undefined }
 
   // Second pass: rig = mapped bones (+ ancestors, kept by the adapter); other channels are dropped and reported.
   const prune = pruneToMappedRig(request.source, mappingSourceNames(mapping, sourceBones))
@@ -180,12 +202,25 @@ export async function runNormalize(request: NormalizeRequest) {
   let calibration: ReturnType<typeof buildCalibration>
   const finalSource = createThreeRigAdapter(request.source, sourceOptions), finalTarget = createThreeRigAdapter(request.target, targetOptions)
   try { calibration = buildCalibration(finalSource.rig, finalTarget.rig, mapping.joints, input.calibrate, request.facingDegrees) } finally { finalSource.dispose(); finalTarget.dispose() }
+  return { ...base, blocker: null, ready: { prune, prunedActions, actionsReport, sourceOptions, targetOptions, calibration } }
+}
+
+export async function runNormalize(request: NormalizeRequest) {
+  const started = Date.now()
+  const rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
+  request.onProgress?.('inspect', 0, 1)
+  const inspected = await inspectNormalize(request)
+  if (inspected.blocker) return blocked(inspected.blocker.code, inspected.blocker.message, inspected.blocker.extra)
+  const { input, actions, mapping, mappingReport, sourceHipsHeight, targetRest, suggestedRootScale } = inspected
+  const { prune, prunedActions, actionsReport, sourceOptions, targetOptions, calibration } = inspected.ready
 
   // One bake per Action; an Action that cannot be baked is skipped and reported (DECISIONS: export with loss, never silent).
   const exported: Array<{ action: (typeof prunedActions)[number]; bytes: Uint8Array; report: Awaited<ReturnType<typeof normalizeAnimation>>['report'] }> = []
   const skippedActions: Array<{ index: number; name: string; code: string; message: string }> = []
-  for (const index of request.actions ?? prunedActions.map((action) => action.index)) {
+  const bakeList = request.actions ?? prunedActions.map((action) => action.index)
+  for (const [position, index] of bakeList.entries()) {
     const action = prunedActions[index]!
+    await request.onProgress?.('bake', position, bakeList.length)
     const skip = (code: string, message: string) => skippedActions.push({ index, name: action.name, code, message })
     if (!(action.durationSeconds > 0)) { skip('ACTION_EMPTY', 'Action has no duration (single-pose export?)'); continue }
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
@@ -202,18 +237,18 @@ export async function runNormalize(request: NormalizeRequest) {
     const first = skippedActions[0]!
     return blocked(first.code, `${first.name}: ${first.message}`, { input, actions: actionsReport, skippedActions, prunedTracks: prune.report })
   }
+  await request.onProgress?.('roundtrip', 0, exported.length)
   const glb = mergeAnimationGlbs(exported.map((item) => item.bytes)), glbSha256 = sha256(glb)
 
   // Roundtrip: reload the written bytes with GLTFLoader and sample every Action, instead of trusting in-memory frames.
   const previewIndex = Math.max(0, exported.findIndex((item) => item.action.index === request.previewAction))
   const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256 })
   const animationCount = reloaded.actions.length
-  const suggestedRootScale = sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null
   let perAction, previewFrames: PreviewFrame[] = [], jointCount: number, mixamoJoints: number
   try {
     const names = new Map(reloaded.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[bone.id, name] as const] : [] }))
     jointCount = reloaded.joints.length; mixamoJoints = names.size
-    perAction = exported.map((item, clipIndex) => {
+    const measure = (item: (typeof exported)[number], clipIndex: number) => {
       const clip = reloaded.actions[clipIndex]
       if (!clip) return { name: item.action.name, status: 'FAIL' as GateStatus, durationSeconds: 0, durationErrorSeconds: Infinity, allFinite: false,
         hipsTravelMeters: 0, hipsHeightRangeMeters: [0, 0], hipsMaxExcursionMeters: 0, quality: undefined }
@@ -239,7 +274,10 @@ export async function runNormalize(request: NormalizeRequest) {
         hipsTravelMeters: Math.hypot(last.get('Hips')![0]! - first.get('Hips')![0]!, last.get('Hips')![2]! - first.get('Hips')![2]!),
         hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion,
         quality: meter.finish(targetRest.get('Hips')![13]!, suggestedRootScale) }
-    })
+    }
+    const rows: Array<ReturnType<typeof measure>> = []
+    for (const [clipIndex, item] of exported.entries()) { await request.onProgress?.('roundtrip', clipIndex, exported.length); rows.push(measure(item, clipIndex)) }
+    perAction = rows
   } finally { reloaded.dispose() }
   const prefixedJointNames = glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length
   // Top level = the preview Action's numbers, but `status` is the gate over every Action (spread first so it cannot win).

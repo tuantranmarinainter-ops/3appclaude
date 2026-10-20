@@ -1,0 +1,685 @@
+// App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
+import { Viewer, FPS } from './viewer.js'
+
+const $ = (id) => document.getElementById(id)
+/** Tiny DOM builder; text always goes through textContent so file/bone names can never inject markup. */
+function h(tag, props = {}, ...kids) {
+  const el = document.createElement(tag)
+  for (const [key, value] of Object.entries(props ?? {})) {
+    if (value === undefined || value === null || value === false) continue
+    if (key === 'class') el.className = value
+    else if (key === 'text') el.textContent = value
+    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value)
+    else if (key === 'dataset') Object.assign(el.dataset, value)
+    else if (value === true) el.setAttribute(key, '')
+    else el.setAttribute(key, value)
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)))
+  return el
+}
+const clear = (el) => { el.replaceChildren(); return el }
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
+const fmtBytes = (n) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(0)} KB` : `${n} B`
+const fmt = (n, digits = 2) => (typeof n === 'number' && Number.isFinite(n) ? n.toFixed(digits) : '–')
+
+const CODE_HINTS = {
+  NO_ACTION: 'Nguồn không có Action nào (hoặc chỉ số Action được chọn không tồn tại).',
+  MISSING_REQUIRED_JOINTS: 'Thiếu xương chính (Hips, Spine, Head, tay, chân). Sửa ở tab Mapping rồi xác nhận.',
+  ACTION_EMPTY: 'Action rỗng (không có thời lượng): có thể là một tư thế đơn.',
+  ACTION_UNSUPPORTED: 'Action có kênh không hỗ trợ.',
+  ACTION_FAILED: 'Bake Action bị lỗi.',
+  ACTION_BUDGET: 'Action vượt giới hạn số mẫu.',
+  MODEL_MODE_FAMILY_UNSUPPORTED: 'Model mode đợt 1 chỉ hỗ trợ nguồn có rig kiểu Mixamo.',
+  DRACO_UNSUPPORTED: 'Nguồn nén Draco/meshopt: cần giải nén trước khi dùng Model mode.',
+}
+const QUALITY_TITLES = {
+  HIPS_BELOW_GROUND: 'Hông chui xuống đất', HIPS_TOO_HIGH: 'Hông bay quá cao', FEET_PENETRATE: 'Chân lún dưới mặt sàn', FOOT_SLIDE: 'Trượt chân khi đang chạm đất',
+}
+const STAGES = { queued: 'Đang xếp hàng', inspect: 'Đọc rig & ghép mapping', bake: 'Bake Action', roundtrip: 'Đọc lại GLB & đo chất lượng', model: 'Dựng model + skin', bobj: 'Xuất .bobj Minecraft20' }
+
+const state = {
+  source: null, targets: [], target: null,
+  inspect: null, inspecting: false, inspectError: null, inspectSeq: 0,
+  rows: [], filter: 'all', search: '', preset: null, presetFamily: null, dirty: false,
+  checked: new Set(), actionFilter: '',
+  run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
+  selected: null, scale: { applied: null },
+}
+
+// ---------------------------------------------------------------- feedback
+function toast(message, kind = 'info', sticky = false) {
+  const el = h('div', { class: `toast ${kind}`, role: kind === 'err' ? 'alert' : 'status' }, h('span', { text: message }), h('button', { type: 'button', 'aria-label': 'Đóng', text: '×', onclick: () => el.remove() }))
+  $('toasts').append(el)
+  if (!sticky) setTimeout(() => el.remove(), kind === 'err' ? 12000 : 5000)
+}
+window.addEventListener('error', (event) => toast(`Lỗi giao diện: ${event.message}`, 'err'))
+window.addEventListener('unhandledrejection', (event) => toast(`Lỗi: ${event.reason?.message ?? event.reason}`, 'err'))
+
+async function api(path, { method = 'GET', json, body, headers } = {}) {
+  let response
+  try {
+    response = await fetch(path, { method, headers: { ...(json ? { 'content-type': 'application/json' } : {}), ...headers }, body: json ? JSON.stringify(json) : body })
+  } catch {
+    throw new Error('Không kết nối được máy chủ Workbench. Kiểm tra cửa sổ lệnh còn chạy không.')
+  }
+  const text = await response.text()
+  let data
+  try { data = JSON.parse(text) } catch { /* not JSON */ }
+  if (!response.ok) throw new Error(data?.error ?? `Máy chủ trả lỗi ${response.status}`)
+  return data
+}
+
+// ---------------------------------------------------------------- viewer + timeline
+const viewer = new Viewer($('leftHost'), $('rightHost'), onViewerFrame)
+let scrubbing = false, frames = 0, wasPlaying = true
+function onViewerFrame(time) {
+  const frame = Math.round(time * FPS)
+  if (!scrubbing) $('timeline').value = String(frame)
+  $('frameLabel').textContent = `${frame} / ${frames} · ${time.toFixed(2)}s`
+}
+function setOverlay(side, text, error = false) {
+  const el = $(side === 'left' ? 'leftMsg' : 'rightMsg')
+  el.textContent = text ?? ''
+  el.classList.toggle('err', error)
+}
+$('playBtn').addEventListener('click', () => { viewer.playing = !viewer.playing; $('playBtn').textContent = viewer.playing ? '❚❚' : '▶' })
+$('timeline').addEventListener('pointerdown', () => { scrubbing = true; wasPlaying = viewer.playing; viewer.playing = false })
+$('timeline').addEventListener('input', (event) => { viewer.seek(Number(event.target.value) / FPS); viewer.apply() })
+window.addEventListener('pointerup', () => { if (!scrubbing) return; scrubbing = false; viewer.playing = wasPlaying })
+$('timeline').addEventListener('keydown', () => { viewer.playing = false; $('playBtn').textContent = '▶' })
+$('speedSel').addEventListener('change', (event) => { viewer.speed = Number(event.target.value) })
+$('tgMesh').addEventListener('change', (event) => viewer.setToggle('mesh', event.target.checked))
+$('tgSkel').addEventListener('change', (event) => viewer.setToggle('skeleton', event.target.checked))
+$('tgGrid').addEventListener('change', (event) => viewer.setToggle('grid', event.target.checked))
+$('frameBtn').addEventListener('click', () => viewer.frameAll())
+$('actionSel').addEventListener('change', (event) => selectAction(Number(event.target.value)))
+
+/** Contact ranges (frame pairs, from report.quality) as colored ticks above the timeline. */
+function drawContacts(contactRanges, total) {
+  const canvas = $('contactCanvas')
+  const width = canvas.clientWidth || 300
+  canvas.width = width
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, width, canvas.height)
+  if (!contactRanges || !total) return
+  const css = getComputedStyle(document.documentElement)
+  const draw = (ranges, y, color) => {
+    ctx.fillStyle = color
+    for (const [a, b] of ranges ?? []) ctx.fillRect(Math.floor(a / total * width), y, Math.max(2, Math.ceil((b - a + 1) / total * width)), 6)
+  }
+  draw(contactRanges.left, 0, css.getPropertyValue('--left-foot').trim() || '#2563eb')
+  draw(contactRanges.right, 7, css.getPropertyValue('--right-foot').trim() || '#ea580c')
+}
+
+function selectAction(sourceIndex) {
+  state.selected = sourceIndex
+  const action = state.inspect?.actions?.[sourceIndex]
+  const mapped = state.actionMap.get(sourceIndex)
+  const duration = mapped?.duration ?? action?.durationSeconds ?? 1
+  const info = viewer.select({ sourceIndex: state.source?.format === 'bobj' ? null : sourceIndex, glbIndex: state.stale ? null : mapped?.glbIndex ?? null, duration })
+  frames = Math.round(duration * FPS)
+  $('timeline').max = String(frames)
+  $('actionSel').value = String(sourceIndex)
+  drawContacts(state.stale ? null : mapped?.quality?.contactRanges, frames + 1)
+  const parts = []
+  let bad = false
+  if (info.source && action && viewer.source?.animations[sourceIndex] && viewer.source.animations[sourceIndex].name !== action.name) { parts.push('Tên clip nguồn trong viewer khác tên Action'); bad = true }
+  if (info.right) {
+    parts.push(`Track gắn vào đích: ${info.right.bound}/${info.right.total}`)
+    if (info.right.bound < info.right.total) bad = true
+  } else if (state.result && !mapped) { parts.push('Action này chưa được xuất'); bad = true }
+  const staleMsg = 'Đã đổi tuỳ chọn/mapping: chạy lại để xem kết quả mới.'
+  if (state.stale && state.result) setOverlay('right', staleMsg)
+  else if ($('rightMsg').textContent === staleMsg) setOverlay('right', '')
+  $('bindInfo').textContent = parts.join(' · ')
+  $('bindInfo').classList.toggle('bad', bad)
+  renderActions(false)
+}
+
+function fillActionSelect() {
+  const select = clear($('actionSel'))
+  const actions = state.inspect?.actions ?? []
+  for (const action of actions) select.append(h('option', { value: String(action.index), text: `${action.index} · ${action.name} (${fmt(action.durationSeconds)} s)${state.result && !state.stale && !state.actionMap.has(action.index) ? ' — chưa xuất' : ''}` }))
+  select.disabled = !actions.length
+}
+
+// ---------------------------------------------------------------- steps
+function setStep(n, status, label) {
+  const el = $(`step${n}`)
+  el.classList.remove('locked', 'active', 'done', 'busy', 'error', 'blocked')
+  el.classList.add(status)
+  $(`state${n}`).textContent = label
+}
+function canRunReason() {
+  if (!state.source) return 'Chọn nguồn ở bước 1.'
+  if (state.inspecting) return 'Đang kiểm tra…'
+  if (!state.inspect) return 'Bấm "Kiểm tra" ở bước 3.'
+  if (state.inspect.blocker) return `Đang bị chặn: ${state.inspect.blocker.code}.`
+  if (state.dirty) return 'Mapping đã sửa nhưng chưa xác nhận (tab Mapping).'
+  if (state.inspect.mapping.needsUserConfirmation && !state.preset) return 'Mapping gợi ý theo hình học: cần xác nhận ở tab Mapping trước khi chạy.'
+  if (!selectedActionIndices().length) return 'Chưa chọn Action nào để xuất (tab Actions).'
+  return null
+}
+function refreshSteps() {
+  const source = state.source, inspect = state.inspect
+  setStep(1, source ? 'done' : 'active', source ? 'Đã chọn' : 'Cần chọn')
+  setStep(2, !source ? 'locked' : 'done', state.target ? 'Đã chọn' : 'Cần chọn')
+  if (!source) setStep(3, 'locked', 'Chờ bước 1')
+  else if (state.inspecting) setStep(3, 'busy', 'Đang kiểm tra')
+  else if (state.inspectError) setStep(3, 'error', 'Lỗi')
+  else if (!inspect) setStep(3, 'active', 'Cần chạy')
+  else if (inspect.blocker) setStep(3, 'blocked', 'BLOCKED')
+  else setStep(3, 'done', 'Xong')
+  if (!inspect) setStep(4, 'locked', 'Chờ bước 3')
+  else setStep(4, 'active', 'Tuỳ chọn')
+  const reason = canRunReason()
+  if (state.running) setStep(5, 'busy', 'Đang chạy')
+  else if (state.result && !state.stale) setStep(5, state.result.status === 'PASS' ? 'done' : state.result.status === 'BLOCKED' ? 'blocked' : 'error', state.result.status)
+  else if (!inspect || inspect.blocker) setStep(5, 'locked', 'Chờ bước 3')
+  else setStep(5, reason ? 'locked' : 'active', reason ? 'Chưa sẵn sàng' : 'Sẵn sàng')
+  // Step 5's body stays visible once step 3 is done so the reason a run is disabled is readable.
+  if (inspect && !inspect.blocker) $('step5').classList.remove('locked')
+  $('runBtn').disabled = state.running || !!reason
+  $('runBtn').title = reason ?? ''
+  $('inspectBtn').disabled = !source || state.inspecting || state.running
+  $('runInfo').replaceChildren(...(reason && !state.running ? [h('span', { text: reason })] : []),
+    ...(state.stale && state.result ? [h('span', { class: 'chip warn', text: 'Kết quả cũ: đã đổi tuỳ chọn/mapping, chạy lại để cập nhật' })] : []))
+  if (!reason && !state.running && !state.result) $('runInfo').textContent = 'Sẵn sàng. Bấm "Chạy chuẩn hoá".'
+}
+
+// ---------------------------------------------------------------- step 1: source
+async function useSource(info) {
+  state.source = info; state.inspect = null; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
+  state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.selected = null
+  viewer.clearResult(); fillActionSelect(); drawContacts(null, 0); frames = 0; $('timeline').max = '0'
+  $('armatureBox').hidden = info.format !== 'bobj'
+  clear($('sourceInfo')).append(h('span', {}, h('b', { text: info.name }), ` · .${info.format} · ${fmtBytes(info.bytes)}`), h('span', { text: `sha256 ${info.sha256.slice(0, 16)}…` }),
+    h('span', { text: info.uploaded ? 'Đã tải lên thư mục tạm của phiên (file gốc không bị chạm vào).' : `Đọc tại chỗ: ${info.path}` }))
+  renderAll()
+  refreshSteps()
+  if (info.format === 'bobj') { viewer.clearSource(); setOverlay('left', 'Nguồn .bobj là thư viện Action của Minecraft20, không có mesh.\nXem kết quả ở khung bên phải.') }
+  else {
+    setOverlay('left', 'Đang tải nguồn vào viewer…')
+    try {
+      await viewer.loadSource(`/api/sources/${info.sourceId}/file`, info.format)
+      if (state.source === info) setOverlay('left', '')
+    } catch (error) {
+      viewer.clearSource()
+      if (state.source === info) setOverlay('left', `Không dựng được viewer cho nguồn này (vẫn có thể kiểm tra và chạy):\n${error.message}`, true)
+    }
+  }
+  inspectNow()
+}
+async function uploadFile(file) {
+  if (!file) return
+  if (!/\.(glb|fbx|bobj)$/i.test(file.name)) { toast(`Định dạng không hỗ trợ: ${file.name}. Dùng .glb .fbx .bobj, hoặc dán đường dẫn cho .gltf.`, 'err'); return }
+  setStep(1, 'busy', 'Đang tải lên')
+  try {
+    const info = await api('/api/sources', { method: 'POST', headers: { 'x-file-name': encodeURIComponent(file.name) }, body: file })
+    await useSource(info)
+  } catch (error) { toast(error.message, 'err'); refreshSteps() }
+}
+async function usePath() {
+  const path = $('pathInput').value.trim()
+  if (!path) { toast('Dán đường dẫn file vào ô trước.', 'err'); return }
+  setStep(1, 'busy', 'Đang đọc')
+  try {
+    const armaturePath = $('armatureInput').value.trim()
+    await useSource(await api('/api/sources', { method: 'POST', json: { path, ...(armaturePath ? { armaturePath } : {}) } }))
+  } catch (error) { toast(error.message, 'err'); refreshSteps() }
+}
+$('drop').addEventListener('click', () => $('fileInput').click())
+$('drop').addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('fileInput').click() } })
+$('fileInput').addEventListener('change', (event) => { uploadFile(event.target.files[0]); event.target.value = '' })
+for (const type of ['dragenter', 'dragover']) $('drop').addEventListener(type, (event) => { event.preventDefault(); $('drop').classList.add('over') })
+for (const type of ['dragleave', 'drop']) $('drop').addEventListener(type, (event) => { event.preventDefault(); $('drop').classList.remove('over') })
+$('drop').addEventListener('drop', (event) => uploadFile(event.dataTransfer.files[0]))
+$('pathBtn').addEventListener('click', usePath)
+$('pathInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') usePath() })
+// A stray drop outside the zone must not navigate away to the file.
+for (const type of ['dragover', 'drop']) window.addEventListener(type, (event) => event.preventDefault())
+
+// ---------------------------------------------------------------- step 2: target
+function renderTargets() {
+  const box = clear($('targets'))
+  for (const target of state.targets) {
+    const selected = state.target?.id === target.id
+    box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(selected), onclick: () => chooseTarget(target) },
+      h('b', { text: `Nhân vật ${target.name}` }), h('small', { text: `hông ${fmt(target.hipsHeightMeters)} m` })))
+  }
+}
+async function chooseTarget(target) {
+  if (state.target?.id === target.id) return
+  state.target = target
+  state.result = null; state.stale = false; state.actionMap = new Map(); state.preset = null; state.presetFamily = null; state.dirty = false
+  renderTargets(); renderAll(); refreshSteps()
+  setOverlay('right', 'Đang tải nhân vật đích…')
+  try { await viewer.loadTarget(target.url); setOverlay('right', '') } catch (error) { setOverlay('right', `Không tải được nhân vật đích: ${error.message}`, true) }
+  if (state.source) inspectNow()
+}
+
+// ---------------------------------------------------------------- step 3: inspect
+function readOptions() {
+  const form = $('optionsForm')
+  const get = (name) => form.elements[name]
+  const number = (name) => { const value = get(name).value.trim(); return value === '' ? undefined : Number(value) }
+  return {
+    mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale') ?? 1, calibrate: get('calibrate').value,
+    facingDegrees: number('facingDegrees'), unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
+  }
+}
+let inspectTimer = 0
+function inspectSoon() { clearTimeout(inspectTimer); inspectTimer = setTimeout(inspectNow, 450) }
+async function inspectNow() {
+  if (!state.source || !state.target) return
+  clearTimeout(inspectTimer)
+  const seq = ++state.inspectSeq
+  state.inspecting = true; state.inspectError = null
+  refreshSteps()
+  $('inspectInfo').textContent = 'Đang đọc rig, ghép mapping, liệt kê Action…'
+  try {
+    const { mode, bobj, bobjRoot, ...inspectOptions } = readOptions()
+    const result = await api('/api/inspect', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, options: inspectOptions,
+      ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) } })
+    if (seq !== state.inspectSeq) return
+    state.inspect = result
+    if (!state.preset) state.presetFamily = result.mapping.family
+    state.rows = result.mapping.joints.map((joint) => ({ ...joint, original: joint.source }))
+    state.dirty = false
+    if (!state.checked.size) state.checked = new Set(result.actions.map((action) => action.index))
+    else state.checked = new Set([...state.checked].filter((index) => result.actions[index]))
+    if (state.selected === null || !result.actions[state.selected]) state.selected = result.actions.length ? 0 : null
+  } catch (error) {
+    if (seq !== state.inspectSeq) return
+    state.inspect = null; state.inspectError = error.message
+    toast(`Kiểm tra thất bại: ${error.message}`, 'err')
+  }
+  state.inspecting = false
+  fillActionSelect()
+  renderInspectInfo(); renderAll(); refreshSteps()
+  if (state.inspect && state.selected !== null && !state.running) selectAction(state.selected)
+}
+$('inspectBtn').addEventListener('click', inspectNow)
+
+function renderInspectInfo() {
+  const box = clear($('inspectInfo'))
+  const info = state.inspect
+  if (state.inspectError) { box.append(h('span', { class: 'chip FAIL', text: 'Lỗi' }), h('span', { text: state.inspectError })); return }
+  if (!info) { box.textContent = 'Chưa kiểm tra. Không bake — chỉ đọc rig, ghép mapping, liệt kê Action.'; return }
+  box.append(...[
+    h('span', {}, 'Family: ', h('b', { text: info.mapping.family }), ` · mapping ${info.mapping.mapped}/65`),
+    h('span', { text: `${info.actions.length} Action · ${info.sourceBones.length} xương nguồn` }),
+    info.blocker ? h('span', { class: 'chip BLOCKED', text: `BLOCKED ${info.blocker.code}` }) : h('span', { class: 'chip PASS', text: 'Có thể chạy' }),
+    info.blocker ? h('span', { text: info.blocker.message }) : null,
+    info.mapping.needsUserConfirmation && !state.preset ? h('span', { class: 'chip warn', text: `Mapping suy theo hình học (độ tin cậy ${fmt(info.mapping.confidence)}) — cần xác nhận` }) : null].filter(Boolean))
+}
+
+// ---------------------------------------------------------------- step 4: options
+const optionsForm = $('optionsForm')
+function markOptionsChanged(event) {
+  if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
+  if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale]')) inspectSoon()
+  renderOptionHints()
+}
+optionsForm.addEventListener('input', markOptionsChanged)
+optionsForm.addEventListener('change', markOptionsChanged)
+function applyRootScale(value) {
+  const rounded = Number(value.toPrecision(4))
+  optionsForm.elements.rootScale.value = String(rounded)
+  optionsForm.elements.rootScale.dispatchEvent(new Event('input', { bubbles: true }))
+  toast(`Đã điền hệ số root ${rounded}. Bấm "Chạy chuẩn hoá" để áp dụng.`, 'ok')
+  $('step4').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}
+function renderOptionHints() {
+  const info = state.inspect
+  const suggested = info?.proportions?.suggestedRootScale
+  const button = $('applyScaleBtn')
+  const current = Number(optionsForm.elements.rootScale.value)
+  if (suggested && info.proportions.sourceHipsHeightMeters) {
+    $('scaleHint').textContent = `Hông nguồn ${fmt(info.proportions.sourceHipsHeightMeters)} m, đích ${fmt(info.proportions.targetHipsHeightMeters)} m → gợi ý ${fmt(suggested, 3)}.`
+    const same = Math.abs(current - Number(suggested.toPrecision(4))) < 1e-9
+    button.hidden = same
+    button.textContent = `Áp dụng ${Number(suggested.toPrecision(4))}`
+    button.onclick = () => applyRootScale(suggested)
+  } else { $('scaleHint').textContent = ''; button.hidden = true }
+  const facing = info?.facing
+  $('facingHint').textContent = facing ? `Đo được ${fmt(facing.measuredDegrees, 0)}°, đang dùng ${fmt(facing.yawDegrees, 0)}°${facing.ambiguous ? ' — MƠ HỒ, hãy nhập tay' : ''} (nguồn: ${facing.source}).` : ''
+  $('modeHint').textContent = optionsForm.elements.mode.value === 'model'
+    ? (info && info.mapping.family !== 'mixamo' ? `Nguồn là "${info.mapping.family}": Model mode đợt 1 sẽ trả BLOCKED (chỉ hỗ trợ Mixamo).` : 'Xuất kèm mesh, skin ≤ 4 influence, texture nhúng.')
+    : 'Model mode: chỉ nguồn rig Mixamo; xuất kèm mesh, skin, texture.'
+}
+
+// ---------------------------------------------------------------- step 5: run
+function selectedActionIndices() {
+  const actions = state.inspect?.actions ?? []
+  return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
+}
+async function runNow() {
+  const reason = canRunReason()
+  if (reason) { toast(reason, 'err'); return }
+  const all = selectedActionIndices()
+  const options = { ...readOptions(), preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  state.running = true
+  $('progress').hidden = false
+  setProgress('queued', 0, 1, 0)
+  refreshSteps()
+  try {
+    const started = await api('/api/runs', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, options, wait: false,
+      ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) } })
+    let current = started, failures = 0
+    while (current.state === 'running') {
+      await sleep(300)
+      try { current = await api(`/api/runs/${started.runId}`); failures = 0 } catch (error) { if (++failures > 5) throw error }
+      setProgress(current.stage, current.done, current.total, current.elapsedMs)
+    }
+    if (current.state === 'error') throw new Error(current.error)
+    await finishRun(current.result, options)
+  } catch (error) {
+    toast(`Chạy thất bại: ${error.message}`, 'err', true)
+    $('runInfo').textContent = `Chạy thất bại: ${error.message}`
+  } finally {
+    state.running = false
+    $('progress').hidden = true
+    refreshSteps()
+  }
+}
+function setProgress(stage, done, total, elapsedMs) {
+  const fraction = total > 0 ? Math.min(1, done / total) : 0
+  $('progressBar').style.width = `${Math.round(fraction * 100)}%`
+  $('progressText').textContent = `${STAGES[stage] ?? stage}${total > 1 ? ` ${Math.min(done + 1, total)}/${total}` : ''} · ${(elapsedMs / 1000).toFixed(1)} s`
+}
+async function finishRun(result, options) {
+  state.result = result; state.stale = false; state.resultOptions = options
+  state.actionMap = new Map()
+  const report = result.report
+  const manifestActions = result.manifest?.actions ?? []
+  manifestActions.forEach((entry, glbIndex) => state.actionMap.set(entry.sourceActionIndex, { glbIndex, duration: entry.durationSeconds, uuid: entry.uuid, quality: report.roundtrip?.perAction?.[glbIndex]?.quality, perAction: report.roundtrip?.perAction?.[glbIndex] }))
+  fillActionSelect()
+  renderAll()
+  activateTab('overview')
+  const glb = result.files.find((file) => file.kind === 'glb')
+  if (glb) {
+    setOverlay('right', 'Đang tải GLB kết quả vào viewer…')
+    try { await viewer.loadResult(glb.url, report.model || result.manifest?.glb?.mode === 'model' ? 'model' : 'animation'); setOverlay('right', '') } catch (error) { setOverlay('right', `Không phát được GLB kết quả: ${error.message}`, true) }
+    const first = report.roundtrip?.primaryAction ?? manifestActions[0]?.sourceActionIndex ?? state.selected ?? 0
+    selectAction(first)
+  } else setOverlay('right', `Không có GLB: ${result.status}${report.blocker ? ` — ${report.blocker.code}` : ''}`)
+  toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
+}
+$('runBtn').addEventListener('click', runNow)
+
+// ---------------------------------------------------------------- tabs
+function activateTab(name) {
+  for (const button of document.querySelectorAll('#tabs button')) button.setAttribute('aria-selected', String(button.dataset.tab === name))
+  for (const pane of document.querySelectorAll('.tabpane')) pane.hidden = pane.id !== `tab-${name}`
+}
+$('tabs').addEventListener('click', (event) => { const button = event.target.closest('button[data-tab]'); if (button) activateTab(button.dataset.tab) })
+$('tabs').addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+  const buttons = [...document.querySelectorAll('#tabs button')], index = buttons.findIndex((button) => button.getAttribute('aria-selected') === 'true')
+  const next = buttons[(index + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]
+  next.focus(); activateTab(next.dataset.tab)
+})
+function renderAll() { renderOverview(); renderMapping(); renderActions(true); renderMc20(); renderDownloads(); renderOptionHints() }
+
+const chip = (status, text) => h('span', { class: `chip ${status}`, text: text ?? status })
+const kv = (rows) => h('dl', { class: 'kv' }, rows.filter(Boolean).flatMap(([key, value]) => [h('dt', { text: key }), h('dd', {}, value)]))
+
+// ---- Tổng quan
+function renderOverview() {
+  const box = clear($('tab-overview'))
+  const result = state.result, report = result?.report, info = state.inspect
+  if (!result && !info) { box.append(h('div', { class: 'empty', text: 'Chọn nguồn và đích, rồi kiểm tra. Số đo hiện ở đây.' })); return }
+  if (state.stale) box.append(h('div', { class: 'note', text: 'Kết quả bên dưới là của lần chạy trước. Bạn đã đổi tuỳ chọn/mapping — chạy lại để cập nhật.' }))
+  if (!result) {
+    box.append(h('div', { class: `status-big ${info.blocker ? 'BLOCKED' : 'NOT_RUN'}` }, h('b', { text: info.blocker ? 'BLOCKED' : 'CHƯA CHẠY' }),
+      h('small', { text: info.blocker ? `${info.blocker.code}: ${info.blocker.message}` : 'Đã kiểm tra xong, chưa bake. Số liệu dưới đây là của bước kiểm tra.' })))
+    if (info.blocker && CODE_HINTS[info.blocker.code]) box.append(h('div', { class: 'note info', text: CODE_HINTS[info.blocker.code] }))
+    box.append(h('h3', { text: 'Kiểm tra (chưa bake)' }), inspectFacts(info))
+    return
+  }
+  const gates = Object.entries(report.gates ?? {})
+  box.append(h('div', { class: `status-big ${report.status}` }, h('b', { text: report.status }),
+    h('small', { text: report.blocker ? `${report.blocker.code}: ${report.blocker.message}` : report.error ?? `${report.exportedActions ?? 0} Action xuất · ${fmt((report.elapsedMs ?? 0) / 1000, 1)} s` })))
+  if (report.blocker && CODE_HINTS[report.blocker.code]) box.append(h('div', { class: 'note info', text: CODE_HINTS[report.blocker.code] }))
+  if (gates.length) box.append(h('h3', { text: 'Gate' }), h('div', { class: 'chips' }, gates.map(([name, status]) => chip(status, `${name}: ${status}`))))
+  if (report.contract) box.append(h('h3', { text: 'Hợp đồng GLB v1.0.0' }), h('div', { class: 'chips' }, Object.entries(report.contract).map(([name, status]) => chip(status, `${name}: ${status}`))))
+  if (report.minecraft20) box.append(h('div', { class: 'chips' }, chip(report.minecraft20.status, `minecraft20: ${report.minecraft20.status}`)))
+
+  const quality = report.quality?.warnings ?? []
+  box.append(h('h3', { text: 'Cảnh báo chất lượng (đo trên GLB đã ghi)' }))
+  if (!report.quality) box.append(h('div', { class: 'empty', text: 'Không có số đo chất lượng cho lần chạy này.' }))
+  else if (!quality.length) box.append(h('div', { class: 'note info', text: 'Không có cảnh báo hông/chân/trượt chân.' }))
+  const suggested = report.proportions?.suggestedRootScale
+  for (const warning of quality) {
+    const scaleHint = suggested && /root-scale/.test(warning.suggestion ?? '')
+    box.append(h('div', { class: 'warncard' },
+      h('div', { class: 'head' }, h('b', { text: QUALITY_TITLES[warning.code] ?? warning.code }), h('span', { class: 'chip warn', text: `${warning.code} · ${warning.actions} Action` })),
+      h('span', { text: warning.message }),
+      warning.examples?.length ? h('small', { text: `Ví dụ: ${warning.examples.join(', ')}` }) : null,
+      warning.suggestion ? h('small', { text: `Gợi ý: ${warning.suggestion}` }) : null,
+      scaleHint ? h('div', {}, h('button', { type: 'button', onclick: () => applyRootScale(suggested), text: `Áp dụng --root-scale ${Number(suggested.toPrecision(4))}` })) : null))
+  }
+
+  box.append(h('h3', { text: 'Tỉ lệ & hiệu chỉnh' }), kv([
+    report.proportions ? ['Hông nguồn / đích', `${fmt(report.proportions.sourceHipsHeightMeters)} m / ${fmt(report.proportions.targetHipsHeightMeters)} m`] : null,
+    report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
+    report.input ? ['Root', `${report.input.rootPolicy} × ${report.input.rootScale}`] : null,
+    report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
+    report.calibration ? ['Calibration', `${report.calibration.mode}, lệch lớn nhất ${fmt(report.calibration.maxDegrees, 1)}° / ${report.calibration.corrections.length} khớp`] : null,
+  ]))
+  if (report.mapping) box.append(h('h3', { text: 'Mapping' }), kv([
+    ['Family', report.mapping.family], ['Đã map', `${report.mapping.mapped}/65`],
+    report.mapping.missingRequired?.length ? ['Thiếu bắt buộc', report.mapping.missingRequired.join(', ')] : null,
+    report.mapping.notInSourceRig?.length ? ['Không có trong rig nguồn', report.mapping.notInSourceRig.join(', ')] : null,
+    report.mapping.needsUserConfirmation ? ['Suy theo hình học', `độ tin cậy ${fmt(report.mapping.confidence)} — cần người dùng xác nhận`] : null,
+    report.input?.mapping === 'preset' ? ['Nguồn mapping', h('span', {}, 'preset đã xác nhận', report.mapping.presetFingerprintsMatch === false ? ' (fingerprint khác nguồn)' : ''), ] : null,
+  ]))
+  if (report.loss) box.append(h('h3', { text: 'Mất dữ liệu (đã ghi, vẫn xuất)' }), kv([
+    ['Track bỏ (ngoài rig)', String(report.loss.prunedTracks?.count ?? 0)],
+    ['Track scale bỏ', `${report.loss.scaleTracks?.dropped ?? 0}${report.loss.scaleTracks?.dropped ? ` (lệch tối đa ${fmt(report.loss.scaleTracks.maxDeviation * 100, 1)}%)` : ''}`],
+    ['Quaternion chuẩn hoá', String(report.loss.quaternionTracks?.normalized ?? 0)],
+    ['Xương nguồn không map', String(report.loss.unmappedSourceBones ?? 0)],
+    ['Khớp đích giữ rest', String(report.loss.unmappedTargetJoints?.length ?? 0)],
+  ]))
+  if (report.skippedActions?.length) {
+    const codes = Object.entries(report.skippedActions.reduce((acc, item) => ({ ...acc, [item.code]: (acc[item.code] ?? 0) + 1 }), {}))
+    box.append(h('h3', { text: `Action bị bỏ qua (${report.skippedActions.length})` }), h('div', { class: 'chips' }, codes.map(([code, count]) => h('span', { class: 'chip warn', title: CODE_HINTS[code] ?? '', text: `${code} ×${count}` }))))
+  }
+  if (report.model) box.append(h('h3', { text: 'Model + Rig' }), kv([
+    ['Trạng thái', chip(report.model.status)], ['Mesh / đỉnh', `${report.model.meshes} / ${report.model.vertices}`],
+    ['Influence tối đa', `${report.model.maxInfluencesBefore} → ${report.model.maxInfluencesAfter}`],
+    ['Weight bị bỏ', `${fmt(report.model.droppedWeight, 4)} (${report.model.affectedVertices} đỉnh)`],
+    ['Ảnh nhúng', `${report.model.images.count} (${fmtBytes(report.model.images.bytes)})`],
+    ['Sai lệch rest', `${fmt(report.model.restMaxErrorMeters * 1000, 4)} mm`], ['Vừa khít khớp', `max ${fmt(report.model.jointFit.maxMeters, 3)} m (${report.model.jointFit.worstJoint})`],
+  ]))
+  const preview = result.files.find((file) => file.kind === 'preview')
+  if (preview) box.append(h('h3', { text: 'Preview (contact sheet từ GLB đã ghi)' }), h('img', { class: 'img', src: preview.url, alt: 'Contact sheet preview' }))
+}
+function inspectFacts(info) {
+  return kv([
+    ['Family', info.mapping.family], ['Đã map', `${info.mapping.mapped}/65`], ['Action', String(info.actions.length)], ['Xương nguồn', String(info.sourceBones.length)],
+    info.proportions.sourceHipsHeightMeters ? ['Hông nguồn / đích', `${fmt(info.proportions.sourceHipsHeightMeters)} m / ${fmt(info.proportions.targetHipsHeightMeters)} m`] : null,
+    info.proportions.suggestedRootScale ? ['Root-scale gợi ý', h('span', {}, fmt(info.proportions.suggestedRootScale, 3), ' ', h('button', { type: 'button', onclick: () => applyRootScale(info.proportions.suggestedRootScale), text: 'Áp dụng' }))] : null,
+    info.facing ? ['Hướng mặt', `${fmt(info.facing.yawDegrees, 0)}° (đo ${fmt(info.facing.measuredDegrees, 0)}°${info.facing.ambiguous ? ', MƠ HỒ' : ''})`] : null,
+    info.loss ? ['Track bỏ / scale / quaternion', `${info.loss.prunedTracks} / ${info.loss.droppedScaleTracks} / ${info.loss.normalizedQuaternions}`] : null,
+    info.mapping.missingRequired.length ? ['Thiếu bắt buộc', info.mapping.missingRequired.join(', ')] : null,
+  ])
+}
+
+// ---- Mapping
+const FILTERS = [['all', 'Tất cả'], ['mapped', 'Đã map'], ['unmapped', 'Chưa map'], ['geometry', 'Geometry'], ['ambiguous', 'Ambiguous'], ['edited', 'Đã sửa']]
+function rowMatches(row) {
+  const f = state.filter
+  if (f === 'mapped' && !row.source) return false
+  if (f === 'unmapped' && row.source) return false
+  if (f === 'geometry' && row.via !== 'geometry') return false
+  if (f === 'ambiguous' && !row.ambiguous) return false
+  if (f === 'edited' && row.source === row.original) return false
+  const q = state.search.trim().toLowerCase()
+  return !q || row.target.toLowerCase().includes(q) || (row.source ?? '').toLowerCase().includes(q)
+}
+function renderMapping() {
+  const box = clear($('tab-mapping'))
+  const info = state.inspect
+  if (!info) { box.append(h('div', { class: 'empty', text: 'Kiểm tra nguồn để xem và sửa mapping 65 khớp.' })); return }
+  const missing = new Set(info.mapping.missingRequired)
+  const names = new Set(info.sourceBones.map((bone) => bone.name))
+  const used = new Map()
+  for (const row of state.rows) if (row.source) used.set(row.source, (used.get(row.source) ?? 0) + 1)
+  const mapped = state.rows.filter((row) => row.source).length
+  if (info.mapping.needsUserConfirmation && !state.preset) box.append(h('div', { class: 'note', text: `Mapping này được SUY RA từ cấu trúc cây + hình học (độ tin cậy ${fmt(info.mapping.confidence)}), không phải theo tên. Hãy kiểm lại từng dòng rồi bấm "Xác nhận mapping". ${(info.mapping.notes ?? []).join(' ')}` }))
+  if (state.preset && !state.dirty) box.append(h('div', { class: 'note info', text: 'Mapping đã xác nhận (preset). Lần chạy sẽ dùng đúng preset này.' }))
+  if (state.dirty) box.append(h('div', { class: 'note', text: 'Bạn đã sửa mapping. Bấm "Xác nhận mapping" để tạo preset; chưa xác nhận thì chưa chạy được.' }))
+  if (info.mapping.presetFingerprintsMatch === false) box.append(h('div', { class: 'note', text: 'Preset có fingerprint khác nguồn/đích hiện tại — kiểm lại mapping.' }))
+  const list = h('datalist', { id: 'boneList' }, info.sourceBones.map((bone) => h('option', { value: bone.name })))
+  const toolbar = h('div', { class: 'toolbar' },
+    h('input', { type: 'search', placeholder: 'Lọc theo tên khớp / xương…', value: state.search, 'aria-label': 'Lọc mapping', oninput: (event) => { state.search = event.target.value; renderMappingRows() } }),
+    h('span', { class: 'seg row' }, FILTERS.map(([key, label]) => h('button', { type: 'button', 'aria-pressed': String(state.filter === key), onclick: () => { state.filter = key; renderMapping() }, text: label }))))
+  const actions = h('div', { class: 'toolbar' },
+    h('button', { type: 'button', class: 'primary', style: 'width:auto', onclick: confirmMapping, text: 'Xác nhận mapping', disabled: !state.dirty && !!state.preset }),
+    h('button', { type: 'button', onclick: resetMapping, text: 'Đặt lại tự động', disabled: !state.dirty && !state.preset }),
+    h('span', { class: 'chip', id: 'mapCount', text: `${mapped}/65 đã map` }))
+  const body = h('tbody', { id: 'mapRows' })
+  box.append(list, actions, toolbar, h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Khớp Mixamo65' }), h('th', { text: 'Xương nguồn (gõ để tìm, xoá = bỏ map)' }), h('th', { text: 'Cách map' }))), body))
+  function renderMappingRowsInner() {
+    clear(body)
+    for (const row of state.rows.filter(rowMatches)) {
+      const input = h('input', { type: 'text', value: row.source ?? '', list: 'boneList', spellcheck: 'false', 'aria-label': `Xương nguồn cho ${row.target}`, placeholder: '— chưa map —' })
+      input.addEventListener('change', () => {
+        const value = input.value.trim()
+        if (value && !names.has(value)) { toast(`"${value}" không phải xương của nguồn này.`, 'err'); input.value = row.source ?? ''; return }
+        row.source = value || null
+        row.via = row.source === row.original ? row.via : row.source ? 'edited' : null
+        state.dirty = state.rows.some((item) => item.source !== item.original) || state.dirty
+        state.stale = state.stale || !!state.result
+        state.inspectSeq++ // an in-flight inspect would overwrite the edit
+        renderMapping(); refreshSteps()
+      })
+      const dup = row.source && used.get(row.source) > 1
+      body.append(h('tr', { class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''}` },
+        h('td', { text: row.target }), h('td', {}, input, dup ? h('small', { class: 'dup', text: 'Xương này đang gán cho nhiều khớp' }) : null),
+        h('td', {}, h('span', { class: `via ${row.ambiguous ? 'ambiguous' : row.via ?? ''}`, text: row.ambiguous ? 'ambiguous' : row.via ?? (missing.has(row.target) ? 'thiếu bắt buộc' : '—') }))))
+    }
+    if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 3, class: 'empty', text: 'Không có dòng nào khớp bộ lọc.' })))
+  }
+  renderMappingRows = renderMappingRowsInner
+  renderMappingRows()
+}
+let renderMappingRows = () => {}
+async function confirmMapping() {
+  const assignments = Object.fromEntries(state.rows.map((row) => [row.target, row.source]))
+  try {
+    const { preset, family } = await api('/api/preset', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, assignments } })
+    state.preset = preset; state.presetFamily = state.presetFamily ?? family; state.dirty = false
+    toast('Đã tạo preset bbs.mixamo65-mapping-preset và kiểm tra lại với preset.', 'ok')
+    state.stale = state.stale || !!state.result
+    await inspectNow()
+  } catch (error) { toast(`Không tạo được preset: ${error.message}`, 'err') }
+}
+async function resetMapping() {
+  state.preset = null; state.dirty = false; state.stale = state.stale || !!state.result
+  await inspectNow()
+}
+
+// ---- Actions
+function renderActions(rebuild) {
+  const box = $('tab-actions')
+  if (!rebuild && box.querySelector('tbody')) {
+    for (const tr of box.querySelectorAll('tbody tr')) tr.classList.toggle('sel', Number(tr.dataset.index) === state.selected)
+    return
+  }
+  clear(box)
+  const info = state.inspect
+  if (!info) { box.append(h('div', { class: 'empty', text: 'Kiểm tra nguồn để xem danh sách Action.' })); return }
+  const withResult = !!state.result && !state.stale
+  const q = state.actionFilter.trim().toLowerCase()
+  const shown = info.actions.filter((action) => !q || action.name.toLowerCase().includes(q) || String(action.index) === q)
+  const toolbar = h('div', { class: 'toolbar' },
+    h('input', { type: 'search', placeholder: 'Lọc Action theo tên / số…', value: state.actionFilter, 'aria-label': 'Lọc Action', oninput: (event) => { state.actionFilter = event.target.value; renderActions(true); box.querySelector('input[type=search]').focus() } }),
+    h('button', { type: 'button', text: 'Chọn hết', onclick: () => { info.actions.forEach((action) => state.checked.add(action.index)); markRunInputsChanged() } }),
+    h('button', { type: 'button', text: 'Bỏ hết', onclick: () => { state.checked.clear(); markRunInputsChanged() } }),
+    h('button', { type: 'button', text: 'Chỉ hợp lệ', title: 'Bỏ Action rỗng / không hỗ trợ', onclick: () => { state.checked = new Set(info.actions.filter((action) => action.ready && action.durationSeconds > 0).map((action) => action.index)); markRunInputsChanged() } }),
+    h('span', { class: 'chip', text: `${selectedActionIndices().length}/${info.actions.length} sẽ xuất` }))
+  const head = h('tr', {}, h('th', { text: '' }), h('th', { class: 'num', text: '#' }), h('th', { text: 'Tên' }), h('th', { class: 'num', text: 'Giây' }), h('th', { text: 'Trạng thái' }),
+    withResult ? [h('th', { text: 'Kết quả' }), h('th', { class: 'num', text: 'Hông min–max (m)' }), h('th', { class: 'num', text: 'Trượt (m)' }), h('th', { text: 'Cảnh báo' })] : null)
+  const body = h('tbody')
+  for (const action of shown) {
+    const mapped = withResult ? state.actionMap.get(action.index) : null
+    const skipped = withResult ? state.result.report.skippedActions?.find((item) => item.index === action.index) : null
+    const per = mapped?.perAction, quality = per?.quality
+    const checkbox = h('input', { type: 'checkbox', 'aria-label': `Xuất Action ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => { event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false) } })
+    checkbox.checked = state.checked.has(action.index)
+    const status = !(action.durationSeconds > 0) ? 'rỗng' : action.ready ? 'sẵn sàng' : `kênh không hỗ trợ (${action.issueCount})`
+    body.append(h('tr', { class: `clickable ${state.selected === action.index ? 'sel' : ''}`, dataset: { index: String(action.index) }, tabindex: '0', onclick: () => selectAction(action.index),
+      onkeydown: (event) => { if (event.key === 'Enter') selectAction(action.index) } },
+      h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
+      h('td', { text: status }),
+      withResult ? [h('td', {}, per ? chip(per.status) : skipped ? h('span', { class: 'chip warn', title: skipped.message, text: skipped.code }) : '–'),
+        h('td', { class: 'num', text: per ? `${fmt(per.hipsHeightRangeMeters[0])}–${fmt(per.hipsHeightRangeMeters[1])}` : '–' }),
+        h('td', { class: 'num', text: quality ? fmt(Math.max(quality.footSlideMeters.left, quality.footSlideMeters.right)) : '–' }),
+        h('td', {}, quality?.warnings?.length ? quality.warnings.map((warning) => h('span', { class: 'chip warn', title: warning.message, text: warning.code })) : quality ? '–' : '')] : null))
+  }
+  if (!shown.length) body.append(h('tr', {}, h('td', { colspan: 9, class: 'empty', text: 'Không có Action nào khớp.' })))
+  box.append(toolbar, h('table', {}, h('thead', {}, head), body))
+}
+function markRunInputsChanged(rebuild = true) {
+  if (state.result) state.stale = true
+  if (rebuild) renderActions(true)
+  else { const chipEl = $('tab-actions').querySelector('.toolbar .chip'); if (chipEl) chipEl.textContent = `${selectedActionIndices().length}/${state.inspect.actions.length} sẽ xuất` }
+  refreshSteps(); renderOverview()
+}
+
+// ---- Minecraft20
+function renderMc20() {
+  const box = clear($('tab-mc20'))
+  const report = state.result?.report
+  if (!report?.minecraft20) {
+    box.append(h('div', { class: 'empty', text: state.result ? 'Lần chạy này không xuất .bobj. Bật "Xuất thêm .bobj" ở bước 4 rồi chạy lại.' : 'Bật "Xuất thêm .bobj" ở bước 4 (Minecraft20 cho BBS FS) rồi chạy.' }))
+    return
+  }
+  const mc = report.minecraft20
+  box.append(h('div', { class: `status-big ${mc.status}` }, h('b', { text: mc.status }), h('small', { text: mc.format })),
+    kv([['Action .bobj', String(mc.actions.length)], ['Ticks/giây', String(mc.ticksPerSecond)], ['Sai số đọc lại', `${mc.roundtripMaxErrorBlocks.toExponential(1)} block`],
+      ['Armature', mc.armature], ['Root', mc.settings?.rootTravelMode ?? '–']]))
+  const preview = state.result.files.find((file) => file.kind === 'bobjPreview')
+  if (preview) box.append(h('h3', { text: 'Preview .bobj' }), h('img', { class: 'img', src: preview.url, alt: 'Preview Minecraft20' }))
+  box.append(h('p', { class: 'note info', text: 'Chưa kiểm: mở file .bobj trong BBS FS thật (cần thử trong game).' }),
+    h('h3', { text: 'Action' }), h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Tên .bobj' }), h('th', { text: 'Tên GLB' }), h('th', { class: 'num', text: 'Tick' }), h('th', { class: 'num', text: 'Kênh' }))),
+      h('tbody', {}, mc.actions.slice(0, 500).map((action) => h('tr', {}, h('td', { text: action.name }), h('td', { text: action.glbName }), h('td', { class: 'num', text: String(action.ticks) }), h('td', { class: 'num', text: String(action.channels) }))))))
+}
+
+// ---- Tải về
+const KIND_LABELS = { glb: 'GLB Mixamo65', manifest: 'Manifest JSON', report: 'Report JSON', preview: 'Preview PNG', bobj: '.bobj Minecraft20', bobjPreview: 'Preview .bobj PNG' }
+function renderDownloads() {
+  const box = clear($('tab-downloads'))
+  const list = h('div', { class: 'dl' })
+  if (state.result) {
+    if (state.stale) box.append(h('div', { class: 'note', text: 'Các file dưới đây là của lần chạy trước.' }))
+    for (const file of state.result.files) list.append(h('a', { href: file.url, download: file.name }, h('span', { text: `${KIND_LABELS[file.kind] ?? file.kind} · ${file.name}` }), h('span', { text: fmtBytes(file.bytes) })))
+  }
+  if (state.preset) {
+    const stem = (state.source?.name ?? 'source').replace(/\.[^.]+$/, '')
+    const blob = new Blob([JSON.stringify(state.preset, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    list.append(h('a', { href: url, download: `${stem}.mapping.json` }, h('span', { text: `Preset mapping · ${stem}.mapping.json (dùng với CLI --mapping)` }), h('span', { text: fmtBytes(blob.size) })))
+  }
+  if (!list.children.length) box.append(h('div', { class: 'empty', text: 'Chưa có file. Chạy chuẩn hoá hoặc xác nhận mapping để có file tải về.' }))
+  else box.append(list, h('p', { class: 'note info', text: 'File nằm trong thư mục tạm của phiên Workbench; tải về để giữ lại. File nguồn của bạn không bị sửa.' }))
+}
+
+// ---------------------------------------------------------------- boot
+async function boot() {
+  renderTargets(); renderAll(); refreshSteps()
+  setOverlay('right', 'Đang tải danh sách nhân vật đích…')
+  try {
+    state.targets = (await api('/api/targets')).targets
+    renderTargets()
+    await chooseTarget(state.targets[0])
+  } catch (error) {
+    setOverlay('right', `Không tải được danh sách đích: ${error.message}`, true)
+    toast(error.message, 'err', true)
+  }
+  refreshSteps()
+}
+boot()

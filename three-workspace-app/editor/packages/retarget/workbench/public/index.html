@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W01 App 1 - Workbench chuẩn hoá Rig và Animation</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>W01 · App 1 <span>Chuẩn hoá Rig &amp; Animation → Mixamo65</span></h1>
+    <div class="topbar-note" id="topNote">Chạy cục bộ 127.0.0.1 · file nguồn chỉ đọc, kết quả là bản mới trong thư mục tạm</div>
+  </header>
+
+  <main class="layout">
+    <!-- ① → ⑤ : luồng các bước -->
+    <aside class="steps" id="steps" aria-label="Các bước">
+      <section class="step" id="step1" data-step="1">
+        <h2><span class="num">1</span> Nguồn <span class="state" id="state1"></span></h2>
+        <div class="step-body">
+          <div class="drop" id="drop" tabindex="0" role="button" aria-label="Thả file nguồn vào đây hoặc bấm để chọn">
+            <strong>Kéo-thả file vào đây</strong>
+            <span>.glb · .fbx · .bobj (≤ 512 MB) — hoặc bấm để chọn</span>
+            <input type="file" id="fileInput" accept=".glb,.fbx,.bobj" hidden>
+          </div>
+          <div class="or">hoặc đường dẫn file cục bộ (cần cho .gltf có .bin ngoài, file rất lớn)</div>
+          <div class="row">
+            <input type="text" id="pathInput" placeholder="C:\\đường\\dẫn\\file.gltf" spellcheck="false">
+            <button type="button" id="pathBtn">Dùng</button>
+          </div>
+          <details id="armatureBox" hidden>
+            <summary>.bobj: rig (armature) riêng</summary>
+            <input type="text" id="armatureInput" placeholder="Để trống = armature V9.12 trong repo" spellcheck="false">
+          </details>
+          <div class="summary" id="sourceInfo"></div>
+        </div>
+      </section>
+
+      <section class="step" id="step2" data-step="2">
+        <h2><span class="num">2</span> Đích <span class="state" id="state2"></span></h2>
+        <div class="step-body">
+          <div class="targets" id="targets" role="radiogroup" aria-label="Nhân vật đích"></div>
+        </div>
+      </section>
+
+      <section class="step" id="step3" data-step="3">
+        <h2><span class="num">3</span> Kiểm tra <span class="state" id="state3"></span></h2>
+        <div class="step-body">
+          <button type="button" class="primary" id="inspectBtn">Kiểm tra nguồn (Inspect)</button>
+          <div class="summary" id="inspectInfo">Chưa kiểm tra. Không bake — chỉ đọc rig, ghép mapping, liệt kê Action.</div>
+        </div>
+      </section>
+
+      <section class="step" id="step4" data-step="4">
+        <h2><span class="num">4</span> Tuỳ chọn <span class="state" id="state4"></span></h2>
+        <div class="step-body">
+          <form id="optionsForm" autocomplete="off" onsubmit="return false">
+            <fieldset>
+              <legend>Chế độ xuất</legend>
+              <label class="inline"><input type="radio" name="mode" value="animation" checked> Chỉ animation</label>
+              <label class="inline"><input type="radio" name="mode" value="model"> Model + Rig + Animation</label>
+              <small id="modeHint">Model mode: chỉ nguồn rig Mixamo; xuất kèm mesh, skin, texture.</small>
+            </fieldset>
+            <label class="field">Root
+              <select name="rootPolicy"><option value="preserve">Giữ chuyển động root (mét)</option><option value="in-place">Tại chỗ (in-place)</option></select>
+            </label>
+            <label class="field">Hệ số root (<code>--root-scale</code>)
+              <span class="row"><input type="number" name="rootScale" value="1" min="0" step="0.001"><button type="button" id="applyScaleBtn" hidden></button></span>
+              <small id="scaleHint"></small>
+            </label>
+            <label class="field">Hiệu chỉnh A/T (calibration)
+              <select name="calibrate"><option value="limbs">Xoay chi theo rest đích (limbs)</option><option value="none">Không</option></select>
+            </label>
+            <label class="field">Hướng mặt (độ)
+              <input type="number" name="facingDegrees" placeholder="Tự đo" step="90">
+              <small id="facingHint"></small>
+            </label>
+            <div class="grid2">
+              <label class="field">Đơn vị nguồn (m/đv)
+                <input type="number" name="unitMeters" placeholder="Tự động" min="0" step="any">
+              </label>
+              <label class="field">Trục lên
+                <select name="upAxis"><option value="y">Y</option><option value="z">Z</option></select>
+              </label>
+            </div>
+            <fieldset>
+              <legend>Minecraft20 (.bobj cho BBS FS)</legend>
+              <label class="inline"><input type="checkbox" name="bobj"> Xuất thêm .bobj</label>
+              <label class="inline">Root <select name="bobjRoot"><option value="inPlace">inPlace</option><option value="follow">follow</option></select></label>
+            </fieldset>
+          </form>
+        </div>
+      </section>
+
+      <section class="step" id="step5" data-step="5">
+        <h2><span class="num">5</span> Chạy <span class="state" id="state5"></span></h2>
+        <div class="step-body">
+          <button type="button" class="primary" id="runBtn">Chạy chuẩn hoá</button>
+          <div class="progress" id="progress" hidden><div class="bar"><i id="progressBar"></i></div><span id="progressText"></span></div>
+          <div class="summary" id="runInfo">Chưa chạy.</div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- viewer 2 khung cùng đồng hồ -->
+    <section class="stage" aria-label="Xem 3D">
+      <div class="viewers">
+        <figure class="pane"><figcaption id="leftCaption">Nguồn gốc</figcaption><div class="canvas" id="leftHost"></div><div class="overlay" id="leftMsg">Chọn file nguồn ở bước 1</div></figure>
+        <figure class="pane"><figcaption id="rightCaption">Kết quả trên nhân vật đích</figcaption><div class="canvas" id="rightHost"></div><div class="overlay" id="rightMsg">Chọn nhân vật đích</div></figure>
+      </div>
+      <div class="transport">
+        <div class="contacts" id="contacts" title="Frame chạm đất (từ report.quality): xanh = chân trái, cam = chân phải"><canvas id="contactCanvas" height="14"></canvas></div>
+        <div class="row transport-row">
+          <button type="button" id="playBtn" aria-label="Phát / tạm dừng">❚❚</button>
+          <input type="range" id="timeline" min="0" max="0" value="0" step="1" aria-label="Timeline theo frame">
+          <output id="frameLabel">0 / 0</output>
+          <label class="inline">Tốc độ
+            <select id="speedSel"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+          </label>
+        </div>
+        <div class="row transport-row">
+          <label class="inline">Action <select id="actionSel" disabled></select></label>
+          <label class="inline"><input type="checkbox" id="tgMesh" checked> Mesh</label>
+          <label class="inline"><input type="checkbox" id="tgSkel" checked> Xương</label>
+          <label class="inline"><input type="checkbox" id="tgGrid" checked> Lưới sàn</label>
+          <button type="button" id="frameBtn">Khớp camera</button>
+          <span class="bindinfo" id="bindInfo"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- tab bên phải -->
+    <aside class="panel" aria-label="Kết quả">
+      <nav class="tabs" role="tablist" id="tabs">
+        <button role="tab" data-tab="overview" aria-selected="true">Tổng quan</button>
+        <button role="tab" data-tab="mapping" aria-selected="false">Mapping</button>
+        <button role="tab" data-tab="actions" aria-selected="false">Actions</button>
+        <button role="tab" data-tab="mc20" aria-selected="false">Minecraft20</button>
+        <button role="tab" data-tab="downloads" aria-selected="false">Tải về</button>
+      </nav>
+      <div class="tabpane" id="tab-overview" role="tabpanel"></div>
+      <div class="tabpane" id="tab-mapping" role="tabpanel" hidden></div>
+      <div class="tabpane" id="tab-actions" role="tabpanel" hidden></div>
+      <div class="tabpane" id="tab-mc20" role="tabpanel" hidden></div>
+      <div class="tabpane" id="tab-downloads" role="tabpanel" hidden></div>
+    </aside>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

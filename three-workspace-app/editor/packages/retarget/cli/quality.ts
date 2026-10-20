@@ -37,6 +37,8 @@ export class QualityMeter {
     const lows = SIDES.flatMap((side) => this.feet[side].map((sample) => sample.y))
     const groundY = lows.length ? Math.min(...lows) : 0
     const contactFrames = { left: 0, right: 0 }, footSlideMeters = { left: 0, right: 0 }
+    // Contact runs as inclusive [firstFrame, lastFrame] pairs (frame = sample index at 30 FPS) so a viewer can mark them without resampling.
+    const contactRanges: Record<Side, Array<[number, number]>> = { left: [], right: [] }
     let footSlideMaxSpeed = 0
     for (const side of SIDES) {
       const samples = this.feet[side]
@@ -46,6 +48,7 @@ export class QualityMeter {
         return sample.y - groundY <= CONTACT_HEIGHT_METERS && Math.abs(vy) <= CONTACT_MAX_VERTICAL_SPEED
       })
       contactFrames[side] = contact.filter(Boolean).length
+      contact.forEach((inContact, index) => { if (!inContact) return; const last = contactRanges[side].at(-1); if (last && last[1] === index - 1) last[1] = index; else contactRanges[side].push([index, index]) })
       for (let index = 1; index < samples.length; index++) {
         if (!contact[index] || !contact[index - 1]) continue
         const prev = samples[index - 1]!, cur = samples[index]!, was = prev.xz[cur.joint], now = cur.xz[cur.joint]
@@ -69,7 +72,7 @@ export class QualityMeter {
     if (slide > SLIDE_METERS && Math.max(contactFrames.left, contactFrames.right) >= SLIDE_MIN_CONTACT_FRAMES) warnings.push({ code: 'FOOT_SLIDE',
       message: `Planted foot slides ${slide.toFixed(2)} m over ${Math.max(contactFrames.left, contactFrames.right)} contact frames (max ${footSlideMaxSpeed.toFixed(2)} m/s)`,
       suggestion: `Root travel does not match the legs; try ${rootScale} or --root in-place (foot lock/IK is not applied)` })
-    return { groundY, contactFrames, footSlideMeters, footSlideMaxSpeed, penetrationMeters, warnings }
+    return { groundY, contactFrames, contactRanges, footSlideMeters, footSlideMaxSpeed, penetrationMeters, warnings }
   }
 }
 
