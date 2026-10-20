@@ -1,0 +1,9 @@
+Setup report - 2026-10-20 10:07
+Repo: C:\w01
+
+PASS  pnpm install
+PASS  builder build
+PASS  typecheck
+PASS  test retarget
+PASS  test studio W01
+PASS  test python CLI-MCP

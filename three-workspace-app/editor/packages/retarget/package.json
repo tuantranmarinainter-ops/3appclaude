@@ -8,5 +8,5 @@
   "devDependencies": { "@types/three": "^0.184.0" },
   "types": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json" }
+  "scripts": { "typecheck": "tsc --noEmit -p tsconfig.json", "typecheck:cli": "tsc --noEmit -p tsconfig.cli.json" }
 }
