@@ -7,6 +7,7 @@ import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping } fro
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
 import { glbNodeNames, mergeAnimationGlbs } from './glbContract.ts'
 import { loadAsset } from './loadAsset.ts'
+import { QualityMeter, summarizeQuality } from './quality.ts'
 import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
 
 export const CONTRACT_VERSION = '1.0.0'
@@ -206,6 +207,7 @@ export async function runNormalize(request: NormalizeRequest) {
   const previewIndex = Math.max(0, exported.findIndex((item) => item.action.index === request.previewAction))
   const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256 })
   const animationCount = reloaded.actions.length
+  const suggestedRootScale = sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null
   let perAction, previewFrames: PreviewFrame[] = [], jointCount: number, mixamoJoints: number
   try {
     const names = new Map(reloaded.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[bone.id, name] as const] : [] }))
@@ -213,13 +215,15 @@ export async function runNormalize(request: NormalizeRequest) {
     perAction = exported.map((item, clipIndex) => {
       const clip = reloaded.actions[clipIndex]
       if (!clip) return { name: item.action.name, status: 'FAIL' as GateStatus, durationSeconds: 0, durationErrorSeconds: Infinity, allFinite: false,
-        hipsTravelMeters: 0, hipsHeightRangeMeters: [0, 0], hipsMaxExcursionMeters: 0 }
+        hipsTravelMeters: 0, hipsHeightRangeMeters: [0, 0], hipsMaxExcursionMeters: 0, quality: undefined }
       const sampleAt = (time: number) => new Map(reloaded.sample(clipIndex, time).flatMap((bone) => names.has(bone.id) ? [[names.get(bone.id)!, bone.world.slice(12, 15)] as const] : []))
       const first = sampleAt(0), last = sampleAt(clip.durationSeconds)
       let finite = true, minHips = Infinity, maxHips = -Infinity, excursion = 0
+      const meter = new QualityMeter()
       for (let frame = 0; frame <= Math.round(clip.durationSeconds * CONTRACT_FPS); frame++) {
         const pose = sampleAt(Math.min(frame / CONTRACT_FPS, clip.durationSeconds))
         finite &&= [...pose.values()].every((p) => p.every(Number.isFinite))
+        meter.push(pose, Math.min(frame / CONTRACT_FPS, clip.durationSeconds))
         const hips = pose.get('Hips')!, start = first.get('Hips')!
         minHips = Math.min(minHips, hips[1]!); maxHips = Math.max(maxHips, hips[1]!)
         excursion = Math.max(excursion, Math.hypot(hips[0]! - start[0]!, hips[2]! - start[2]!))
@@ -232,7 +236,8 @@ export async function runNormalize(request: NormalizeRequest) {
       return { name: clip.name, status: (clip.name === item.action.name && clip.ready && finite && durationError < 1e-4 ? 'PASS' : 'FAIL') as GateStatus,
         durationSeconds: clip.durationSeconds, durationErrorSeconds: durationError, allFinite: finite,
         hipsTravelMeters: Math.hypot(last.get('Hips')![0]! - first.get('Hips')![0]!, last.get('Hips')![2]! - first.get('Hips')![2]!),
-        hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion }
+        hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion,
+        quality: meter.finish(targetRest.get('Hips')![13]!, suggestedRootScale) }
     })
   } finally { reloaded.dispose() }
   const prefixedJointNames = glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length
@@ -275,10 +280,12 @@ export async function runNormalize(request: NormalizeRequest) {
       maxDegrees: Math.max(0, ...calibration.corrections.map((item) => item.degrees)), corrections: calibration.corrections },
     // Root travel is copied in meters by default (DECISIONS); for very different body sizes pass --root-scale <suggested>.
     proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
-      suggestedRootScale: sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null },
+      suggestedRootScale },
     loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: primary.unmappedSourceBoneIds.length,
       unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
+    // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
+    quality: summarizeQuality(perAction),
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
     roundtrip, glbSha256, elapsedMs: 0 }
   const preview = request.preview ? renderContactSheet(previewFrames, new Map(MIXAMO65_BONE_PARENTS)) : undefined

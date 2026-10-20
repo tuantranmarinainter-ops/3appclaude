@@ -79,6 +79,7 @@ try {
   if (report.proportions?.suggestedRootScale) console.log(`hips source=${report.proportions.sourceHipsHeightMeters.toFixed(2)}m target=${report.proportions.targetHipsHeightMeters.toFixed(2)}m suggested --root-scale ${report.proportions.suggestedRootScale.toFixed(3)}`)
   if (report.roundtrip) console.log(`actions exported=${report.exportedActions} skipped=${report.skippedActions.length} (${[...new Set(report.skippedActions.map((item: { code: string }) => item.code))].join(', ') || '-'})`)
   if (report.roundtrip) console.log(`roundtrip joints=${report.roundtrip.jointCount} animations=${report.roundtrip.animationCount} preview="${report.roundtrip.name}" duration=${report.roundtrip.durationSeconds.toFixed(3)}s hipsTravel=${report.roundtrip.hipsTravelMeters.toFixed(3)}m elapsed=${report.elapsedMs}ms`)
+  if (report.quality) console.log(`quality warnings ${report.quality.warnings.length ? report.quality.warnings.map((w: { code: string; actions: number }) => `${w.code}x${w.actions}`).join(' ') : '-'}`)
   if (report.minecraft20) console.log(`minecraft20 ${report.minecraft20.status} actions=${report.minecraft20.actions.length} roundtripError=${report.minecraft20.roundtripMaxErrorBlocks.toExponential(1)} blocks`)
   for (const path of written) console.log(`wrote ${path}`)
   process.exit(status === 'PASS' ? 0 : status === 'BLOCKED' ? 2 : 1)
