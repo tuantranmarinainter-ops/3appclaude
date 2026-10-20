@@ -16,7 +16,7 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 ## Input/Output
 | App | Vào | Ra |
 | --- | --- | --- |
-| 1 Chuẩn hóa | FBX/GLB nguồn bất kỳ; mapping, calibration, Action, chế độ xuất | GLB Mixamo65 (Animation-only hoặc Model+Rig+Animation) + manifest JSON + report JSON |
+| 1 Chuẩn hóa | FBX/GLB/glTF nguồn bất kỳ, `.bobj` Minecraft20; mapping, calibration, Action, chế độ xuất | GLB Mixamo65 (Animation-only hoặc Model+Rig+Animation) + manifest JSON + report JSON; tuỳ chọn `.bobj` action Minecraft20 cho BBS FS |
 | 2 Scene | GLB từ App 1; prop/cảnh GLB trực tiếp; Action đã sửa + vị trí từ App 3 | Gói shot cho App 3; film BBS/FS chứa toàn bộ nội dung BBS/FS đọc được + project cảnh |
 | 3 Animation | Gói shot (shot JSON: camera, khoảng frame, vị trí, clip + GLB nhân vật + GLB tham chiếu chỉ xem) | GLB Action đã sửa (UUID mới, ghi UUID gốc) + manifest + vị trí mới + project App 3 |
 - App 3 sửa được động tác + vị trí nhân vật được chọn; camera/nhân vật khác chỉ xem.
@@ -46,9 +46,16 @@ thiếu role chính.
 ## App 1 - đầu vào/đầu ra chi tiết
 - Vào: FBX/GLB/glTF có skeleton + rest + ≥1 Action (mesh/skin nếu xuất model). MVP: humanoid,
   một armature, animation đã bake. Không mở .uasset/.ma/.mb/.iMotion/file game gốc.
+- Bổ sung 2026-10-20: nhận thêm `.bobj` Minecraft20 (BBS/Blockbuster V9.12: armature `arm_bone` + action `an`)
+  làm nguồn animation, để áp animation Minecraft20 ngược lại cho Mixamo65. Dữ liệu mẫu có sẵn trong repo
+  (`apps/studio/public/retarget/v9.12`, 85 action, GPL-3.0). Rig không có bàn chân/ngón: Foot đích giữ rest
+  theo cẳng chân, không tính là thiếu role chính.
 - Lựa chọn: skeleton/Action/range/FPS; mapping (gợi ý + xác nhận); reference pose + A/T
   calibration; root giữ mét (mặc định) hoặc scale; xương loại trừ + xử lý skin; chế độ xuất.
 - Không thuộc App 1: dựng cảnh, sửa keyframe, xuất FBX (sau MVP), xuất Film/BBS.
+- Bổ sung 2026-10-20: App 1 xuất thêm (tuỳ chọn) `.bobj` **action** Minecraft20 cho BBS FS, đi từ chính GLB Mixamo65
+  đã xuất qua solver ngược V9.12 (Mixamo65→Minecraft20). Đây là action/animation, không phải film BBS — film vẫn
+  thuộc App 2. Định dạng theo exporter BBSFix: tick nguyên 20 Hz, Euler XYZ, `LINEAR`.
 
 ## Kết quả rà soát bàn giao Codex (DOC-116)
 - Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.

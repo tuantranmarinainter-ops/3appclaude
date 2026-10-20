@@ -5,6 +5,7 @@ import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
+import { glbNodeNames, mergeAnimationGlbs } from './glbContract.ts'
 import { loadAsset } from './loadAsset.ts'
 import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
 
@@ -18,7 +19,10 @@ export type GateStatus = 'NOT_RUN' | 'BLOCKED' | 'FAIL' | 'PASS'
 export interface NormalizeRequest {
   source: Object3D; sourceLabel: string; sourceSha256: string
   target: Object3D; targetLabel: string; targetSha256: string
-  actionIndex?: number
+  /** Source Action indices to export into the one GLB (default: every Action). */
+  actions?: readonly number[]
+  /** Action shown in preview.png and the top-level roundtrip numbers (default: first exported). */
+  previewAction?: number
   /** Source units → meters (glTF 1, FBX usually 0.01). */
   unitMeters?: number
   upAxis?: 'y' | 'z'
@@ -33,11 +37,6 @@ export interface NormalizeRequest {
 }
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
-/** Node names as written in the GLB JSON chunk; GLTFLoader sanitizes names (drops ':') so a reload cannot see the prefix. */
-function glbNodeNames(glb: Uint8Array): string[] {
-  const length = new DataView(glb.buffer, glb.byteOffset).getUint32(12, true)
-  return (JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + length))).nodes ?? []).map((node: { name?: string }) => node.name ?? '')
-}
 const mixamoName = (name: string) => MIXAMO65_BONE_PARENTS.find(([joint]) => canonical(joint) === canonical(name))?.[0]
 
 /** Deterministic UUID (RFC 9562 v8 layout) so re-running the same source keeps Action identity stable. */
@@ -136,12 +135,13 @@ function blocked(code: string, message: string, extra: Record<string, unknown> =
 
 export async function runNormalize(request: NormalizeRequest) {
   const started = Date.now()
-  const actionIndex = request.actionIndex ?? 0, rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
+  const rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
   const basis = sourceToScene(request.unitMeters ?? 1, request.upAxis ?? 'y')
   const jointNames = sourceJointNames(request.source)
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
-    actionIndex, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale, fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs' }
+    actions: request.actions ? [...request.actions] : 'all' as const, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
+    fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs' }
 
   const src = createThreeRigAdapter(request.source, { ...sourceOptions, collectUnsupportedTracks: true })
   const dst = createThreeRigAdapter(request.target, targetOptions)
@@ -157,59 +157,88 @@ export async function runNormalize(request: NormalizeRequest) {
     sourceHipsHeight = hipsId ? src.rig.bones.find((bone) => bone.id === hipsId)!.restWorld[13]! : null
     targetRest = new Map(dst.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[name, bone.restWorld] as const] : [] }))
   } finally { src.dispose(); dst.dispose() }
-  const mappingReport = { family: mapping.family, mapped: mapping.pairs.length, missingRequired: mapping.missingRequired,
+  const mappingReport = { family: mapping.family, mapped: mapping.pairs.length, missingRequired: mapping.missingRequired, notInSourceRig: mapping.notInSourceRig,
     ...(mapping.fingerprintsMatch === undefined ? {} : { presetFingerprintsMatch: mapping.fingerprintsMatch }),
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
 
   if (!actions.length) return blocked('NO_ACTION', 'Source has no Action', { input, actions })
   if (mapping.missingRequired.length) return blocked('MISSING_REQUIRED_JOINTS', `Missing main joints: ${mapping.missingRequired.join(', ')}`, { input, actions, mapping: mappingReport })
+  const missing = (request.actions ?? []).filter((index) => !actions[index])
+  if (missing.length) return blocked('NO_ACTION', `Action ${missing.join(', ')} does not exist (source has ${actions.length})`, { input, actions })
 
   // Second pass: rig = mapped bones (+ ancestors, kept by the adapter); other channels are dropped and reported.
   const prune = pruneToMappedRig(request.source, mappingSourceNames(mapping, sourceBones))
   const ranked = createThreeRigAdapter(request.source, { ...sourceOptions, ...(prune.jointNames ? { jointNames: prune.jointNames } : {}), collectUnsupportedTracks: true })
   const prunedActions = ranked.actions.map((item) => ({ index: item.index, name: item.name, durationSeconds: item.durationSeconds, ready: item.ready, issues: item.issues }))
   ranked.dispose()
-  const action = prunedActions[actionIndex]
-  if (!action) return blocked('NO_ACTION', `Action ${actionIndex} does not exist (source has ${actions.length})`, { input, actions })
-  if (!(action.durationSeconds > 0)) return blocked('ACTION_EMPTY', `Action ${action.name} has no duration (single-pose export?)`, { input, actions: prunedActions })
-  if (!action.ready) return blocked('ACTION_UNSUPPORTED', `Action ${action.name} has unsupported channels`, { input, actions: prunedActions, prunedTracks: prune.report })
   if (prune.jointNames) Object.assign(sourceOptions, { jointNames: prune.jointNames })
+  const actionsReport = prunedActions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) }))
 
   // Calibration must cover the exact rigs normalizeAnimation builds, so it is computed from adapters with the same options.
   let calibration: ReturnType<typeof buildCalibration>
   const finalSource = createThreeRigAdapter(request.source, sourceOptions), finalTarget = createThreeRigAdapter(request.target, targetOptions)
   try { calibration = buildCalibration(finalSource.rig, finalTarget.rig, mapping.joints, input.calibrate, request.facingDegrees) } finally { finalSource.dispose(); finalTarget.dispose() }
-  const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-    actionIndex, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, requiredTargetJointIds: mapping.requiredTargetIds,
-    calibration: calibration.runtime })
-  const glb = normalized.bytes, glbSha256 = sha256(glb)
 
-  // Roundtrip: reload the written bytes with GLTFLoader and sample them, instead of trusting in-memory frames.
-  const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256 })
-  let roundtrip, previewFrames: PreviewFrame[] = []
-  try {
-    const clip = reloaded.actions[0]!
-    const names = new Map(reloaded.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[bone.id, name] as const] : [] }))
-    const sampleAt = (time: number) => new Map(reloaded.sample(0, time).flatMap((bone) => names.has(bone.id) ? [[names.get(bone.id)!, bone.world.slice(12, 15)] as const] : []))
-    const first = sampleAt(0), last = sampleAt(clip.durationSeconds)
-    let finite = true, minHips = Infinity, maxHips = -Infinity, excursion = 0
-    for (let frame = 0; frame <= Math.round(clip.durationSeconds * CONTRACT_FPS); frame++) {
-      const pose = sampleAt(Math.min(frame / CONTRACT_FPS, clip.durationSeconds))
-      finite &&= [...pose.values()].every((p) => p.every(Number.isFinite))
-      const hips = pose.get('Hips')!, start = first.get('Hips')!
-      minHips = Math.min(minHips, hips[1]!); maxHips = Math.max(maxHips, hips[1]!)
-      excursion = Math.max(excursion, Math.hypot(hips[0]! - start[0]!, hips[2]! - start[2]!))
+  // One bake per Action; an Action that cannot be baked is skipped and reported (DECISIONS: export with loss, never silent).
+  const exported: Array<{ action: (typeof prunedActions)[number]; bytes: Uint8Array; report: Awaited<ReturnType<typeof normalizeAnimation>>['report'] }> = []
+  const skippedActions: Array<{ index: number; name: string; code: string; message: string }> = []
+  for (const index of request.actions ?? prunedActions.map((action) => action.index)) {
+    const action = prunedActions[index]!
+    const skip = (code: string, message: string) => skippedActions.push({ index, name: action.name, code, message })
+    if (!(action.durationSeconds > 0)) { skip('ACTION_EMPTY', 'Action has no duration (single-pose export?)'); continue }
+    if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
+    try {
+      const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
+        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, requiredTargetJointIds: mapping.requiredTargetIds,
+        calibration: calibration.runtime })
+      exported.push({ action, bytes: normalized.bytes, report: normalized.report })
+    } catch (error) {
+      skip(error instanceof RangeError ? 'ACTION_BUDGET' : 'ACTION_FAILED', error instanceof Error ? error.message : String(error))
     }
-    if (request.preview) previewFrames = Array.from({ length: PREVIEW_FRAMES }, (_, index) => {
-      const time = clip.durationSeconds * index / (PREVIEW_FRAMES - 1)
-      return { label: `${time.toFixed(2)}s`, joints: sampleAt(time) }
+  }
+  if (!exported.length) {
+    const first = skippedActions[0]!
+    return blocked(first.code, `${first.name}: ${first.message}`, { input, actions: actionsReport, skippedActions, prunedTracks: prune.report })
+  }
+  const glb = mergeAnimationGlbs(exported.map((item) => item.bytes)), glbSha256 = sha256(glb)
+
+  // Roundtrip: reload the written bytes with GLTFLoader and sample every Action, instead of trusting in-memory frames.
+  const previewIndex = Math.max(0, exported.findIndex((item) => item.action.index === request.previewAction))
+  const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256 })
+  const animationCount = reloaded.actions.length
+  let perAction, previewFrames: PreviewFrame[] = [], jointCount: number, mixamoJoints: number
+  try {
+    const names = new Map(reloaded.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[bone.id, name] as const] : [] }))
+    jointCount = reloaded.joints.length; mixamoJoints = names.size
+    perAction = exported.map((item, clipIndex) => {
+      const clip = reloaded.actions[clipIndex]
+      if (!clip) return { name: item.action.name, status: 'FAIL' as GateStatus, durationSeconds: 0, durationErrorSeconds: Infinity, allFinite: false,
+        hipsTravelMeters: 0, hipsHeightRangeMeters: [0, 0], hipsMaxExcursionMeters: 0 }
+      const sampleAt = (time: number) => new Map(reloaded.sample(clipIndex, time).flatMap((bone) => names.has(bone.id) ? [[names.get(bone.id)!, bone.world.slice(12, 15)] as const] : []))
+      const first = sampleAt(0), last = sampleAt(clip.durationSeconds)
+      let finite = true, minHips = Infinity, maxHips = -Infinity, excursion = 0
+      for (let frame = 0; frame <= Math.round(clip.durationSeconds * CONTRACT_FPS); frame++) {
+        const pose = sampleAt(Math.min(frame / CONTRACT_FPS, clip.durationSeconds))
+        finite &&= [...pose.values()].every((p) => p.every(Number.isFinite))
+        const hips = pose.get('Hips')!, start = first.get('Hips')!
+        minHips = Math.min(minHips, hips[1]!); maxHips = Math.max(maxHips, hips[1]!)
+        excursion = Math.max(excursion, Math.hypot(hips[0]! - start[0]!, hips[2]! - start[2]!))
+      }
+      if (request.preview && clipIndex === previewIndex) previewFrames = Array.from({ length: PREVIEW_FRAMES }, (_, index) => {
+        const time = clip.durationSeconds * index / (PREVIEW_FRAMES - 1)
+        return { label: `${time.toFixed(2)}s`, joints: sampleAt(time) }
+      })
+      const durationError = Math.abs(clip.durationSeconds - item.action.durationSeconds)
+      return { name: clip.name, status: (clip.name === item.action.name && clip.ready && finite && durationError < 1e-4 ? 'PASS' : 'FAIL') as GateStatus,
+        durationSeconds: clip.durationSeconds, durationErrorSeconds: durationError, allFinite: finite,
+        hipsTravelMeters: Math.hypot(last.get('Hips')![0]! - first.get('Hips')![0]!, last.get('Hips')![2]! - first.get('Hips')![2]!),
+        hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion }
     })
-    const durationError = Math.abs(clip.durationSeconds - action.durationSeconds)
-    roundtrip = { status: (names.size === 65 && reloaded.joints.length === 65 && finite && durationError < 1e-4 ? 'PASS' : 'FAIL') as GateStatus,
-      jointCount: reloaded.joints.length, durationSeconds: clip.durationSeconds, durationErrorSeconds: durationError, allFinite: finite,
-      hipsTravelMeters: Math.hypot(last.get('Hips')![0]! - first.get('Hips')![0]!, last.get('Hips')![2]! - first.get('Hips')![2]!),
-      hipsHeightRangeMeters: [minHips, maxHips], hipsMaxExcursionMeters: excursion, prefixedJointNames: glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length }
   } finally { reloaded.dispose() }
+  const prefixedJointNames = glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length
+  // Top level = the preview Action's numbers, but `status` is the gate over every Action (spread first so it cannot win).
+  const roundtrip = { ...perAction[previewIndex]!, primaryAction: exported[previewIndex]!.action.index, jointCount, animationCount, prefixedJointNames, perAction,
+    status: (mixamoJoints === 65 && jointCount === 65 && animationCount === exported.length && perAction.every((item) => item.status === 'PASS') ? 'PASS' : 'FAIL') as GateStatus }
 
   const boneLengthsMeters = Object.fromEntries(MIXAMO65_BONE_PARENTS.flatMap(([name, parent]) => {
     if (!parent) return []
@@ -220,24 +249,26 @@ export async function runNormalize(request: NormalizeRequest) {
     version: CONTRACT_VERSION,
     glb: { bytes: glb.length, mode: 'animation-only' as const },
     glbSha256,
-    actions: [{ uuid: actionUuid(request.sourceSha256, actionIndex, action.name), name: action.name, durationSeconds: action.durationSeconds, fps: CONTRACT_FPS }],
+    actions: exported.map(({ action }, glbAnimationIndex) => ({ uuid: actionUuid(request.sourceSha256, action.index, action.name), name: action.name,
+      durationSeconds: action.durationSeconds, fps: CONTRACT_FPS, sourceActionIndex: action.index, glbAnimationIndex })),
     rootPolicy: { mode: rootPolicy, translationScale: rootScale, units: 'meters' },
-    source: { file: request.sourceLabel, sha256: request.sourceSha256, actionIndex },
+    source: { file: request.sourceLabel, sha256: request.sourceSha256 },
     target: { file: request.targetLabel, sha256: request.targetSha256 },
     fingerprint: { boneLengthsMeters, hipsHeightMeters: targetRest.get('Hips')![13]! },
   }
-  const gates = { mapping: 'PASS' as GateStatus, roundtrip: roundtrip.status }
+  const failedActions = skippedActions.filter((item) => item.code === 'ACTION_FAILED')
+  const gates = { mapping: 'PASS' as GateStatus, actions: (failedActions.length ? 'FAIL' : 'PASS') as GateStatus, roundtrip: roundtrip.status }
   const contract = {
-    joints65: roundtrip.jointCount === 65 ? 'PASS' : 'FAIL',
-    noNamePrefix: roundtrip.prefixedJointNames === 0 ? 'PASS' : 'FAIL',
+    joints65: jointCount === 65 ? 'PASS' : 'FAIL',
+    noNamePrefix: prefixedJointNames === 0 ? 'PASS' : 'FAIL',
     fps30: 'PASS',
-    multiActionInOneGlb: prunedActions.length > 1 ? 'FAIL' : 'PASS',
+    multiActionInOneGlb: animationCount === exported.length ? 'PASS' : 'FAIL',
     manifestSidecar: 'PASS',
   } satisfies Record<string, GateStatus>
-  const { metrics, unmappedSourceBoneIds, resourceCost, sampleCount } = normalized.report
+  const primary = exported[previewIndex]!.report
   const report = {
     status: (Object.values(gates).every((gate) => gate === 'PASS') ? 'PASS' : 'FAIL') as GateStatus,
-    gates, contract, input, actions: prunedActions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })),
+    gates, contract, input, actions: actionsReport, exportedActions: exported.length, skippedActions,
     mapping: mappingReport,
     calibration: { mode: input.calibrate, facingYawDegrees: calibration.facingYawDegrees, measuredFacingYawDegrees: calibration.measuredFacingYawDegrees,
       facingAmbiguous: calibration.facingAmbiguous, facingSource: calibration.facingSource,
@@ -245,9 +276,11 @@ export async function runNormalize(request: NormalizeRequest) {
     // Root travel is copied in meters by default (DECISIONS); for very different body sizes pass --root-scale <suggested>.
     proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
       suggestedRootScale: sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null },
-    loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
+    loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: primary.unmappedSourceBoneIds.length,
+      unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
-    sampleCount, metrics, resourceCost, roundtrip, glbSha256, elapsedMs: 0 }
+    sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
+    roundtrip, glbSha256, elapsedMs: 0 }
   const preview = request.preview ? renderContactSheet(previewFrames, new Map(MIXAMO65_BONE_PARENTS)) : undefined
   report.elapsedMs = Date.now() - started
   return { status: report.status, glb, manifest, report, preview }

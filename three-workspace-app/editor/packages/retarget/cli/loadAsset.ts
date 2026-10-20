@@ -3,13 +3,15 @@ import { isAbsolute, relative, resolve } from 'node:path'
 import { LoadingManager, type Bone, type Mesh, type Object3D } from 'three'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { decodeGlb, encodeGlb } from './glb.ts'
+import { loadBobj } from './loadBobj.ts'
 
-export type AssetFormat = 'glb' | 'gltf' | 'fbx'
+export type AssetFormat = 'glb' | 'gltf' | 'fbx' | 'bobj'
 
 export function formatFromPath(path: string): AssetFormat {
   const extension = path.toLowerCase().split('.').pop()
-  if (extension === 'glb' || extension === 'gltf' || extension === 'fbx') return extension
-  throw new TypeError(`Unsupported source format .${extension}; App 1 reads FBX/GLB/glTF only`)
+  if (extension === 'glb' || extension === 'gltf' || extension === 'fbx' || extension === 'bobj') return extension
+  throw new TypeError(`Unsupported source format .${extension}; App 1 reads FBX/GLB/glTF and Minecraft20 .bobj only`)
 }
 
 const MESH_EXTENSIONS = ['KHR_draco_mesh_compression', 'EXT_meshopt_compression', 'KHR_mesh_quantization']
@@ -24,19 +26,6 @@ function stripGltfMeshes(json: Record<string, any>): Record<string, any> {
   delete copy.meshes
   for (const key of ['extensionsUsed', 'extensionsRequired']) if (copy[key]) copy[key] = copy[key].filter((name: string) => !MESH_EXTENSIONS.includes(name))
   return copy
-}
-
-function rewriteGlbJson(bytes: Uint8Array, edit: (json: Record<string, any>) => Record<string, any>): ArrayBuffer {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  if (view.getUint32(0, true) !== 0x46546c67 || view.getUint32(16, true) !== 0x4e4f534a) throw new TypeError('Not a binary glTF (GLB) file')
-  const jsonLength = view.getUint32(12, true)
-  const json = new TextEncoder().encode(JSON.stringify(edit(JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + jsonLength))))))
-  const padded = Math.ceil(json.length / 4) * 4, rest = bytes.subarray(20 + jsonLength)
-  const result = new Uint8Array(20 + padded + rest.length), header = new DataView(result.buffer)
-  header.setUint32(0, 0x46546c67, true); header.setUint32(4, 2, true); header.setUint32(8, result.length, true)
-  header.setUint32(12, padded, true); header.setUint32(16, 0x4e4f534a, true)
-  result.fill(32, 20, 20 + padded); result.set(json, 20); result.set(rest, 20 + padded)
-  return result.buffer
 }
 
 type FbxNode = Object3D & { isBone?: boolean; ID?: number }
@@ -96,17 +85,18 @@ function packGltf(json: Record<string, any>, resourceDir: string | undefined): U
   parts.forEach((part: Uint8Array, index: number) => bin.set(part, offsets[index]!))
   for (const view of json.bufferViews ?? []) { view.byteOffset = (view.byteOffset ?? 0) + offsets[view.buffer]!; view.buffer = 0 }
   json.buffers = total ? [{ byteLength: total }] : []
-  const text = new TextEncoder().encode(JSON.stringify(json)), padded = Math.ceil(text.length / 4) * 4
-  const glb = new Uint8Array(28 + padded + total), header = new DataView(glb.buffer)
-  header.setUint32(0, 0x46546c67, true); header.setUint32(4, 2, true); header.setUint32(8, glb.length, true)
-  header.setUint32(12, padded, true); header.setUint32(16, 0x4e4f534a, true)
-  glb.fill(32, 20, 20 + padded); glb.set(text, 20)
-  header.setUint32(20 + padded, total, true); header.setUint32(24 + padded, 0x004e4942, true); glb.set(bin, 28 + padded)
-  return glb
+  return encodeGlb(json, bin)
 }
 
 /** Node-side loading: external resources are refused (except .gltf buffers in `resourceDir`), so files must be self-contained. */
-export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; resourceDir?: string } = {}): Promise<Object3D> {
+export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; resourceDir?: string; bobjArmature?: Uint8Array } = {}): Promise<Object3D> {
+  if (format === 'bobj') {
+    const text = new TextDecoder().decode(bytes)
+    // Action libraries carry no `arm_bone` records; the rig comes from a separate armature file (--armature).
+    const armature = options.bobjArmature ? new TextDecoder().decode(options.bobjArmature) : /^arm_bone /m.test(text) ? text : null
+    if (!armature) throw new TypeError('This .bobj has no arm_bone records; pass its rig with --armature <armature.bobj>')
+    return loadBobj(text, armature)
+  }
   const manager = new LoadingManager()
   // Skeleton-only loads ignore textures, so external texture paths resolve to an empty data URL instead of failing.
   manager.setURLModifier((url) => {
@@ -126,7 +116,8 @@ export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options:
     return root
   }
   const glb = format === 'gltf' ? packGltf(JSON.parse(new TextDecoder().decode(bytes)), options.resourceDir) : bytes
-  const data = options.skeletonOnly ? rewriteGlbJson(glb, stripGltfMeshes) : Uint8Array.from(glb).buffer
+  let data: ArrayBuffer = Uint8Array.from(glb).buffer
+  if (options.skeletonOnly) { const { json, bin } = decodeGlb(glb); data = encodeGlb(stripGltfMeshes(json), bin).buffer as ArrayBuffer }
   const gltf = await new GLTFLoader(manager).parseAsync(data, '')
   gltf.scene.animations = gltf.animations
   return gltf.scene

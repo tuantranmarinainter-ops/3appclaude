@@ -3,9 +3,9 @@ import { applyMixamo65MappingPreset } from '../src/mappingPreset.ts'
 import type { MappingSkeleton } from '../src/mapping.ts'
 import type { RetargetBonePair, RetargetRig } from '../src/universal.ts'
 
-export type SourceFamily = 'mixamo' | 'ue' | 'cc' | 'lol' | 'wc3r' | 'wow' | 'unknown'
+export type SourceFamily = 'mixamo' | 'ue' | 'cc' | 'lol' | 'wc3r' | 'wow' | 'minecraft20' | 'unknown'
 export interface MappedJoint { target: string; targetId: string; source: string | null; sourceId: string | null; via: string | null; ambiguous?: boolean }
-export interface AutoMapping { family: SourceFamily; joints: MappedJoint[]; pairs: RetargetBonePair[]; missingRequired: string[]; requiredTargetIds: string[] }
+export interface AutoMapping { family: SourceFamily; joints: MappedJoint[]; pairs: RetargetBonePair[]; missingRequired: string[]; requiredTargetIds: string[]; notInSourceRig: string[] }
 
 /** Losing any of these blocks export (DECISIONS: "thiếu role chính"). */
 export const MIXAMO65_REQUIRED_JOINTS = Object.freeze(['Hips', 'Spine', 'Head',
@@ -107,21 +107,34 @@ function resolveBetween(source: RetargetRig, joints: MappedJoint[], target: stri
   Object.assign(joint, { source: name.get(pick)!, sourceId: pick, via: 'structure:wow' })
 }
 
+/**
+ * Minecraft20 (BBS/Blockbuster V9.12 BOBJ): `anchor` (root mover) → `body` (parent of legs and torso, so Hips) →
+ * `low_body` → `head`; arms `left_arm` → `low_left_arm` → `low_left_arm.end` (wrist end, loaded as `low_left_arm_end`);
+ * legs `left_leg` → `low_left_leg` (right side is spelled `low_leg_right`). No clavicle, neck, feet or fingers.
+ */
+const MINECRAFT20_ALIASES = new Map<string, string>([['Hips', 'body'], ['Spine', 'lowbody'], ['Head', 'head'],
+  ['LeftArm', 'leftarm'], ['LeftForeArm', 'lowleftarm'], ['LeftHand', 'lowleftarmend'], ['RightArm', 'rightarm'], ['RightForeArm', 'lowrightarm'],
+  ['RightHand', 'lowrightarmend'], ['LeftUpLeg', 'leftleg'], ['LeftLeg', 'lowleftleg'], ['RightUpLeg', 'rightleg'], ['RightLeg', 'lowlegright']])
+/** Roles the family's rig does not have at all; the target joint keeps its rest under the parent (DECISIONS). */
+const ABSENT_ROLES: Partial<Record<SourceFamily, readonly string[]>> = { minecraft20: ['LeftFoot', 'RightFoot'] }
+
 function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): SourceFamily {
   if (['hips', 'leftupleg', 'leftarm', 'rightarm'].every((name) => names.has(name))) return 'mixamo'
   if (raw.some((name) => /^cc_?base_/i.test(name.split(':').pop()!))) return 'cc'
   if (names.has('pelvis') && names.has('thighl')) return 'ue'
   if (names.has('pelvis') && names.has('lkneeupper') && names.has('lkneelower')) return 'lol'
   if (names.has('spinec00jnt') && names.has('bonechest') && names.has('arml00jnt')) return 'wc3r'
+  if (names.has('anchor') && names.has('lowbody') && names.has('lowleftarm')) return 'minecraft20'
   if (names.has('boneroot') && names.has('bonefootl') && (names.has('bonelegl') || names.has('boneexpl1leg1twist1'))) return 'wow'
   return 'unknown'
 }
 
 function finish(family: SourceFamily, joints: MappedJoint[]): AutoMapping {
   const pairs = joints.filter((joint) => joint.sourceId).map((joint) => ({ sourceBoneId: joint.sourceId!, targetBoneId: joint.targetId, enabled: true }))
-  const missingRequired = MIXAMO65_REQUIRED_JOINTS.filter((name) => !joints.find((joint) => joint.target === name)?.sourceId)
-  const requiredTargetIds = MIXAMO65_REQUIRED_JOINTS.map((name) => joints.find((joint) => joint.target === name)!.targetId)
-  return { family, joints, pairs, missingRequired, requiredTargetIds }
+  const notInSourceRig = [...(ABSENT_ROLES[family] ?? [])], required = MIXAMO65_REQUIRED_JOINTS.filter((name) => !notInSourceRig.includes(name))
+  const missingRequired = required.filter((name) => !joints.find((joint) => joint.target === name)?.sourceId)
+  const requiredTargetIds = required.map((name) => joints.find((joint) => joint.target === name)!.targetId)
+  return { family, joints, pairs, missingRequired, requiredTargetIds, notInSourceRig }
 }
 
 function targetIds(target: RetargetRig): Map<string, string> {
@@ -143,7 +156,7 @@ export function buildAutoMapping(source: RetargetRig, target: RetargetRig): Auto
   }
   const names = new Set(byName.keys())
   const family = detectFamily(names, source.bones.map((bone) => bone.name ?? bone.id))
-  const aliases = family === 'wow' ? wowAliases(names) : family === 'wc3r' ? wc3ReforgedAliases() : family === 'ue' || family === 'cc' || family === 'lol' ? familyAliases(family, names) : new Map<string, string>()
+  const aliases = family === 'minecraft20' ? MINECRAFT20_ALIASES : family === 'wow' ? wowAliases(names) : family === 'wc3r' ? wc3ReforgedAliases() : family === 'ue' || family === 'cc' || family === 'lol' ? familyAliases(family, names) : new Map<string, string>()
   const sourceName = new Map(source.bones.map((bone) => [bone.id, bone.name ?? bone.id]))
   const joints = [...targetIds(target)].map(([name, targetId]): MappedJoint => {
     for (const [key, via] of [[aliases.get(name), `alias:${family}`], [canonical(name), 'exact']] as const) {

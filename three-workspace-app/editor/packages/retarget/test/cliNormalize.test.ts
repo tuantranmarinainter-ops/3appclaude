@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AnimationClip, Bone, Group, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
+import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, MIXAMO65_REQUIRED_JOINTS } from '../cli/autoMapping.ts'
 import { loadAsset, removeFbxBoneAliases } from '../cli/loadAsset.ts'
@@ -170,15 +171,43 @@ test('runNormalize returns GLB, contract manifest and gated report', async () =>
   assert.ok(Math.abs(proportions.suggestedRootScale - result.manifest.fingerprint.hipsHeightMeters) < 1e-6)
   assert.equal(Object.keys(result.manifest.fingerprint.boneLengthsMeters).length, 64)
   assert.equal(result.report.roundtrip.jointCount, 65)
-  // Known contract gap until step 3: output still carries the `mixamorig:` prefix, and the report must say so.
-  assert.equal(result.report.roundtrip.prefixedJointNames, 65)
-  assert.equal(result.report.contract.noNamePrefix, 'FAIL')
+  assert.equal(result.report.roundtrip.prefixedJointNames, 0)
+  assert.equal(result.report.contract.noNamePrefix, 'PASS')
   assert.ok(result.report.roundtrip.hipsTravelMeters > 0.5, 'root travel survives in preserve mode')
   assert.deepEqual(result.preview!.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
   const again = await runNormalize({ source: ueSource(), sourceLabel: 'ue.glb', sourceSha256: 'a'.repeat(64), target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }),
     targetLabel: 'mixamo65.glb', targetSha256: 'b'.repeat(64) })
   assert.equal(again.manifest.actions[0]!.uuid, result.manifest.actions[0]!.uuid, 'Action UUID is deterministic')
   assert.equal(again.manifest.glbSha256, result.manifest.glbSha256, 'output is reproducible')
+})
+
+test('GLB contract v1.0.0: every Action in one GLB, unprefixed Mixamo65 joint names, one manifest entry per Action', async () => {
+  const source = ueSource(), swing = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.5)
+  source.animations.push(
+    new AnimationClip('Wave', 0.5, [new QuaternionKeyframeTrack('upperarm_r.quaternion', [0, 0.5], [0, 0, 0, 1, ...swing.toArray()])]),
+    new AnimationClip('Pose only', 0, [new VectorKeyframeTrack('pelvis.position', [0], [0, 1, 0])]))
+  const result = await runNormalize({ source, sourceLabel: 'multi', sourceSha256: 'f'.repeat(64),
+    target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }), targetLabel: 't', targetSha256: '0'.repeat(64) })
+  assert.equal(result.status, 'PASS', JSON.stringify(result.report))
+  const glb = Buffer.from(result.glb!), json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString())
+  assert.deepEqual(json.animations.map((animation: { name: string }) => animation.name), ['Walk forward', 'Wave'])
+  assert.deepEqual(json.skins[0].joints.map((index: number) => json.nodes[index].name).sort(), MIXAMO65_BONE_PARENTS.map(([name]) => name).sort())
+  const report = result.report as any
+  assert.deepEqual(Object.values(report.contract), ['PASS', 'PASS', 'PASS', 'PASS', 'PASS'])
+  assert.deepEqual(report.skippedActions, [{ index: 2, name: 'Pose only', code: 'ACTION_EMPTY', message: 'Action has no duration (single-pose export?)' }])
+  assert.deepEqual(result.manifest.actions.map((action: any) => [action.name, action.sourceActionIndex, action.glbAnimationIndex]), [['Walk forward', 0, 0], ['Wave', 1, 1]])
+  assert.equal(new Set(result.manifest.actions.map((action: any) => action.uuid)).size, 2)
+  assert.deepEqual(report.roundtrip.perAction.map((item: any) => [item.name, Math.round(item.durationSeconds * 10) / 10]), [['Walk forward', 1], ['Wave', 0.5]])
+  // Reloaded animations bind to the renamed joints (not silently to nothing).
+  const reloaded = createThreeRigAdapter(await loadAsset(result.glb!, 'glb'), { fingerprint: 'multi-out' })
+  assert.deepEqual(reloaded.actions.map((action) => [action.name, action.ready]), [['Walk forward', true], ['Wave', true]])
+  const hips = reloaded.rig.bones.find((bone) => bone.name === 'Hips')!.id
+  assert.ok(reloaded.sample(0, 1).find((bone) => bone.id === hips)!.world[14]! > 0.9, 'root travel still drives the renamed Hips')
+  reloaded.dispose()
+  // An explicit selection exports only that Action.
+  const only = await runNormalize({ source: ueSource(), sourceLabel: 'multi', sourceSha256: 'f'.repeat(64), actions: [0],
+    target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }), targetLabel: 't', targetSha256: '0'.repeat(64) })
+  assert.equal(only.manifest!.actions.length, 1)
 })
 
 test('animated nodes outside the skin joint list join the source rig instead of blocking (Soldier.glb case)', async () => {
