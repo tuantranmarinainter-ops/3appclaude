@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "allowImportingTsExtensions": true, "types": ["node"], "typeRoots": ["../builder/node_modules/@types", "./node_modules/@types"] },
-  "include": ["src/**/*.ts", "cli/**/*.ts"]
+  "include": ["src/**/*.ts", "cli/**/*.ts", "workbench/**/*.ts"]
 }

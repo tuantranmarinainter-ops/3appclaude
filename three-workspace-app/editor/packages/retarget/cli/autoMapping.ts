@@ -191,7 +191,7 @@ export function buildAutoMapping(source: RetargetRig, target: RetargetRig): Auto
 }
 
 /** Applies a saved `bbs.mixamo65-mapping-preset` (the Studio export format) instead of name suggestions. */
-export function buildPresetMapping(preset: unknown, source: RetargetRig, target: RetargetRig): AutoMapping & { fingerprintsMatch: boolean } {
+export function buildPresetMapping(preset: unknown, source: RetargetRig, target: RetargetRig, family: SourceFamily = 'unknown'): AutoMapping & { fingerprintsMatch: boolean } {
   const skeleton = (rig: RetargetRig, id: string): MappingSkeleton => ({ id, family: 'custom-preserved', fingerprint: rig.fingerprint,
     bones: rig.bones.map((bone) => ({ id: bone.id, name: bone.name ?? bone.id, parentId: bone.parentId })) })
   const applied = applyMixamo65MappingPreset(preset, skeleton(source, 'source'), skeleton(target, 'target'))
@@ -201,7 +201,7 @@ export function buildPresetMapping(preset: unknown, source: RetargetRig, target:
     return { target: name, targetId, source: sourceId ? sourceName.get(sourceId)! : null, sourceId, via: sourceId ? 'preset' : null,
       ...(applied.ambiguousSource.includes(name) ? { ambiguous: true } : {}) }
   })
-  const result = finish('unknown', joints)
+  const result = finish(family, joints)
   result.pairs = joints.filter((joint) => joint.sourceId).map((joint) => {
     const extra = applied.chainAssignments[joint.target]
     return { sourceBoneId: joint.sourceId!, targetBoneId: joint.targetId, enabled: true,

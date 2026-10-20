@@ -34,7 +34,7 @@ const TEXTURE_EXTENSIONS = /^(KHR|EXT)_texture_(basisu|webp)$/
  * Mesh-keeping loads (Model mode) cannot decode images in Node (GLTFLoader needs ImageBitmap/DOM), so every texture
  * reference is removed from a copy of the JSON; the exporter copies the original image bytes from the source instead.
  */
-function stripGltfTextures(json: Record<string, any>): Record<string, any> {
+export function stripGltfTextures(json: Record<string, any>): Record<string, any> {
   const copy = structuredClone(json)
   delete copy.textures; delete copy.images; delete copy.samplers
   const strip = (value: any) => {
