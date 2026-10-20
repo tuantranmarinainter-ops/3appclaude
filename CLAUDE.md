@@ -39,11 +39,20 @@ Python (từ `three-workspace-app`): `python -m unittest agent.test_unified_cli 
 - Không sửa file nguồn của người dùng; kết quả là derivative mới.
 - Trả lời người dùng bằng tiếng Việt, ngắn gọn.
 
-## Việc tiếp theo (theo thứ tự)
-1. Đọc `setup-report.txt`, sửa test đang FAIL (nếu có).
-2. Thêm CLI headless `normalize` gọi thẳng `packages/retarget`, không cần host/project:
-   `normalize --src <file> --target <mixamo65.glb> --out <dir> [--preview]`
-   → GLB + manifest JSON + report JSON (+ preview.png contact sheet).
-3. Sửa 3 điểm lệch hợp đồng GLB v1.0.0: bỏ prefix `mixamorig:` ở output; nhiều Action trong
-   một GLB; xuất manifest JSON riêng cạnh GLB.
-4. Chạy với file nguồn thật đầu tiên người dùng cung cấp.
+## Trạng thái (2026-10-20)
+- Xong: CLI headless `packages/retarget/cli/normalize.ts` (GLB hợp đồng v1.0.0 nhiều Action + manifest + report +
+  preview), calibration A/T + facing, family mixamo/ue/cc/lol/wc3r/wow/minecraft20, nguồn và đầu ra `.bobj`
+  Minecraft20 (`--bobj`). Kết quả 28 mẫu thật: `docs/REPORT-cli-normalize-2026-10-20.md`.
+- Mẫu thật nằm ngoài repo (chỉ đọc, không commit): `C:\w01-samples`,
+  `C:\Users\Administrator\Downloads\MODEL WARCRAFT\NAP MODEL CHO CLAUDE`, `C:\Users\Administrator\wow.export\creatures`.
+
+- Xong đợt điều phối 2026-10-20 (đặc tả `docs/W01-TASKS-2026-10-20.md`): T1 đo chân/root, T2 `--mode model`
+  (nguồn Mixamo), T3 gate test Studio, T4 mapping theo geometry, T5 **App 1 Workbench** (UI web cục bộ).
+- Chạy Workbench: từ `packages/builder`: `node --import tsx ../retarget/workbench/server.ts --port 3101`
+  → `http://127.0.0.1:3101` (hướng dẫn: `packages/retarget/workbench/README.md`).
+
+## Việc tiếp theo
+1. Fit rig65 theo model nguồn cho `--mode model` non-Mixamo (PLAN .4.1), refit mesh (`MODEL_NOT_REFIT`).
+2. Foot lock/IK dựa trên số đo T1; xử lý `FOOT_SLIDE` cho chu kỳ tại chỗ.
+3. Chọn range Action; preview mesh trong Workbench cho nguồn `.bobj`; huỷ lượt chạy.
+4. Người dùng kiểm `.bobj` trong BBS FS thật và dùng thử Workbench.

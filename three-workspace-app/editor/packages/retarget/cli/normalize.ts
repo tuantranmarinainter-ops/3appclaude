@@ -86,6 +86,8 @@ try {
       if (minecraft.report.status !== 'PASS' && status === 'PASS') status = 'FAIL'
     }
   }
+  // The written report states the final status (a failed .bobj export fails the run), same as the Workbench.
+  report.status = status
   written.unshift(write('.report.json', JSON.stringify(report, null, 2)))
   console.log(`status ${status}`)
   if (report.blocker) console.log(`blocker ${report.blocker.code}: ${report.blocker.message}`)
