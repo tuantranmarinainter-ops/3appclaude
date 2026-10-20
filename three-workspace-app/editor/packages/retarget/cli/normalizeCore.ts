@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { Matrix4, PropertyBinding, type Bone, type Object3D, type SkinnedMesh } from 'three'
+import { AnimationClip, Matrix4, PropertyBinding, type Bone, type Object3D, type SkinnedMesh } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping } from './autoMapping.ts'
+import { buildCalibration, type CalibrationMode } from './calibration.ts'
 import { loadAsset } from './loadAsset.ts'
 import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
 
@@ -22,6 +23,10 @@ export interface NormalizeRequest {
   rootPolicy?: 'preserve' | 'in-place'
   rootScale?: number
   mappingPreset?: unknown
+  /** A/T calibration of limb directions against the target rest (default 'limbs'). */
+  calibrate?: CalibrationMode
+  /** Source→target facing yaw override in degrees (default: measured, quarter turns only). */
+  facingDegrees?: number
   preview?: boolean
 }
 
@@ -61,6 +66,53 @@ export function sourceJointNames(root: Object3D): string[] | undefined {
   return extra && new Set(names).size === names.length ? names : undefined
 }
 
+/** Source bone names of mapped joints (Mixamo targets) plus every ancestor in the first-pass rig. */
+function mappingSourceNames(mapping: AutoMapping, bones: ReadonlyMap<string, { name?: string; parentId: string | null }>) {
+  const mapped = new Set<string>(), retained = new Set<string>()
+  for (const pair of mapping.pairs) for (const id of pair.sourceBoneIds ?? [pair.sourceBoneId]) {
+    mapped.add(bones.get(id)?.name ?? id)
+    for (let current: string | null = id; current; current = bones.get(current)?.parentId ?? null) retained.add(bones.get(current)?.name ?? current)
+  }
+  return { mapped, retained }
+}
+
+/**
+ * Restricts the source to what the mapping uses. Tracks on other nodes (weapons, FX helpers, meshes) or with
+ * non-TRS bindings (morph targets) are removed from `root.animations` — the loss is reported, never silent.
+ * Helpers with non-uniform scale (LoL weapon smears) would otherwise shear their children and fail the solver.
+ * Animated scale is dropped as well: the Mixamo65 contract carries rotation + translation only, and non-uniform scale
+ * (WC3 breathing/twist volume, iClone float32 noise) shears children past the solver guard. DECISIONS: loss is exported
+ * and reported, not blocked — the report keeps the largest relative deviation per node.
+ */
+export function pruneToMappedRig(root: Object3D, names: { mapped: ReadonlySet<string>; retained: ReadonlySet<string> }) {
+  const nodes: Object3D[] = []
+  root.traverse((node) => nodes.push(node))
+  const unique = [...names.mapped].every((name) => nodes.filter((node) => node.name === name).length === 1)
+  const dropped = new Map<string, number>()
+  let count = 0
+  const scaleDeviation = new Map<string, number>()
+  let droppedScale = 0
+  root.animations = root.animations.map((clip) => {
+    const tracks = clip.tracks.filter((track) => {
+      const binding = PropertyBinding.parseTrackName(track.name)
+      const keep = names.retained.has(binding.nodeName) && !binding.objectName && binding.propertyIndex === undefined &&
+        ['position', 'quaternion', 'scale'].includes(binding.propertyName)
+      if (!keep) { count++; dropped.set(binding.nodeName, (dropped.get(binding.nodeName) ?? 0) + 1); return false }
+      if (binding.propertyName === 'scale') {
+        const rest = nodes.find((node) => node.name === binding.nodeName)?.scale.toArray() ?? [1, 1, 1]
+        const deviation = Array.from(track.values).reduce((max, value, index) => Math.max(max, Math.abs(value / rest[index % 3]! - 1)), 0)
+        if (deviation > 0) { droppedScale++; scaleDeviation.set(binding.nodeName, Math.max(scaleDeviation.get(binding.nodeName) ?? 0, deviation)) }
+        return false
+      }
+      return true
+    })
+    return new AnimationClip(clip.name, clip.duration, tracks)
+  })
+  const scaleNodes = [...scaleDeviation].sort((a, b) => b[1] - a[1]).map(([node, maxDeviation]) => ({ node, maxDeviation }))
+  return { jointNames: unique ? [...names.mapped] : undefined, report: { count, nodes: [...dropped.keys()] },
+    scale: { dropped: droppedScale, maxDeviation: scaleNodes[0]?.maxDeviation ?? 0, nodes: scaleNodes.slice(0, 10) } }
+}
+
 function blocked(code: string, message: string, extra: Record<string, unknown> = {}) {
   return { status: 'BLOCKED' as const, report: { status: 'BLOCKED' as GateStatus, blocker: { code, message }, ...extra } }
 }
@@ -72,28 +124,47 @@ export async function runNormalize(request: NormalizeRequest) {
   const jointNames = sourceJointNames(request.source)
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
-    actionIndex, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale, fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto' }
+    actionIndex, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale, fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs' }
 
   const src = createThreeRigAdapter(request.source, { ...sourceOptions, collectUnsupportedTracks: true })
   const dst = createThreeRigAdapter(request.target, targetOptions)
   let mapping: AutoMapping & { fingerprintsMatch?: boolean }
   let targetRest: Map<string, number[]>
+  let sourceBones: Map<string, { name?: string; parentId: string | null }>
+  let sourceHipsHeight: number | null = null
   const actions = src.actions.map((action) => ({ index: action.index, name: action.name, durationSeconds: action.durationSeconds, ready: action.ready, issues: action.issues }))
   try {
     mapping = request.mappingPreset ? buildPresetMapping(request.mappingPreset, src.rig, dst.rig) : buildAutoMapping(src.rig, dst.rig)
+    sourceBones = new Map(src.rig.bones.map((bone) => [bone.id, bone]))
+    const hipsId = mapping.joints.find((joint) => joint.target === 'Hips')?.sourceId
+    sourceHipsHeight = hipsId ? src.rig.bones.find((bone) => bone.id === hipsId)!.restWorld[13]! : null
     targetRest = new Map(dst.rig.bones.flatMap((bone) => { const name = mixamoName(bone.name ?? ''); return name ? [[name, bone.restWorld] as const] : [] }))
   } finally { src.dispose(); dst.dispose() }
   const mappingReport = { family: mapping.family, mapped: mapping.pairs.length, missingRequired: mapping.missingRequired,
     ...(mapping.fingerprintsMatch === undefined ? {} : { presetFingerprintsMatch: mapping.fingerprintsMatch }),
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
 
-  const action = actions[actionIndex]
-  if (!action) return blocked('NO_ACTION', actions.length ? `Action ${actionIndex} does not exist (source has ${actions.length})` : 'Source has no Action', { input, actions })
-  if (!action.ready) return blocked('ACTION_UNSUPPORTED', `Action ${action.name} has unsupported channels`, { input, actions })
+  if (!actions.length) return blocked('NO_ACTION', 'Source has no Action', { input, actions })
   if (mapping.missingRequired.length) return blocked('MISSING_REQUIRED_JOINTS', `Missing main joints: ${mapping.missingRequired.join(', ')}`, { input, actions, mapping: mappingReport })
 
+  // Second pass: rig = mapped bones (+ ancestors, kept by the adapter); other channels are dropped and reported.
+  const prune = pruneToMappedRig(request.source, mappingSourceNames(mapping, sourceBones))
+  const ranked = createThreeRigAdapter(request.source, { ...sourceOptions, ...(prune.jointNames ? { jointNames: prune.jointNames } : {}), collectUnsupportedTracks: true })
+  const prunedActions = ranked.actions.map((item) => ({ index: item.index, name: item.name, durationSeconds: item.durationSeconds, ready: item.ready, issues: item.issues }))
+  ranked.dispose()
+  const action = prunedActions[actionIndex]
+  if (!action) return blocked('NO_ACTION', `Action ${actionIndex} does not exist (source has ${actions.length})`, { input, actions })
+  if (!(action.durationSeconds > 0)) return blocked('ACTION_EMPTY', `Action ${action.name} has no duration (single-pose export?)`, { input, actions: prunedActions })
+  if (!action.ready) return blocked('ACTION_UNSUPPORTED', `Action ${action.name} has unsupported channels`, { input, actions: prunedActions, prunedTracks: prune.report })
+  if (prune.jointNames) Object.assign(sourceOptions, { jointNames: prune.jointNames })
+
+  // Calibration must cover the exact rigs normalizeAnimation builds, so it is computed from adapters with the same options.
+  let calibration: ReturnType<typeof buildCalibration>
+  const finalSource = createThreeRigAdapter(request.source, sourceOptions), finalTarget = createThreeRigAdapter(request.target, targetOptions)
+  try { calibration = buildCalibration(finalSource.rig, finalTarget.rig, mapping.joints, input.calibrate, request.facingDegrees) } finally { finalSource.dispose(); finalTarget.dispose() }
   const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-    actionIndex, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, requiredTargetJointIds: mapping.requiredTargetIds })
+    actionIndex, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, requiredTargetJointIds: mapping.requiredTargetIds,
+    calibration: calibration.runtime })
   const glb = normalized.bytes, glbSha256 = sha256(glb)
 
   // Roundtrip: reload the written bytes with GLTFLoader and sample them, instead of trusting in-memory frames.
@@ -143,15 +214,21 @@ export async function runNormalize(request: NormalizeRequest) {
     joints65: roundtrip.jointCount === 65 ? 'PASS' : 'FAIL',
     noNamePrefix: roundtrip.prefixedJointNames === 0 ? 'PASS' : 'FAIL',
     fps30: 'PASS',
-    multiActionInOneGlb: actions.length > 1 ? 'FAIL' : 'PASS',
+    multiActionInOneGlb: prunedActions.length > 1 ? 'FAIL' : 'PASS',
     manifestSidecar: 'PASS',
   } satisfies Record<string, GateStatus>
   const { metrics, unmappedSourceBoneIds, resourceCost, sampleCount } = normalized.report
   const report = {
     status: (Object.values(gates).every((gate) => gate === 'PASS') ? 'PASS' : 'FAIL') as GateStatus,
-    gates, contract, input, actions: actions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })),
+    gates, contract, input, actions: prunedActions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })),
     mapping: mappingReport,
-    loss: { unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
+    calibration: { mode: input.calibrate, facingYawDegrees: calibration.facingYawDegrees, measuredFacingYawDegrees: calibration.measuredFacingYawDegrees,
+      facingAmbiguous: calibration.facingAmbiguous, facingSource: calibration.facingSource,
+      maxDegrees: Math.max(0, ...calibration.corrections.map((item) => item.degrees)), corrections: calibration.corrections },
+    // Root travel is copied in meters by default (DECISIONS); for very different body sizes pass --root-scale <suggested>.
+    proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
+      suggestedRootScale: sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null },
+    loss: { prunedTracks: prune.report, scaleTracks: prune.scale, unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     sampleCount, metrics, resourceCost, roundtrip, glbSha256, elapsedMs: 0 }
   const preview = request.preview ? renderContactSheet(previewFrames, new Map(MIXAMO65_BONE_PARENTS)) : undefined
