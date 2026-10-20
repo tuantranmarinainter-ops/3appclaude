@@ -6,6 +6,7 @@
  *        [--action all|<i>[,<i>...]] [--preview-action <i>] [--unit-meters <n>] [--up y|z] [--root preserve|in-place] [--root-scale <n>] [--mapping <preset.json>]
  *        [--armature <minecraft20-armature.bobj>] [--facing <deg>] [--calibrate limbs|none]   (limbs: swing source limbs onto the target rest directions — A/T calibration)
  *        [--bobj [--bobj-root inPlace|follow] [--bobj-armature <minecraft20-armature.bobj>]]   (also write Minecraft20 actions for BBS FS)
+ *        [--mode animation|model]   (model: also embed the source meshes + textures skinned to the Mixamo65 skeleton; Mixamo-family sources only)
  * Exit codes: 0 PASS, 1 FAIL/error, 2 BLOCKED (input cannot be normalized as given).
  */
 import { createHash } from 'node:crypto'
@@ -14,6 +15,7 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { formatFromPath, loadAsset } from './loadAsset.ts'
+import { applyModelMode, ModelBlockedError, readModelSourceFiles, type PipelineResult } from './modelExport.ts'
 import { runNormalize } from './normalizeCore.ts'
 import { renderContactSheet } from './previewPng.ts'
 import { exportMinecraft20 } from './toMinecraft20.ts'
@@ -22,7 +24,7 @@ const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
   action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
   root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, facing: { type: 'string' }, 'root-scale': { type: 'string', default: '1' }, mapping: { type: 'string' }, armature: { type: 'string' },
-  bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
+  mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
 
 function fail(message: string): never { console.error(`normalize: ${message}`); process.exit(1) }
@@ -30,6 +32,7 @@ if (!values.src || !values.target || !values.out) fail('--src, --target and --ou
 if (!['y', 'z'].includes(values.up!)) fail('--up must be y or z')
 if (!['preserve', 'in-place'].includes(values.root!)) fail('--root must be preserve or in-place')
 if (!['limbs', 'none'].includes(values.calibrate!)) fail('--calibrate must be limbs or none')
+if (!['animation', 'model'].includes(values.mode!)) fail('--mode must be animation or model')
 if (!['inPlace', 'follow'].includes(values['bobj-root']!)) fail('--bobj-root must be inPlace or follow')
 // The V9.12 Minecraft20 rig shipped with Studio is the default BBS FS target.
 const minecraftArmature = values['bobj-armature'] ? resolve(values['bobj-armature']) :
@@ -46,14 +49,27 @@ try {
   const format = formatFromPath(srcPath)
   const srcBytes = readFileSync(srcPath), targetBytes = readFileSync(targetPath)
   const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-  const result = await runNormalize({
+  const unitMeters = values['unit-meters'] ? Number(values['unit-meters']) : format === 'fbx' ? 0.01 : 1
+  // Model mode: Draco/meshopt sources are refused before any work is done.
+  let modelFiles: ReturnType<typeof readModelSourceFiles> | undefined
+  let early: PipelineResult | undefined
+  if (values.mode === 'model') {
+    try { modelFiles = readModelSourceFiles(srcBytes, format, dirname(srcPath)) } catch (error) {
+      if (!(error instanceof ModelBlockedError)) throw error
+      early = { status: 'BLOCKED', report: { status: 'BLOCKED', blocker: { code: error.code, message: error.message } } }
+    }
+  }
+  let result: PipelineResult = early ?? await runNormalize({
     source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
-    actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters: values['unit-meters'] ? Number(values['unit-meters']) : format === 'fbx' ? 0.01 : 1,
+    actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
     upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: Number(values['root-scale']),
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
     calibrate: values.calibrate as 'limbs' | 'none', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),
   })
+  if (values.mode === 'model') {
+    result = await applyModelMode(result, { loadSource: () => loadAsset(srcBytes, format, { keepMeshes: true, resourceDir: dirname(srcPath) }), files: modelFiles ?? null, unitMeters, upAxis: values.up as 'y' | 'z' })
+  }
   const report = result.report as Record<string, any>, written: string[] = []
   let status: string = result.status
   if ('glb' in result) {
@@ -81,6 +97,7 @@ try {
   if (report.roundtrip) console.log(`actions exported=${report.exportedActions} skipped=${report.skippedActions.length} (${[...new Set(report.skippedActions.map((item: { code: string }) => item.code))].join(', ') || '-'})`)
   if (report.roundtrip) console.log(`roundtrip joints=${report.roundtrip.jointCount} animations=${report.roundtrip.animationCount} preview="${report.roundtrip.name}" duration=${report.roundtrip.durationSeconds.toFixed(3)}s hipsTravel=${report.roundtrip.hipsTravelMeters.toFixed(3)}m elapsed=${report.elapsedMs}ms`)
   if (report.quality) console.log(`quality warnings ${report.quality.warnings.length ? report.quality.warnings.map((w: { code: string; actions: number }) => `${w.code}x${w.actions}`).join(' ') : '-'}`)
+  if (report.model) console.log(`model ${report.model.status} meshes=${report.model.meshes} vertices=${report.model.vertices} influences ${report.model.maxInfluencesBefore}->${report.model.maxInfluencesAfter} images=${report.model.images.count} restError=${(report.model.restMaxErrorMeters * 1000).toFixed(4)}mm jointFit max=${report.model.jointFit.maxMeters.toFixed(3)}m checks=${JSON.stringify(report.model.checks)}${report.model.warnings.length ? ` warnings=${report.model.warnings.map((w: { code: string }) => w.code).join(',')}` : ''}`)
   if (report.minecraft20) console.log(`minecraft20 ${report.minecraft20.status} actions=${report.minecraft20.actions.length} roundtripError=${report.minecraft20.roundtripMaxErrorBlocks.toExponential(1)} blocks`)
   for (const path of written) console.log(`wrote ${path}`)
   process.exit(status === 'PASS' ? 0 : status === 'BLOCKED' ? 2 : 1)

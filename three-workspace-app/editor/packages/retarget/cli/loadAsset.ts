@@ -28,7 +28,25 @@ function stripGltfMeshes(json: Record<string, any>): Record<string, any> {
   return copy
 }
 
-type FbxNode = Object3D & { isBone?: boolean; ID?: number }
+const TEXTURE_EXTENSIONS = /^(KHR|EXT)_texture_(basisu|webp)$/
+
+/**
+ * Mesh-keeping loads (Model mode) cannot decode images in Node (GLTFLoader needs ImageBitmap/DOM), so every texture
+ * reference is removed from a copy of the JSON; the exporter copies the original image bytes from the source instead.
+ */
+function stripGltfTextures(json: Record<string, any>): Record<string, any> {
+  const copy = structuredClone(json)
+  delete copy.textures; delete copy.images; delete copy.samplers
+  const strip = (value: any) => {
+    if (!value || typeof value !== 'object') return
+    for (const key of Object.keys(value)) { if (key.endsWith('Texture')) delete value[key]; else strip(value[key]) }
+  }
+  strip(copy.materials)
+  for (const key of ['extensionsUsed', 'extensionsRequired']) if (copy[key]) copy[key] = copy[key].filter((name: string) => !TEXTURE_EXTENSIONS.test(name))
+  return copy
+}
+
+type FbxNode =Object3D & { isBone?: boolean; ID?: number }
 
 /**
  * FBXLoader adds an identity child Bone (same FBX model ID and name) when one bone deforms several meshes; the
@@ -69,7 +87,7 @@ function withDomStub<T>(parse: () => T): T {
  * browser-only APIs in Node. Buffers are read from `resourceDir` only: absolute paths or `..` escapes are refused, so a
  * crafted file cannot read elsewhere. Images are not read (skeleton-only loads drop materials with the meshes).
  */
-function packGltf(json: Record<string, any>, resourceDir: string | undefined): Uint8Array {
+export function packGltf(json: Record<string, any>, resourceDir: string | undefined): Uint8Array {
   const parts = (json.buffers ?? []).map((buffer: { uri?: string }) => {
     if (typeof buffer.uri !== 'string') throw new TypeError('glTF buffer without uri is not supported')
     if (buffer.uri.startsWith('data:')) return Buffer.from(buffer.uri.slice(buffer.uri.indexOf(',') + 1), 'base64')
@@ -89,7 +107,7 @@ function packGltf(json: Record<string, any>, resourceDir: string | undefined): U
 }
 
 /** Node-side loading: external resources are refused (except .gltf buffers in `resourceDir`), so files must be self-contained. */
-export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; resourceDir?: string; bobjArmature?: Uint8Array } = {}): Promise<Object3D> {
+export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; keepMeshes?: boolean; resourceDir?: string; bobjArmature?: Uint8Array } = {}): Promise<Object3D> {
   if (format === 'bobj') {
     const text = new TextDecoder().decode(bytes)
     // Action libraries carry no `arm_bone` records; the rig comes from a separate armature file (--armature).
@@ -100,12 +118,13 @@ export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options:
   const manager = new LoadingManager()
   // Skeleton-only loads ignore textures, so external texture paths resolve to an empty data URL instead of failing.
   manager.setURLModifier((url) => {
-    if (url.startsWith('data:') || options.skeletonOnly) return url.startsWith('data:') ? url : 'data:,'
+    if (url.startsWith('data:') || options.skeletonOnly || options.keepMeshes) return url.startsWith('data:') ? url : 'data:,'
     throw new TypeError(`External resource not supported headless: ${url}`)
   })
   const buffer = Uint8Array.from(bytes).buffer
   if (format === 'fbx') {
-    const root = options.skeletonOnly ? withDomStub(() => new FBXLoader(manager).parse(buffer, '')) : new FBXLoader(manager).parse(buffer, '')
+    const root = options.skeletonOnly || options.keepMeshes ? withDomStub(() => new FBXLoader(manager).parse(buffer, '')) : new FBXLoader(manager).parse(buffer, '')
+    if (options.keepMeshes) removeFbxBoneAliases(root)
     if (options.skeletonOnly) {
       // Same reason as glTF: geometry is unused; per-mesh Skeleton copies would otherwise read as competing skeletons.
       const meshes: Object3D[] = []
@@ -118,7 +137,14 @@ export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options:
   const glb = format === 'gltf' ? packGltf(JSON.parse(new TextDecoder().decode(bytes)), options.resourceDir) : bytes
   let data: ArrayBuffer = Uint8Array.from(glb).buffer
   if (options.skeletonOnly) { const { json, bin } = decodeGlb(glb); data = encodeGlb(stripGltfMeshes(json), bin).buffer as ArrayBuffer }
+  if (options.keepMeshes && !options.skeletonOnly) { const { json, bin } = decodeGlb(glb); data = encodeGlb(stripGltfTextures(json), bin).buffer as ArrayBuffer }
   const gltf = await new GLTFLoader(manager).parseAsync(data, '')
   gltf.scene.animations = gltf.animations
+  if (options.keepMeshes) gltf.scene.traverse((node) => {
+    const mesh = node as Mesh
+    if (!mesh.isMesh) return
+    // Original glTF material index per material slot, so the exporter can copy the untouched material definition.
+    mesh.userData.w01MaterialIndices = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).map((material) => gltf.parser.associations.get(material)?.materials)
+  })
   return gltf.scene
 }
