@@ -11,6 +11,8 @@ import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
 export const CONTRACT_VERSION = '1.0.0'
 export const CONTRACT_FPS = 30
 const PREVIEW_FRAMES = 8
+/** float32 round-off on a unit quaternion stays below ~1e-7; anything larger is a real non-unit key. */
+const QUATERNION_EPSILON = 1e-6
 
 export type GateStatus = 'NOT_RUN' | 'BLOCKED' | 'FAIL' | 'PASS'
 export interface NormalizeRequest {
@@ -83,6 +85,8 @@ function mappingSourceNames(mapping: AutoMapping, bones: ReadonlyMap<string, { n
  * Animated scale is dropped as well: the Mixamo65 contract carries rotation + translation only, and non-uniform scale
  * (WC3 breathing/twist volume, iClone float32 noise) shears children past the solver guard. DECISIONS: loss is exported
  * and reported, not blocked — the report keeps the largest relative deviation per node.
+ * Quaternion keys are normalized: wow.export writes WoW's int16-compressed rotations as-is (|q| ≈ 0.99997), and a
+ * non-unit quaternion composes into a sheared matrix. Count and largest |1 − |q|| are reported.
  */
 export function pruneToMappedRig(root: Object3D, names: { mapped: ReadonlySet<string>; retained: ReadonlySet<string> }) {
   const nodes: Object3D[] = []
@@ -91,7 +95,7 @@ export function pruneToMappedRig(root: Object3D, names: { mapped: ReadonlySet<st
   const dropped = new Map<string, number>()
   let count = 0
   const scaleDeviation = new Map<string, number>()
-  let droppedScale = 0
+  let droppedScale = 0, normalizedQuaternions = 0, quaternionDeviation = 0
   root.animations = root.animations.map((clip) => {
     const tracks = clip.tracks.filter((track) => {
       const binding = PropertyBinding.parseTrackName(track.name)
@@ -105,12 +109,25 @@ export function pruneToMappedRig(root: Object3D, names: { mapped: ReadonlySet<st
         return false
       }
       return true
+    }).map((track) => {
+      if (!track.name.endsWith('.quaternion')) return track
+      let deviation = 0
+      for (let index = 0; index < track.values.length; index += 4) deviation = Math.max(deviation, Math.abs(1 - Math.hypot(...track.values.subarray(index, index + 4))))
+      if (deviation < QUATERNION_EPSILON) return track
+      const copy = track.clone()
+      for (let index = 0; index < copy.values.length; index += 4) {
+        const length = Math.hypot(...copy.values.subarray(index, index + 4))
+        for (let axis = 0; axis < 4; axis++) copy.values[index + axis]! /= length
+      }
+      normalizedQuaternions++; quaternionDeviation = Math.max(quaternionDeviation, deviation)
+      return copy
     })
     return new AnimationClip(clip.name, clip.duration, tracks)
   })
   const scaleNodes = [...scaleDeviation].sort((a, b) => b[1] - a[1]).map(([node, maxDeviation]) => ({ node, maxDeviation }))
   return { jointNames: unique ? [...names.mapped] : undefined, report: { count, nodes: [...dropped.keys()] },
-    scale: { dropped: droppedScale, maxDeviation: scaleNodes[0]?.maxDeviation ?? 0, nodes: scaleNodes.slice(0, 10) } }
+    scale: { dropped: droppedScale, maxDeviation: scaleNodes[0]?.maxDeviation ?? 0, nodes: scaleNodes.slice(0, 10) },
+    quaternions: { normalized: normalizedQuaternions, maxDeviation: quaternionDeviation } }
 }
 
 function blocked(code: string, message: string, extra: Record<string, unknown> = {}) {
@@ -228,7 +245,7 @@ export async function runNormalize(request: NormalizeRequest) {
     // Root travel is copied in meters by default (DECISIONS); for very different body sizes pass --root-scale <suggested>.
     proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
       suggestedRootScale: sourceHipsHeight && sourceHipsHeight > 0 ? targetRest.get('Hips')![13]! / sourceHipsHeight : null },
-    loss: { prunedTracks: prune.report, scaleTracks: prune.scale, unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
+    loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: unmappedSourceBoneIds.length, unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     sampleCount, metrics, resourceCost, roundtrip, glbSha256, elapsedMs: 0 }
   const preview = request.preview ? renderContactSheet(previewFrames, new Map(MIXAMO65_BONE_PARENTS)) : undefined

@@ -127,6 +127,31 @@ test('auto mapping resolves wow.export rigs: named bones, `_p` pivots, and unnam
   src.dispose(); dst.dispose()
 })
 
+test('auto mapping resolves modern WoW elf rigs (EXP leg/neck names, upper chest = shoulders parent)', async () => {
+  const root = new Group(), nodes = new Map<string, Group | Bone>()
+  const add = (name: string, parent: string | null) => {
+    const pivot = new Group(); pivot.name = `${name}_p`; pivot.position.y = 0.1; (parent ? nodes.get(parent)! : root).add(pivot)
+    const bone = new Bone(); bone.name = name; pivot.add(bone); nodes.set(name, bone)
+  }
+  add('bone_Main', null); add('bone_Root', 'bone_Main'); add('bone_SpineLow', 'bone_Root'); add('bone_EXP_C1_Spine2', 'bone_SpineLow')
+  add('bone_Chest', 'bone_EXP_C1_Spine2'); add('bone_21', 'bone_Chest'); add('bone_EXP_C1_Neck1', 'bone_21'); add('bone_EXP_C1_Neck2', 'bone_EXP_C1_Neck1')
+  add('bone_Head', 'bone_EXP_C1_Neck2'); add('bone_EXP_C1_Pelvis1', 'bone_Root')
+  for (const s of ['L', 'R']) {
+    add(`bone_Shoulder${s}`, 'bone_21'); add(`bone_Arm${s}`, `bone_Shoulder${s}`); add(`bone_Elbow${s}`, `bone_Arm${s}`); add(`bone_Hand${s}`, `bone_Elbow${s}`)
+    add(`bone_EXP_${s}1_Leg1Twist1`, 'bone_EXP_C1_Pelvis1'); add(`bone_EXP_${s}1_Leg2Twist1`, `bone_EXP_${s}1_Leg1Twist1`)
+    add(`bone_${s === 'L' ? 19 : 20}`, `bone_EXP_${s}1_Leg2Twist1`); add(`bone_Foot${s}`, `bone_${s === 'L' ? 19 : 20}`)
+  }
+  const target = await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true })
+  const src = createThreeRigAdapter(root, { fingerprint: 'elf' }), dst = createThreeRigAdapter(target, { fingerprint: 'mixamo' })
+  const mapping = buildAutoMapping(src.rig, dst.rig)
+  const of = (name: string) => mapping.joints.find((joint) => joint.target === name)?.source
+  assert.equal(mapping.family, 'wow')
+  assert.deepEqual(mapping.missingRequired, [])
+  assert.deepEqual(['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightLeg'].map(of),
+    ['bone_Root', 'bone_SpineLow', 'bone_EXP_C1_Spine2', 'bone_21', 'bone_EXP_C1_Neck1', 'bone_Head', 'bone_EXP_L1_Leg1Twist1', 'bone_EXP_L1_Leg2Twist1', 'bone_FootL', 'bone_EXP_R1_Leg2Twist1'])
+  src.dispose(); dst.dispose()
+})
+
 test('runNormalize returns GLB, contract manifest and gated report', async () => {
   const target = await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true })
   const result = await runNormalize({ source: ueSource(), sourceLabel: 'ue.glb', sourceSha256: 'a'.repeat(64), target, targetLabel: 'mixamo65.glb',
@@ -276,6 +301,19 @@ test('.gltf with external .bin buffers (wow.export) loads buffers from its own f
   assert.ok(Math.abs(loaded.animations[0]!.duration - 1) < 1e-6)
   json.buffers = [{ uri: '../escape.bin', byteLength: bin.length }]
   await assert.rejects(loadAsset(new TextEncoder().encode(JSON.stringify(json)), 'gltf', { skeletonOnly: true, resourceDir: dir }), /outside the glTF folder/)
+})
+
+test('non-unit quaternion keys (wow.export int16, |q|≈0.99997) are normalized and counted instead of shearing', async () => {
+  const source = ueSource(), bent = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), 0.8)
+  const short = bent.toArray().map((value) => value * 0.99997)
+  source.getObjectByName('spine_03')!.quaternion.setFromAxisAngle(new Vector3(1, 0, 0), 0.3)
+  source.animations[0]!.tracks.push(new QuaternionKeyframeTrack('spine_02.quaternion', [0, 1], [...short, ...short]))
+  const result = await runNormalize({ source, sourceLabel: 'wow', sourceSha256: 'd'.repeat(64),
+    target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }), targetLabel: 't', targetSha256: 'e'.repeat(64) })
+  assert.equal(result.status, 'PASS', JSON.stringify(result.report))
+  const quaternions = (result.report as any).loss.quaternionTracks
+  assert.equal(quaternions.normalized, 1)
+  assert.ok(Math.abs(quaternions.maxDeviation - 3e-5) < 1e-6, String(quaternions.maxDeviation))
 })
 
 test('FBX identity bone aliases (one bone shared by several meshes) are removed, real bones kept', () => {

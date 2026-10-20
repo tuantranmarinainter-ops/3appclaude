@@ -64,19 +64,33 @@ function wc3ReforgedAliases(): Map<string, string> {
 
 /**
  * World of Warcraft (wow.export glTF): named `bone_<Name>` joints, each under a non-bone `<name>_p` pivot. `bone_Root`
- * parents both `bone_SpineLow` and `bone_Waist` (legs), so it plays Hips. Forearm is `ForearmL` or `ElbowL` by model.
- * Knee and mid-spine are unnamed (`bone_10`, `bone_4`, numbering varies) and are resolved by structure afterwards.
+ * parents both the spine and the legs, so it plays Hips. Older creature rigs name `LegL`/`Neck`/`ForearmL`; modern
+ * character rigs use `EXP_L1_Leg1Twist1` (on the main thigh chain despite the name), `EXP_C1_Neck1` and `ElbowL`.
+ * Knee, mid-spine and upper chest are unnamed (`bone_10`, `bone_4`, `bone_21`, numbering varies) and are resolved by
+ * structure afterwards.
  */
 function wowAliases(names: ReadonlySet<string>): Map<string, string> {
   const pick = (...candidates: string[]) => candidates.find((name) => names.has(name)) ?? candidates[0]!
-  const result = new Map<string, string>([['Hips', 'boneroot'], ['Spine', 'bonespinelow'], ['Spine2', 'bonechest'], ['Neck', 'boneneck'], ['Head', 'bonehead']])
+  const result = new Map<string, string>([['Hips', 'boneroot'], ['Spine', 'bonespinelow'], ['Spine2', 'bonechest'], ['Neck', pick('boneneck', 'boneexpc1neck1')], ['Head', 'bonehead']])
   for (const [side, s] of [['Left', 'l'], ['Right', 'r']] as const) {
     result.set(`${side}Shoulder`, `boneshoulder${s}`).set(`${side}Arm`, `bonearm${s}`).set(`${side}ForeArm`, pick(`boneforearm${s}`, `boneelbow${s}`))
-      .set(`${side}Hand`, `bonehand${s}`).set(`${side}UpLeg`, `boneleg${s}`).set(`${side}Foot`, `bonefoot${s}`).set(`${side}ToeBase`, pick(`bonetoes${s}`, `bonetoe${s}`))
+      .set(`${side}Hand`, `bonehand${s}`).set(`${side}UpLeg`, pick(`boneleg${s}`, `boneexp${s}1leg1twist1`)).set(`${side}Foot`, `bonefoot${s}`).set(`${side}ToeBase`, pick(`bonetoes${s}`, `bonetoe${s}`))
       .set(`${side}HandThumb1`, `bonethumb${s}`).set(`${side}HandIndex1`, `boneindexfinger${s}`).set(`${side}HandMiddle1`, `bonemiddlefinger${s}`)
       .set(`${side}HandRing1`, `boneringfinger${s}`)
   }
   return result
+}
+
+/** wow: Spine2 is the joint both shoulders hang from (modern rigs add an unnamed upper chest above `bone_Chest`). */
+function resolveShoulderParent(source: RetargetRig, joints: MappedJoint[]) {
+  const spine2 = joints.find((item) => item.target === 'Spine2'), byId = new Map(source.bones.map((bone) => [bone.id, bone]))
+  const parentBone = (target: string) => {
+    let id = byId.get(joints.find((item) => item.target === target)?.sourceId ?? '')?.parentId ?? null
+    while (id && /_p$/.test(byId.get(id)?.name ?? '')) id = byId.get(id)!.parentId
+    return id
+  }
+  const left = parentBone('LeftShoulder'), right = parentBone('RightShoulder')
+  if (spine2 && left && left === right && left !== spine2.sourceId) Object.assign(spine2, { source: byId.get(left)!.name ?? left, sourceId: left, via: 'structure:wow' })
 }
 
 /** wow: the Bone strictly between two mapped joints (pivots `*_p` skipped); several → the middle one. */
@@ -99,7 +113,7 @@ function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): Sourc
   if (names.has('pelvis') && names.has('thighl')) return 'ue'
   if (names.has('pelvis') && names.has('lkneeupper') && names.has('lkneelower')) return 'lol'
   if (names.has('spinec00jnt') && names.has('bonechest') && names.has('arml00jnt')) return 'wc3r'
-  if (names.has('boneroot') && names.has('bonelegl') && names.has('bonefootl')) return 'wow'
+  if (names.has('boneroot') && names.has('bonefootl') && (names.has('bonelegl') || names.has('boneexpl1leg1twist1'))) return 'wow'
   return 'unknown'
 }
 
@@ -140,6 +154,7 @@ export function buildAutoMapping(source: RetargetRig, target: RetargetRig): Auto
     return { target: name, targetId, source: null, sourceId: null, via: null }
   })
   if (family === 'wow') {
+    resolveShoulderParent(source, joints)
     resolveBetween(source, joints, 'Spine1', 'Spine', 'Spine2')
     for (const side of ['Left', 'Right']) resolveBetween(source, joints, `${side}Leg`, `${side}UpLeg`, `${side}Foot`)
   }

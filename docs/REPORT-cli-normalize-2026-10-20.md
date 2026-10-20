@@ -11,7 +11,7 @@ node --import tsx ../retarget/cli/normalize.ts --src <file> --target <mixamo65.g
 Exit: 0 PASS, 1 FAIL/lỗi, 2 BLOCKED. Ra: `<stem>.glb`, `<stem>.manifest.json`, `<stem>.report.json`, `<stem>.preview.png`.
 
 ## Kiểm chứng
-- Test retarget: **73/73 PASS** (59 cũ + 14 test CLI). `typecheck` + `typecheck:cli`: PASS.
+- Test retarget: **75/75 PASS** (59 cũ + 16 test CLI). `typecheck` + `typecheck:cli`: PASS.
 - Target cho mọi lần chạy: `builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb` (hông 0.92 m).
 - File mẫu nằm ngoài repo (`C:\w01-samples`, thư mục Downloads của người dùng); không commit.
 - "PASS" = gate mapping + roundtrip (đọc lại GLB đã ghi). Chất lượng chuyển động được xem qua preview.png, không
@@ -38,10 +38,12 @@ Exit: 0 PASS, 1 FAIL/lỗi, 2 BLOCKED. Ra: `<stem>.glb`, `<stem>.manifest.json`,
 | WC3 | Archer | PASS | wc3r 27/65 | Walk 1 | 0° **(ambiguous, đo 45°)** / 100° | 0.95–1.12 | cần người dùng chọn `--facing` |
 | WC3 | Mountain Giant (lớn) | BLOCKED | unknown | – | – | – | xương Classic vô danh `bone_b0..59` → cần preset |
 | WoW | SeaGiant (Blender GLB) | PASS | wow 28/65 | Walk 4.8 s | **−90°** / 60° | 0.64–0.84 | cần `--root-scale 0.127` (hông nguồn 7.28) |
-| WoW | SeaGiant.gltf (wow.export) | FAIL | – | Walk | – | – | shear ở chuỗi tay trái; nghi quaternion chưa chuẩn hoá — chưa kiểm chứng |
+| WoW | SeaGiant.gltf (wow.export) | PASS | wow 28/65 | Walk 4.8 s | −90° / 60° | −1.32–0.24 | 1936 track quaternion chuẩn hoá; cần `--root-scale 0.127` |
+| WoW | BloodElf Grand Priest (nam, .gltf) | PASS | wow 28/65 | Walk | −90° / 64° | 0.83–0.90 | rig EXP; 11294 quaternion chuẩn hoá |
+| WoW | BloodElf Grand Priestess (nữ, .gltf) | PASS | wow 28/65 | Walk | −90° / 62° | 0.85–0.88 | 10763 quaternion chuẩn hoá |
 | WoW | 6 GLB wow.export cũ | BLOCKED | – | – | – | – | `NO_ACTION` (xuất không kèm animation); đã bị xoá khỏi thư mục |
 
-Tổng: 18 PASS, 9 BLOCKED (đúng lý do), 1 FAIL (wow.export .gltf).
+Tổng: 21 PASS, 9 BLOCKED (đúng lý do), 0 FAIL.
 
 ## Thay đổi kèm theo (so với commit 16652ad)
 1. **Calibration A/T** (`cli/calibration.ts`, mặc định `--calibrate limbs`): xoay chi của pose tham chiếu nguồn cho
@@ -54,12 +56,14 @@ Tổng: 18 PASS, 9 BLOCKED (đúng lý do), 1 FAIL (wow.export .gltf).
 4. **Auto-mapping** thêm family `lol`, `wc3r`, `wow` (gối/Spine1 vô danh của WoW suy theo cấu trúc).
 5. **Đọc file**: `.gltf` có `.bin` ngoài (ghép GLB trong bộ nhớ, chỉ đọc cùng thư mục); FBX có texture (stub DOM khi
    parse); bỏ track ngoài rig (vũ khí/mesh/morph) và đếm vào report.
-6. Report thêm `proportions` (chiều cao hông nguồn/đích, `--root-scale` gợi ý), `calibration`, `loss`.
-7. Sửa line ending: `loadAsset.ts`, `normalizeCore.ts` bị commit CRLF ở 16652ad → LF theo quy ước repo.
+6. **Quaternion không đơn vị** (wow.export ghi int16 của WoW nguyên trạng, |q| ≈ 0.99997) được chuẩn hoá và đếm vào
+   `loss.quaternionTracks` — đây là nguyên nhân lỗi shear của mọi file .gltf wow.export.
+7. Family `wow` hỗ trợ rig nhân vật hiện đại (`EXP_L1_Leg1Twist1`, `EXP_C1_Neck1`), Spine2 = cha chung của hai vai.
+8. Report thêm `proportions` (chiều cao hông nguồn/đích, `--root-scale` gợi ý), `calibration`, `loss`.
+9. Sửa line ending: `loadAsset.ts`, `normalizeCore.ts` bị commit CRLF ở 16652ad → LF theo quy ước repo.
 
 ## Còn mở
 - Hợp đồng GLB v1.0.0 (bước 3): output vẫn prefix `mixamorig`, mỗi GLB một Action (report ghi `contract` FAIL).
 - Chưa tự cảnh báo hông đích dưới mặt đất / bay quá cao (Sion, SeaGiant khi không đặt `--root-scale`).
 - Archer: chọn `--facing 0` (giữ thế đứng) hay `45`. Mountain Giant: cần preset mapping (hợp UI xác nhận ở Studio).
-- SeaGiant.gltf từ wow.export: lỗi shear chưa xử lý.
 - Bảng alias UE (ngoài Monster), CC male, WoW còn lại: cần thêm file thật để kiểm.
