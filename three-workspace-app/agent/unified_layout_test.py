@@ -27,3 +27,18 @@ class LayoutTests(unittest.TestCase):
         response=unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": {"command": "scene.layout.read", "projectId": str(uuid.uuid4()), "args": {"frame": 12}}}), invoke)
         self.assertEqual(invoke.call_args.args[0]["args"], {"frame": 12})
         self.assertEqual(response["result"]["structuredContent"]["revision"], 7)
+
+    def test_mcp_layout_preview_apply_revision_and_forwarding(self):
+        args={"placements": [{"characterId": "A", "relativeTo": "B", "relation": "left", "distanceMeters": 1.5}]}
+        for command in ("scene.layout.preview", "scene.layout.apply"):
+            with self.subTest(command=command):
+                invoke=Mock(return_value={"ok": True, "revision": 8})
+                arguments={"command": command, "projectId": str(uuid.uuid4()), "args": args}
+                if command.endswith("apply"):
+                    rejected=unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": arguments}), invoke)
+                    self.assertTrue(rejected["result"]["isError"])
+                    invoke.assert_not_called()
+                    arguments["expectedRevision"]=7
+                response=unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": arguments}), invoke)
+                self.assertEqual(invoke.call_args.args[0]["args"], args)
+                self.assertEqual(response["result"]["structuredContent"]["revision"], 8)
