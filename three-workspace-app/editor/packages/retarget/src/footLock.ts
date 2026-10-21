@@ -43,11 +43,22 @@ export function lockFeet(rig: RetargetRig, frames: UniversalBakeFrame[]) {
     }
     for (const [i, plan] of plans) {
       const frame=frames[i]!, original=originals[i]!, h=point(original.get(upperId)!), k=point(original.get(lowerId)!), f=point(original.get(footId)!)
-      const target=f.clone().lerp(plan.anchor,plan.weight), a=h.distanceTo(k), b=k.distanceTo(f), delta=target.clone().sub(h), raw=delta.length()
-      if (a<1e-8 || b<1e-8 || raw<1e-8) continue
-      const d=Math.max(Math.abs(a-b)+1e-7, Math.min(a+b-1e-7,raw)), axis=delta.normalize()
-      if(Math.abs(d-raw)>1e-5) report.unreachableFrames++
-      const goal=h.clone().addScaledVector(axis,d), x=(a*a-b*b+d*d)/(2*d), y=Math.sqrt(Math.max(0,a*a-x*x))
+      const target=f.clone().lerp(plan.anchor,plan.weight)
+      // Lock horizontal travel only. Preserve the authored ankle height (also in the ramps).
+      target.y=f.y
+      const a=h.distanceTo(k), b=k.distanceTo(f), vertical=target.y-h.y
+      if (a<1e-8 || b<1e-8) continue
+      const horizontal=new Vector3(target.x-h.x,0,target.z-h.z), radius=horizontal.length()
+      const maximum=Math.sqrt(Math.max(0,(a+b)**2-vertical**2))
+      const minimum=Math.sqrt(Math.max(0,(a-b)**2-vertical**2))
+      const reachable=Math.max(minimum,Math.min(maximum,radius))
+      if(Math.abs(reachable-radius)>1e-5) report.unreachableFrames++
+      if(radius>1e-9) horizontal.multiplyScalar(reachable/radius)
+      else if(reachable>1e-9) horizontal.set(reachable,0,0)
+      const goal=new Vector3(h.x+horizontal.x,target.y,h.z+horizontal.z)
+      const delta=goal.clone().sub(h), d=delta.length()
+      if(d<1e-8) continue
+      const axis=delta.divideScalar(d), x=(a*a-b*b+d*d)/(2*d), y=Math.sqrt(Math.max(0,a*a-x*x))
       const pole=plan.pole.clone().addScaledVector(axis,-plan.pole.dot(axis))
       if(pole.lengthSq()<1e-10) continue
       pole.normalize()
