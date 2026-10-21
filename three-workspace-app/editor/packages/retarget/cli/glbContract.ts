@@ -1,3 +1,4 @@
+import { validateExtraBones } from '../src/extraBones.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { canonical } from './autoMapping.ts'
 import { decodeGlb, encodeGlb } from './glb.ts'
@@ -41,4 +42,23 @@ export function mergeAnimationGlbs(parts: readonly Uint8Array[]): Uint8Array {
 /** Node names exactly as stored (GLTFLoader sanitizes names on load, so the contract check must read the JSON). */
 export function glbNodeNames(glb: Uint8Array): string[] {
   return (decodeGlb(glb).json.nodes ?? []).map((node: { name?: string }) => node.name ?? '')
+}
+
+
+/** Validate skin names, extra topology and rest metadata in the serialized GLB. */
+export function validateGlbContract(glb: Uint8Array, manifest: Parameters<typeof validateExtraBones>[0]): void {
+  const extras = validateExtraBones(manifest), json = decodeGlb(glb).json
+  const nodes = json.nodes ?? [], joints: number[] = json.skins?.[0]?.joints ?? []
+  const expected = [...MIXAMO65_BONE_PARENTS.map(([name]) => name), ...extras.map((bone) => bone.name)]
+  const names = joints.map((index) => nodes[index]?.name)
+  if (names.length !== expected.length || new Set(names).size !== names.length || expected.some((name) => !names.includes(name))) throw new TypeError('GLB joints do not match contract rig')
+  for (const bone of extras) {
+    const index = joints.find((joint) => nodes[joint]?.name === bone.name)!
+    const parents = nodes.filter((node: { children?: number[] }) => node.children?.includes(index))
+    if (parents.length !== 1 || parents[0].name !== bone.parent) throw new TypeError('GLB extra parent differs from manifest')
+    for (const [field, key, fallback] of [['translation', 'position', [0, 0, 0]], ['rotation', 'rotation', [0, 0, 0, 1]], ['scale', 'scale', [1, 1, 1]]] as const) {
+      const values = nodes[index][field] ?? fallback
+      if (nodes[index].matrix || values.length !== bone.rest[key].length || values.some((value: number, i: number) => !Number.isFinite(value) || Math.abs(value - bone.rest[key][i]!) > 1e-6)) throw new TypeError('GLB extra rest differs from manifest')
+    }
+  }
 }
