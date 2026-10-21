@@ -7,13 +7,13 @@ function sceneWithCast() {
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x0d0d0d)
   scene.fog = new THREE.Fog(0x000000, 1, 10)
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial()); ground.name = GROUND_NAME
+  const ground = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial()); ground.name = GROUND_NAME
   const grid = new THREE.Group(); grid.name = GRID_NAME
   const skin = new THREE.MeshStandardMaterial({ color: 0xff8844 })
-  const character = new THREE.Group(), body = new THREE.Mesh(new THREE.BoxGeometry(), skin)
+  const character = new THREE.Group(), body = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(new THREE.BoxGeometry(), skin)
   const label = new THREE.Sprite(); label.userData.t3dKind = CHARACTER_LABEL_KIND
   character.add(body, label)
-  const prop = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ color: 0x00ff00 }))
+  const prop = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ color: 0x00ff00 }))
   scene.add(ground, grid, character, prop)
   return { scene, ground, grid, character, body, label, prop, skin }
 }
@@ -47,7 +47,7 @@ describe('silhouette view', () => {
     const { scene, character, prop } = sceneWithCast()
     const view = new SilhouetteView()
     view.apply(scene, [character], [prop])
-    const late = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()); character.add(late)
+    const late = new THREE.Mesh<THREE.BufferGeometry, THREE.Material>(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial()); character.add(late)
     view.apply(scene, [character], [prop])
     expect((late.material as THREE.MeshBasicMaterial).color.getHex()).toBe(SILHOUETTE_CHARACTER)
   })
