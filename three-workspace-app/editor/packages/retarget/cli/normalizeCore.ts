@@ -358,6 +358,7 @@ export async function runNormalize(request: NormalizeRequest) {
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
     quality: summarizeQuality(perAction),
+    ...(exported[0]?.report.fingerCurl.fingers.length ? { fingerCurl: exported[0].report.fingerCurl } : {}),
     ...(request.footLock === 'on' ? { footLock: { mode: 'on', perAction: exported.map(item => ({ name: item.action.name, ...item.report.footLock })) } } : {}),
     ground: { mode: request.ground ?? 'lift', perAction: exported.map((item) => ({ name: item.action.name, ...item.report.ground })) },
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,

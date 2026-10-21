@@ -72,7 +72,8 @@ function wc3ReforgedAliases(): Map<string, string> {
  * parents both the spine and the legs, so it plays Hips. Older creature rigs name `LegL`/`Neck`/`ForearmL`; modern
  * character rigs use `EXP_L1_Leg1Twist1` (on the main thigh chain despite the name), `EXP_C1_Neck1` and `ElbowL`.
  * Knee, mid-spine and upper chest are unnamed (`bone_10`, `bone_4`, `bone_21`, numbering varies) and are resolved by
- * structure afterwards.
+ * structure afterwards. Fingers are `<Finger>Finger` + `<Finger>FingerTip` (thumb: `Thumb` + `ThumbTip`); the tip joints
+ * animate (BloodElf up to 118°), so they play Mixamo joint 2 and `fingerCurl` bends joint 3.
  */
 function wowAliases(names: ReadonlySet<string>): Map<string, string> {
   const pick = (...candidates: string[]) => candidates.find((name) => names.has(name)) ?? candidates[0]!
@@ -80,8 +81,11 @@ function wowAliases(names: ReadonlySet<string>): Map<string, string> {
   for (const [side, s] of [['Left', 'l'], ['Right', 'r']] as const) {
     result.set(`${side}Shoulder`, `boneshoulder${s}`).set(`${side}Arm`, `bonearm${s}`).set(`${side}ForeArm`, pick(`boneforearm${s}`, `boneelbow${s}`))
       .set(`${side}Hand`, `bonehand${s}`).set(`${side}UpLeg`, pick(`boneleg${s}`, `boneexp${s}1leg1twist1`)).set(`${side}Foot`, `bonefoot${s}`).set(`${side}ToeBase`, pick(`bonetoes${s}`, `bonetoe${s}`))
-      .set(`${side}HandThumb1`, `bonethumb${s}`).set(`${side}HandIndex1`, `boneindexfinger${s}`).set(`${side}HandMiddle1`, `bonemiddlefinger${s}`)
-      .set(`${side}HandRing1`, `boneringfinger${s}`)
+      .set(`${side}HandThumb1`, `bonethumb${s}`).set(`${side}HandThumb2`, `bonethumbtip${s}`)
+    for (const finger of ['Index', 'Middle', 'Ring', 'Pinky']) {
+      const lower = finger.toLowerCase()
+      result.set(`${side}Hand${finger}1`, `bone${lower}finger${s}`).set(`${side}Hand${finger}2`, `bone${lower}fingertip${s}`)
+    }
   }
   return result
 }

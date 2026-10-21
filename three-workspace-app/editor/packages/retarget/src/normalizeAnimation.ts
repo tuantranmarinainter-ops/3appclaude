@@ -7,6 +7,7 @@ import { estimateUniversalBakeCost } from './universalBake'
 import type { UniversalBakeFrame } from './universalBake'
 import { adjustGround, type GroundMode } from './groundAdjust'
 import { applyFootDirection, planFootDirection } from './footDirection'
+import { applyFingerCurl, DISTAL_FROM_MIDDLE, planFingerCurl } from './fingerCurl'
 import { createNormalizationMetrics } from './normalizationMetrics'
 import type { UniversalCalibrationRuntime } from './universalCalibration'
 
@@ -53,12 +54,14 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
     const solver = createUniversalRetargeter(source.rig, target.rig, input.pairs, input.rootTranslationScale, input.rootTranslationPolicy, input.calibration)
     const frames: UniversalBakeFrame[] = []
     const feet = input.footDirection ? planFootDirection(source.rig, target.rig, input.pairs, input.calibration) : []
+    const fingers = planFingerCurl(target.rig, input.pairs)
     const metrics = createNormalizationMetrics(source.rig, target.rig, input.pairs, input.rootTranslationPolicy ?? 'preserve', input.rootTranslationScale ?? 1)
     for (let index = 0; index <= steps; index++) {
       signal?.throwIfAborted()
       const timeSeconds = Math.min(index / input.fps, duration)
       const sample = source.sample(input.actionIndex, start + timeSeconds), bones = solver.evaluate(sample)
       applyFootDirection(feet, target.rig, sample, bones, input.calibration?.alignmentRotation)
+      applyFingerCurl(fingers, target.rig, bones)
       metrics.observe(sample, bones)
       frames.push({ frame: index, timeSeconds, bones })
       if (index % 32 === 31) await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -71,6 +74,7 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
       actionIndex: action.index, actionName: action.name, durationSeconds: duration, sampleFps: input.fps,
       sampleCount: frames.length, sourceJointCount: source.joints.length, targetJointCount: target.joints.length,
       resourceCost, ground, ...(footLock ? { footLock } : {}),
+      fingerCurl: { distalFromMiddle: DISTAL_FROM_MIDDLE, fingers: fingers.map((plan) => plan.finger) },
       excludedSourceBones: input.excludedSourceBones ?? [], metrics: metrics.report(),
       rootTranslationScale: input.rootTranslationScale ?? 1, rootTranslationPolicy: input.rootTranslationPolicy ?? 'preserve', outputMode: 'animation-only' as const } }
   } finally { source.dispose(); target?.dispose() }

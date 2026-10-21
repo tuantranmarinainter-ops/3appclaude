@@ -139,6 +139,7 @@ test('auto mapping resolves modern WoW elf rigs (EXP leg/neck names, upper chest
   add('bone_Head', 'bone_EXP_C1_Neck2'); add('bone_EXP_C1_Pelvis1', 'bone_Root')
   for (const s of ['L', 'R']) {
     add(`bone_Shoulder${s}`, 'bone_21'); add(`bone_Arm${s}`, `bone_Shoulder${s}`); add(`bone_Elbow${s}`, `bone_Arm${s}`); add(`bone_Hand${s}`, `bone_Elbow${s}`)
+    for (const finger of ['Thumb', 'IndexFinger', 'PinkyFinger']) { add(`bone_${finger}${s}`, `bone_Hand${s}`); add(`bone_${finger.replace('Finger', '')}${finger.endsWith('Finger') ? 'FingerTip' : 'Tip'}${s}`, `bone_${finger}${s}`) }
     add(`bone_EXP_${s}1_Leg1Twist1`, 'bone_EXP_C1_Pelvis1'); add(`bone_EXP_${s}1_Leg2Twist1`, `bone_EXP_${s}1_Leg1Twist1`)
     add(`bone_${s === 'L' ? 19 : 20}`, `bone_EXP_${s}1_Leg2Twist1`); add(`bone_Foot${s}`, `bone_${s === 'L' ? 19 : 20}`)
   }
@@ -150,6 +151,9 @@ test('auto mapping resolves modern WoW elf rigs (EXP leg/neck names, upper chest
   assert.deepEqual(mapping.missingRequired, [])
   assert.deepEqual(['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightLeg'].map(of),
     ['bone_Root', 'bone_SpineLow', 'bone_EXP_C1_Spine2', 'bone_21', 'bone_EXP_C1_Neck1', 'bone_Head', 'bone_EXP_L1_Leg1Twist1', 'bone_EXP_L1_Leg2Twist1', 'bone_FootL', 'bone_EXP_R1_Leg2Twist1'])
+  // Fingers: `<Finger>Finger` + animated `<Finger>FingerTip` play Mixamo joints 1 and 2 (thumb: `Thumb` + `ThumbTip`).
+  assert.deepEqual(['LeftHandThumb1', 'LeftHandThumb2', 'LeftHandIndex1', 'LeftHandIndex2', 'LeftHandPinky1', 'LeftHandPinky2', 'LeftHandPinky3'].map(of),
+    ['bone_ThumbL', 'bone_ThumbTipL', 'bone_IndexFingerL', 'bone_IndexFingerTipL', 'bone_PinkyFingerL', 'bone_PinkyFingerTipL', null])
   src.dispose(); dst.dispose()
 })
 
