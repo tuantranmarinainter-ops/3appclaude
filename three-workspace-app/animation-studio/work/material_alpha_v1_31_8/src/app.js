@@ -693,13 +693,28 @@ function maximizeArea(area){
  }
  editView.dirty=true;compareA.dirty=true;compareB.dirty=true;drawTimeline();drawCurve();
 }
+// Layout only: reserve 45% of the browser height for the shared 3D viewport.
+function studioTimelineBounds(){
+ const stage=document.querySelector('.stage');
+ const fixed=[...stage.children].filter(el=>!['viewportGrid','viewportShell','animationArea'].includes(el.id)).reduce((sum,el)=>sum+el.getBoundingClientRect().height,0);
+ const max=Math.max(0,Math.min(500,stage.clientHeight-fixed-Math.ceil(innerHeight*.45)));
+ return {min:Math.min(120,max),max};
+}
+function clampStudioTimelineHeight(value){
+ const {min,max}=studioTimelineBounds(),height=Math.max(min,Math.min(max,Number.isFinite(value)?value:240));
+ document.documentElement.style.setProperty('--timeline-height',height+'px');
+ const grip=document.querySelector('[data-resize=timeline]');if(grip){grip.setAttribute('aria-valuemin',min);grip.setAttribute('aria-valuemax',max);grip.setAttribute('aria-valuenow',Math.round(height));}
+ return height;
+}
 function setAnimationEditor(value){
  stopTimelineScrub();const area=$('animationArea'),previous=area.dataset.editor,graphMode=v=>v==='graph'||v==='split';
  if(graphMode(value)&&!graphMode(previous))timelineHeightBeforeGraph=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||260;
  if(!graphMode(value)&&graphMode(previous)&&timelineHeightBeforeGraph!==null){document.documentElement.style.setProperty('--timeline-height',timelineHeightBeforeGraph+'px');timelineHeightBeforeGraph=null;}
  $('animationEditor').value=value;area.dataset.editor=value;
+ const tools=$('studioKeyTools'),options=$('minimalKeyOptions');if(tools&&options){if(value==='graph')options.append(tools);else options.before(tools);}
  $('editorHint').textContent=value==='graph'?'XYZ · Nội suy':value==='dope'?'Các khớp · Keyframe':'Tick / Frame · Keyframe';
- if(value==='graph'||value==='split'){$('graphPanel').open=true;const height=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||220;if(height<420)document.documentElement.style.setProperty('--timeline-height',Math.min(470,innerHeight*.52)+'px');}
+ if(value==='graph'||value==='split'){$('graphPanel').open=true;const height=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||220;clampStudioTimelineHeight(Math.max(height,320));}
+ if(mode!=='compare')clampStudioTimelineHeight(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')));
  document.querySelectorAll('[data-editor-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.editorTab===value);b.setAttribute('aria-pressed',String(b.dataset.editorTab===value));});
  drawTimeline();drawCurve();
 }
@@ -728,19 +743,19 @@ function setupModernUI(){
  }
  const sync=()=>{$('toggleTree').setAttribute('aria-expanded',String(!workspace.classList.contains('left-closed')));$('toggleProperties').setAttribute('aria-expanded',String(!workspace.classList.contains('right-closed')));$('toggleTimeline').setAttribute('aria-expanded',String(!workspace.classList.contains('timeline-closed')));backdrop.classList.toggle('open',mode!=='compare'&&mobileLayout&&!workspace.dataset.maximized&&(!workspace.classList.contains('left-closed')||!workspace.classList.contains('right-closed')));editView.dirty=true;};
  const dimension=(kind,value,remember=true)=>{
-  const min=kind==='left'?160:kind==='right'?220:90,stage=document.querySelector('.stage');
-  const fixed=[...stage.children].filter(el=>!['viewportGrid','viewportShell','animationArea'].includes(el.id)).reduce((sum,el)=>sum+el.getBoundingClientRect().height,0);
-  const max=kind==='left'?Math.max(160,workspace.clientHeight-240):kind==='timeline'?Math.max(90,Math.min(500,stage.clientHeight-fixed-150)):Math.min(440,innerWidth/3);
+  const bounds=studioTimelineBounds(),min=kind==='left'?160:kind==='right'?220:bounds.min;
+  const max=kind==='left'?Math.max(160,workspace.clientHeight-240):kind==='timeline'?bounds.max:Math.min(440,innerWidth/3);
   const n=Math.max(min,Math.min(max,value));document.documentElement.style.setProperty(kind==='timeline'?'--timeline-height':kind==='left'?'--rig-height':'--right-width',n+'px');
   if(remember)layoutState[kind]=n;
   const handle=document.querySelector('[data-resize="'+kind+'"]');handle.setAttribute('aria-valuemin',min);handle.setAttribute('aria-valuemax',Math.max(min,max));handle.setAttribute('aria-valuenow',Math.round(n));
  };
  persistLayout=()=>{
+  if(sceneMode)return;
   if(mode!=='compare'){
    if(!mobileLayout){layoutState.leftClosed=workspace.classList.contains('left-closed');layoutState.rightClosed=workspace.classList.contains('right-closed');}
    layoutState.timelineClosed=workspace.classList.contains('timeline-closed');layoutState.animationEditor=$('animationEditor').value;layoutState.leftEditor=$('poseSection').hidden?'tree':'pose';
   }
-  try{localStorage.setItem('animation-studio-workspaces-v1',JSON.stringify({version:1,workspaces:workspaceLayouts}));localStorage.setItem('animation-studio-layout-v1',JSON.stringify(layoutState));}catch{}
+  try{localStorage.setItem('animation-studio-workspaces-v2',JSON.stringify({version:1,workspaces:workspaceLayouts}));localStorage.setItem('animation-studio-layout-v2',JSON.stringify(layoutState));}catch{}
  };
  applyWorkspaceLayout=()=>{
   layoutState=workspaceLayouts[mode];mobileLayout=false;
@@ -754,9 +769,9 @@ function setupModernUI(){
   sync();
  };
  try{
-  const saved=localStorage.getItem('animation-studio-workspaces-v1');
+  const saved=localStorage.getItem('animation-studio-workspaces-v2');
   if(saved)workspaceLayouts=validateWorkspaceLayout(JSON.parse(saved));
-  else workspaceLayouts=validateWorkspaceLayout({version:1,workspaces:{create:JSON.parse(localStorage.getItem('animation-studio-layout-v1')||'{}')}});
+  else workspaceLayouts=validateWorkspaceLayout({version:1,workspaces:{create:JSON.parse(localStorage.getItem('animation-studio-layout-v2')||'{}')}});
  }catch{}
  applyWorkspaceLayout();
  window.addEventListener('resize',()=>{cancelAreaResize();applyWorkspaceLayout();});
@@ -781,7 +796,7 @@ function setupModernUI(){
  listen('poseTab','click',()=>{$('treeSection').hidden=true;$('poseSection').hidden=false;$('treeTab').classList.remove('active');$('poseTab').classList.add('active');persistLayout();});
  listen('cameraPreset','change',()=>setupViewPreset(editView,$('cameraPreset').value));
  listen('importQuick','click',()=>{$('fileMenu').open=false;$('modelInput').click();});listen('newQuick','click',()=>{$('fileMenu').open=false;$('newBtn').click();});
- listen('exportQuick','click',()=>{showMinimalSidebar('export');maximizeArea(null);if(mode==='compare')setMode('create');workspace.classList.remove('right-closed');if(mobileLayout)workspace.classList.add('left-closed');$('exportPanel').open=true;$('exportPanel').classList.add('export-focus');sync();$('exportPanel').scrollIntoView({block:'nearest'});$('exportProfile').focus({preventScroll:true});});
+ listen('exportQuick','click',()=>{showMinimalSidebar('export');maximizeArea(null);if(mode==='compare')setMode('create');workspace.classList.remove('right-closed');if(mobileLayout)workspace.classList.add('left-closed');$('exportPanel').open=true;$('exportPanel').classList.add('export-focus');sync();$('exportPanel').scrollIntoView({block:'nearest'});$('exportFormat').focus({preventScroll:true});});
  $('editViewport').addEventListener('rig-select',e=>{const d=editView.widgets.find(d=>d.id===e.detail);if(d){const changed=activateRigWidget(d);if(changed)commit();refresh();}});
  listen('rigStyle','change',()=>{const preset=$('rigStyle').value;$('rigAxes').value=preset==='axes'?'all':preset==='minimal'||preset==='ik'?'none':'selected';$('rigLabels').checked=['hybrid','touch'].includes(preset);applySettings(readSettings());});
  listen('rigFingers','change',()=>{if(rig)renderBones();});
@@ -1438,7 +1453,7 @@ function setupMinimalDOM(){
  document.body.classList.add('minimal-studio');
  const hidden=(id,type,value)=>{const input=document.createElement('input');input.id=id;input.type=type;input.hidden=true;if(type==='checkbox')input.checked=value;else input.value=value;document.body.append(input);return input;};
  hidden('uiSidebarOpen','checkbox',true);hidden('uiSidebarTab','text','properties');const ratio=hidden('compareSplit','range','.5');ratio.min='.2';ratio.max='.8';ratio.step='.01';ratio.value='.5';
- const themes=document.createElement('details');themes.id='minimalThemeSettings';themes.open=true;themes.innerHTML='<summary>Giao diện · 20 preset màu</summary><label class="field">Preset<select id="uiThemePreset"></select></label><div id="themeSwatches" class="theme-swatches"></div><details><summary>Chỉnh màu chính và màu phụ</summary><div id="themeColorFields"></div><label class="field">Nền khung 3D<input id="minimalViewportColor" type="color"></label><button type="button" id="resetThemeColors">Khôi phục màu preset</button><small>Chữ tự cân tương phản khi đổi màu nền. Màu XYZ và trạng thái chọn khớp giữ ý nghĩa riêng.</small></details>';
+ const themes=document.createElement('details');themes.id='minimalThemeSettings';themes.open=true;themes.innerHTML='<summary>Giao diện · 20 preset màu</summary><label class="field">Preset<select id="uiThemePreset"></select></label><div id="themeSwatches" class="theme-swatches" hidden></div><details><summary>Chỉnh màu</summary><div id="themeColorFields"></div><label class="field">Nền khung 3D<input id="minimalViewportColor" type="color"></label><button type="button" id="resetThemeColors">Khôi phục màu preset</button><small>Chữ tự cân tương phản khi đổi màu nền. Màu XYZ và trạng thái chọn khớp giữ ý nghĩa riêng.</small></details>';
  $('appPresetSettings').after(themes);
  for(const light of [true,false]){const group=document.createElement('optgroup');group.label=light?'10 màu sáng':'10 màu tối';minimalThemeNames.forEach((name,i)=>{const option=document.createElement('option');option.value=(light?'light':'dark')+'-'+i;option.textContent=(light?'Sáng · ':'Tối · ')+name;group.append(option);const b=document.createElement('button');b.type='button';b.dataset.themePreset=option.value;b.title=option.textContent;b.setAttribute('aria-label',option.textContent);const p=minimalPalette(light,i);b.style.background=p.uiMain;b.style.color=p.uiText;b.textContent=name;$('themeSwatches').append(b);});$('uiThemePreset').append(group);}
  $('uiThemePreset').value='dark-0';for(const[id,label]of minimalColorFields){const field=document.createElement('label');field.className='field';field.textContent=label;const input=document.createElement('input');input.type='color';input.id=id;input.value=minimalPalette(false,0)[id];field.append(input);$('themeColorFields').append(field);}
