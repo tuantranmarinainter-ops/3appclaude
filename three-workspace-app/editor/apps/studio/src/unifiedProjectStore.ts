@@ -1,4 +1,5 @@
-import { executeApp3Bridge, App3BridgeError } from './app3Bridge'
+import { App3BridgeError } from './app3Bridge'
+import { executeApp3Artifacts } from './app3Artifacts'
 import { previewCameraFraming } from './cameraFraming'
 import { previewCharacterLayout } from './sceneLayoutPlacement'
 import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
@@ -867,7 +868,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (envelope.command.startsWith('app3.')) {
     try {
       if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed', 409)
-      const result = executeApp3Bridge(project, envelope.command, envelope.args, envelope.requestId, envelope.dryRun, envelope.expectedRevision)
+      const result = await executeApp3Artifacts(project, envelope.command, envelope.args, envelope.requestId, envelope.dryRun, envelope.expectedRevision, () => readUnifiedProject(id))
       const response = success(envelope.requestId, id, project.revision, result)
       if (envelope.command === 'app3.command.submit') await saveRequest(envelope, hash, response)
       return response

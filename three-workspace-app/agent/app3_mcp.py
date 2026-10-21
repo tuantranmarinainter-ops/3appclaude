@@ -17,10 +17,11 @@ from .unified_mcp import PROTOCOL_VERSION, _valid_meta
 
 READ_TOOLS = ("read_keyframes", "analyze_motion", "get_scene_context", "get_animation_context")
 EDIT_TOOLS = ("retime_segment", "set_hold", "smooth_motion", "edit_keyframes", "edit_curves", "create_blocking", "set_pose", "insert_breakdown", "set_marker", "set_idea", "preview_patch", "apply_patch", "cancel_patch", "undo_animation")
+EXPORT_TOOLS = ("export_animation", "shotOpen", "shotExport")
 COMMANDS = ("app3.session.list", "app3.context.get", "app3.command.submit", "app3.command.result")
 TOOL = {
     "name": "bbs_app3_command",
-    "description": "Read and stage edits in the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit read_keyframes, analyze_motion, get_scene_context, get_animation_context or retime_segment, set_hold, smooth_motion, edit_keyframes, edit_curves, create_blocking, set_pose, insert_breakdown, set_marker, set_idea, preview_patch, apply_patch, cancel_patch, undo_animation using args.tool and args.parameters. Times are editor-local seconds, transform values use the context model-local units, rotation curve r is Euler XYZ degrees; no implicit world-space conversion. Shot duration and root transforms are protected. Edits require numeric expectedRevision and string args.expectedAnimationRevision; review staged patchId before apply_patch; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. Only these native animation edits are exposed; scene writes and exports are unavailable.",
+    "description": "Read and stage edits in the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit read_keyframes, analyze_motion, get_scene_context, get_animation_context or retime_segment, set_hold, smooth_motion, edit_keyframes, edit_curves, create_blocking, set_pose, insert_breakdown, set_marker, set_idea, preview_patch, apply_patch, cancel_patch, undo_animation using args.tool and args.parameters. Times are editor-local seconds, transform values use the context model-local units, rotation curve r is Euler XYZ degrees; no implicit world-space conversion. Shot duration and root transforms are protected. Edits require numeric expectedRevision and string args.expectedAnimationRevision; review staged patchId before apply_patch; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. Only these native animation edits are exposed; Export export_animation with format bobj/fbx, shotOpen with broker jobId/fileId, or shotExport with optional includeMinecraft20. Exports require expectedRevision and expectedAnimationRevision, reject pending previews, and return authenticated job/file artifact handles rather than binary/base64. shotOpen finishes on the old ticket and returns a new session/epoch: use that identity for subsequent commands. Scene writes are unavailable.",
     "inputSchema": {"type": "object", "properties": {
         "command": {"type": "string", "enum": list(COMMANDS)},
         "projectId": {"type": "string", "format": "uuid"},
@@ -51,7 +52,7 @@ def validate(arguments: Any) -> dict:
     identity = {"sessionId", "epoch", "characterId", "serverInstance"}
     required = set() if name == "app3.session.list" else identity
     extra = {"tool", "parameters"} if name == "app3.command.submit" else {"commandId"} if name == "app3.command.result" else set()
-    editing = name == "app3.command.submit" and args.get("tool") in EDIT_TOOLS
+    editing = name == "app3.command.submit" and args.get("tool") in EDIT_TOOLS + EXPORT_TOOLS
     if editing:
         extra.add("expectedAnimationRevision")
         if type(arguments.get("expectedRevision")) is not int or arguments["expectedRevision"] < 0 or not isinstance(args.get("expectedAnimationRevision"), str) or not args["expectedAnimationRevision"]:
@@ -63,7 +64,10 @@ def validate(arguments: Any) -> dict:
     if name == "app3.command.submit":
         tool, params = args["tool"], args["parameters"]
         if editing:
-            validate_edit(tool, params)
+            if tool in EXPORT_TOOLS:
+                validate_export(tool, params)
+            else:
+                validate_edit(tool, params)
         elif tool not in READ_TOOLS or not isinstance(params, dict):
             raise ValueError("Unsupported read tool")
         allowed = set(params) if editing else ({"boneIds", "start", "end"} if tool == "read_keyframes" else {"boneIds", "start", "end", "samples"} if tool == "analyze_motion" else set())
@@ -81,6 +85,18 @@ def validate(arguments: Any) -> dict:
     if len(json.dumps(arguments, allow_nan=False).encode()) > 1024 * 1024:
         raise ValueError("Payload exceeds 1 MiB")
     return arguments
+
+
+def validate_export(tool, p):
+    allowed = {"export_animation": {"format"}, "shotOpen": {"jobId", "fileId"}, "shotExport": {"includeMinecraft20"}}[tool]
+    if not isinstance(p, dict) or set(p) - allowed:
+        raise ValueError("Invalid export parameters")
+    if tool == "export_animation" and p.get("format") not in ("bobj", "fbx"):
+        raise ValueError("Choose bobj or fbx")
+    if tool == "shotOpen" and (set(p) != allowed or not identifier(p.get("jobId")) or not isinstance(p.get("fileId"), str) or not p["fileId"].isascii() or not p["fileId"].isdigit() or len(p["fileId"]) > 2):
+        raise ValueError("Broker-owned job/file handle required")
+    if tool == "shotExport" and "includeMinecraft20" in p and type(p["includeMinecraft20"]) is not bool:
+        raise ValueError("Invalid includeMinecraft20")
 
 
 def validate_edit(tool, p):
@@ -189,6 +205,8 @@ def handle_message(message: Any, invoke: Callable[[dict], dict] = run_app3_comma
 
 
 def serve() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     for line in sys.stdin.buffer:
         try:
             response = handle_message(json.loads(line))
