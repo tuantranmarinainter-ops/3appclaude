@@ -2,7 +2,7 @@
 // Run against an isolated Studio server (BBS_UNIFIED_PROJECTS_DIR), after rebuilding/publishing App3.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createRequire} from 'node:module';
+import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
 import {readFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -11,12 +11,12 @@ const workspace=new URL('../../../../',import.meta.url);
 const base=process.env.APP3_RUNTIME_BASE;
 function python(arguments_) {
  const request={jsonrpc:'2.0',id:1,method:'tools/call',params:{_meta:{'io.modelcontextprotocol/protocolVersion':'2026-07-28','io.modelcontextprotocol/clientCapabilities':{}},name:'bbs_app3_command',arguments:arguments_}};
- return new Promise((resolve,reject)=>{const child=spawn(process.env.PYTHON||'python3',['-m','agent.app3_mcp'],{cwd:workspace,env:{...process.env,BBS_APP_URL:base},stdio:['pipe','pipe','pipe']});let output='',errors='';child.stdout.on('data',x=>{output+=x});child.stderr.on('data',x=>{errors+=x});child.on('error',reject);child.on('close',status=>{try{assert.equal(status,0,errors);const response=JSON.parse(output);assert.equal(response.result.isError,false,output);resolve(response.result.structuredContent.result)}catch(e){reject(e)}});child.stdin.end(JSON.stringify(request)+'\n')});
+ return new Promise((resolve,reject)=>{const child=spawn(process.env.PYTHON||(process.platform==='win32'?'python':'python3'),['-m','agent.app3_mcp'],{cwd:workspace,env:{...process.env,BBS_APP_URL:base},stdio:['pipe','pipe','pipe']});let output='',errors='';child.stdout.on('data',x=>{output+=x});child.stderr.on('data',x=>{errors+=x});child.on('error',reject);child.on('close',status=>{try{assert.equal(status,0,errors);const response=JSON.parse(output);assert.equal(response.result.isError,false,output);resolve(response.result.structuredContent.result)}catch(e){reject(e)}});child.stdin.end(JSON.stringify(request)+'\n')});
 }
 test('Chromium: real Python MCP → authenticated broker → host bridge → Director reads', {skip:!base,timeout:300000},async()=>{
  assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/);
  const {chromium}=require('playwright');
- const {makeEmptyDraft}=await import(require.resolve('@topview/3d-builder'));
+ const {makeEmptyDraft}=await import(pathToFileURL(require.resolve('@topview/3d-builder')).href);
  const browser=await chromium.launch({headless:true});
  try {
   const context=await browser.newContext({viewport:{width:1500,height:1000}}),page=await context.newPage(),errors=[];

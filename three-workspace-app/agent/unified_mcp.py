@@ -214,8 +214,9 @@ def serve() -> None:
         except (UnicodeDecodeError, json.JSONDecodeError):
             response = _error(None, -32700, "Parse error")
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
-            sys.stdout.flush()
+            # MCP stdio is UTF-8 regardless of the console code page (Windows defaults to cp1252).
+            sys.stdout.buffer.write((json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"))
+            sys.stdout.buffer.flush()
 
 
 if __name__ == "__main__":
