@@ -16,7 +16,7 @@ interface StoredFile { id: string; name: string; mimeType: string; sizeBytes: nu
 interface StoredJob {
   jobId: string
   projectId: string
-  type: 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
+  type: 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
   state: UnifiedJobState
   sourceRevision: number
   sourceSha256: string
@@ -480,7 +480,7 @@ async function readRecord(projectId: string, jobId: string): Promise<StoredJob |
   if (runtime?.record.projectId === projectId) return runtime.record
   try {
     const parsed = JSON.parse(await readFile(recordPath(projectId, jobId), 'utf8')) as StoredJob
-    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
+    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
     if (parsed.state === 'queued' || parsed.state === 'running') {
       parsed.state = 'failed'
       parsed.error = { code: 'HOST_RESTARTED', message: 'The local host restarted before the job completed.' }
@@ -504,7 +504,7 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   if (!record) throw Object.assign(new Error('Render job not found'), { code: 'NOT_FOUND', status: 404 })
   const pending = runtimes.get(jobId)
   if (pending?.active && ['succeeded', 'failed', 'cancelled'].includes(record.state)) await pending.done
-  if (record.state === 'succeeded') return { state: record.state, committed: !['rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
+  if (record.state === 'succeeded') return { state: record.state, committed: !['shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
   if (record.state === 'failed' || record.state === 'cancelled') return { state: record.state, committed: false }
   const runtime = runtimes.get(jobId)
   if (!runtime) return { state: record.state, committed: false }
@@ -527,4 +527,17 @@ export async function readUnifiedJobFile(jobId: string, projectId: string, fileI
   const bytes = await readFile(resolvedTarget)
   if (bytes.byteLength !== file.sizeBytes || digest(bytes) !== file.sha256) return null
   return { bytes, name: file.name, mimeType: file.mimeType }
+}
+
+/** Store an already validated local package using the existing authenticated job-file API. */
+export async function storeShotArtifact(project: UnifiedProject, bytes: Buffer, shotId: string): Promise<UnifiedJobView> {
+  const jobId = randomUUID(), dir = jobRoot(project.projectId, jobId), now = new Date().toISOString()
+  await mkdir(path.join(dir, 'output'), { recursive: true })
+  const name = `shot-${shotId}.zip`
+  await writeFile(path.join(dir, 'output', name), bytes, { flag: 'wx' })
+  const record: StoredJob = { jobId, projectId: project.projectId, type: 'shot.export', state: 'succeeded', sourceRevision: project.revision,
+    sourceSha256: digest(Buffer.from(JSON.stringify(project))), progress: 1, createdAt: now, updatedAt: now,
+    result: { files: [{ id: '0', name, mimeType: 'application/zip', sizeBytes: bytes.length, sha256: digest(bytes), path: `output/${name}` }], provenance: { shotId }, warnings: [], blockedRequests: [] } }
+  await persist(record)
+  return publicJob(record)
 }

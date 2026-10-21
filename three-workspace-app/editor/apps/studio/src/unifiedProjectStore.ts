@@ -1,3 +1,5 @@
+import { createShotPackage, saveShotExport, type ShotExportArgs } from './shotExchange'
+import { storeShotArtifact } from './unifiedJobs'
 import { attachApp1Manifest } from './app1Manifest'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -965,6 +967,18 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Scene render job could not start', native.status)
       throw error
     }
+  }
+  if (envelope.command === 'shot.export') {
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Shot source revision changed', 409)
+    let built: Awaited<ReturnType<typeof createShotPackage>>
+    try { built = await createShotPackage(project, envelope.args as unknown as ShotExportArgs) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Shot export failed', 400) }
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true })
+    await saveShotExport(project, built)
+    const job = await storeShotArtifact(project, built.bytes, built.shot.shotId)
+    const response = success(envelope.requestId, id, project.revision, { shotId: built.shot.shotId, baseShotSha256: createHash('sha256').update(built.files['shot.json']!).digest('hex'), jobId: job.jobId, state: job.state, sourceRevision: project.revision })
+    await saveRequest(envelope, hash, response)
+    return response
   }
   if (envelope.command === 'film.export') {
     const { characterIds, sequenceId, range, viewportAspect, filmName } = envelope.args

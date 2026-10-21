@@ -97,3 +97,41 @@ test('Mixamo alias binds unprefixed tracks to prefixed bones without mutating so
   assert.equal(group.animations[0]!.tracks[0]!.name, 'Hips.position')
   assert.equal(hips.name, 'Hips'); assert.equal(mixamorigHips(group), hips)
 })
+
+async function shotFixture() {
+  generate()
+  const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Shot', scene: makeEmptyDraft('Shot', 30, 180, { fov: 50, position: { x: 0, y: 2, z: 5 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 } }) } })
+  const projectId=created.projectId
+  let revision=0
+  const send=async(command:string,args:Record<string,unknown>)=>{const result=await executeUnifiedCommand({requestId:randomUUID(),projectId,expectedRevision:revision,command,args});revision=result.revision;return result}
+  const input=await upload(bytes)
+  await send('asset.import',{files:[input.id],format:'glb',manifest})
+  const target=await upload(readFileSync(path.join(editor,'../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')),'target.glb')
+  const model=await send('asset.import',{files:[target.id],format:'glb'})
+  const characters:string[]=[]
+  for(const name of ['A','B']) {
+    const character=await send('character.add',{assetId:(model.result.assetIds as string[])[0],skeletonId:(model.result.skeletonIds as string[])[0],name})
+    const id=String(character.result.characterId);characters.push(id)
+    await send('motion.place',{characterId:id,motionId:manifest.actions[0].uuid,frameStart:0})
+  }
+  const project=await readUnifiedProject(projectId),clip=project.scene.content.timeline.animation.motionClips[0]!
+  return {projectId,project,characters,send,frameEnd:clip.frameEnd}
+}
+test('shot.export creates a two-character ZIP accepted by TS and Python validators', async () => {
+  const {getUnifiedJob,readUnifiedJobFile}=await import('../src/unifiedJobs')
+  const {unzipPackage,validateShot}=await import('../src/shotPackage')
+  const fixture=await shotFixture()
+  const result=await fixture.send('shot.export',{cameraNodeId:'camera_1',frameStart:0,frameEnd:fixture.frameEnd,editableCharacterIds:[fixture.characters[0]]})
+  const job=await getUnifiedJob(String(result.result.jobId),fixture.projectId)
+  const file=await readUnifiedJobFile(job.jobId,fixture.projectId,'0');assert.ok(file)
+  const files=unzipPackage(file.bytes);assert.deepEqual(validateShot(files),[])
+  const shot=JSON.parse(Buffer.from(files['shot.json']!).toString())
+  assert.equal(shot.characters.length,2);assert.equal(shot.characters.filter((c:any)=>c.editable).length,1)
+  assert.equal((await readUnifiedProject(fixture.projectId)).revision,fixture.project.revision)
+  const folder=path.join(temp,'python-'+randomUUID());const fs=await import('node:fs')
+  for(const [name,data] of Object.entries(files)){fs.mkdirSync(path.dirname(path.join(folder,name)),{recursive:true});fs.writeFileSync(path.join(folder,name),data)}
+  const checked=spawnSync('python',['-m','agent.shot_package','validate-shot',folder],{cwd:path.join(editor,'..'),encoding:'utf8'})
+  assert.equal(checked.status,0,checked.stdout+checked.stderr)
+  const malformed={...files,'shot.json':Buffer.from(JSON.stringify({...shot,fps:24}))};assert.ok(validateShot(malformed).some(i=>i.code==='INVALID_FPS'))
+  assert.throws(()=>unzipPackage(Buffer.from('broken zip')))
+})
