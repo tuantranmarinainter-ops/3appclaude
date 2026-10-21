@@ -63,6 +63,10 @@ thiếu role chính.
   mặc định, không thêm vào Workbench. Bản bật (D1/D1b) hết trượt cổ chân nhưng giật, không tự nhiên. Chỉ mở lại khi có
   cách chuyển mượt cho khe ngắn giữa hai lần chạm, và phải qua so sánh video + đo gia tốc xoay chân (xem
   `docs/RETARGET-LESSONS.md`).
+- Quyết định 2026-10-21 (người dùng): **App 1 ưu tiên cổ tay chính xác, không cần ngón tay chính xác.** Thế tay (cuộn/thả lỏng)
+  chỉnh ở App 3 bằng Edit Motion Layer; sau này có **thư viện thế tay** (chọn thế tay có sẵn, thay vào keyframe, chỉnh nhẹ).
+  Bản ghép ngón WoW/LoL (D2: thêm ngón út + đốt Tip WoW, đốt đầu ngón gập 2/3 đốt giữa) để riêng ở nhánh
+  `claude/d2-fingers`, chưa merge, chờ người dùng thử.
 
 ## Kết quả rà soát bàn giao Codex (DOC-116)
 - Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.
