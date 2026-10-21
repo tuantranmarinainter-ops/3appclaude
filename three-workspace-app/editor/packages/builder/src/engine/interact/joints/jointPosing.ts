@@ -1,4 +1,4 @@
-import { Euler, Plane, Quaternion, Raycaster, Vector3 } from 'three'
+import { Bone as ThreeBone, Euler, Plane, Quaternion, Raycaster, Vector3 } from 'three'
 import type { Bone, Camera, Vector2 } from 'three'
 import type { PoseCanonicalKey } from '../../rig/applyPose'
 import { findCanonicalBones } from '../../rig/applyPose'
@@ -8,6 +8,8 @@ const DEG2RAD = Math.PI / 180
 
 export interface JointHandleSpec {
   id: string
+  extraBone?: Bone
+  extraTip?: Bone
   pivot: PoseCanonicalKey
   tip: PoseCanonicalKey
 }
@@ -54,6 +56,10 @@ export function resolveHandleBones(
   canonical: Partial<Record<PoseCanonicalKey, import('three').Object3D>>,
   restPose: Map<string, Quaternion>,
 ): { pivot: Bone; tip: Bone; restQuat: Quaternion } | null {
+  if (spec.extraBone && spec.extraTip) {
+    const restQuat = restPose.get(spec.extraBone.name)
+    return restQuat ? { pivot: spec.extraBone, tip: spec.extraTip, restQuat } : null
+  }
   const pivotObj = canonical[spec.pivot]
   const tipObj = canonical[spec.tip]
   if (!pivotObj || !tipObj) return null
@@ -63,6 +69,20 @@ export function resolveHandleBones(
   const restQuat = restPose.get(pivot.name)
   if (!restQuat) return null
   return { pivot, tip, restQuat }
+}
+
+/** Leaf extras need an aim endpoint without adding joints to the imported skeleton. */
+export function extraJointHandleSpecs(root: import('three').Object3D): JointHandleSpec[] {
+  const specs: JointHandleSpec[] = []
+  root.traverse((obj) => {
+    if (!(obj as Bone).isBone || !/^X_[A-Za-z0-9_]+$/.test(obj.name.replace(/^mixamorig\d*:?/i, ''))) return
+    const bone = obj as Bone
+    const tip = new ThreeBone()
+    tip.parent = bone
+    tip.position.set(0, Math.max(0.05, bone.position.length() * 0.5), 0)
+    specs.push({ id: `extra:${bone.name}`, pivot: 'head', tip: 'head', extraBone: bone, extraTip: tip })
+  })
+  return specs
 }
 
 export function buildRestTable(

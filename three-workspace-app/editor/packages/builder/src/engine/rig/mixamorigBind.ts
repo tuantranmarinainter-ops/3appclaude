@@ -32,6 +32,7 @@ export function mixamorigPositionScale(destLen: number, srcLen: number, fallback
 /** Runtime binding alias only: source files and scene bone names remain unchanged. */
 export function mixamoBindName(name: string): string {
   const bare = name.split(':').pop()!.replace(/^mixamorig\d*/i, '')
+  if (/^X_[A-Za-z0-9_]+$/.test(bare)) return bare
   return /^(Hips|Spine[12]?|Neck|Head|HeadTop_End|(?:Left|Right)(?:Shoulder|Arm|ForeArm|Hand(?:Thumb|Index|Middle|Ring|Pinky)?[1-4]?|UpLeg|Leg|Foot|ToeBase|Toe_End))$/.test(bare)
     ? `mixamorig${bare}` : name
 }
