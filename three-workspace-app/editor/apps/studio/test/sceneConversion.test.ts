@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
-import { getUnifiedJob, readUnifiedJobFile, cancelUnifiedJob } from '../src/unifiedJobs'
+import { getUnifiedJob, readUnifiedJobFile, cancelUnifiedJob, startUnifiedSceneConversion } from '../src/unifiedJobs'
 import { validateSceneConversionArgs } from '../src/sceneConversion'
 import { unzipPackage } from '../src/shotPackage'
 
@@ -40,10 +40,10 @@ test('conversion preflight rejects paths, unknown IDs and stale revisions; dry-r
 
 test('queued conversion cancellation terminates without publishing output',async()=>{
  const {project,jobId}=await fixture()
- const response=await executeUnifiedCommand({requestId:randomUUID(),projectId:project.projectId,command:'scene.export.blend-fbx',args:{glbJobId:jobId}})
- const result=await cancelUnifiedJob(response.result.jobId as string,project.projectId)
+ const response=await startUnifiedSceneConversion(project,{glbJobId:jobId})
+ const result=await cancelUnifiedJob(response.jobId,project.projectId)
  assert.equal(result.state,'cancelled');assert.equal(result.committed,false)
- assert.equal(await readUnifiedJobFile(response.result.jobId as string,project.projectId,'0'),null)
+ assert.equal(await readUnifiedJobFile(response.jobId,project.projectId,'0'),null)
 })
 
 test('Blender job exports verified .blend and FBX ZIP artifacts and replays without a new job',{skip:available?false:'NOT_RUN: Blender is not installed'},async()=>{
