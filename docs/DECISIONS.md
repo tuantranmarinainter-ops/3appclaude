@@ -72,6 +72,10 @@ thiếu role chính.
   tên xương, không retarget (`packages/retarget/cli/minecraftBlockCharacters.ts`). **Gỗ Xưa dùng Mixamo65, màu xanh lá**
   (nhân vật Man builtin tô lại, `apps/studio/scripts/recolorCharacter.mts`). **121 pose Topview** chuyển thành Action
   Mixamo65 một khung giữ 1 s (`apps/studio/scripts/topviewPosesToActions.mts`) để dùng được ở Studio, render, film, App 3.
+- Quyết định 2026-10-22 (người dùng): **rig mở rộng (EPIC-J)** = lõi Mixamo65 giữ nguyên + xương phụ tên
+  `X_<xươngCha>_<tên>` (hàm, đuôi, cánh, áo choàng, vũ khí đợt đầu); GLB hợp đồng v1.1 có `rig: "mixamo65+<tên>"` và
+  `extraBones`; v1.0 vẫn hợp lệ. Giao Codex 3 task: J-A (#37, retarget, sau D #36), J-B (#38, App 2), J-C (#39, App 3,
+  sau silhouette App 3). Nhân vật Minecraft20 chưa có xương phụ; gậy/áo choàng gắn dạng prop theo tay.
 
 ## Kết quả rà soát bàn giao Codex (DOC-116)
 - Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.
