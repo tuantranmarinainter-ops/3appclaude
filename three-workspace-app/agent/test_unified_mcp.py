@@ -261,3 +261,43 @@ class ProtocolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShotExchangeTests(unittest.TestCase):
+    def test_shot_commands_advertised_and_import_requires_revision(self):
+        self.assertIn('shot.export', unified_mcp.SUPPORTED_COMMANDS)
+        self.assertIn('shot.result.import', unified_mcp.SUPPORTED_COMMANDS)
+        invoke = Mock(return_value={'ok': True})
+        arguments = {'command':'shot.result.import', 'projectId':'project', 'args':{'file':'result.zip', 'shotId':'shot'}}
+        with self.assertRaisesRegex(ValueError, 'expectedRevision'):
+            unified_mcp._tool_call(arguments, invoke)
+        invoke.assert_not_called()
+        unified_mcp._tool_call({**arguments, 'expectedRevision':7}, invoke)
+        self.assertEqual(invoke.call_args.args[0]['expectedRevision'], 7)
+
+    def test_shot_export_strips_client_path_and_job_get_downloads(self):
+        job_id = str(uuid.uuid4())
+        with tempfile.TemporaryDirectory() as folder, patch('agent.unified_mcp.local_base', return_value='base'), \
+             patch('agent.unified_mcp.open_session', return_value='cookie'), \
+             patch('agent.unified_mcp.command', return_value={'result':{'jobId':job_id}}) as send, \
+             patch('agent.unified_mcp.save_render_files', return_value={'files':['shot.zip']}) as save:
+            arguments = {'command':'shot.export','projectId':'project','args':{'outputDirectory':{'path':folder},'cameraNodeId':'cam'},'dryRun':False}
+            unified_mcp.run_unified_command(arguments)
+            self.assertEqual(send.call_args.args[3:5], ('project', {'cameraNodeId':'cam'}))
+            send.return_value = {'result':{'job':{'jobId':job_id,'state':'succeeded'}}}
+            response = unified_mcp.run_unified_command({'command':'job.get','projectId':'project','args':{'jobId':job_id},'dryRun':False})
+            self.assertEqual(response['result']['savedFiles']['files'], ['shot.zip'])
+            self.assertEqual(save.call_args.args[-1], 'shot')
+            self.assertNotIn(job_id, unified_mcp.MCP_RENDER_DIRS)
+
+    def test_import_result_stages_zip_without_sending_local_path(self):
+        with tempfile.TemporaryDirectory() as folder, patch('agent.unified_mcp.local_base', return_value='base'), \
+             patch('agent.unified_mcp.open_session', return_value='cookie'), \
+             patch('agent.unified_mcp.upload_file', return_value={'uploadId':'staged'}) as upload, \
+             patch('agent.unified_mcp.command', return_value={'ok':True}) as send:
+            file = Path(folder)/'result.zip'; file.write_bytes(b'zip')
+            arguments = {'command':'shot.result.import','projectId':'project','args':{'file':str(file),'shotId':'shot'},'expectedRevision':7,'dryRun':False}
+            unified_mcp.run_unified_command(arguments)
+            upload.assert_called_once_with('base','cookie',file)
+            self.assertEqual(send.call_args.args[4:6], ({'file':'staged','shotId':'shot'},7))
+            self.assertEqual(arguments['args']['file'], str(file))
