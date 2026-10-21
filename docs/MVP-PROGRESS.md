@@ -52,7 +52,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | G1 `scene.layout.read` (AI đọc cảnh) | ✅ PR #22 | C2 frame 12: A trỏ Motion App 3, B Action gốc, t=0.4 s; không đổi revision |
 | G2 `scene.layout.preview/apply` (AI xếp nhân vật) | ✅ PR #24 (lấy riêng G2) | C2: A trái B 1.5000 m, nhìn nhau 0.000°, Undo/Redo đúng; còn chặn nhân vật có key App 3 → G2b |
 | G3 `camera.framing.preview/apply` (AI đặt camera) | ✅ PR #25 (lấy riêng G3) | C2: 130 xương trong khung (max 0.74) frame 0/12/23; toàn > trung > cận; còn camera thấp dưới đất, cận chưa phải cận mặt → G3b |
-| D1b khoá chân không nâng chân | ↩️ PR #23 | Samba: nâng 0 cm, giữ 100% khung chạm, nhưng trượt 0.35/0.46 m (cần < 0.2) |
+| D1b khoá chân không nâng chân | ✅ PR #23 (thử nghiệm, mặc định tắt) | Samba: cổ chân trượt 3.26/3.05 → 0.000 m, cao 0 cm, giữ 100% khung chạm; điểm thấp nhất 2.23/2.40 → 1.14/1.18 m (nguồn tự trượt 2.12/2.41) |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |

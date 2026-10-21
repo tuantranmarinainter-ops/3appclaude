@@ -1,5 +1,5 @@
 /** Foot contact / root quality metrics on the written GLB (measure + warn only; motion is never changed). */
-import { contactMask } from '../src/footContacts.ts'
+import { measureFootContact, type FootContactSample } from '../src/footContacts.ts'
 export { CONTACT_HEIGHT_METERS, CONTACT_MAX_VERTICAL_SPEED } from '../src/footContacts.ts'
 const HIPS_BELOW_RATIO = 0.25, HIPS_ABOVE_RATIO = 2, PENETRATION_METERS = 0.05, SLIDE_METERS = 0.15, SLIDE_MIN_CONTACT_FRAMES = 10
 
@@ -7,7 +7,7 @@ export interface QualityWarning { code: string; message: string; suggestion?: st
 type Side = 'left' | 'right'
 const FOOT_JOINTS: Record<Side, readonly [string, string]> = { left: ['LeftToeBase', 'LeftFoot'], right: ['RightToeBase', 'RightFoot'] }
 const SIDES: readonly Side[] = ['left', 'right']
-interface FootSample { y: number; joint: string; time: number; xz: Record<string, readonly [number, number]> }
+type FootSample = FootContactSample
 
 /**
  * Streams the 30 FPS world-space joint positions (meters, Y up) of one Action. Per leg the "lowest point" is the lower of
@@ -42,16 +42,11 @@ export class QualityMeter {
     let footSlideMaxSpeed = 0
     for (const side of SIDES) {
       const samples = this.feet[side]
-      const contact = contactMask(samples, groundY)
-      contactFrames[side] = contact.filter(Boolean).length
-      contact.forEach((inContact, index) => { if (!inContact) return; const last = contactRanges[side].at(-1); if (last && last[1] === index - 1) last[1] = index; else contactRanges[side].push([index, index]) })
-      for (let index = 1; index < samples.length; index++) {
-        if (!contact[index] || !contact[index - 1]) continue
-        const prev = samples[index - 1]!, cur = samples[index]!, was = prev.xz[cur.joint], now = cur.xz[cur.joint]
-        if (!was || !now) continue
-        const distance = Math.hypot(now[0] - was[0], now[1] - was[1])
-        footSlideMeters[side] += distance; footSlideMaxSpeed = Math.max(footSlideMaxSpeed, distance / (cur.time - prev.time))
-      }
+      const measured = measureFootContact(samples, groundY)
+      contactFrames[side] = measured.contactFrames
+      contactRanges[side] = measured.contactRanges
+      footSlideMeters[side] = measured.slideMeters
+      footSlideMaxSpeed = Math.max(footSlideMaxSpeed, measured.maxSpeed)
     }
     const penetrationMeters = Number.isFinite(this.minY) ? Math.max(0, -this.minY) : 0
     const warnings: QualityWarning[] = []
