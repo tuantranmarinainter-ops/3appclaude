@@ -42,9 +42,9 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | --- | --- | --- |
 | A5 `.bobj` App 3 bỏ xoắn + khoá tay | ✅ PR #2 | Lux Attack1: xoắn 116.6° → 0°, khớp App 1 |
 | D6 sửa 2 lỗi lint Workbench | ✅ PR #4 | `pnpm lint` exit 0, 13/13 test Workbench |
-| D5 chọn đoạn Action + huỷ | ⏳ | |
-| D4 thân trên Minecraft20 | ⏳ | |
-| D1 khoá chân IK | ⏳ | |
+| D5 chọn đoạn Action + huỷ | ✅ PR #15 | 152/152; Samba `--range 2:5` → 3.000 s |
+| D4 thân trên Minecraft20 | ✅ PR #16 | gập p95 76° → 45° (gốc 43°), xoắn 33° → 27° |
+| D1 khoá chân IK | ✅ PR #17 (thử nghiệm, mặc định tắt) | trượt Samba 3.26 → 0.09 m; còn nâng chân 8 cm → việc D1b |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
