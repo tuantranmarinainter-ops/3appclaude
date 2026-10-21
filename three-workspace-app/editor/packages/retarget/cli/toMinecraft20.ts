@@ -92,6 +92,39 @@ export function untwistLimbs(armature: Armature, worlds: ReadonlyMap<string, Mat
   return { worlds: result, maxBeforeDegrees, maxHandDegrees }
 }
 
+/** Conservative Minecraft torso limits, measured as rest-relative swing/twist about its own long axis. */
+export const TORSO_LIMITS = { bendDegrees: 45, twistDegrees: 27 } as const
+
+export function torsoDegrees(armature: Armature, worlds: ReadonlyMap<string, Matrix4>) {
+  const { swing, twist } = limbParts(armature, worlds, 'body', 'low_body')
+  return { bendDegrees: degreesOf(swing), twistDegrees: degreesOf(twist) }
+}
+
+/**
+ * Clamp the chest relative to the hips. Keep the hips and every other bone's world orientation (including the head),
+ * and rebuild descendant positions from their original local offsets, preserving segment lengths. Compensating the
+ * head locally avoids moving excess chest bend into the hips or changing the direction the character looks.
+ */
+export function limitTorso(armature: Armature, worlds: ReadonlyMap<string, Matrix4>) {
+  const before = torsoDegrees(armature, worlds)
+  const result = new Map([...worlds].map(([name, world]) => [name, world.clone()]))
+  if (before.bendDegrees <= TORSO_LIMITS.bendDegrees && before.twistDegrees <= TORSO_LIMITS.twistDegrees) return { worlds: result, before, after: before }
+  const { deltaUpper, restLower, swing, twist } = limbParts(armature, worlds, 'body', 'low_body')
+  const capped = (q: Quaternion, angle: number, limit: number) => new Quaternion().slerp(q, Math.min(1, limit / Math.max(angle, 1e-9)))
+  const chest = deltaUpper.clone().multiply(capped(swing, before.bendDegrees, TORSO_LIMITS.bendDegrees))
+    .multiply(capped(twist, before.twistDegrees, TORSO_LIMITS.twistDegrees)).multiply(restLower).normalize()
+  for (const bone of armature.bones) {
+    const original = worlds.get(bone.name)!, position = new Vector3(), scale = new Vector3(), rotation = new Quaternion()
+    original.decompose(position, rotation, scale)
+    if (bone.parent) {
+      const localPosition = position.clone().applyMatrix4(worlds.get(bone.parent)!.clone().invert())
+      position.copy(localPosition.applyMatrix4(result.get(bone.parent)!))
+    }
+    result.set(bone.name, new Matrix4().compose(position, bone.name === 'low_body' ? chest : rotation, scale))
+  }
+  return { worlds: result, before, after: torsoDegrees(armature, result) }
+}
+
 const formatNumber = (value: number) => (Math.abs(value) < 5e-7 ? 0 : value).toFixed(6)
 
 /**
@@ -130,6 +163,7 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
   }
   let previewFrames: PreviewFrame[] = []
   let maxBeforeDegrees = 0, maxAfterDegrees = 0, maxHandBeforeDegrees = 0
+  const torsoSamples: Array<{ before: ReturnType<typeof torsoDegrees>; after: ReturnType<typeof torsoDegrees> }> = []
   try {
     const mixamo = new Map(adapter.rig.bones.flatMap((bone) => {
       const name = MIXAMO65_BONE_PARENTS.find(([joint]) => canonical(joint) === canonical(bone.name ?? ''))?.[0]
@@ -158,7 +192,9 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
         const result = solver.evaluate(pose, settings)
         const solved = new Map(result.map((bone) => [bone.name, new Matrix4().fromArray(bone.worldMatrix)]))
         // The V9.12 solver swings each segment by the shortest arc on its own, leaving forearm/shin twist arbitrary.
-        const untwisted = untwist ? untwistLimbs(armature, solved) : { worlds: solved, maxBeforeDegrees: Math.max(0, ...Object.values(limbTwistDegrees(armature, solved))), maxHandDegrees: 0 }
+        const torso = limitTorso(armature, solved)
+        torsoSamples.push({ before: torso.before, after: torso.after })
+        const untwisted = untwist ? untwistLimbs(armature, torso.worlds) : { worlds: solved, maxBeforeDegrees: Math.max(0, ...Object.values(limbTwistDegrees(armature, solved))), maxHandDegrees: 0 }
         const worlds = untwisted.worlds
         maxBeforeDegrees = Math.max(maxBeforeDegrees, untwisted.maxBeforeDegrees); maxHandBeforeDegrees = Math.max(maxHandBeforeDegrees, untwisted.maxHandDegrees)
         maxAfterDegrees = Math.max(maxAfterDegrees, ...Object.values(limbTwistDegrees(armature, worlds)))
@@ -210,7 +246,12 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
       roundtripMaxErrorBlocks = Math.max(roundtripMaxErrorBlocks, new Vector3().setFromMatrixPosition(new Matrix4().fromArray(bone.worldMatrix)).distanceTo(sample.worlds.get(bone.name)!))
     }
   }
+  const percentile = (values: number[]) => values.sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * 0.95) - 1)] ?? 0
+  const torso = { limits: TORSO_LIMITS, samples: torsoSamples.length,
+    before: { bendP95Degrees: percentile(torsoSamples.map((s) => s.before.bendDegrees)), twistP95Degrees: percentile(torsoSamples.map((s) => s.before.twistDegrees)) },
+    after: { bendP95Degrees: percentile(torsoSamples.map((s) => s.after.bendDegrees)), twistP95Degrees: percentile(torsoSamples.map((s) => s.after.twistDegrees)),
+      maxBendDegrees: Math.max(0, ...torsoSamples.map((s) => s.after.bendDegrees)), maxTwistDegrees: Math.max(0, ...torsoSamples.map((s) => s.after.twistDegrees)) } }
   const status = parsed.size === actions.length && roundtripMaxErrorBlocks < 1e-3 ? 'PASS' as const : 'FAIL' as const
   return { bobj, previewFrames, previewParents, report: { status, format: 'bobj-v9.12 (BBSFix: 20 Hz integer ticks, Euler XYZ, LINEAR)', ticksPerSecond: TICKS_PER_SECOND,
-    settings: { ...settings }, actions, roundtripMaxErrorBlocks, limbTwist: { untwist, maxBeforeDegrees, maxAfterDegrees, handsLocked: untwist, maxHandBeforeDegrees } } }
+    settings: { ...settings }, actions, roundtripMaxErrorBlocks, torso, limbTwist: { untwist, maxBeforeDegrees, maxAfterDegrees, handsLocked: untwist, maxHandBeforeDegrees } } }
 }
