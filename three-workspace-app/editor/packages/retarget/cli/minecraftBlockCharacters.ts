@@ -72,8 +72,9 @@ export const ROLES: Role[] = [
 
 const ARMATURE = resolve(import.meta.dirname, '../../../apps/studio/public/retarget/v9.12')
 
-export async function loadMinecraft20(): Promise<Object3D & { animations: AnimationClip[] }> {
-  const root = await loadAsset(readFileSync(join(ARMATURE, 'minecraft-actions.bobj')), 'bobj', { bobjArmature: readFileSync(join(ARMATURE, 'minecraft20-armature.bobj')) })
+/** The V9.12 rig with its 85 Actions, or another Minecraft20 Action library (e.g. App 1 `--bobj` output) on the same rig. */
+export async function loadMinecraft20(actionsFile = join(ARMATURE, 'minecraft-actions.bobj')): Promise<Object3D & { animations: AnimationClip[] }> {
+  const root = await loadAsset(readFileSync(actionsFile), 'bobj', { bobjArmature: readFileSync(join(ARMATURE, 'minecraft20-armature.bobj')) })
   root.updateMatrixWorld(true)
   return root as Object3D & { animations: AnimationClip[] }
 }
@@ -201,8 +202,15 @@ async function main(out: string) {
   const actions = actionsGlb(root); writeFileSync(join(out, 'minecraft20-actions.glb'), actions); console.log(`wrote minecraft20-actions.glb ${actions.length} B, ${root.animations.length} Actions`)
 }
 
+/** `--actions <file.bobj> --name <stem>`: pack another Minecraft20 Action library as `<stem>.mc20-actions.glb`. */
+async function packActions(out: string, file: string, name: string) {
+  mkdirSync(out, { recursive: true })
+  const root = await loadMinecraft20(file), bytes = actionsGlb(root)
+  writeFileSync(join(out, `${name}.mc20-actions.glb`), bytes); console.log(`wrote ${name}.mc20-actions.glb ${bytes.length} B, ${root.animations.length} Actions`)
+}
+
 if (process.argv[1]?.endsWith('minecraftBlockCharacters.ts')) {
-  const { values } = parseArgs({ options: { out: { type: 'string' } } })
+  const { values } = parseArgs({ options: { out: { type: 'string' }, actions: { type: 'string' }, name: { type: 'string' } } })
   if (!values.out) throw new TypeError('--out <dir> is required')
-  void main(values.out)
+  void (values.actions ? packActions(values.out, values.actions, values.name ?? 'library') : main(values.out))
 }
