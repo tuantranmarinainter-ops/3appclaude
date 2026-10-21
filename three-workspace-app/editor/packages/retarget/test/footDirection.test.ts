@@ -46,3 +46,18 @@ test('a source pitch change of +15° becomes +15° on the target foot', () => {
   applyFootDirection(plans, target, posed, bones)
   assert.ok(Math.abs(pitch(bones[1]!.world, bones[2]!.world) - 54) < 0.01)
 })
+
+test('a steep source foot whose ball wobbles sideways (foot frame unchanged) does not swing the target foot around', () => {
+  const plans = planFootDirection(source, target, pairs)
+  const pitches: number[] = [], yaws: number[] = []
+  for (const side of [-0.02, 0.02]) {
+    const posed = source.bones.map((bone) => ({ id: bone.id, world: bone.restWorld }))
+    posed[2] = { id: 'sToe', world: at(side, 0.3 - Math.sin(deg(70)) * 0.1, Math.cos(deg(70)) * 0.1) }
+    const bones = frame(at(0, 0.08, 0))
+    applyFootDirection(plans, target, posed, bones)
+    const d = new Vector3().fromArray(bones[2]!.world, 12).sub(new Vector3().fromArray(bones[1]!.world, 12))
+    pitches.push(pitch(bones[1]!.world, bones[2]!.world)); yaws.push(Math.atan2(d.x, d.z) * 180 / Math.PI)
+  }
+  // The direction's own yaw would flip by ~±31° here; the foot frame did not turn, so the target heading stays put.
+  assert.ok(Math.abs(yaws[0]! - yaws[1]!) < 0.5, `yaw ${yaws}`)
+})
