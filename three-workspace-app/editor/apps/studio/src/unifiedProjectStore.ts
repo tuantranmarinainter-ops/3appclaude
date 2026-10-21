@@ -1,3 +1,4 @@
+import { prepareShotResult, applyShotResult } from './shotResult'
 import { createShotPackage, saveShotExport, type ShotExportArgs } from './shotExchange'
 import { storeShotArtifact } from './unifiedJobs'
 import { attachApp1Manifest } from './app1Manifest'
@@ -825,6 +826,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   let propAddition: { nodeId: string; assetId: string; scene: UnifiedProject['scene'] } | null = null
   let mappingAddition: { draft: MappingDraft; calibration: RetargetCalibrationV1 | UniversalCalibrationV1; referencePose: UniversalReferencePoseV1 | null; report: MappingValidationReport } | null = null
   let retargetSessionAddition: { session: RetargetSession; nativeProject: RetargetProjectV99 } | null = null
+  let shotResult: Awaited<ReturnType<typeof prepareShotResult>> | null = null
   let motionPlacement: { scene: UnifiedProject['scene']; binding: MotionBinding; clipId: string } | null = null
   let nativeAnimationAddition: { characterId: string; sourceMotionId: string | null; clipId: string | null; name: string; fps: number; duration: number; edit: Record<string, unknown>; glbBytes: Buffer; motionId: string; skeletonId: string } | null = null
 
@@ -1039,7 +1041,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw error
     }
   }
-  if (!['scene.apply', 'camera.shot.set', 'asset.import', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (envelope.command === 'shot.result.import') {
+    if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
+    try { shotResult = await prepareShotResult(project, envelope.args) }
+    catch (error) { const native = error as { code?: string; message?: string }; throw new UnifiedStoreError(native.code === 'REVISION_CONFLICT' ? native.code : 'VALIDATION_FAILED', native.message ?? 'Invalid result package', native.code === 'REVISION_CONFLICT' ? 409 : 400) }
+  }
   if (envelope.command === 'scene.apply') {
     if (Object.keys(envelope.args).some((key) => key !== 'operations')) throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.apply accepts only operations', 400)
     sceneReplacement = applySceneOperations(project, envelope.args.operations)
@@ -1527,12 +1535,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     clip.motion.rootMotion = { policy: binding.rootPolicy, boneName: rootBone.name, alignment: binding.alignment }
     clip.motion.inPlace = binding.rootPolicy === 'in-place'
     motionPlacement = { scene, binding, clipId: clip.id }
-  } else if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'History commands do not accept arguments', 400)
+  } else if ((envelope.command === 'history.undo' || envelope.command === 'history.redo') && Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'History commands do not accept arguments', 400)
   const rootConflict = findRootMotionConflict(sceneReplacement?.document ?? motionPlacement?.scene ?? project.scene)
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -1549,8 +1557,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
-      if (envelope.command === 'scene.apply') {
+    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+      if (envelope.command === 'shot.result.import') {
+        if (!shotResult) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result package is unavailable', 400)
+        result = await applyShotResult(next, shotResult)
+        changedIds = ['scene', ...shotResult.edits.map(item => `motion:${item.edit.newActionUuid}`)]
+        importedUploadIds = [shotResult.uploadId]
+      } else if (envelope.command === 'scene.apply') {
         if (!sceneReplacement) throw new UnifiedStoreError('VALIDATION_FAILED', 'Scene operations are unavailable', 400)
         next.scene = sceneReplacement.document
         next.extensions.topview = { ...(next.extensions.topview ?? {}), fcurves: sceneReplacement.fcurves }

@@ -135,3 +135,38 @@ test('shot.export creates a two-character ZIP accepted by TS and Python validato
   const malformed={...files,'shot.json':Buffer.from(JSON.stringify({...shot,fps:24}))};assert.ok(validateShot(malformed).some(i=>i.code==='INVALID_FPS'))
   assert.throws(()=>unzipPackage(Buffer.from('broken zip')))
 })
+
+test('Result round trip creates a new Motion and placement in one Undo step; stale revision fails', async () => {
+  const {getUnifiedJob,readUnifiedJobFile}=await import('../src/unifiedJobs')
+  const {unzipPackage,zipPackage,jsonBytes,sha256,validateResult}=await import('../src/shotPackage')
+  const fixture=await shotFixture()
+  const exported=await fixture.send('shot.export',{cameraNodeId:'camera_1',frameStart:0,frameEnd:fixture.frameEnd,editableCharacterIds:[fixture.characters[0]]})
+  const job=await getUnifiedJob(String(exported.result.jobId),fixture.projectId),artifact=await readUnifiedJobFile(job.jobId,fixture.projectId,'0');assert.ok(artifact)
+  const shotFiles=unzipPackage(artifact.bytes),shot=JSON.parse(Buffer.from(shotFiles['shot.json']!).toString()),character=shot.characters[0]
+  const originalBytes=Buffer.from(shotFiles[character.glb]!),length=originalBytes.readUInt32LE(12),document=JSON.parse(originalBytes.subarray(20,20+length).toString())
+  document.asset.generator='Round trip derivative'
+  const json=Buffer.from(JSON.stringify(document)),padded=Buffer.alloc(Math.ceil(json.length/4)*4,32);json.copy(padded)
+  const edited=Buffer.concat([originalBytes.subarray(0,12),Buffer.alloc(8),padded,originalBytes.subarray(20+length)])
+  edited.writeUInt32LE(edited.length,8);edited.writeUInt32LE(padded.length,12);edited.writeUInt32LE(0x4e4f534a,16)
+  const id=randomUUID(),newManifest={...manifest,glbSha256:sha256(edited),actions:[{...manifest.actions[0],uuid:id,originalActionUuid:character.actionUuid}]}
+  const result={version:'1.0.0',shotId:shot.shotId,baseShotSha256:sha256(shotFiles['shot.json']!),edits:[{characterId:character.characterId,originalActionUuid:character.actionUuid,newActionUuid:id,glb:'edited.glb',manifest:'edited.manifest.json',glbSha256:sha256(edited),placementKeys:[{frame:0,position:[3,0,0],yawDegrees:45},{frame:fixture.frameEnd,position:[4,0,0],yawDegrees:90}]}]}
+  const files={'result.json':jsonBytes(result),'edited.glb':edited,'edited.manifest.json':jsonBytes(newManifest)}
+  assert.deepEqual(validateResult(files,shotFiles),[])
+  const staged=await upload(Buffer.from(zipPackage(files)),'result.zip')
+  const before=await readUnifiedProject(fixture.projectId)
+  await assert.rejects(executeUnifiedCommand({requestId:randomUUID(),projectId:fixture.projectId,command:'shot.result.import',expectedRevision:before.revision-1,args:{file:staged.id,shotId:shot.shotId}}), (e:any)=>e.code==='REVISION_CONFLICT')
+  const imported=await fixture.send('shot.result.import',{file:staged.id,shotId:shot.shotId})
+  assert.deepEqual(imported.result.motionIds,[id])
+  const after=await readUnifiedProject(fixture.projectId)
+  assert.ok(after.motions[id]);assert.ok(after.motions[character.actionUuid])
+  const binding=Object.values(after.bindings).find(b=>b.characterId===character.characterId)!
+  assert.equal(binding.motionId,id);assert.equal(after.motions[id]!.derivedFrom,character.actionUuid)
+  const evaluated=await executeUnifiedCommand({requestId:randomUUID(),projectId:fixture.projectId,command:'scene.evaluate',args:{frame:0}})
+  const node=after.characters[character.characterId]!.nodeId
+  assert.equal((evaluated.result.transforms as any)[node].position.x,3)
+  await fixture.send('history.undo',{})
+  const undone=await readUnifiedProject(fixture.projectId)
+  assert.deepEqual(undone.motions,before.motions);assert.deepEqual(undone.scene,before.scene);assert.deepEqual(undone.extensions,before.extensions)
+  const bad={...files,'result.json':jsonBytes({...result,baseShotSha256:'0'.repeat(64)})}
+  assert.ok(validateResult(bad,shotFiles).some(i=>i.code==='SHA256_MISMATCH'))
+})
