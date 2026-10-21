@@ -56,6 +56,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | G3b camera đúng cỡ cảnh, không dưới sàn | ✅ PR #29 | Thử với Herobrine (Minecraft20) + Gỗ Xưa (Mixamo65): camera thấp y ≥ 0.30 m; toàn > trung > cận; trung cắt đùi, cận cắt bụng |
 | E1 App 3 đọc qua MCP (read_keyframes, analyze_motion, get_scene_context) | ✅ PR #30 | Studio 107/0, App 3 test 51/0 (sửa test gọi python trên Windows), Python OK, 434/434 id giữ nguyên |
 | E2 App 3 blocking qua MCP (preview → apply, một bước Undo) | ✅ PR #31 | Chạy thật Chromium: Python MCP → broker → App 3 Director qua (78 s); sửa MCP ghi UTF-8 trên Windows; build App 3 khớp từng byte; 434/434 id |
+| E3 App 3 chỉnh nhịp/đường cong qua MCP | ✅ PR #32 | App 3 test 81/81, Chromium MCP thật qua (84 s), build khớp từng byte, typecheck toàn workspace sạch |
 | Silhouette App 2 (nút + Shift+S + scene.render) | ✅ Claude | Bật/tắt trong Studio thật; tắt trả nguyên vật liệu; builder 559/0, Studio 107/0 |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
