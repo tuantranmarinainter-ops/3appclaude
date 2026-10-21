@@ -2,7 +2,7 @@
 
 Cập nhật: 2026-10-21 · Kế hoạch: [MVP-PLAN-2026-10-21.md](MVP-PLAN-2026-10-21.md) · Claude cập nhật file này mỗi khi kiểm/merge một việc.
 
-**Toàn bộ MVP: `[█████████░] 9/10 việc đã merge`** (C2 còn bước xuất film, chuyển sang H3 #14) (nền đã xong: App 1, TASK-1, 2, 4)
+**Toàn bộ MVP: `[██████████] 10/10` ✅** — chuỗi App 1 → 2 → 3 → 2 → film BBS FS chạy trên máy (chờ người dùng thử trong game) (nền đã xong: App 1, TASK-1, 2, 4)
 
 Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ trả lại sửa · 🛠️ AI đang làm · ⏳ chờ
 
@@ -31,11 +31,11 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | B3 `shot.result.import` | ✅ | Motion mới, một bước Undo, REVISION_CONFLICT |
 | B4 CLI + MCP | ✅ | Python 113/113 |
 
-## Ráp nối — Claude `[█████░░░░░] 1.5/2`
+## Ráp nối — Claude `[██████████] 2/2` ✅
 | Việc | Trạng thái | Ghi chú |
 | --- | --- | --- |
 | C1 Đưa App 3 mới vào Studio, nối shot.export ↔ App 3 ↔ shot.result.import | ✅ | App 3 1.32.0 trong Studio; nút Mở shot / Trả kết quả (`7aa1602`) |
-| C2 Chạy thử trọn chuỗi (1 cảnh, 2 nhân vật) + xuất film BBS FS | 🟡 | Chuỗi App1→App2→App3→App2 chạy: sửa tay 60° về cảnh đúng 60.0°, Undo/Redo đúng; sửa lỗi Motion GLB không phát. **Xuất film chặn** với nhân vật GLB Topview (66 vs 65 xương, tên `:`) → H3 #14 |
+| C2 Chạy thử trọn chuỗi (1 cảnh, 2 nhân vật) + xuất film BBS FS | ✅ | Sửa tay 60° về cảnh đúng 60.0°, Undo/Redo đúng; film.export ZIP 750 KB, nativeReadback, 2 actor, 130 pose track |
 
 ## Đợt 3 (ngoài MVP, AI-1 / Codex)
 | Việc | Trạng thái | Ghi chú |
