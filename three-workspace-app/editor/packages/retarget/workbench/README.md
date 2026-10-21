@@ -64,8 +64,11 @@ trượt chân, cảnh báo), **Minecraft20** (preview + sai số), **Tải về
 
 `pnpm --filter @topview/3d-builder exec tsx --test <đường dẫn tuyệt đối>/packages/retarget/test/workbench.test.ts`
 
-## Xem kết quả trên Steve (Minecraft 20)
-Thẻ đích **Minecraft 20 (Steve)** bật xuất `.bobj` và cho khung phải hiện Steve phát các Action `.bobj` của lượt chạy.
-GLB Mixamo65 vẫn dùng nhân vật Mixamo đang chọn. Mô hình Steve là tài sản Mojang/mod Emoticons nên **không nằm trong repo**:
-đặt `default_simple.bobj` (trong `emoticons.jar`) và `steve.png` (skin Steve trong jar Minecraft 1.20.1) vào
-`C:\w01-samples\steve`, hoặc chỉ thư mục khác bằng biến môi trường `W01_STEVE_DIR`. Thiếu file thì Workbench báo đường dẫn cần đặt.
+## Xem kết quả trên Minecraft 20
+Thẻ đích **Minecraft 20** bật xuất `.bobj` và cho khung phải phát các Action `.bobj` của lượt chạy trên một
+**ma-nơ-canh khối vuông** dựng sẵn từ xương Minecraft20 trong repo (tỉ lệ Steve: đầu 8 px, thân 8×12, tay chân 4×12;
+khối cứng theo từng xương; tay chân trái xanh dương, phải cam; tấm che trên mặt chỉ hướng nhìn). Không cần file game nào.
+GLB Mixamo65 vẫn dùng nhân vật Mixamo đang chọn.
+
+Tuỳ chọn: muốn xem trên Steve thật thì đặt biến môi trường `W01_STEVE_DIR` tới thư mục có `default_simple.bobj`
+(trong `emoticons.jar`) và `steve.png` (skin trong jar Minecraft). Đây là tài sản Mojang/mod, không đưa vào repo.

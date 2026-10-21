@@ -161,7 +161,7 @@ export function retargetTrackNames(clip, scene) {
 /** BOBJ bone names contain dots (`low_left_arm.end`), which three.js track paths cannot address. */
 const steveNode = (name) => `steve_${name.replace(/[^\w]/g, '_')}`
 
-/** Steve SkinnedMesh from the server's mesh data (bind = rest world; vertices are in rest world space). */
+/** Minecraft20 preview SkinnedMesh (mannequin with vertex colors, or textured Steve); bind = rest world, vertices in rest world space. */
 export async function buildSteve(data, textureUrl) {
   const group = new THREE.Group()
   const bones = data.bones.map((bone) => {
@@ -177,9 +177,16 @@ export async function buildSteve(data, textureUrl) {
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(data.skinIndices, 4))
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(data.skinWeights, 4))
   geometry.computeVertexNormals()
-  const texture = await new THREE.TextureLoader().loadAsync(textureUrl)
-  texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter; texture.colorSpace = THREE.SRGBColorSpace
-  const mesh = new THREE.SkinnedMesh(geometry, new THREE.MeshLambertMaterial({ map: texture, side: THREE.DoubleSide, alphaTest: 0.5 }))
+  let material
+  if (textureUrl) {
+    const texture = await new THREE.TextureLoader().loadAsync(textureUrl)
+    texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter; texture.colorSpace = THREE.SRGBColorSpace
+    material = new THREE.MeshLambertMaterial({ map: texture, side: THREE.DoubleSide, alphaTest: 0.5 })
+  } else {
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3))
+    material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })
+  }
+  const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.bind(new THREE.Skeleton(bones), new THREE.Matrix4())
   group.add(mesh)
   return group
@@ -260,8 +267,7 @@ export class Viewer {
   async showSteve() {
     if (!this.steve) {
       const info = await (await fetch('/api/steve')).json()
-      if (!info.available) throw new Error(`Chưa có mô hình Steve. Đặt default_simple.bobj và steve.png vào ${info.dir}`)
-      this.steve = { scene: await buildSteve(info.mesh, info.textureUrl), clips: [] }
+      this.steve = { kind: info.mesh.kind, scene: await buildSteve(info.mesh, info.textureUrl), clips: [] }
     }
     this.steveMode = true
     this.right.setModel(this.steve.scene)

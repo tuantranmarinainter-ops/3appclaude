@@ -249,7 +249,7 @@ function renderTargets() {
   }
   // Minecraft20 is an extra output on top of the Mixamo65 GLB (the solver is Mixamo65 → Minecraft20), so it rides on the selected character.
   box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20), onclick: () => setMc20(true) },
-    h('b', { text: 'Minecraft 20 (Steve)' }), h('small', { text: 'xuất .bobj cho BBS FS' })))
+    h('b', { text: 'Minecraft 20' }), h('small', { text: 'xuất .bobj cho BBS FS' })))
 }
 function setMc20(on) {
   if (!!state.mc20 === on) return
@@ -258,20 +258,20 @@ function setMc20(on) {
   const box = $('optionsForm').elements.bobj
   if (on && !box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })) }
   renderTargets()
-  $('rightCaption').textContent = on ? 'Kết quả trên Steve (Minecraft 20, .bobj)' : 'Kết quả trên nhân vật đích'
+  $('rightCaption').textContent = on ? 'Kết quả trên ma-nơ-canh Minecraft 20 (.bobj)' : 'Kết quả trên nhân vật đích'
   if (!on) { viewer.hideSteve(); setOverlay('right', ''); if (state.selected !== undefined) selectAction(state.selected); return }
   showSteveResult()
 }
 /** Steve in the right pane; with a run that wrote a .bobj, its Actions play on him (the GLB still uses the Mixamo character). */
 async function showSteveResult() {
-  setOverlay('right', 'Đang tải Steve…')
+  setOverlay('right', 'Đang tải ma-nơ-canh Minecraft 20…')
   try {
     await viewer.showSteve()
     const run = state.result?.files?.some((file) => file.kind === 'bobj') ? state.result.runId : null
     if (run) await viewer.loadSteveClips(run)
     setOverlay('right', '')
-    if (!run) toast('Đã nạp Steve (Minecraft 20). Bấm "Chạy chuẩn hoá" để xuất .bobj và phát animation trên Steve.', 'ok')
-  } catch (error) { setOverlay('right', `Không tải được Steve: ${error.message}`, true) }
+    if (!run) toast('Đã nạp ma-nơ-canh Minecraft 20 (tay chân trái xanh, phải cam). Bấm "Chạy chuẩn hoá" để xuất .bobj và phát animation.', 'ok')
+  } catch (error) { setOverlay('right', `Không tải được ma-nơ-canh: ${error.message}`, true) }
   if (state.selected !== undefined) selectAction(state.selected)
 }
 async function chooseTarget(target) {
