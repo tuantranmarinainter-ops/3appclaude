@@ -81,3 +81,35 @@ body.studio-workspace{font:13px/1.5 'Segoe UI',Arial,sans-serif}
 /* Animation Director: floating tools keep the rig and timeline interactive. */
 .director-panel{position:fixed;z-index:160;right:18px;top:92px;width:min(660px,calc(100vw - 36px));max-height:calc(100vh - 120px);overflow:auto;background:var(--panel,#20242c);color:var(--text,#e9edf4);border:1px solid var(--line,#4b5362);border-radius:12px;box-shadow:0 16px 55px #0008;font-size:12px}.director-panel[hidden]{display:none}.director-title{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #64708066;position:sticky;top:0;background:inherit;z-index:2}.director-title b{font-size:16px}.director-panel small{display:block;line-height:1.5;opacity:.8}.director-body{padding:14px 18px}.director-body textarea{width:100%;resize:vertical;box-sizing:border-box;min-height:56px;font:inherit;background:var(--input,#151920);color:inherit;border:1px solid #64708088;border-radius:6px;padding:8px}.director-columns{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin:14px 0}.director-panel .field{margin:8px 0}.director-panel .row{flex-wrap:wrap;gap:6px;margin:8px 0}.director-panel input[type=number]{width:76px}.director-preview{padding:12px;background:#478cb51c;border:1px solid #478cb566;border-radius:8px}.director-panel .error{color:#ff9898}.director-rhythm{position:relative;height:56px;margin:18px 18px 0;background:linear-gradient(90deg,#5b80ac22,#ca9f5322);border-bottom:2px solid #7188a4}.director-beat{position:absolute;top:12px;transform:translateX(-50%);font-size:10px!important;min-width:26px!important;padding:6px 4px!important;cursor:ew-resize;touch-action:none;border-top:3px solid #80aee8!important}.director-beat.contact{border-color:#edb763!important}.director-beat.breakdown{border-color:#aa8ded!important}.director-beat.hold{border-color:#73caa1!important}.director-beat.active{outline:1px solid #e1ecff}#directorConnection{margin:8px 0;color:#8fbfda}#directorMessage{min-height:16px;line-height:1.5}
 .studio-debug-uv{position:absolute;z-index:7;left:50%;top:50%;transform:translate(-50%,-50%);width:min(46%,420px);height:min(46%,320px);background:#141a21;border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #0008;pointer-events:none}
+
+/* 1.32.0: one advanced entry, a bounded bottom editor, and a docked scene workspace. */
+.studio-advanced-tools{position:relative;border:0;margin:0;padding:0;flex:none}
+.studio-advanced-tools>summary{padding:6px 10px;white-space:nowrap;border-radius:6px;font-size:12px}
+.studio-advanced-tools[open]>summary{background:var(--ui-selection)}
+.studio-advanced-body{position:absolute;top:calc(100% + 8px);right:0;width:min(360px,90vw);max-height:75vh;overflow:auto;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 12px 32px #0005;z-index:80}
+.studio-advanced-body>section+section{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
+.studio-advanced-body #modeCompare{width:100%;text-align:left}
+.studio-workspace #createWorkspace>.stage{display:flex;flex-direction:column}
+.studio-workspace #createWorkspace .stage-toolbar,.studio-workspace #createWorkspace .transport{flex:none}
+.studio-workspace #createWorkspace #viewportShell{flex:1;min-height:45vh}
+.studio-workspace #createWorkspace .animation-area{flex:none;min-height:0;height:var(--timeline-height)}
+.studio-workspace #createWorkspace .timeline-resize{height:12px;min-height:12px;flex:none}
+.studio-workspace #createWorkspace[data-maximized=animation] #viewportShell .viewport{display:block}
+.studio-workspace #createWorkspace[data-maximized=animation] .animation-area{flex:1;height:auto;min-height:0}
+.studio-workspace #createWorkspace.studio-scene-mode:not([data-maximized]){grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(0,1fr)}
+.studio-workspace #createWorkspace.studio-scene-mode:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) minmax(350px,40%);grid-template-rows:minmax(0,1fr)}
+.studio-workspace #createWorkspace.studio-scene-mode>.stage{grid-row:1;grid-column:1}
+.studio-workspace #createWorkspace.studio-scene-mode>#minimalSidebar,.studio-workspace #createWorkspace.studio-scene-mode>.panel-resize{display:none}
+.studio-workspace #createWorkspace.studio-scene-mode:not(.studio-scene-editing) .animation-area,.studio-workspace #createWorkspace.studio-scene-mode:not(.studio-scene-editing) .timeline-resize,.studio-workspace #createWorkspace.studio-scene-mode:not(.studio-scene-editing) .transport{display:none}
+.studio-workspace #createWorkspace.studio-scene-mode>#sceneStudioDialog{position:static!important;inset:auto!important;grid-column:2;grid-row:1;width:auto;height:100%;max-height:none;min-height:0;min-width:0;resize:none;overflow:auto;border:0;border-left:1px solid var(--line);border-radius:0;box-shadow:none;padding:12px;z-index:auto}
+.studio-workspace #sceneStudioDialog .scene-title{cursor:default;align-items:center;gap:6px;flex-wrap:wrap;padding-bottom:8px}
+.studio-workspace #sceneStudioDialog .scene-title h2{font-size:14px;min-width:130px}
+.studio-workspace #sceneStudioDialog .scene-track{min-width:0}
+.studio-workspace #sceneStudioDialog .scene-lane{grid-template-columns:95px minmax(0,1fr)}
+@media(max-width:1100px){.studio-workspace #createWorkspace.studio-scene-mode:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) minmax(310px,42%)}}
+
+/* Editing a scene clip keeps the existing pose/rig sidebar reachable alongside the scene controls. */
+.studio-workspace #createWorkspace.studio-scene-editing:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) var(--right-width) minmax(310px,32%)}
+.studio-workspace #createWorkspace.studio-scene-editing:not(.minimal-sidebar-closed)>#minimalSidebar{display:flex;grid-column:2;grid-row:1}
+.studio-workspace #createWorkspace.studio-scene-editing.minimal-sidebar-closed:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) minmax(310px,32%)}
+.studio-workspace #createWorkspace.studio-scene-editing:not(.minimal-sidebar-closed)>#sceneStudioDialog{grid-column:3}

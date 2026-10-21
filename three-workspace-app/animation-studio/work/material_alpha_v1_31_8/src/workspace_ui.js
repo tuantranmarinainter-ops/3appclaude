@@ -4,7 +4,7 @@ function setupStudioWorkspace(){
  const make=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
  const group=(parent,label,nodes)=>{const e=make('div','studio-group');e.setAttribute('role','group');e.setAttribute('aria-label',label);e.append(...nodes.filter(Boolean));parent.append(e);return e;};
  const header=document.querySelector('body>header'),actions=header.querySelector('.header-actions');
- $('buildBadge').textContent='1.31.7';$('buildBadge').title='Animation Studio 1.31.7 · Scene Studio';
+ $('buildBadge').textContent='1.32.0';$('buildBadge').title='Animation Studio 1.32.0';
  const name=$('clipName').closest('label');name.classList.add('studio-project-name');name.firstChild.textContent='Dự án';
  const identity=make('div','studio-identity');identity.append(name);const state=make('span','studio-save-state');state.id='studioSaveState';identity.append(state);header.querySelector('.brand').after(identity);
  group(actions,'Lịch sử',[$('undoBtn'),$('redoBtn')]);
@@ -47,12 +47,15 @@ function setupStudioWorkspace(){
  $('selectBodyKeys').textContent='Chọn key tại đây';$('selectBodyKeys').title='Chọn toàn thân tại frame hiện tại';
  $('minimalKeyOptions').querySelector('summary').textContent='Chỉnh key · Nội suy · Thời lượng';
  const help=$('help').querySelector('ol');help.children[2].textContent='Trong Animation, bật Control Rig ở thanh 3D. Chọn khớp rồi mở tab Thuộc tính bên phải để chỉnh FK/IK, Snap và Transform.';
- setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();
+ setupStudioAdvancedTools();setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();setupStudioSceneWorkspace();
+ const timelineGrip=document.querySelector('[data-resize=timeline]');timelineGrip.title='Kéo để đổi chiều cao editor · khung 3D giữ ít nhất 45% cửa sổ';
+ const fitTimeline=()=>{if(mode!=='compare')clampStudioTimelineHeight(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||240);};
+ const sizing=new ResizeObserver(fitTimeline);for(const el of [document.querySelector('.stage'),toolbar,transport])sizing.observe(el);fitTimeline();
  const observer=new MutationObserver(()=>syncStudioWorkspace());observer.observe($('saveBtn'),{childList:true,subtree:true});observer.observe($('selectedName'),{childList:true,subtree:true});
  $('clipName').addEventListener('input',syncStudioWorkspace);
  // Fail visibly if a future layout edit accidentally removes an existing control.
  const missing=original.filter(e=>!e.isConnected);if(missing.length)throw Error('UI mất điều khiển: '+missing.map(e=>e.id).join(', '));
- document.body.dataset.uiVersion='1.31.7';syncStudioWorkspace();
+ document.body.dataset.uiVersion='1.32.0';syncStudioWorkspace();
 }
 
 function syncStudioWorkspace(){
@@ -67,7 +70,7 @@ function syncStudioWorkspace(){
 
 function selectStudioSettings(key){
  const root=$('studioSettingsBody');if(!root)return;
- const keys=[...root.children].map(p=>p.dataset.settingsPage);if(!keys.includes(key))key='appearance';
+ const keys=[...root.children].map(p=>p.dataset.settingsPage);if(!keys.includes(key))key='input';
  for(const p of root.children)p.hidden=p.dataset.settingsPage!==key;
  for(const b of document.querySelectorAll('[data-settings-tab]')){const on=b.dataset.settingsTab===key;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;}
  root.scrollTop=0;
@@ -77,7 +80,7 @@ function setupStudioSettings(){
  const form=$('settings').querySelector('form'),items=[...form.children].filter(e=>e.id!=='settingsTitle');
  const nav=document.createElement('div');nav.className='studio-settings-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','Nhóm cài đặt');nav.setAttribute('aria-orientation','vertical');
  const body=document.createElement('div');body.id='studioSettingsBody';
- const titles={appearance:'Giao diện',input:'Điều khiển',viewport:'Khung 3D',rig:'Xương & Control Rig',timeline:'Animation & Timeline',presets:'Preset & dự án'},pages={};
+ const titles={input:'Điều khiển',appearance:'Giao diện',viewport:'Khung 3D',rig:'Xương & Control Rig',timeline:'Animation & Timeline',presets:'Preset & dự án'},pages={};
  for(const[key,title]of Object.entries(titles)){
   const b=document.createElement('button');b.type='button';b.textContent=title;b.dataset.settingsTab=key;b.id='settingsTab-'+key;b.setAttribute('role','tab');b.setAttribute('aria-controls','settingsPage-'+key);b.onclick=()=>selectStudioSettings(key);nav.append(b);
   const p=document.createElement('section');p.id='settingsPage-'+key;p.dataset.settingsPage=key;p.setAttribute('role','tabpanel');p.setAttribute('aria-labelledby',b.id);const h=document.createElement('h3');h.textContent=title;p.append(h);pages[key]=p;body.append(p);
@@ -86,7 +89,7 @@ function setupStudioSettings(){
  let previous='presets';for(const item of items){const key=Object.keys(targets).find(k=>targets[k].some(id=>item.id===id||item.querySelector('#'+id)))||(item.tagName==='SMALL'?previous:'presets');pages[key].append(item);previous=key;}
  const layout=document.createElement('div');layout.className='studio-settings-layout';layout.append(nav,body);form.append(layout);
  nav.addEventListener('keydown',e=>{if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key))return;const bs=[...nav.children],i=bs.indexOf(e.target);if(i<0)return;e.preventDefault();const n=e.key==='Home'?0:e.key==='End'?bs.length-1:(i+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length;bs[n].click();bs[n].focus();});
- selectStudioSettings('appearance');
+ selectStudioSettings('input');
 }
 
 function setupStudioCompare(){
@@ -107,7 +110,7 @@ function setupStudioCompare(){
 }
 
 function setupStudioMenus(){
- const selector='#fileMenu,#rigPresetMenu,#minimalViewMenu,#minimalSpeed,.studio-import-menu';
+ const selector='#fileMenu,#rigPresetMenu,#minimalViewMenu,#minimalSpeed,.studio-import-menu,.studio-advanced-tools';
  for(const menu of document.querySelectorAll(selector))menu.addEventListener('toggle',()=>{if(menu.open)for(const other of document.querySelectorAll(selector))if(other!==menu)other.open=false;});
  document.addEventListener('pointerdown',e=>{for(const m of document.querySelectorAll(selector))if(!m.contains(e.target))m.open=false;});
  document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;for(const m of document.querySelectorAll(selector))if(m.open){m.open=false;m.querySelector('summary').focus();}});
@@ -120,4 +123,40 @@ function setupStudioTextureDrag(){
  handle.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;panel.style.right='auto';panel.style.left=Math.max(0,Math.min(innerWidth-panel.offsetWidth,drag.left+e.clientX-drag.x))+'px';panel.style.top=Math.max(0,Math.min(innerHeight-60,drag.top+e.clientY-drag.y))+'px';});
  const end=()=>{const id=drag?.id;drag=null;if(id!==undefined&&handle.hasPointerCapture(id))handle.releasePointerCapture(id);};for(const ev of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(ev,end);window.addEventListener('blur',end);$('textureClose').addEventListener('click',end);
  panel.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();$('textureClose').click();}});
+}
+
+// Keep the original nodes and listeners: advanced tools have one shared entry point.
+function setupStudioAdvancedTools(){
+ const menu=document.createElement('details');menu.id='studioAdvancedTools';menu.className='studio-advanced-tools studio-popover';
+ const title=document.createElement('summary');title.textContent='Công cụ nâng cao';menu.append(title);
+ const body=document.createElement('div');body.className='studio-advanced-body';menu.append(body);
+ const compare=document.createElement('section');compare.setAttribute('aria-label','Đối chiếu xương');compare.append($('modeCompare'));body.append(compare);
+ const target=document.createElement('section');target.setAttribute('aria-label','Bộ xương đích và mapping');
+ const heading=document.createElement('h3');heading.textContent='Bộ xương đích / Mapping';target.append(heading);
+ target.append($('exportProfile').closest('label'),$('targetInput').closest('label'),$('targetSummary'),$('mappingBtn'));body.append(target);
+ $('modeCreate').parentElement.append(menu);menu.open=false;
+ $('toggleTree').hidden=true;$('toggleProperties').hidden=true;
+ // The palette buttons remain connected for compatibility; the select is the visible preset entry.
+ $('themeSwatches').hidden=true;
+}
+
+// ScenePanel is created later by its existing controller. Dock it without changing scene operations.
+function setupStudioSceneWorkspace(){
+ const workspace=$('createWorkspace');
+ const connect=()=>{
+  const panel=$('sceneStudioDialog'),button=$('sceneStudioBtn');if(!panel||!button)return false;
+  workspace.append(panel);$('modeCreate').after(button);
+  const title=panel.querySelector('.scene-title');
+  title.addEventListener('pointerdown',event=>{if(!event.target.closest('button'))event.stopImmediatePropagation();},true);
+  const sync=()=>{
+   workspace.classList.toggle('studio-scene-mode',!!sceneMode);
+   workspace.classList.toggle('studio-scene-editing',!!sceneEditing);
+   button.setAttribute('aria-pressed',String(!!sceneMode));
+   editView.dirty=true;
+  };
+  const observer=new MutationObserver(sync);observer.observe(panel,{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true});sync();
+  return true;
+ };
+ if(connect())return;
+ const ready=new MutationObserver(()=>{if(connect())ready.disconnect();});ready.observe(document.body,{childList:true,subtree:true});
 }
