@@ -1,4 +1,4 @@
-import {test} from 'node:test';
+import {test} from 'node:test';import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {spawn} from 'node:child_process';
@@ -93,7 +93,7 @@ test('E5 fixed Vietnamese prompt executes real stdio MCP animation and observed 
   const request=context.request,headers={Origin:base};assert.equal((await request.post(base+'/api/unified/commands',{headers,data:{}})).status(),401);assert.ok((await request.post(base+'/api/unified/session',{headers})).ok());
   async function projectRevision(id){return(await request.get(`${base}/api/unified/projects/${id}`).then(r=>r.json())).project.revision;}
   async function command(command,args={},projectId){const response=await request.post(base+'/api/unified/commands',{headers,data:{requestId:randomUUID(),command,args,...(projectId?{projectId,expectedRevision:await projectRevision(projectId)}:{})}});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body;}
-  const {makeEmptyDraft}=await import(require.resolve('@topview/3d-builder'));
+  const {makeEmptyDraft}=await import(pathToFileURL(require.resolve('@topview/3d-builder')).href);
   const projectId=(await command('project.create',{name:'E5 fixed text demo',scene:makeEmptyDraft('E5',30,120,{fov:50,position:{x:0,y:2,z:5},rotation:{x:0,y:0,z:0},lookAt:{x:0,y:1,z:0}})})).projectId;
   const bytes=readFileSync(path.join(workspace,'builtin-assets/animation-studio/sample.fbx'));
   const uploaded=await request.post(base+'/api/unified/uploads',{headers:{...headers,'Content-Type':'application/octet-stream','X-File-Name':'E5.fbx'},data:bytes});assert.ok(uploaded.ok());
