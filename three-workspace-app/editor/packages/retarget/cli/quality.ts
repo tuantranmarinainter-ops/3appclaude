@@ -1,6 +1,6 @@
 /** Foot contact / root quality metrics on the written GLB (measure + warn only; motion is never changed). */
-export const CONTACT_HEIGHT_METERS = 0.03
-export const CONTACT_MAX_VERTICAL_SPEED = 0.3
+import { contactMask } from '../src/footContacts.ts'
+export { CONTACT_HEIGHT_METERS, CONTACT_MAX_VERTICAL_SPEED } from '../src/footContacts.ts'
 const HIPS_BELOW_RATIO = 0.25, HIPS_ABOVE_RATIO = 2, PENETRATION_METERS = 0.05, SLIDE_METERS = 0.15, SLIDE_MIN_CONTACT_FRAMES = 10
 
 export interface QualityWarning { code: string; message: string; suggestion?: string }
@@ -42,11 +42,7 @@ export class QualityMeter {
     let footSlideMaxSpeed = 0
     for (const side of SIDES) {
       const samples = this.feet[side]
-      const contact = samples.map((sample, index) => {
-        const a = samples[Math.max(0, index - 1)]!, b = samples[Math.min(samples.length - 1, index + 1)]!
-        const vy = b.time > a.time ? (b.y - a.y) / (b.time - a.time) : 0
-        return sample.y - groundY <= CONTACT_HEIGHT_METERS && Math.abs(vy) <= CONTACT_MAX_VERTICAL_SPEED
-      })
+      const contact = contactMask(samples, groundY)
       contactFrames[side] = contact.filter(Boolean).length
       contact.forEach((inContact, index) => { if (!inContact) return; const last = contactRanges[side].at(-1); if (last && last[1] === index - 1) last[1] = index; else contactRanges[side].push([index, index]) })
       for (let index = 1; index < samples.length; index++) {
