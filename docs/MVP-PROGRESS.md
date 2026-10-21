@@ -48,13 +48,15 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | L3+L4 CI GitHub Actions + `pnpm test:all` | ✅ PR #18 | CI xanh trên GitHub; test cần mẫu ngoài tự bỏ qua |
 | H3 `scene.export.bbsFilm` → `<cảnh>.bbs-film.zip` | ✅ Claude | Mặc định toàn cảnh; chạy thật Java 17 + Blender 4.2: 2 actor, 2 camera, 130 pose track, đọc lại native |
 | H1 `scene.export.glb` GLB toàn cảnh | ✅ PR #19 | C2 mở trong Blender 4.2: 2 armature, 1 camera; tay A lệch B 60.0° ở frame 12 như `scene.evaluate` |
+| H2 `scene.export.blend-fbx` (.blend + FBX) | ✅ PR #21 | C2: .blend và FBX mở lại đúng 60.0° ở frame 12 (FBX nhập với Animation Offset = 0) |
+| G1 `scene.layout.read` (AI đọc cảnh) | ✅ PR #22 | C2 frame 12: A trỏ Motion App 3, B Action gốc, t=0.4 s; không đổi revision |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
 | --- | --- | --- |
 | Codex phiên 1 | D5 Workbench chọn đoạn + huỷ | #5 |
-| Codex cloud | H2 `.blend` / FBX từ GLB toàn cảnh | #12 |
-| Codex tài khoản 2 (đã xong EPIC-B) | EPIC-G: AI xếp nhân vật + camera qua MCP | #9 |
+| Codex cloud | D1b độ nâng chân ≤ 1 cm | PR #17 |
+| Codex cloud | EPIC-G G2–G4: AI xếp nhân vật + camera qua MCP | #9 |
 | ChatGPT Plus | Tìm hiểu định dạng film/cảnh BBS FS, `.scene.bobj` | #10 |
 | Claude | C1–C2 ráp nối + chạy trọn chuỗi | — |
 
