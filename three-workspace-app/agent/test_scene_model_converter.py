@@ -34,11 +34,11 @@ def fixture_glb() -> bytes:
 class SceneConverterTests(unittest.TestCase):
     def test_command_keeps_paths_as_separate_arguments_and_enables_python_exit_code(self):
         command = blender_command(Path('/tools/Blender with spaces'), Path('/tmp/in $(touch bad).glb'), Path('/tmp/output folder'), 30)
-        self.assertEqual(command[0], '/tools/Blender with spaces')
+        self.assertEqual(command[0], str(Path('/tools/Blender with spaces')))
         self.assertIn('--background', command)
         self.assertIn('--factory-startup', command)
         self.assertEqual(command[command.index('--python-exit-code')+1], '1')
-        self.assertEqual(command[command.index('--input')+1], '/tmp/in $(touch bad).glb')
+        self.assertEqual(command[command.index('--input')+1], str(Path('/tmp/in $(touch bad).glb')))
         for fps in [0, 241, True, 29.97]:
             with self.assertRaises(ValueError):
                 blender_command(Path('blender'), Path('a'), Path('b'), fps)
