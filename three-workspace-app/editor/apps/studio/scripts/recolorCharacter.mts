@@ -10,8 +10,10 @@ import { decodeGlb, encodeGlb } from '../../../packages/retarget/cli/glb.ts'
 
 const linear = (hex: string) => [1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255) ** 2.2)
 
-export function recolor(bytes: Uint8Array, color: string, joints = color): Uint8Array {
+export function recolor(bytes: Uint8Array, color: string, joints = color, scale = 1): Uint8Array {
   const { json, bin } = decodeGlb(bytes)
+  // Size is baked into the scene root nodes so placed Characters keep unit scale (Film replay has no actor scale).
+  if (scale !== 1) for (const index of json.scenes?.[json.scene ?? 0]?.nodes ?? []) { const node = json.nodes[index]; node.scale = (node.scale ?? [1, 1, 1]).map((v: number) => v * scale) }
   for (const material of json.materials ?? []) {
     const pbr = material.pbrMetallicRoughness ??= {}
     pbr.baseColorFactor = [...linear(/joint/i.test(material.name ?? '') ? joints : color), 1]
@@ -21,8 +23,8 @@ export function recolor(bytes: Uint8Array, color: string, joints = color): Uint8
 }
 
 if (process.argv[1]?.endsWith('recolorCharacter.mts')) {
-  const { values } = parseArgs({ options: { src: { type: 'string' }, out: { type: 'string' }, color: { type: 'string' }, joints: { type: 'string' } } })
+  const { values } = parseArgs({ options: { src: { type: 'string' }, out: { type: 'string' }, color: { type: 'string' }, joints: { type: 'string' }, scale: { type: 'string' } } })
   if (!values.src || !values.out || !/^#[0-9a-f]{6}$/i.test(values.color ?? '')) throw new TypeError('--src, --out and --color #RRGGBB are required')
-  writeFileSync(values.out, recolor(readFileSync(values.src), values.color!, values.joints))
+  writeFileSync(values.out, recolor(readFileSync(values.src), values.color!, values.joints, Number(values.scale ?? 1)))
   console.log(`wrote ${values.out}`)
 }

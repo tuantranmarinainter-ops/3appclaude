@@ -33,7 +33,7 @@ test('Minecraft20 block characters share one rig in a scene and play the native 
   }
   const evaluated = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'scene.evaluate', args: { frame: 10 } }) as { result: { issues: unknown[]; skeletonSamples: Array<{ nodeId: string; bones: Array<{ name: string }> }> } }
   assert.deepEqual(evaluated.result.issues, [])
-  for (const nodeId of placed) assert.equal(evaluated.result.skeletonSamples.find((sample) => sample.nodeId === nodeId)?.bones.length, 20)
+  for (const nodeId of placed) assert.equal(evaluated.result.skeletonSamples.find((sample) => sample.nodeId === nodeId)?.bones.length, 17)
   const project = await readUnifiedProject(projectId)
   assert.equal(new Set(Object.values(project.characters).map((character) => character.skeletonId)).size, 1)
 })

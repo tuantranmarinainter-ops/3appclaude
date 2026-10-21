@@ -106,14 +106,19 @@ export class Writer {
  * Node per bone (rest local TRS), parented as in the source under one root node that carries the top bones' parent world
  * transform (identity for Minecraft20; a GLB armature's rotation/scale for Topview characters).
  */
-export function writeSkeleton(w: Writer, root: Object3D, rootName = 'minecraft20') {
-  const bones: Bone[] = []
+export function writeSkeleton(w: Writer, root: Object3D, rootName = 'minecraft20', size = 1) {
+  let bones: Bone[] = []
   root.traverse((object) => { if ((object as Bone).isBone) bones.push(object as Bone) })
+  // Minecraft20 also has three global item bones (`misc_gbone_*`) beside `anchor`. They carry no mesh and the Film pose
+  // bake needs one connected skeleton root, so App 2 assets keep only the `anchor` tree (17 bones); App 1 `.bobj` is unaffected.
+  const anchor = bones.find((bone) => bone.name === 'anchor')
+  if (anchor) bones = bones.filter((bone) => { for (let o: Object3D | null = bone; o; o = o.parent) if (o === anchor) return true; return false })
   const index = new Map(bones.map((bone, i) => [bone, i + 1]))
   const tops = bones.filter((bone) => !index.has(bone.parent as Bone)), holder = tops[0]?.parent
   const [p, q, sc] = [new Vector3(), new Quaternion(), new Vector3()]
   if (holder && holder !== root) holder.matrixWorld.decompose(p, q, sc)
-  w.json.nodes.push({ name: rootName, children: tops.map((bone) => index.get(bone)!), ...(holder && holder !== root ? { translation: p.toArray(), rotation: q.toArray(), scale: sc.toArray() } : {}) })
+  // `size` is baked into the root node: placed Characters keep unit scale, which Film replay requires.
+  w.json.nodes.push({ name: rootName, children: tops.map((bone) => index.get(bone)!), ...(holder && holder !== root ? { translation: p.toArray(), rotation: q.toArray(), scale: sc.toArray().map((v) => v * size) } : size !== 1 ? { scale: [size, size, size] } : {}) })
   for (const bone of bones) {
     const children = bone.children.filter((child) => index.has(child as Bone)).map((child) => index.get(child as Bone)!)
     w.json.nodes.push({ name: bone.name, translation: bone.position.toArray(), rotation: bone.quaternion.toArray(), ...(children.length ? { children } : {}) })
@@ -161,8 +166,8 @@ export function setGlb(name: string, boxes: readonly SetBox[]): Uint8Array {
   return w.glb()
 }
 
-export function characterGlb(root: Object3D, role: Role): Uint8Array {
-  const w = new Writer(), { bones, index } = writeSkeleton(w, root)
+export function characterGlb(root: Object3D, role: Role, size = 1): Uint8Array {
+  const w = new Writer(), { bones, index } = writeSkeleton(w, root, 'minecraft20', size)
   const jointOf = new Map(bones.map((bone, i) => [bone.name, i]))
   const ibm = new Float32Array(bones.length * 16)
   bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
@@ -175,8 +180,8 @@ export function characterGlb(root: Object3D, role: Role): Uint8Array {
 }
 
 /** Skeleton (with a mesh-less skin) plus every Action (bone-local translation/rotation tracks, linear) on the same Minecraft20 node names. */
-export function actionsGlb(root: Object3D & { animations: AnimationClip[] }): Uint8Array {
-  const w = new Writer(), { bones, index } = writeSkeleton(w, root), byName = new Map(bones.map((bone) => [bone.name, index.get(bone)!]))
+export function actionsGlb(root: Object3D & { animations: AnimationClip[] }, size = 1): Uint8Array {
+  const w = new Writer(), { bones, index } = writeSkeleton(w, root, 'minecraft20', size), byName = new Map(bones.map((bone) => [bone.name, index.get(bone)!]))
   // A skin (no mesh) makes importers such as App 2 read these nodes as the Actions' skeleton.
   const ibm = new Float32Array(bones.length * 16)
   bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
@@ -195,22 +200,23 @@ export function actionsGlb(root: Object3D & { animations: AnimationClip[] }): Ui
   return w.glb()
 }
 
-async function main(out: string) {
+async function main(out: string, size = 1) {
   mkdirSync(out, { recursive: true })
   const root = await loadMinecraft20()
-  for (const role of ROLES) { const bytes = characterGlb(root, role); writeFileSync(join(out, `${role.name}.mc20.glb`), bytes); console.log(`wrote ${role.name}.mc20.glb ${bytes.length} B`) }
-  const actions = actionsGlb(root); writeFileSync(join(out, 'minecraft20-actions.glb'), actions); console.log(`wrote minecraft20-actions.glb ${actions.length} B, ${root.animations.length} Actions`)
+  for (const role of ROLES) { const bytes = characterGlb(root, role, size); writeFileSync(join(out, `${role.name}.mc20.glb`), bytes); console.log(`wrote ${role.name}.mc20.glb ${bytes.length} B`) }
+  const actions = actionsGlb(root, size); writeFileSync(join(out, 'minecraft20-actions.glb'), actions); console.log(`wrote minecraft20-actions.glb ${actions.length} B, ${root.animations.length} Actions`)
 }
 
 /** `--actions <file.bobj> --name <stem>`: pack another Minecraft20 Action library as `<stem>.mc20-actions.glb`. */
-async function packActions(out: string, file: string, name: string) {
+async function packActions(out: string, file: string, name: string, size = 1) {
   mkdirSync(out, { recursive: true })
-  const root = await loadMinecraft20(file), bytes = actionsGlb(root)
+  const root = await loadMinecraft20(file), bytes = actionsGlb(root, size)
   writeFileSync(join(out, `${name}.mc20-actions.glb`), bytes); console.log(`wrote ${name}.mc20-actions.glb ${bytes.length} B, ${root.animations.length} Actions`)
 }
 
 if (process.argv[1]?.endsWith('minecraftBlockCharacters.ts')) {
-  const { values } = parseArgs({ options: { out: { type: 'string' }, actions: { type: 'string' }, name: { type: 'string' } } })
+  const { values } = parseArgs({ options: { out: { type: 'string' }, actions: { type: 'string' }, name: { type: 'string' }, size: { type: 'string' } } })
   if (!values.out) throw new TypeError('--out <dir> is required')
-  void (values.actions ? packActions(values.out, values.actions, values.name ?? 'library') : main(values.out))
+  const size = Number(values.size ?? 1)
+  void (values.actions ? packActions(values.out, values.actions, values.name ?? 'library', size) : main(values.out, size))
 }
