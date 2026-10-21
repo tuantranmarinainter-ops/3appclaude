@@ -16,7 +16,7 @@ interface StoredFile { id: string; name: string; mimeType: string; sizeBytes: nu
 interface StoredJob {
   jobId: string
   projectId: string
-  type: 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
+  type: 'scene.export.glb' | 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
   state: UnifiedJobState
   sourceRevision: number
   sourceSha256: string
@@ -482,7 +482,7 @@ async function readRecord(projectId: string, jobId: string): Promise<StoredJob |
   if (runtime?.record.projectId === projectId) return runtime.record
   try {
     const parsed = JSON.parse(await readFile(recordPath(projectId, jobId), 'utf8')) as StoredJob
-    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
+    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.glb', 'shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
     if (parsed.state === 'queued' || parsed.state === 'running') {
       parsed.state = 'failed'
       parsed.error = { code: 'HOST_RESTARTED', message: 'The local host restarted before the job completed.' }
@@ -506,7 +506,7 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   if (!record) throw Object.assign(new Error('Render job not found'), { code: 'NOT_FOUND', status: 404 })
   const pending = runtimes.get(jobId)
   if (pending?.active && ['succeeded', 'failed', 'cancelled'].includes(record.state)) await pending.done
-  if (record.state === 'succeeded') return { state: record.state, committed: !['shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
+  if (record.state === 'succeeded') return { state: record.state, committed: !['scene.export.glb', 'shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
   if (record.state === 'failed' || record.state === 'cancelled') return { state: record.state, committed: false }
   const runtime = runtimes.get(jobId)
   if (!runtime) return { state: record.state, committed: false }

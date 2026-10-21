@@ -1,3 +1,4 @@
+import { exportSceneGlb, storeSceneGlb, validateSceneGlbArgs, type SceneGlbArgs } from './sceneGlb'
 import { prepareShotResult, applyShotResult } from './shotResult'
 import { createShotPackage, saveShotExport, type ShotExportArgs } from './shotExchange'
 import { storeShotArtifact } from './unifiedJobs'
@@ -968,6 +969,21 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       const native = error as { code?: unknown; status?: unknown; message?: unknown }
       if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Scene render job could not start', native.status)
       throw error
+    }
+  }
+  if (envelope.command === 'scene.export.glb') {
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Scene export source revision changed', 409)
+    try {
+      const args = envelope.args as unknown as SceneGlbArgs
+      validateSceneGlbArgs(project, args)
+      if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision })
+      const built = await exportSceneGlb(project, args)
+      const result = await storeSceneGlb(project, built)
+      const response = success(envelope.requestId, id, project.revision, result)
+      await saveRequest(envelope, hash, response)
+      return response
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Scene GLB export failed', 400)
     }
   }
   if (envelope.command === 'shot.export') {
