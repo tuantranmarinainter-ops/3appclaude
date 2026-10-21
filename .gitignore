@@ -7,3 +7,6 @@ setup-logs/
 __pycache__/
 *.pyc
 .venv/
+
+# test:all output
+three-workspace-app/editor/.test-results/
