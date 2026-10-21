@@ -118,6 +118,6 @@ test('queue timeout distinguishes unsent and dispatched results, and heartbeat e
  }finally{Date.now=oldNow;}
 });
 test('Python App3 MCP suite is part of the existing App3 test:all entry',()=>{
- const child=spawnSync(process.env.PYTHON||'python3',['-m','unittest','-v','agent.app3_mcp_test'],{cwd:workspace,encoding:'utf8'});
+ const child=spawnSync(process.env.PYTHON||(process.platform==='win32'?'python':'python3'),['-m','unittest','-v','agent.app3_mcp_test'],{cwd:workspace,encoding:'utf8'});
  assert.equal(child.status,0,child.stdout+child.stderr);assert.match(child.stderr,/Ran [1-9]\d* tests/);
 });
