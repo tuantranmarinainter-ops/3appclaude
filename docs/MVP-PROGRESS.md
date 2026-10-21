@@ -2,7 +2,7 @@
 
 Cập nhật: 2026-10-21 · Kế hoạch: [MVP-PLAN-2026-10-21.md](MVP-PLAN-2026-10-21.md) · Claude cập nhật file này mỗi khi kiểm/merge một việc.
 
-**Toàn bộ MVP: `[████░░░░░░] 4/10 việc đã merge`** (nền đã xong: App 1, TASK-1, 2, 4)
+**Toàn bộ MVP: `[████████░░] 8/10 việc đã merge`** (nền đã xong: App 1, TASK-1, 2, 4)
 
 Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ trả lại sửa · 🛠️ AI đang làm · ⏳ chờ
 
@@ -23,13 +23,13 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | A3 Xuất gói kết quả | ✅ | Xuất từ Chromium → `validate-result` exit 0; GLB 65 joint không prefix |
 | A4 Kèm `.bobj` trong gói | ✅ | BOBJ đọc lại 20 xương; sửa tay đã bổ sung ở A5 (PR #2) |
 
-## EPIC-B — App 2 (AI-2) `[░░░░░░░░░░] 0/4`
+## EPIC-B — App 2 (Codex tài khoản 2) `[██████████] 4/4` ✅
 | Việc | Trạng thái | Ghi chú |
 | --- | --- | --- |
-| B1 Nhập GLB + manifest App 1 | 🛠️ | |
-| B2 `shot.export` | ⏳ | |
-| B3 `shot.result.import` | ⏳ | |
-| B4 CLI + MCP | ⏳ | |
+| B1 Nhập GLB + manifest App 1 | ✅ | UUID v8 cho Motion, dùng lại khi cùng hash, alias tên xương |
+| B2 `shot.export` | ✅ | Gói 2 nhân vật qua bộ kiểm TS + Python |
+| B3 `shot.result.import` | ✅ | Motion mới, một bước Undo, REVISION_CONFLICT |
+| B4 CLI + MCP | ✅ | Python 113/113 |
 
 ## Ráp nối — Claude `[░░░░░░░░░░] 0/2`
 | Việc | Trạng thái | Ghi chú |
