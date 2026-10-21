@@ -2,7 +2,7 @@
 
 Cập nhật: 2026-10-21 · Kế hoạch: [MVP-PLAN-2026-10-21.md](MVP-PLAN-2026-10-21.md) · Claude cập nhật file này mỗi khi kiểm/merge một việc.
 
-**Toàn bộ MVP: `[░░░░░░░░░░] 0/10 việc đã merge`** (nền đã xong: App 1, TASK-1, 2, 4)
+**Toàn bộ MVP: `[████░░░░░░] 4/10 việc đã merge`** (nền đã xong: App 1, TASK-1, 2, 4)
 
 Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ trả lại sửa · 🛠️ AI đang làm · ⏳ chờ
 
@@ -15,13 +15,13 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | TASK-4 thiết kế MCP cục bộ App 3 (AI-2) | ✅ 26/26 lệnh, tên hàm có thật | `1532dd4` |
 | Mã nguồn App 3 vào repo, build khớp từng byte | ✅ | `58afbcc` |
 
-## EPIC-A — App 3 (AI-1) `[░░░░░░░░░░] 0/4`
+## EPIC-A — App 3 (AI-1) `[██████████] 4/4` ✅
 | Việc | Trạng thái | Ghi chú |
 | --- | --- | --- |
-| A1 TASK-3b sửa UI 1.32.0 | 🛠️ | Lần 1 trả lại: mất timeline sau "Thoát cảnh", Graph Editor chật |
-| A2 Mở gói shot | ⏳ | |
-| A3 Xuất gói kết quả | ⏳ | |
-| A4 Kèm `.bobj` trong gói | ⏳ | |
+| A1 TASK-3b sửa UI 1.32.0 | ✅ | Chromium: timeline còn sau Thoát cảnh + tải lại; khung 3D 45%, đồ thị thấy 199 px |
+| A2 Mở gói shot | ✅ | 30/30 test; mở gói Xbot thật, Shot panel đúng |
+| A3 Xuất gói kết quả | ✅ | Xuất từ Chromium → `validate-result` exit 0; GLB 65 joint không prefix |
+| A4 Kèm `.bobj` trong gói | ✅ | BOBJ đọc lại 20 xương. Việc sau: thêm bỏ xoắn cẳng tay + khoá bàn tay như App 1 |
 
 ## EPIC-B — App 2 (AI-2) `[░░░░░░░░░░] 0/4`
 | Việc | Trạng thái | Ghi chú |
