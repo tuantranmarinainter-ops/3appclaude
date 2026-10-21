@@ -21,7 +21,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | A1 TASK-3b sửa UI 1.32.0 | ✅ | Chromium: timeline còn sau Thoát cảnh + tải lại; khung 3D 45%, đồ thị thấy 199 px |
 | A2 Mở gói shot | ✅ | 30/30 test; mở gói Xbot thật, Shot panel đúng |
 | A3 Xuất gói kết quả | ✅ | Xuất từ Chromium → `validate-result` exit 0; GLB 65 joint không prefix |
-| A4 Kèm `.bobj` trong gói | ✅ | BOBJ đọc lại 20 xương. Việc sau: thêm bỏ xoắn cẳng tay + khoá bàn tay như App 1 |
+| A4 Kèm `.bobj` trong gói | ✅ | BOBJ đọc lại 20 xương; sửa tay đã bổ sung ở A5 (PR #2) |
 
 ## EPIC-B — App 2 (AI-2) `[░░░░░░░░░░] 0/4`
 | Việc | Trạng thái | Ghi chú |
@@ -36,6 +36,15 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | --- | --- | --- |
 | C1 Đưa App 3 mới vào Studio, nối shot.export ↔ App 3 ↔ shot.result.import | ⏳ | sau A3 + B3 |
 | C2 Chạy thử trọn chuỗi (1 cảnh, 2 nhân vật) + xuất film BBS FS | ⏳ | sau C1 |
+
+## Đợt 3 (ngoài MVP, AI-1 / Codex)
+| Việc | Trạng thái | Ghi chú |
+| --- | --- | --- |
+| A5 `.bobj` App 3 bỏ xoắn + khoá tay | ✅ PR #2 | Lux Attack1: xoắn 116.6° → 0°, khớp App 1 |
+| D6 sửa 2 lỗi lint Workbench | 🛠️ | Issue #1; nhánh chưa có commit (Codex lỗi 403/mạng) |
+| D5 chọn đoạn Action + huỷ | ⏳ | |
+| D4 thân trên Minecraft20 | ⏳ | |
+| D1 khoá chân IK | ⏳ | |
 
 ## Cần người dùng
 | Việc | Trạng thái |
