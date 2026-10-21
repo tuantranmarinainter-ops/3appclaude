@@ -240,7 +240,10 @@
     if (replaces) opening = true
     try {
       const studio = await waitForStudio()
-      if (type === 'app3-bind') {
+      if (type === 'view.silhouette.set') {
+        if (!value || Object.keys(value).length !== 1 || typeof value.enabled !== 'boolean') throw Error('VALIDATION_FAILED')
+        reply(requestId, true, studio.silhouette.set(value.enabled))
+      } else if (type === 'app3-bind') {
         reply(requestId, true, await bindLocal(value))
       } else if (type === 'open') {
         const current = JSON.stringify(studio.serialized(false))
