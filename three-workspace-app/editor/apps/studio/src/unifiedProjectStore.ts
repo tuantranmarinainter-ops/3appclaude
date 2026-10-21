@@ -1,5 +1,6 @@
 import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
 import { startUnifiedSceneConversion } from './unifiedJobs'
+import { readSceneLayout } from './sceneLayout'
 import { exportSceneGlb, storeSceneGlb, validateSceneGlbArgs, type SceneGlbArgs } from './sceneGlb'
 import { prepareShotResult, applyShotResult } from './shotResult'
 import { createShotPackage, saveShotExport, type ShotExportArgs } from './shotExchange'
@@ -934,6 +935,15 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (error instanceof UnifiedStoreError) throw error
       if (error instanceof Error && 'code' in error && error.code === 'JOB_BUSY') throw new UnifiedStoreError('JOB_BUSY', 'A local job is already active', 423)
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof TypeError ? error.message : 'Normalization plan could not inspect source and target assets', 422)
+    }
+  }
+  if (envelope.command === 'scene.layout.read') {
+    try {
+      const response = success(envelope.requestId, id, project.revision, await readSceneLayout(project, envelope.args))
+      await saveRequest(envelope, hash, response)
+      return response
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Scene layout could not be read', 400)
     }
   }
   if (envelope.command === 'scene.evaluate') {

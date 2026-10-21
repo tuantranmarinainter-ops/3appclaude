@@ -465,6 +465,9 @@ def main() -> int:
     binding_set.add_argument("--clip-patch", type=Path, help="JSON object with frameStart, frameEnd and/or playback speed/loop")
     scene = sub.add_parser("scene", help="edit or evaluate a unified scene")
     scene_sub = scene.add_subparsers(dest="scene_action", required=True)
+    layout_read = scene_sub.add_parser("layout-read", help="read compact character/camera layout facts without geometry or raw keys")
+    layout_read.add_argument("project_id")
+    layout_read.add_argument("--frame", type=float)
     scene_apply = scene_sub.add_parser("apply", help="apply Topview scene operations from a JSON array")
     scene_apply.add_argument("project_id")
     scene_apply.add_argument("operations", type=Path)
@@ -710,7 +713,11 @@ def main() -> int:
                 payload["sourceLengthSeconds"] = args.source_length
             result = command(base, cookie, "motion.place", args.project_id, payload)
         elif args.action == "scene":
-            if args.scene_action == "apply":
+            if args.scene_action == "layout-read":
+                if args.frame is not None and not math.isfinite(args.frame):
+                    raise ValueError("Layout frame must be finite")
+                result = command(base, cookie, "scene.layout.read", args.project_id, {"frame": args.frame} if args.frame is not None else {})
+            elif args.scene_action == "apply":
                 raw_operations = read_bounded_file(args.operations, 64 * 1024 * 1024, "Scene operation JSON cannot exceed 64 MiB")
                 operations = json.loads(raw_operations.decode("utf-8"))
                 if not isinstance(operations, list):
