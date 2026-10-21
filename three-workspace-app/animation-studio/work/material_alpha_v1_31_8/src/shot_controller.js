@@ -41,6 +41,9 @@ function setupShotWorkspace(){
   }finally{busy=false;}
  }
  open.onclick=()=>input.click();input.onchange=guard(async()=>{try{if(input.files[0])await openFiles(unzipSync(new Uint8Array(await input.files[0].arrayBuffer())));}finally{input.value='';}});
- window.__studio.shot={openFiles,exportFiles,clear,get session(){return session;},get busy(){return busy;}};
+ window.__studio.shot={openFiles,exportFiles,clear,get session(){return session;},get busy(){return busy;},
+  // Host bridge (Studio): whole shot/result packages as ZIP bytes.
+  openZip:bytes=>openFiles(unzipSync(new Uint8Array(bytes))),
+  async exportZip(options){return zipSync(await exportFiles(options));}};
 }
 setupShotWorkspace();
