@@ -12,6 +12,12 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 
 Đã kiểm trên máy: `.dat` đọc lại bằng codec BBS (nativeReadback), BOBJ đọc lại đủ 20 xương. **Chưa** chạy trong game.
 
+### Tập 15 (thêm 2026-10-22)
+| File | Cách thử | Đạt khi |
+| --- | --- | --- |
+| `tap15-film/Tap15-seg1..10.bbs-film.zip` (10 đoạn, 73 s) | Như trên; mở lần lượt seg1 → seg10 | Nhân vật khối Minecraft (Herobrine, Đen, Gà, Người bí ẩn) và Gỗ Xưa đúng chỗ, đúng động tác; camera cắt đúng shot. Bị chia 10 đoạn vì worker giới hạn 255 tick + 3 camera + ngân sách xương mỗi film |
+| `tap15-previz-shorts.mp4` | Xem trên điện thoại | Đối chiếu storyboard; chưa có hiệu ứng |
+
 ## 2. File cảnh mở bằng Blender
 | File | Đạt khi |
 | --- | --- |
