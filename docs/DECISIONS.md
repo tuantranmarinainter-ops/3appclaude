@@ -20,6 +20,9 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 | 2 Scene | GLB từ App 1; prop/cảnh GLB trực tiếp; Action đã sửa + vị trí từ App 3 | Gói shot cho App 3; film BBS/FS chứa toàn bộ nội dung BBS/FS đọc được + project cảnh |
 | 3 Animation | Gói shot (shot JSON: camera, khoảng frame, vị trí, clip + GLB nhân vật + GLB tham chiếu chỉ xem) | GLB Action đã sửa (UUID mới, ghi UUID gốc) + manifest + vị trí mới + project App 3 |
 - App 3 sửa được động tác + vị trí nhân vật được chọn; camera/nhân vật khác chỉ xem.
+- App 3 = Animation Studio 1.31.8 của người dùng (2026-10-21): giữ mọi chức năng, chức năng mới chỉ thêm qua
+  `host-bridge.js`/broker. Ngoại lệ: bỏ phần nhập Warcraft (MDX/MDL/DDS, Reforged) khỏi phạm vi App 3 vì app khác
+  của người dùng đã lo; không kiểm/sửa phần đó. Ghép xương Warcraft (`wc3r`) của App 1 vẫn giữ.
 - App 2 nhận Action mới thì thay clip bằng UUID mới, giữ Action gốc.
 - Còn mở (chốt khi làm App 2/3): vị trí sửa ở App 3 lưu ở root motion hay transform trong shot
   JSON (tránh cộng root hai lần); đặc tả định dạng film BBS/FS.
