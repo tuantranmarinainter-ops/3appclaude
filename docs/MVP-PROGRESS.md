@@ -41,7 +41,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | Việc | Trạng thái | Ghi chú |
 | --- | --- | --- |
 | A5 `.bobj` App 3 bỏ xoắn + khoá tay | ✅ PR #2 | Lux Attack1: xoắn 116.6° → 0°, khớp App 1 |
-| D6 sửa 2 lỗi lint Workbench | 🛠️ | Issue #1; nhánh chưa có commit (Codex lỗi 403/mạng) |
+| D6 sửa 2 lỗi lint Workbench | ✅ PR #4 | `pnpm lint` exit 0, 13/13 test Workbench |
 | D5 chọn đoạn Action + huỷ | ⏳ | |
 | D4 thân trên Minecraft20 | ⏳ | |
 | D1 khoá chân IK | ⏳ | |
