@@ -466,3 +466,48 @@ class FilmModelConverterCliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShotExchangeTests(unittest.TestCase):
+    def test_export_downloads_verified_shot_zip_and_retains_shot_identity(self):
+        import hashlib
+        from .unified_cli import export_shot_job
+        data = b'example-shot-zip'
+        job_id = '781b9abb-f2a5-40b3-a441-3d9674e1b74a'
+        job = {'jobId': job_id, 'state': 'succeeded', 'result': {'files': [
+            {'id': '0', 'name': 'shot.zip', 'sizeBytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}]}}
+        response = {'result': {'jobId': job_id, 'shotId': 'saved-shot', 'baseShotSha256': 'a'*64}}
+        with tempfile.TemporaryDirectory() as folder, patch('agent.unified_cli.command', return_value=response) as send, \
+             patch('agent.unified_cli.call', return_value={'job': job}), patch('agent.unified_cli.download_file', return_value=data):
+            result = export_shot_job('http://localhost:3002', 'cookie', 'project', {'cameraNodeId': 'camera'}, Path(folder), expected_revision=7)
+            self.assertEqual(result['result']['shotId'], 'saved-shot')
+            self.assertEqual((Path(result['savedFiles']['outputDirectory'])/'shot.zip').read_bytes(), data)
+            self.assertEqual(send.call_args.args[2:6], ('shot.export', 'project', {'cameraNodeId': 'camera'}, 7))
+
+    def test_shot_cli_export_and_import_forward_payload_and_revision(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder)/'result.zip'; source.write_bytes(b'ZIP')
+            for argv, expected in [
+                (['export', 'project', '--camera-node-id', 'cam', '--start-frame', '3', '--end-frame', '15', '--editable-character-id', 'a', '--output-dir', folder, '--expected-revision', '7'], 'export'),
+                (['import-result', 'project', str(source), '--shot-id', 'shot', '--expected-revision', '7'], 'import')]:
+                with self.subTest(expected=expected), patch.dict(os.environ, {'BBS_APP_URL':'http://localhost:3002'}), \
+                     patch('agent.unified_cli.sys.argv', ['cli', 'shot', *argv]), patch('agent.unified_cli.open_session', return_value='cookie'), \
+                     patch('agent.unified_cli.export_shot_job', return_value={'ok':True}) as export, \
+                     patch('agent.unified_cli.upload_file', return_value={'uploadId':'staged'}) as upload, \
+                     patch('agent.unified_cli.command', return_value={'ok':True}) as send, contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(main(), 0)
+                    if expected == 'export':
+                        self.assertEqual(export.call_args.args[3], {'cameraNodeId':'cam', 'frameStart':3, 'frameEnd':15, 'editableCharacterIds':['a']})
+                        self.assertEqual(export.call_args.kwargs, {'expected_revision':7})
+                        upload.assert_not_called()
+                    else:
+                        upload.assert_called_once_with('http://localhost:3002', 'cookie', source)
+                        self.assertEqual(send.call_args.args[2:], ('shot.result.import', 'project', {'file':'staged','shotId':'shot'}))
+                        self.assertEqual(send.call_args.kwargs, {'expected_revision':7})
+
+    def test_import_result_requires_exact_revision_before_network(self):
+        with patch('agent.unified_cli.call') as network:
+            for revision in (None, True, -1):
+                with self.subTest(revision=revision), self.assertRaises(ValueError):
+                    command('http://localhost:3002', 'cookie', 'shot.result.import', 'project', {}, expected_revision=revision)
+            network.assert_not_called()

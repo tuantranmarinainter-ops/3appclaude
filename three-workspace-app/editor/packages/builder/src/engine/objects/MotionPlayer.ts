@@ -9,17 +9,19 @@
 import * as THREE from 'three'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { mixamorigBindKey, mixamorigPositionScale } from '../rig/mixamorigBind'
+import { mixamorigBindKey, mixamorigPositionScale, mixamoBindName } from '../rig/mixamorigBind'
 import { libraryAssetCacheKey } from '../io/libraryAssetCache'
 import { isFbxBoneAlias } from '../../evaluate/retarget/fbxSourceBones'
 
 
 interface BoneBind {
+  name: string
   quat: THREE.Quaternion
   pos: THREE.Vector3
 }
 
 interface BoneRetarget {
+  name: string
   pre: THREE.Quaternion // destRest · fbxRest⁻¹
   fbxRestPos: THREE.Vector3
   glbRestPos: THREE.Vector3
@@ -30,7 +32,9 @@ function captureBind(root: THREE.Object3D): Map<string, BoneBind> {
   const bind = new Map<string, BoneBind>()
   root.traverse((obj) => {
     if (!obj.name || isFbxBoneAlias(obj)) return
-    bind.set(obj.name, { quat: obj.quaternion.clone(), pos: obj.position.clone() })
+    const value = { name: obj.name, quat: obj.quaternion.clone(), pos: obj.position.clone() }
+    bind.set(obj.name, value)
+    bind.set(mixamoBindName(obj.name), value)
   })
   return bind
 }
@@ -46,7 +50,7 @@ function destBindOf(
       if (!obj.name || isFbxBoneAlias(obj)) return
       const quat = restQuat.get(obj.name)
       const pos = restPos.get(obj.name)
-      if (quat && pos) bind.set(obj.name, { quat, pos })
+      if (quat && pos) bind.set(mixamoBindName(obj.name), { name: obj.name, quat, pos })
     })
     if (bind.size > 0) return bind
   }
@@ -69,6 +73,7 @@ function buildRetargetContext(
     const dest = destBind.get(name)
     if (!dest) continue
     map.set(name, {
+      name: dest.name,
       pre: dest.quat.clone().multiply(fbx.quat.clone().invert()),
       fbxRestPos: fbx.pos,
       glbRestPos: dest.pos,
@@ -85,9 +90,10 @@ const _v = new THREE.Vector3()
 function retargetClip(clip: THREE.AnimationClip, ctx: Map<string, BoneRetarget>): void {
   for (const track of clip.tracks) {
     const dot = track.name.lastIndexOf('.')
-    const r = ctx.get(track.name.slice(0, dot))
+    const r = ctx.get(mixamoBindName(track.name.slice(0, dot)))
     if (!r) continue
     const prop = track.name.slice(dot + 1)
+    track.name = `${r.name}.${prop}`
     const vals = track.values
     if (prop === 'quaternion') {
       for (let i = 0; i + 3 < vals.length; i += 4) {
@@ -212,7 +218,7 @@ export class MotionPlayer {
       console.warn('[MotionPlayer] mixamorig 模板未就绪')
       return null
     }
-    const key = `v2:${motionKey(assetId, clipIndex)}@${mixamorigBindKey(dest)}`
+    const key = `v2:${motionKey(assetId, clipIndex)}@${dest.uuid}:${mixamorigBindKey(dest)}`
     const cached = this.bakedDirectBind.get(key)
     if (cached) return cached
     const entry = this.raw.get(motionKey(assetId, clipIndex))

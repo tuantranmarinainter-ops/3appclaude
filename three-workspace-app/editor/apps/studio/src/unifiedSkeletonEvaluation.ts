@@ -75,7 +75,7 @@ async function loadProjectSkeletonInputs(project: UnifiedProject) {
         const buffer = Uint8Array.from(source.bytes).buffer
         if (source.mediaType === 'application/vnd.autodesk.fbx') return new FBXLoader(manager).parse(buffer, '')
         if (['model/gltf-binary', 'model/gltf+json'].includes(source.mediaType)) {
-          const gltf = await new GLTFLoader(manager).parseAsync(buffer, '')
+          const gltf = await new GLTFLoader(manager).parseAsync(Uint8Array.from(cpuSkeletonBytes(source.bytes)).buffer, '')
           gltf.scene.animations = gltf.animations
           return gltf.scene
         }
@@ -113,8 +113,10 @@ async function loadProjectSkeletonInputs(project: UnifiedProject) {
       const model = await load(character.assetId)
       const sourceBones = fbxSourceBones(model)
       const profile = project.skeletons[character.skeletonId]!
-      const names = new Set(sourceBones.map((bone) => bone.name))
-      if (sourceBones.length !== profile.bones.length || profile.bones.some((bone) => !names.has(bone.name))) throw new TypeError('Model skeleton does not match the profile')
+      const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+      const names = new Set<string>()
+      model.traverse(node => { if (node.name) names.add(canonical(node.name)) })
+      if (sourceBones.some(bone => !profile.bones.some(item => canonical(item.name) === canonical(bone.name))) || profile.bones.some((bone) => !names.has(canonical(bone.name)))) throw new TypeError('Model skeleton does not match the profile')
       const required = project.scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === node.id)
       for (const clip of required) {
         if (motions.has(clip.motion.assetId)) continue
@@ -161,4 +163,20 @@ export async function* sampleProjectSkeletonRange(project: UnifiedProject, range
     const scene = projectEvaluationScene(project)
     for (const sample of sampleSkeletonRange(scene, range, evaluator.evaluate)) yield { sourceRevision: project.revision, ...sample }
   } finally { evaluator.dispose() }
+}
+
+/** Decode only hierarchy/skin/animation on the CPU; compressed mesh/image data is irrelevant here. */
+function cpuSkeletonBytes(bytes: Buffer): Buffer {
+  const binary = bytes.length >= 20 && bytes.readUInt32LE(0) === 0x46546c67
+  const length = binary ? bytes.readUInt32LE(12) : bytes.length
+  const document = JSON.parse((binary ? bytes.subarray(20, 20 + length) : bytes).toString('utf8'))
+  for (const node of document.nodes ?? []) delete node.mesh
+  document.meshes = []; document.materials = []; document.textures = []; document.images = []
+  for (const key of ['extensionsRequired', 'extensionsUsed']) if (Array.isArray(document[key])) document[key] = document[key].filter((name: string) => name !== 'KHR_draco_mesh_compression')
+  const json = Buffer.from(JSON.stringify(document))
+  if (!binary) return json
+  const padded = Buffer.alloc(Math.ceil(json.length / 4) * 4, 32); json.copy(padded)
+  const result = Buffer.concat([bytes.subarray(0, 12), Buffer.alloc(8), padded, bytes.subarray(20 + length)])
+  result.writeUInt32LE(result.length, 8); result.writeUInt32LE(padded.length, 12); result.writeUInt32LE(0x4e4f534a, 16)
+  return result
 }

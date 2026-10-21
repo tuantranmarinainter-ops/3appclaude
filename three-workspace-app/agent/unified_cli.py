@@ -159,7 +159,7 @@ def save_render_files(base: str, cookie: str, project_id: str, job: dict, output
     files = job.get("result", {}).get("files", [])
     if not isinstance(files, list) or not files or len(files) > 20:
         raise ValueError("Render job has an invalid file manifest")
-    if prefix not in {"render", "film"}:
+    if prefix not in {"render", "film", "shot"}:
         raise ValueError("Unsupported job output prefix")
     destination = output_root.expanduser().resolve() / f"{prefix}-{job_id}"
     destination.mkdir(exist_ok=False)
@@ -269,8 +269,24 @@ def export_project_film_job(base: str, cookie: str, project_id: str, args: dict,
     raise CliError("Film export timed out; cancellation was requested", 4, code="CANCELLED", retryable=True)
 
 
+def export_shot_job(base: str, cookie: str, project_id: str, args: dict, output_root: Path,
+                    expected_revision: int | None = None, request_id: str | None = None, dry_run: bool = False) -> dict:
+    """Download the broker's completed shot artifact with size and SHA-256 checks."""
+    if not output_root.is_dir():
+        raise ValueError("Shot output directory must already exist")
+    response = command(base, cookie, "shot.export", project_id, args, expected_revision, request_id, dry_run)
+    job_id = response.get("result", {}).get("jobId")
+    if dry_run or not isinstance(job_id, str):
+        return response
+    route = f"/api/unified/projects/{urllib.parse.quote(project_id, safe='')}/jobs/{job_id}"
+    job = call(base, cookie, route).get("job", {})
+    if not isinstance(job, dict) or job.get("state") != "succeeded":
+        raise CliError("Shot export did not return a completed artifact", 4)
+    return {**response, "savedFiles": save_render_files(base, cookie, project_id, job, output_root, "shot")}
+
+
 def command(base: str, cookie: str, name: str, project_id: str | None = None, args: dict | None = None, expected_revision: int | None = None, request_id: str | None = None, dry_run: bool = False) -> dict:
-    if name in {'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit'} and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0):
+    if name in {'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit', 'shot.result.import'} and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0):
         raise ValueError(f'{name} requires the expected_revision of the edited snapshot')
     if request_id is not None and (str(uuid.UUID(request_id)) != request_id or uuid.UUID(request_id).version != 4):
         raise ValueError("request_id must be a canonical UUIDv4")
@@ -464,6 +480,21 @@ def main() -> int:
     render.add_argument("--output-dir", type=Path, required=True, help="existing local folder; files are written to a new render-<jobId> subfolder")
     render.add_argument("--width", type=int, default=640)
     render.add_argument("--height", type=int, default=360)
+    shot = sub.add_parser("shot", help="exchange shot ZIP packages with App 3")
+    shot_sub = shot.add_subparsers(dest="shot_action", required=True)
+    shot_export = shot_sub.add_parser("export")
+    shot_export.add_argument("project_id")
+    shot_export.add_argument("--camera-node-id", required=True)
+    shot_export.add_argument("--start-frame", type=int, required=True)
+    shot_export.add_argument("--end-frame", type=int, required=True)
+    shot_export.add_argument("--editable-character-id", dest="editable_character_ids", action="append", required=True)
+    shot_export.add_argument("--output-dir", type=Path, required=True)
+    shot_export.add_argument("--expected-revision", type=int)
+    shot_result = shot_sub.add_parser("import-result")
+    shot_result.add_argument("project_id")
+    shot_result.add_argument("file", type=Path)
+    shot_result.add_argument("--shot-id", required=True)
+    shot_result.add_argument("--expected-revision", type=int, required=True)
     film = sub.add_parser("film", help="export a local native BBS FS 2.4 Film package")
     film_sub = film.add_subparsers(dest="film_action", required=True)
     film_export = film_sub.add_parser("export", help="write a verified native Film package from a typed export manifest")
@@ -531,7 +562,19 @@ def main() -> int:
     try:
         base = local_base()
         cookie = open_session(base)
-        if args.action == "rig":
+        if args.action == "shot":
+            if args.shot_action == "export":
+                result = export_shot_job(base, cookie, args.project_id, {
+                    "cameraNodeId": args.camera_node_id, "frameStart": args.start_frame,
+                    "frameEnd": args.end_frame, "editableCharacterIds": args.editable_character_ids,
+                }, args.output_dir, expected_revision=args.expected_revision)
+            else:
+                if args.expected_revision < 0 or not args.file.is_file() or args.file.suffix.lower() != ".zip":
+                    raise ValueError("Shot result requires an existing ZIP and non-negative expected revision")
+                upload_id = upload_file(base, cookie, args.file)["uploadId"]
+                result = command(base, cookie, "shot.result.import", args.project_id,
+                                 {"file": upload_id, "shotId": args.shot_id}, expected_revision=args.expected_revision)
+        elif args.action == "rig":
             if args.rig_action == "inspect":
                 result = command(base, cookie, "rig.inspect", args.project_id, {"assetId": args.asset_id})
             elif args.rig_action == "save":
