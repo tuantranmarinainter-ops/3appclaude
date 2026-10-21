@@ -24,6 +24,9 @@ export interface NormalizeRequest {
   target: Object3D; targetLabel: string; targetSha256: string
   /** Source Action indices to export into the one GLB (default: every Action). */
   actions?: readonly number[]
+  range?: readonly [number, number]
+  actionRanges?: Readonly<Record<number, readonly [number, number]>>
+  signal?: AbortSignal
   /** Action shown in preview.png and the top-level roundtrip numbers (default: first exported). */
   previewAction?: number
   /** Source units → meters (glTF 1, FBX usually 0.01). */
@@ -165,7 +168,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
   const jointNames = sourceJointNames(request.source)
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
-    actions: request.actions ? [...request.actions] : 'all' as const, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
+    actions: request.actions ? [...request.actions] : 'all' as const, ...(request.range ? { range: request.range } : {}), ...(request.actionRanges ? { actionRanges: request.actionRanges } : {}), unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
     fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs', swapSides: request.swapSides ?? 'auto', ground: request.ground ?? 'lift' }
 
   const src = createThreeRigAdapter(request.source, { ...sourceOptions, collectUnsupportedTracks: true })
@@ -228,9 +231,10 @@ export async function inspectNormalize(request: NormalizeRequest) {
 }
 
 export async function runNormalize(request: NormalizeRequest) {
+  request.signal?.throwIfAborted()
   const started = Date.now()
   const rootPolicy = request.rootPolicy ?? 'preserve'
-  request.onProgress?.('inspect', 0, 1)
+  await request.onProgress?.('inspect', 0, 1)
   const inspected = await inspectNormalize(request)
   if (inspected.blocker) return blocked(inspected.blocker.code, inspected.blocker.message, inspected.blocker.extra)
   const rootScale = inspected.effectiveRootScale, rootScaleSource = inspected.rootScaleSource
@@ -242,17 +246,20 @@ export async function runNormalize(request: NormalizeRequest) {
   const skippedActions: Array<{ index: number; name: string; code: string; message: string }> = []
   const bakeList = request.actions ?? prunedActions.map((action) => action.index)
   for (const [position, index] of bakeList.entries()) {
+    request.signal?.throwIfAborted()
     const action = prunedActions[index]!
+    const range = request.actionRanges?.[index] ?? request.range
     await request.onProgress?.('bake', position, bakeList.length)
     const skip = (code: string, message: string) => skippedActions.push({ index, name: action.name, code, message })
     if (!(action.durationSeconds > 0)) { skip('ACTION_EMPTY', 'Action has no duration (single-pose export?)'); continue }
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
-        calibration: calibration.runtime })
-      exported.push({ action, bytes: normalized.bytes, report: normalized.report })
+        range, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
+        calibration: calibration.runtime }, request.signal)
+      exported.push({ action: { ...action, durationSeconds: normalized.report.durationSeconds }, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
+      request.signal?.throwIfAborted()
       skip(error instanceof RangeError ? 'ACTION_BUDGET' : 'ACTION_FAILED', error instanceof Error ? error.message : String(error))
     }
   }
@@ -260,6 +267,7 @@ export async function runNormalize(request: NormalizeRequest) {
     const first = skippedActions[0]!
     return blocked(first.code, `${first.name}: ${first.message}`, { input, actions: actionsReport, skippedActions, prunedTracks: prune.report })
   }
+  request.signal?.throwIfAborted()
   await request.onProgress?.('roundtrip', 0, exported.length)
   const glb = mergeAnimationGlbs(exported.map((item) => item.bytes)), glbSha256 = sha256(glb)
 
@@ -316,7 +324,7 @@ export async function runNormalize(request: NormalizeRequest) {
     version: CONTRACT_VERSION,
     glb: { bytes: glb.length, mode: 'animation-only' as const },
     glbSha256,
-    actions: exported.map(({ action }, glbAnimationIndex) => ({ uuid: actionUuid(request.sourceSha256, action.index, action.name), name: action.name,
+    actions: exported.map(({ action }, glbAnimationIndex) => ({ uuid: actionUuid(request.sourceSha256, action.index, (request.actionRanges?.[action.index] ?? request.range) ? `${action.name}:${(request.actionRanges?.[action.index] ?? request.range)!.join(':')}` : action.name), name: action.name,
       durationSeconds: action.durationSeconds, fps: CONTRACT_FPS, sourceActionIndex: action.index, glbAnimationIndex })),
     rootPolicy: { mode: rootPolicy, translationScale: rootScale, units: 'meters' },
     source: { file: request.sourceLabel, sha256: request.sourceSha256 },

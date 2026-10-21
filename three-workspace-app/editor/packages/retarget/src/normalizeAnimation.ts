@@ -16,6 +16,7 @@ export interface NormalizeAnimationInput {
   targetOptions: ThreeRigAdapterOptions
   pairs: readonly RetargetBonePair[]
   excludedSourceBones?: readonly { sourceBoneId: string; name: string; reason: string }[]
+  range?: readonly [number, number]
   actionIndex: number
   fps: number
   rootTranslationScale?: number
@@ -40,7 +41,10 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
     if (!Number.isInteger(input.actionIndex) || !action || !(action.durationSeconds > 0)) throw new TypeError('Select an existing source action with positive duration')
     const report = validateUniversalMapping(source.rig, target.rig, input.pairs, input.requiredTargetJointIds)
     if (report.errors.length || report.missingRequiredTargetBoneIds.length) throw new TypeError('Resolve invalid or missing required target mappings before normalization')
-    const steps = Math.ceil(action.durationSeconds * input.fps)
+    const [start, end] = input.range ?? [0, action.durationSeconds]
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > action.durationSeconds + 1e-6) throw new RangeError('Action range must satisfy 0 <= start < end <= duration')
+    const duration = end - start
+    const steps = Math.ceil(duration * input.fps)
     if (steps + 1 > 18_000) throw new RangeError('Normalization exceeds the 18000-sample budget; shorten the clip or lower FPS')
     const resourceCost = estimateUniversalBakeCost(source.rig.bones.length, target.rig.bones.length, steps + 1)
     if (!resourceCost.withinBudget) throw new RangeError('Normalization exceeds the node-sample or estimated-memory budget; shorten the clip, lower FPS, or inspect a smaller rig')
@@ -50,8 +54,8 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
     const metrics = createNormalizationMetrics(source.rig, target.rig, input.pairs, input.rootTranslationPolicy ?? 'preserve', input.rootTranslationScale ?? 1)
     for (let index = 0; index <= steps; index++) {
       signal?.throwIfAborted()
-      const timeSeconds = Math.min(index / input.fps, action.durationSeconds)
-      const sample = source.sample(input.actionIndex, timeSeconds), bones = solver.evaluate(sample)
+      const timeSeconds = Math.min(index / input.fps, duration)
+      const sample = source.sample(input.actionIndex, start + timeSeconds), bones = solver.evaluate(sample)
       applyFootDirection(feet, target.rig, sample, bones, input.calibration?.alignmentRotation)
       metrics.observe(sample, bones)
       frames.push({ frame: index, timeSeconds, bones })
@@ -61,7 +65,7 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
     signal?.throwIfAborted()
     const bytes = universalFramesToGlb(target.rig, target.joints, frames, action.name)
     return { bytes, report: { ...report, sourceFingerprint: source.rig.fingerprint, targetFingerprint: target.rig.fingerprint,
-      actionIndex: action.index, actionName: action.name, durationSeconds: action.durationSeconds, sampleFps: input.fps,
+      actionIndex: action.index, actionName: action.name, durationSeconds: duration, sampleFps: input.fps,
       sampleCount: frames.length, sourceJointCount: source.joints.length, targetJointCount: target.joints.length,
       resourceCost, ground,
       excludedSourceBones: input.excludedSourceBones ?? [], metrics: metrics.report(),

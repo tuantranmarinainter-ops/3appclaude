@@ -22,7 +22,7 @@ import { exportMinecraft20 } from './toMinecraft20.ts'
 
 const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
-  action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
+  range: { type: 'string' }, action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
   root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string' }, ground: { type: 'string', default: 'lift' }, mapping: { type: 'string' }, armature: { type: 'string' },
   mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
@@ -39,6 +39,8 @@ if (!['inPlace', 'follow'].includes(values['bobj-root']!)) fail('--bobj-root mus
 // The V9.12 Minecraft20 rig shipped with Studio is the default BBS FS target.
 const minecraftArmature = values['bobj-armature'] ? resolve(values['bobj-armature']) :
   resolve(dirname(fileURLToPath(import.meta.url)), '../../../apps/studio/public/retarget/v9.12/minecraft20-armature.bobj')
+const range = values.range?.split(':').map(Number)
+if (range && (range.length !== 2 || range.some((n) => !Number.isFinite(n)) || range[0]! < 0 || range[1]! <= range[0]!)) fail('--range must be start:end with 0 <= start < end')
 const actions = values.action === 'all' ? undefined : values.action!.split(',').map(Number)
 if (actions?.some((index) => !Number.isInteger(index) || index < 0)) fail('--action must be all or comma-separated Action indices')
 
@@ -64,7 +66,7 @@ try {
   let result: PipelineResult = early ?? await runNormalize({
     source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
-    actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
+    range: range as [number, number] | undefined, actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
     upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
     calibrate: values.calibrate as 'limbs' | 'none', swapSides: values['swap-sides'] as 'auto' | 'on' | 'off', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),

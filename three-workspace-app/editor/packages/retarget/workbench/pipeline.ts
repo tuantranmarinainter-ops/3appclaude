@@ -30,7 +30,7 @@ export interface SourceRecord { id: string; name: string; format: AssetFormat; p
 export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number }
 
 export interface RunOptions {
-  actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
+  actionRanges?: Record<number, [number, number]>; actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
 }
 
@@ -57,7 +57,17 @@ export function parseOptions(value: unknown): RunOptions {
     if (!Array.isArray(raw.actions) || raw.actions.some((index) => !Number.isInteger(index) || index < 0)) throw new UserError('options.actions must be "all" or a list of Action indices')
     actions = raw.actions as number[]
   }
+  let actionRanges: Record<number, [number, number]> | undefined
+  if (raw.actionRanges !== undefined) {
+    if (!raw.actionRanges || typeof raw.actionRanges !== 'object' || Array.isArray(raw.actionRanges)) throw new UserError('options.actionRanges must be an object')
+    actionRanges = {}
+    for (const [key, range] of Object.entries(raw.actionRanges)) {
+      if (!/^\d+$/.test(key) || !Array.isArray(range) || range.length !== 2 || range.some((n) => typeof n !== 'number' || !Number.isFinite(n)) || range[0] < 0 || range[1] <= range[0]) throw new UserError('options.actionRanges must contain [start, end] seconds')
+      actionRanges[Number(key)] = range as [number, number]
+    }
+  }
   return {
+    actionRanges,
     ...(actions ? { actions } : {}),
     previewAction: number('previewAction', (n) => Number.isInteger(n) && n >= 0, 'a non-negative Action index'),
     unitMeters: number('unitMeters', (n) => n > 0, 'a positive number'),
@@ -97,7 +107,7 @@ async function loadScenes(source: SourceRecord, target: TargetRecord) {
 
 function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptions, scenes: Awaited<ReturnType<typeof loadScenes>>, preset: unknown, presetFamily: SourceFamily | undefined): NormalizeRequest {
   return { source: scenes.source, sourceLabel: source.name, sourceSha256: source.sha256, target: scenes.target, targetLabel: target.file, targetSha256: target.sha256,
-    actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
+    actionRanges: options.actionRanges, actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
     rootScale: options.rootScale, ground: options.ground, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
     calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides }
 }
@@ -153,12 +163,14 @@ export async function buildPreset(source: SourceRecord, target: TargetRecord, as
 export interface RunFile { name: string; kind: 'glb' | 'manifest' | 'report' | 'preview' | 'bobj' | 'bobjPreview'; bytes: number }
 
 /** CLI-equivalent run. Files are written into `outDir` (a session temp folder); the user's source is never touched. */
-export async function runPipeline(source: SourceRecord, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily: SourceFamily | undefined, outDir: string, onProgress: NormalizeProgress) {
+export async function runPipeline(source: SourceRecord, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily: SourceFamily | undefined, outDir: string, onProgress: NormalizeProgress, signal?: AbortSignal) {
+  signal?.throwIfAborted()
   const stem = basename(source.name, extname(source.name)).replace(/[^\w.\- ]+/g, '_') || 'source'
   const files: RunFile[] = []
+  const pending = new Map<string, string | Uint8Array>()
   const write = (suffix: string, kind: RunFile['kind'], data: string | Uint8Array) => {
     const name = `${stem}${suffix}`
-    writeFileSync(join(outDir, name), data)
+    pending.set(name, data)
     files.push({ name, kind, bytes: typeof data === 'string' ? Buffer.byteLength(data) : data.length })
   }
   const unitMeters = unitMetersFor(source, options)
@@ -171,7 +183,7 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
       early = { status: 'BLOCKED', report: { status: 'BLOCKED', blocker: { code: error.code, message: error.message } } }
     }
   }
-  let result: PipelineResult = early ?? await runNormalize({ ...toRequest(source, target, options, scenes, preset, presetFamily), onProgress })
+  let result: PipelineResult = early ?? await runNormalize({ ...toRequest(source, target, options, scenes, preset, presetFamily), onProgress, signal })
   if (options.mode === 'model') {
     await onProgress('model', 0, 1)
     result = await applyModelMode(result, { loadSource: () => loadAsset(scenes.srcBytes, source.format, { keepMeshes: true, resourceDir: resourceDir(source) }), files: modelFiles ?? null, unitMeters, upAxis: options.upAxis })
@@ -196,5 +208,8 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
   }
   report.status = status
   write('.report.json', 'report', JSON.stringify(report, null, 2))
+  await onProgress('commit', 0, 1)
+  signal?.throwIfAborted()
+  for (const [name, data] of pending) writeFileSync(join(outDir, name), data)
   return { status, report, manifest, files }
 }
