@@ -18,6 +18,7 @@ import { duplicateDocumentNodes } from '@topview/3d-builder/evaluate'
 import { evaluateSceneChecks } from '@topview/3d-director-cli/scene-checks.mjs'
 import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
 import { preflightProjectFilm } from './unifiedFilmSampling'
+import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
 
@@ -1001,6 +1002,30 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     try {
       const job = await startUnifiedFilmExport(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: viewportAspect as number, filmName })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress })
+      await saveRequest(envelope, hash, response)
+      return response
+    } catch (error) {
+      const native = error as { code?: unknown; status?: unknown; message?: unknown }
+      if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Film export job could not start', native.status)
+      throw error
+    }
+  }
+  if (envelope.command === 'scene.export.bbsFilm') {
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
+      throw new UnifiedStoreError('REVISION_CONFLICT', 'Film snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
+    }
+    let resolved: ReturnType<typeof resolveSceneBbsFilmArgs>, preflight: ReturnType<typeof preflightProjectFilm>
+    try {
+      resolved = resolveSceneBbsFilmArgs(project, envelope.args)
+      preflight = preflightProjectFilm(project, resolved.film)
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Scene Film arguments are invalid', 400)
+    }
+    const plan = { sceneExport: resolved.sceneExport, archiveName: resolved.archiveName, durationTicks: preflight.durationTicks }
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, ...plan })
+    try {
+      const job = await startUnifiedFilmExport(project, resolved.film, { archiveName: resolved.archiveName, extraFiles: { 'scene-export.json': resolved.sceneExport } })
+      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, ...plan })
       await saveRequest(envelope, hash, response)
       return response
     } catch (error) {

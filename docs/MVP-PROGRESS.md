@@ -46,12 +46,13 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | D4 thân trên Minecraft20 | ✅ PR #16 | gập p95 76° → 45° (gốc 43°), xoắn 33° → 27° |
 | D1 khoá chân IK | ✅ PR #17 (thử nghiệm, mặc định tắt) | trượt Samba 3.26 → 0.09 m; còn nâng chân 8 cm → việc D1b |
 | L3+L4 CI GitHub Actions + `pnpm test:all` | ✅ PR #18 | CI xanh trên GitHub; test cần mẫu ngoài tự bỏ qua |
+| H3 `scene.export.bbsFilm` → `<cảnh>.bbs-film.zip` | ✅ Claude | Mặc định toàn cảnh; chạy thật Java 17 + Blender 4.2: 2 actor, 2 camera, 130 pose track, đọc lại native |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
 | --- | --- | --- |
 | Codex phiên 1 | D5 Workbench chọn đoạn + huỷ | #5 |
-| Claude (cần Java + Blender trên máy) | H3 xuất toàn cảnh `.bbs-film.zip` | #14 |
+| Codex cloud | H1 GLB toàn cảnh (PR #19 chờ kiểm) | #12 |
 | Codex tài khoản 2 (đã xong EPIC-B) | EPIC-G: AI xếp nhân vật + camera qua MCP | #9 |
 | ChatGPT Plus | Tìm hiểu định dạng film/cảnh BBS FS, `.scene.bobj` | #10 |
 | Claude | C1–C2 ráp nối + chạy trọn chuỗi | — |

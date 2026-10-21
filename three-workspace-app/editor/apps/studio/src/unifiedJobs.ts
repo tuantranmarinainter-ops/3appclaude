@@ -33,6 +33,8 @@ export interface UnifiedJobView extends Omit<StoredJob, 'result'> {
 
 interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number }
 interface FilmExportArgs extends FilmSamplingArgs { filmName: string }
+/** Scene-level packaging on top of `film.export` (`scene.export.bbsFilm`): archive name and extra JSON files in the ZIP root. */
+export interface FilmPackageOptions { archiveName?: string; extraFiles?: Record<string, unknown> }
 interface Runtime { record: StoredJob; controller: AbortController; active: boolean; done?: Promise<void> }
 type JobGlobal = typeof globalThis & { __bbsUnifiedJobs?: Map<string, Runtime> }
 const runtimes = (globalThis as JobGlobal).__bbsUnifiedJobs ??= new Map()
@@ -173,7 +175,7 @@ async function agentRoot(): Promise<string> {
   throw new Error('Local Film CLI is unavailable')
 }
 
-async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: FilmExportArgs): Promise<void> {
+async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: FilmExportArgs, options: FilmPackageOptions = {}): Promise<void> {
   const { record, controller } = runtime, signal = controller.signal
   const base = jobRoot(record.projectId, record.jobId), work = path.join(base, 'film-work')
   const files: StoredFile[] = []
@@ -220,9 +222,12 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     const packagePath = await realpath(exported.packageDirectory), outputPath = await realpath(outputRoot)
     if (!packagePath.startsWith(`${outputPath}${path.sep}`)) throw new TypeError('Film worker package escaped its staging folder')
     signal.throwIfAborted()
-    const archive = path.join(work, `${args.filmName}.zip`)
+    for (const [name, value] of Object.entries(options.extraFiles ?? {})) await writeFile(path.join(packagePath, name), `${JSON.stringify(value, null, 2)}
+`, { flag: 'wx' })
+    const archiveName = options.archiveName ?? `${args.filmName}.zip`
+    const archive = path.join(work, archiveName)
     await runLocalCommand(python, ['-c', ZIP_SCRIPT, packagePath, archive], agent, signal)
-    await saveArtifact(record, archive, `${args.filmName}.zip`, files)
+    await saveArtifact(record, archive, archiveName, files)
     signal.throwIfAborted()
     record.result = { files, provenance: { sourceRevision: record.sourceRevision, sourceSha256: record.sourceSha256,
       targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes }, warnings: [], blockedRequests: [] }
@@ -384,9 +389,13 @@ export async function startUnifiedSceneRender(project: UnifiedProject, args: Ren
   return publicJob(record)
 }
 
-export async function startUnifiedFilmExport(project: UnifiedProject, args: FilmExportArgs): Promise<UnifiedJobView> {
+export async function startUnifiedFilmExport(project: UnifiedProject, args: FilmExportArgs, options: FilmPackageOptions = {}): Promise<UnifiedJobView> {
   if ([...runtimes.values()].some((runtime) => runtime.active)) throw Object.assign(new Error('A local conversion job is already active'), { code: 'JOB_BUSY', status: 423 })
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(args.filmName) || args.filmName.endsWith('.')) throw Object.assign(new TypeError('Film name must use 1-64 safe ASCII characters'), { code: 'VALIDATION_FAILED', status: 400 })
+  if (options.archiveName !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.zip$/.test(options.archiveName) ||
+      Object.keys(options.extraFiles ?? {}).some((name) => !/^[a-z0-9-]{1,40}\.json$/.test(name) || ['export-manifest.json', 'export-report.json'].includes(name))) {
+    throw Object.assign(new TypeError('Film package names must be safe and must not replace worker files'), { code: 'VALIDATION_FAILED', status: 400 })
+  }
   preflightProjectFilm(project, args)
   const snapshot = structuredClone(project), exportArgs = structuredClone(args), jobId = randomUUID()
   const record: StoredJob = { jobId, projectId: project.projectId, type: 'film.export', state: 'queued', sourceRevision: project.revision,
@@ -399,7 +408,7 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
     await mkdir(jobRoot(project.projectId, jobId), { recursive: false })
     await persist(record)
   } catch (error) { runtimes.delete(jobId); throw error }
-  runtime.done = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() => runFilmExport(runtime, snapshot, exportArgs))
+  runtime.done = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() => runFilmExport(runtime, snapshot, exportArgs, structuredClone(options)))
   void runtime.done.catch(() => undefined)
   return publicJob(record)
 }
