@@ -1,7 +1,7 @@
 function directorRevision(){
  const text=JSON.stringify(project);let a=2166136261,b=5381;for(let i=0;i<text.length;i++){a=Math.imul(a^text.charCodeAt(i),16777619);b=Math.imul(b,33)^text.charCodeAt(i);}return [rig.root.uuid,activeEditorSlot,studioMode,rig.activeRoot||'all',$('sourceUnits').value,text.length,(a>>>0).toString(16),(b>>>0).toString(16)].join(':');
 }
-function directorContext(){if(!rig||!project)return {ready:false};const d=Director.metadata(project);return{ready:true,revision:directorRevision(),name:project.name,rig:rig.fingerprint,rootUuid:rig.root.uuid,activeRoot:rig.activeRoot||'all',slot:activeEditorSlot,bank:studioMode,layer:project.lab?.activeLayer||null,fps:project.fps,duration:project.duration,selected,time,idea:d.idea,markers:d.markers,units:$('sourceUnits').value,space:'local transforms; editor '+rig.editorUp+'-up',bones:['root',...rig.records.map(r=>r.id),...Object.keys(rig.controls)].map(id=>({id,name:id==='root'?'Root':record(rig,id)?.name||id,parent:record(rig,id)?.parent||null})),undoStepsAvailable:historyIndex,keyCount:Object.values(project.keys).reduce((n,ks)=>n+ks.length,0),preview:directorPending?{id:directorPending.id,baseRevision:directorPending.before,summary:directorPending.summary}:null,scene:typeof sceneHeartbeat==='function'?sceneHeartbeat():null};}
+function directorContext(){if(!rig||!project)return {ready:false};const d=Director.metadata(project);return{ready:true,revision:directorRevision(),name:project.name,rig:rig.fingerprint,rootUuid:rig.root.uuid,activeRoot:rig.activeRoot||'all',slot:activeEditorSlot,bank:studioMode,layer:project.lab?.activeLayer||null,fps:project.fps,duration:project.duration,selected,time,idea:d.idea,markers:d.markers,units:$('sourceUnits').value,space:'local transforms; editor '+rig.editorUp+'-up',bones:['root',...rig.records.map(r=>r.id),...Object.keys(rig.controls)].map(id=>({id,name:id==='root'?'Root':record(rig,id)?.name||id,parent:record(rig,id)?.parent||null})),undoStepsAvailable:historyIndex,keyCount:Object.values(project.keys).reduce((n,ks)=>n+ks.length,0),shot:directorShotContext(),preview:directorPending?{id:directorPending.id,baseRevision:directorPending.before,summary:directorPending.summary}:null,scene:typeof sceneHeartbeat==='function'?sceneHeartbeat():null};}
 function syncDirector(){if(directorPanel&&rig&&project)directorPanel.update(directorContext());}
 function directorRestore(s){for(const[id,o]of s.options||[])C.kinematics.configure(rig,rig.chains.find(c=>c.id===id),o,false);for(const[id,m]of s.modes)rig.chains.find(c=>c.id===id).mode=m;for(const[id,p]of Object.entries(s.pose))C.apply(id==='root'?rig.root:record(rig,id).o,p);for(const[id,p]of Object.entries(s.controls))C.apply(rig.controls[id].object,p);rig.root.updateMatrixWorld(true);}
 function directorGuard(allowDraft=false){assertEditingAllowed();if(mode==='compare')throw Error('Trở về Animation trước khi dùng Director.');if(sourcePreview)throw Error('Chọn Dùng để chỉnh sửa trước khi tạo Blocking.');if(draft&&!allowDraft)throw Error('Ghi hoặc hủy pose chưa ghi trước khi dùng Director.');if(rigDrag||numericDrag||timelineKeyDrag||motionHandDrag||editViews.some(v=>v.gizmo.dragging||v.moveGizmo.dragging))throw Error('Kết thúc thao tác kéo trước khi dùng Director.');}
@@ -49,4 +49,27 @@ async function directorAction(action,a){
  else if(action==='marker'||action==='idea'){const tool=action==='idea'?'set_idea':'set_marker';result=directorStage(tool,action==='idea'?{idea:a.idea}:{markerId:a.markerId,label:a.label,kind:a.kind,locked:a.locked},revision);directorApply(result.patchId,revision);directorPanel.message('Đã lưu.');return;}
  directorPanel.message(result?.summary||'');
 }
-function setupDirector(){directorPanel=new DirectorPanel(directorAction);studioBridge=new StudioBridge({context:directorContext,call:directorCall},text=>{directorPanel.connection(text);directorPanel.el('directorConnect').textContent=studioBridge?.sessionId?'Ngắt MCP':'Kết nối MCP';});const btn=document.createElement('button');btn.id='directorBtn';btn.type='button';btn.textContent='Director · Blocking / Nhịp';btn.onclick=guard(()=>{directorPanel.show();syncDirector();});$('smoothingBtn').before(btn);window.__studio.director={context:directorContext,call:directorCall,panel:()=>directorPanel,bridge:()=>studioBridge,cancel:directorCancel};}
+function setupDirector(){directorPanel=new DirectorPanel(directorAction);studioBridge=new StudioBridge({context:directorContext,call:directorCall},text=>{directorPanel.connection(text);directorPanel.el('directorConnect').textContent=studioBridge?.sessionId?'Ngắt MCP':'Kết nối MCP';});const btn=document.createElement('button');btn.id='directorBtn';btn.type='button';btn.textContent='Director · Blocking / Nhịp';btn.onclick=guard(()=>{directorPanel.show();syncDirector();});$('smoothingBtn').before(btn);window.__studio.director={lockArtifact:directorLockArtifact,exportBytes:directorExportBytes,context:directorContext,call:directorCall,panel:()=>directorPanel,bridge:()=>studioBridge,cancel:directorCancel};}
+
+async function directorExportBytes(format,revision){
+ directorGuard();directorCheckRevision(revision);
+ if(directorPending||easingPreview)throw Error('PATCH_PENDING');
+ if(window.__studio.shot?.session)throw Error('SHOT_EXPORT_REQUIRED');
+ if(!['bobj','fbx'].includes(format))throw Error('VALIDATION_FAILED');
+ const profile=$('exportProfile').value,skin=$('includeSkin').checked;
+ try{$('exportProfile').value='same';$('includeSkin').checked=false;const result=await buildDirectAnimation(format);directorCheckRevision(revision);
+ return{filename:safeName()+'.'+format,bytes:typeof result.data==='string'?new TextEncoder().encode(result.data):new Uint8Array(result.data)};
+ }finally{$('exportProfile').value=profile;$('includeSkin').checked=skin;}
+}
+
+function directorLockArtifact(){
+ if(app3ArtifactLocked)throw Error('APP3_BUSY');
+ const body=document.body,wasInert=!!body.inert,wasPlaying=playing;
+ app3ArtifactLocked=true;body.inert=true;playing=false;
+ let released=false;return()=>{if(released)return;released=true;app3ArtifactLocked=false;body.inert=wasInert;playing=wasPlaying;lastStamp=performance.now();syncTime();};
+}
+
+function directorShotContext(){
+ const s=window.__studio?.shot?.session;if(!s)return null;
+ return{shotId:s.shot.shotId,baseShotSha256:s.baseShotSha256,characterId:s.character.characterId,originalActionUuid:s.character.actionUuid,sourceSha256:s.character.glbSha256,frameRange:[...s.shot.frameRange],fps:s.shot.fps,clip:C.clone(s.character.clip),rootPolicy:s.character.rootPolicy,placement:C.clone(s.character.placement)};
+}

@@ -17,7 +17,7 @@ interface StoredFile { id: string; name: string; mimeType: string; sizeBytes: nu
 interface StoredJob {
   jobId: string
   projectId: string
-  type: 'scene.export.blend-fbx' | 'scene.export.glb' | 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
+  type: 'scene.export.blend-fbx' | 'scene.export.glb' | 'shot.export' | 'app3.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
   state: UnifiedJobState
   sourceRevision: number
   sourceSha256: string
@@ -529,7 +529,7 @@ async function readRecord(projectId: string, jobId: string): Promise<StoredJob |
   if (runtime?.record.projectId === projectId) return runtime.record
   try {
     const parsed = JSON.parse(await readFile(recordPath(projectId, jobId), 'utf8')) as StoredJob
-    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
+    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'app3.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
     if (parsed.state === 'queued' || parsed.state === 'running') {
       parsed.state = 'failed'
       parsed.error = { code: 'HOST_RESTARTED', message: 'The local host restarted before the job completed.' }
@@ -553,7 +553,7 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   if (!record) throw Object.assign(new Error('Render job not found'), { code: 'NOT_FOUND', status: 404 })
   const pending = runtimes.get(jobId)
   if (pending?.active && ['succeeded', 'failed', 'cancelled'].includes(record.state)) await pending.done
-  if (record.state === 'succeeded') return { state: record.state, committed: !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
+  if (record.state === 'succeeded') return { state: record.state, committed: !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'app3.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
   if (record.state === 'failed' || record.state === 'cancelled') return { state: record.state, committed: false }
   const runtime = runtimes.get(jobId)
   if (!runtime) return { state: record.state, committed: false }
@@ -566,7 +566,7 @@ export async function readUnifiedJobFile(jobId: string, projectId: string, fileI
   const record = await readRecord(projectId, jobId)
   const file = record?.state === 'succeeded' ? record.result?.files.find((item) => item.id === fileId) : undefined
   if (!record || !file || !/^\d{1,2}$/.test(fileId) || !/^[A-Za-z0-9._-]{1,128}$/.test(file.name) ||
-      !['image/png', 'application/json', 'application/zip', 'model/gltf-binary'].includes(file.mimeType) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 1 || !/^[a-f0-9]{64}$/.test(file.sha256) ||
+      !['image/png', 'application/json', 'application/zip', 'model/gltf-binary', 'text/plain', 'application/octet-stream'].includes(file.mimeType) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 1 || !/^[a-f0-9]{64}$/.test(file.sha256) ||
       file.path.includes('\\') || file.path.split('/').some((part) => !part || part === '.' || part === '..')) return null
   const base = await realpath(jobRoot(projectId, jobId))
   const target = path.resolve(base, ...file.path.split('/'))
@@ -590,3 +590,16 @@ export async function storeShotArtifact(project: UnifiedProject, bytes: Buffer, 
   await persist(record)
   return publicJob(record)
 }
+
+/** App 3 output is immutable, broker owned and served by the authenticated job-file route. */
+export async function storeApp3Artifact(project: UnifiedProject, bytes: Buffer, name: string, mimeType: string, provenance: Record<string,unknown>): Promise<UnifiedJobView> {
+ if(!/^[A-Za-z0-9._-]{1,128}$/.test(name)||!bytes.length||!['application/zip','text/plain','application/octet-stream'].includes(mimeType))throw new TypeError('Invalid App 3 artifact')
+ const jobId=randomUUID(),dir=jobRoot(project.projectId,jobId),now=new Date().toISOString()
+ await mkdir(path.join(dir,'output'),{recursive:true})
+ try {
+  await writeFile(path.join(dir,'output',name),bytes,{flag:'wx'})
+  const record:StoredJob={jobId,projectId:project.projectId,type:'app3.export',state:'succeeded',sourceRevision:project.revision,sourceSha256:digest(Buffer.from(JSON.stringify(project))),progress:1,createdAt:now,updatedAt:now,result:{files:[{id:'0',name,mimeType,sizeBytes:bytes.length,sha256:digest(bytes),path:`output/${name}`}],provenance,warnings:[],blockedRequests:[]}}
+  await persist(record);return publicJob(record)
+ }catch(error){await rm(dir,{recursive:true,force:true});throw error}
+}
+export async function discardApp3Artifact(projectId:string,jobId:string){await rm(jobRoot(projectId,jobId),{recursive:true,force:true})}

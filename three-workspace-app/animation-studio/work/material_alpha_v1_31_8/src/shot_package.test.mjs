@@ -1,3 +1,4 @@
+import './app3_mcp_demo_hook.test.mjs';
 import './app3_bridge.test.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 import {validateShot,sha256,clipTime} from './shot_package.js';

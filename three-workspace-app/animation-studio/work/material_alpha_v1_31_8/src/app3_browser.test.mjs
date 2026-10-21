@@ -5,13 +5,13 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';
 import {readFileSync} from 'node:fs';
 import {spawn} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 const require=createRequire(new URL('../../../../editor/apps/studio/package.json',import.meta.url));
 const workspace=new URL('../../../../',import.meta.url);
 const base=process.env.APP3_RUNTIME_BASE;
 function python(arguments_) {
  const request={jsonrpc:'2.0',id:1,method:'tools/call',params:{_meta:{'io.modelcontextprotocol/protocolVersion':'2026-07-28','io.modelcontextprotocol/clientCapabilities':{}},name:'bbs_app3_command',arguments:arguments_}};
- return new Promise((resolve,reject)=>{const child=spawn(process.env.PYTHON||(process.platform==='win32'?'python':'python3'),['-m','agent.app3_mcp'],{cwd:workspace,env:{...process.env,BBS_APP_URL:base},stdio:['pipe','pipe','pipe']});let output='',errors='';child.stdout.on('data',x=>{output+=x});child.stderr.on('data',x=>{errors+=x});child.on('error',reject);child.on('close',status=>{try{assert.equal(status,0,errors);const response=JSON.parse(output);assert.equal(response.result.isError,false,output);resolve(response.result.structuredContent.result)}catch(e){reject(e)}});child.stdin.end(JSON.stringify(request)+'\n')});
+ return new Promise((resolve,reject)=>{const child=spawn(process.env.PYTHON||(process.platform==='win32'?'python':'python3'),['-m','agent.app3_mcp'],{cwd:workspace,env:{...process.env,BBS_APP_URL:base,PYTHONIOENCODING:'utf-8'},stdio:['pipe','pipe','pipe']});let output='',errors='';child.stdout.on('data',x=>{output+=x});child.stderr.on('data',x=>{errors+=x});child.on('error',reject);child.on('close',status=>{try{assert.equal(status,0,errors);const response=JSON.parse(output);assert.equal(response.result.isError,false,output);resolve(response.result.structuredContent.result)}catch(e){reject(e)}});child.stdin.end(JSON.stringify(request)+'\n')});
 }
 test('Chromium: real Python MCP → authenticated broker → host bridge → Director reads', {skip:!base,timeout:300000},async()=>{
  assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/);
@@ -27,11 +27,23 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   assert.equal((await request.post(base+'/api/unified/commands',{headers:{Origin:'https://wrong.example'},data:{}})).status(),403);
   async function command(command,args={},projectId){const revision=projectId?(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision:undefined;const response=await request.post(base+'/api/unified/commands',{headers,data:{requestId:randomUUID(),command,args,...(projectId?{projectId,expectedRevision:revision}:{})}});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body;}
   const created=await command('project.create',{name:'E1 browser read',scene:makeEmptyDraft('E1',30,60,{fov:50,position:{x:0,y:2,z:5},rotation:{x:0,y:0,z:0},lookAt:{x:0,y:1,z:0}})}),projectId=created.projectId;
-  const assetBytes=readFileSync(new URL('../../../../builtin-assets/animation-studio/sample.fbx',import.meta.url));
-  const uploaded=await request.post(base+'/api/unified/uploads',{headers:{...headers,'Content-Type':'application/octet-stream','X-File-Name':'E1.fbx'},data:assetBytes});assert.ok(uploaded.ok());
-  const upload=await uploaded.json();const imported=await command('asset.import',{files:[upload.uploadId],format:'fbx',unitMeters:0.01},projectId);
+  const e4=process.env.APP3_RUNTIME_E4==='1';
+  let assetBytes=e4?readFileSync(process.env.APP3_RUNTIME_ASSET):readFileSync(new URL('../../../../builtin-assets/animation-studio/sample.fbx',import.meta.url));
+  if(e4){const oldLength=assetBytes.readUInt32LE(12),json=JSON.parse(assetBytes.subarray(20,20+oldLength).toString());delete json.animations;const text=Buffer.from(JSON.stringify(json)),length=Math.ceil(text.length/4)*4,out=Buffer.alloc(20+length+assetBytes.length-20-oldLength,32);assetBytes.copy(out,0,0,20);out.writeUInt32LE(out.length,8);out.writeUInt32LE(length,12);text.copy(out,20);assetBytes.copy(out,20+length,20+oldLength);assetBytes=out;}
+  const uploaded=await request.post(base+'/api/unified/uploads',{headers:{...headers,'Content-Type':'application/octet-stream','X-File-Name':e4?'E4.glb':'E1.fbx'},data:assetBytes});assert.ok(uploaded.ok());
+  const upload=await uploaded.json();const imported=await command('asset.import',{files:[upload.uploadId],format:e4?'glb':'fbx',unitMeters:e4?1:0.01},projectId);
   const loaded=await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json()),assetId=imported.result.assetIds.find(id=>loaded.project.assets[id].kind==='model'),skeletonId=Object.keys(loaded.project.skeletons)[0];
   const added=await command('character.add',{assetId,skeletonId,name:'E1 actor'},projectId),characterId=added.result.characterId;
+  let shotArtifact
+  if(process.env.APP3_RUNTIME_E4==='1'){
+   const norm=process.env.APP3_RUNTIME_ASSET;assert.ok(norm,'APP3_RUNTIME_ASSET normalized GLB required')
+   const bytes=readFileSync(norm),manifest=JSON.parse(readFileSync(norm.replace(/\.glb$/,'.manifest.json'),'utf8'))
+   const up=await request.post(base+'/api/unified/uploads',{headers:{...headers,'Content-Type':'application/octet-stream','X-File-Name':'normalized.glb'},data:bytes});const handle=await up.json()
+   await command('asset.import',{files:[handle.uploadId],format:'glb',manifest},projectId)
+   await command('motion.place',{characterId,motionId:manifest.actions[0].uuid,frameStart:0},projectId)
+   const p=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project,clip=p.scene.content.timeline.animation.motionClips[0]
+   shotArtifact=(await command('shot.export',{cameraNodeId:'camera_1',frameStart:0,frameEnd:clip.frameEnd,editableCharacterIds:[characterId]},projectId)).result
+  }
   await page.goto(`${base}/?unified=${projectId}`);
   await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
   const locator=page.locator('.wb-animation-creation-frame');await locator.waitFor();const frame=page.frame({url:/animation-studio\/v1\.32\.0\/index\.html/});assert.ok(frame);
@@ -57,6 +69,52 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
    const submit={command:'app3.command.submit',projectId,expectedRevision:projectRevision,requestId:randomUUID(),args:{...identity,tool,parameters,expectedAnimationRevision:native}};
    const ticket=await python(submit),duplicate=await python(submit);assert.equal(ticket.commandId,duplicate.commandId);
    for(let n=0;n<40;n++){const result=await python({command:'app3.command.result',projectId,args:{...identity,commandId:ticket.commandId}});if(result.status==='done'){assert.equal(result.result.ok,expectedOk,JSON.stringify(result));return result.result;}await new Promise(r=>setTimeout(r,100));}throw Error('Mutation result timeout');
+  }
+  if(process.env.APP3_RUNTIME_E4==='1'){
+   const hash=bytes=>createHash('sha256').update(bytes).digest('hex')
+   async function artifact(value){
+    assert.ok(value.jobId&&value.fileId);assert.equal(value.data,undefined);assert.equal(value.encoding,undefined)
+    const response=await request.get(`${base}/api/unified/projects/${projectId}/jobs/${value.jobId}/files/${value.fileId}`);assert.ok(response.ok());const bytes=await response.body();assert.equal(bytes.length,value.sizeBytes);assert.equal(hash(bytes),value.sha256);return bytes
+   }
+   const originalZip=await request.get(`${base}/api/unified/projects/${projectId}/jobs/${shotArtifact.jobId}/files/0`).then(r=>r.body()),originalZipHash=hash(originalZip)
+   const oldSource=await frame.evaluate(()=>window.__studio.rig().asset.data)
+   const stateBefore=await frame.evaluate(()=>JSON.stringify(window.__studio.serialized(false)))
+   const bobj=await edit('export_animation',{format:'bobj'}),bobjBytes=await artifact(bobj.value);assert.ok(bobjBytes.length>100)
+   const fbx=await edit('export_animation',{format:'fbx'}),fbxBytes=await artifact(fbx.value);assert.equal(fbxBytes.subarray(0,18).toString(),'Kaydara FBX Binary')
+   assert.equal(await frame.evaluate(()=>JSON.stringify(window.__studio.serialized(false))),stateBefore)
+   const pending=await edit('set_idea',{idea:'pending export guard'})
+   assert.equal((await edit('export_animation',{format:'bobj'},pending.value.baseRevision,false)).error,'PATCH_PENDING')
+   await edit('cancel_patch',{patchId:pending.value.patchId},pending.value.baseRevision)
+   const native=(await read('get_animation_context')).value.revision,projectRevision=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision
+   const submit={command:'app3.command.submit',projectId,expectedRevision:projectRevision,requestId:randomUUID(),args:{...identity,tool:'shotOpen',parameters:{jobId:shotArtifact.jobId,fileId:'0'},expectedAnimationRevision:native}}
+   let lostTransitionAck=false
+   await frame.evaluate(oldEpoch=>{window.__e4OldEpoch=oldEpoch;const shot=window.__studio.shot,open=shot.openZip;window.__e4OpenCount=0;shot.openZip=(...args)=>{window.__e4OpenCount++;return open(...args)}},identity.epoch)
+   await page.route('**/api/unified/commands',async route=>{const body=route.request().postDataJSON();if(!lostTransitionAck&&body.command==='app3.session.result'&&body.args.result?.ok&&body.args.result.value?.shotId){const response=await route.fetch();assert.ok(response.ok());lostTransitionAck=true;await route.abort('failed')}else await route.continue()})
+   const opening=await python(submit);assert.equal((await python(submit)).commandId,opening.commandId)
+   let opened
+   for(let n=0;n<100;n++){const result=await python({command:'app3.command.result',projectId,args:{...identity,commandId:opening.commandId}});if(result.status==='done'){assert.equal(result.result.ok,true,JSON.stringify(result));opened=result.result.value;break}await new Promise(r=>setTimeout(r,100))}
+   assert.ok(opened,'shot open timeout');await frame.waitForFunction(()=>window.__app3LocalBridge.status().bound&&window.__app3LocalBridge.status().epoch!==window.__e4OldEpoch,null,{timeout:10000});await page.unroute('**/api/unified/commands');assert.ok(lostTransitionAck);assert.equal(await frame.evaluate(()=>window.__e4OpenCount),1);assert.notEqual(opened.epoch,identity.epoch);assert.equal(opened.receiverToken,undefined)
+   assert.equal((await python({command:'app3.command.result',projectId,args:{...identity,commandId:opening.commandId}})).result.value.epoch,opened.epoch)
+   for(const key of Object.keys(identity))identity[key]=opened[key]
+   assert.notEqual(await frame.evaluate(()=>window.__studio.rig().asset.data),oldSource)
+   const shotContext=(await read('get_animation_context')).value,shot=await frame.evaluate(()=>window.__studio.shot.session.shot)
+   assert.equal(shotContext.fps,30);assert.equal(shotContext.duration,(shot.frameRange[1]-shot.frameRange[0])/30)
+   // Stall raw upload and try a native mutation while the export proof is held.
+   let lockChecked=false
+   await page.route('**/api/unified/uploads',async route=>{
+    const result=await frame.evaluate(async()=>{try{await window.__studio.loadProject(window.__studio.serialized(false));return 'MUTATED'}catch(e){return e.message}})
+    assert.equal(result,'APP3_BUSY');lockChecked=true;await route.continue()
+   })
+   const shotSource=await frame.evaluate(()=>window.__studio.rig().asset.data)
+   const exported=await edit('shotExport',{}),zip=await artifact(exported.value);assert.ok(lockChecked);await page.unroute('**/api/unified/uploads')
+   const {unzipSync}=await import(require.resolve('three/addons/libs/fflate.module.js')),files=unzipSync(zip),result=JSON.parse(new TextDecoder().decode(files['result.json'])),editResult=result.edits[0],glb=Buffer.from(files[editResult.glb]),manifest=JSON.parse(new TextDecoder().decode(files[editResult.manifest]))
+   assert.equal(result.baseShotSha256,shotArtifact.baseShotSha256);assert.equal(editResult.originalActionUuid,opened.actionUuid);assert.notEqual(editResult.newActionUuid,opened.actionUuid);assert.equal(editResult.glbSha256,hash(glb));assert.equal(manifest.glbSha256,hash(glb))
+   const json=JSON.parse(glb.subarray(20,20+glb.readUInt32LE(12)).toString()),names=json.skins[0].joints.map(i=>json.nodes[i].name)
+   assert.equal(names.length,65);assert.equal(new Set(names).size,65);assert.ok(names.every(n=>!n.startsWith('mixamorig')));assert.equal(json.animations.length,1);assert.equal(json.extras.bakeFps,30);assert.equal(json.extras.units,'meters')
+   for(const sampler of json.animations[0].samplers){const a=json.accessors[sampler.input];assert.equal(a.count,shot.frameRange[1]-shot.frameRange[0]+1);assert.equal(a.min[0],0);assert.ok(Math.abs(a.max[0]-shotContext.duration)<1e-6)}
+   assert.equal(await frame.evaluate(()=>window.__studio.rig().asset.data),shotSource);assert.equal(await frame.evaluate(()=>document.body.inert),false);assert.equal(hash(await request.get(`${base}/api/unified/projects/${projectId}/jobs/${shotArtifact.jobId}/files/0`).then(r=>r.body())),originalZipHash)
+   const input=json.accessors[json.animations[0].samplers[0].input],view=json.bufferViews[input.bufferView],offset=20+glb.readUInt32LE(12)+8+(view.byteOffset||0)+(input.byteOffset||0);assert.equal(input.componentType,5126);for(let i=0;i<input.count;i++)assert.ok(Math.abs(glb.readFloatLE(offset+i*(view.byteStride||4))-i/30)<1e-6)
+   assert.deepEqual(errors,[]);console.log(`E4 actual MCP BOBJ=${bobjBytes.length} FBX=${fbxBytes.length} shotZIP=${zip.length} GLB=${glb.length}; lease transition, hash,65 names,30FPS,bounds,UUID,Python validate-result, lost ACK retry, unchanged source and upload native lock PASS`);return
   }
   const nativeState=()=>frame.evaluate(()=>({json:JSON.stringify(window.__studio.state.project),history:window.__studio.state.historyIndex}));
   const e3=process.env.APP3_RUNTIME_E3==='1';

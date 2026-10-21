@@ -2,6 +2,8 @@ import { randomUUID, createHash } from 'node:crypto'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 // Process generation is part of every lease/ticket: a restarted broker never replays a dispatched command.
+export const APP3_EXPORT_TOOLS = ['export_animation', 'shotOpen', 'shotExport'] as const
+export interface App3ShotProof { shotId: string; baseShotSha256: string; characterId: string; actionUuid: string; glbSha256: string; zipSha256: string; frameRange: [number, number]; fps: number; sourceRevision: number; jobId: string; fileId: string }
 export const APP3_READ_TOOLS = ['read_keyframes', 'analyze_motion', 'get_scene_context', 'get_animation_context'] as const
 export const LOCAL_EDIT_TOOLS=['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
 export function validateApp3Edit(tool: unknown,value: unknown): asserts value is Record<string, unknown> {
@@ -54,6 +56,7 @@ export function validateApp3Edit(tool: unknown,value: unknown): asserts value is
 
 const TTL = 120_000
 const COMMAND_TTL = 60_000
+const EXPORT_TTL = 120_000
 const MAX_BYTES = 1024 * 1024
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const record = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)
@@ -92,21 +95,22 @@ export function app3BindingCandidates(project: UnifiedProject, sourceSha256: str
   }
   return found
 }
-type Ticket = { commandId: string; requestId: string; fingerprint: string; tool: string; args: Record<string, unknown>; projectRevision?: number; expectedAnimationRevision?: string; status: 'queued' | 'dispatched' | 'done' | 'expired'; created: number; expiredError?: string; result?: Record<string, unknown> }
-type Session = { projectId: string; sessionId: string; epoch: string; characterId: string; sourceSha256: string; sourceMotionId?: string; receiverToken: string; heartbeat: number; ready: boolean; active: boolean; context: Record<string, unknown>; tickets: Map<string, Ticket> }
+type Ticket = { completion?: string; proof?: App3ShotProof; nextLease?: Record<string, unknown>; commandId: string; requestId: string; fingerprint: string; tool: string; args: Record<string, unknown>; projectRevision?: number; expectedAnimationRevision?: string; status: 'queued' | 'dispatched' | 'done' | 'expired'; created: number; expiredError?: string; result?: Record<string, unknown> }
+type Session = { closedAt?: number; opening?: string; shot?: App3ShotProof; projectId: string; sessionId: string; epoch: string; characterId: string; sourceSha256: string; sourceMotionId?: string; receiverToken: string; heartbeat: number; ready: boolean; active: boolean; context: Record<string, unknown>; tickets: Map<string, Ticket> }
 type State = { instance: string; sessions: Map<string, Session> }
 const globalState = globalThis as typeof globalThis & { __bbsApp3Bridge?: State }
 const state = globalState.__bbsApp3Bridge ??= { instance: randomUUID(), sessions: new Map() }
 const identityFields = ['sessionId', 'epoch', 'characterId', 'serverInstance']
 function identity(s: Session) { return { projectId: s.projectId, sessionId: s.sessionId, epoch: s.epoch, characterId: s.characterId, serverInstance: state.instance } }
-function session(project: UnifiedProject, a: Record<string, unknown>, receiver = false): Session {
+function session(project: UnifiedProject, a: Record<string, unknown>, receiver = false, resultOnly = false): Session {
   for (const key of identityFields) identifier(a[key])
   if (a.serverInstance !== state.instance) fail('SESSION_REPLACED')
   const s = state.sessions.get(a.sessionId as string)
   if (!s || s.projectId !== project.projectId) fail('APP3_NOT_OPEN', 404)
   if (s.epoch !== a.epoch || s.characterId !== a.characterId) fail('SESSION_REPLACED')
+  if (s.closedAt) { if (!resultOnly || Date.now() - s.closedAt > TTL * 5) fail('SESSION_REPLACED'); return s }
   if (Date.now() - s.heartbeat > TTL) fail('APP3_OFFLINE', 503)
-  if (!app3BindingCandidates(project, s.sourceSha256).some(c => c.characterId === s.characterId && c.sourceMotionId === s.sourceMotionId)) fail('SESSION_REPLACED')
+  if (s.shot ? s.shot.sourceRevision !== project.revision || s.sourceSha256 !== s.shot.glbSha256 || s.characterId !== s.shot.characterId || !project.characters[s.characterId] || !project.motions[s.shot.actionUuid] : !app3BindingCandidates(project, s.sourceSha256).some(c => c.characterId === s.characterId && c.sourceMotionId === s.sourceMotionId)) fail('SESSION_REPLACED')
   if (receiver && a.receiverToken !== s.receiverToken) fail('RECEIVER_REJECTED', 403)
   return s
 }
@@ -114,14 +118,14 @@ function ticket(s: Session, id: unknown) {
   identifier(id)
   const t = s.tickets.get(id)
   if (!t) fail('COMMAND_NOT_FOUND', 404)
-  if (t.status !== 'done' && t.status !== 'expired' && Date.now() - t.created > COMMAND_TTL) { t.expiredError = t.status === 'queued' ? 'APP3_OFFLINE' : 'COMMAND_OUTCOME_UNKNOWN'; t.status = 'expired' }
+  if (t.status !== 'done' && t.status !== 'expired' && Date.now() - t.created > (APP3_EXPORT_TOOLS.includes(t.tool as any)?EXPORT_TTL:COMMAND_TTL)) { t.expiredError = t.status === 'queued' ? 'APP3_OFFLINE' : 'COMMAND_OUTCOME_UNKNOWN'; t.status = 'expired';if(t.tool==='shotOpen'){s.opening=undefined;if(t.expiredError==='COMMAND_OUTCOME_UNKNOWN'){s.closedAt=Date.now();s.ready=false}} }
   return t
 }
-export function executeApp3Bridge(project: UnifiedProject, command: string, a: Record<string, unknown>, requestId: string, dryRun = false, expectedProjectRevision?: number): Record<string, unknown> {
+export function executeApp3Bridge(project: UnifiedProject, command: string, a: Record<string, unknown>, requestId: string, dryRun = false, expectedProjectRevision?: number, preparedShot?: App3ShotProof, validatedArtifact = false): Record<string, unknown> {
   bounded(a)
   if (command === 'app3.session.list') {
     fields(a, [])
-    return { sessions: [...state.sessions.values()].filter(s => s.projectId === project.projectId && Date.now() - s.heartbeat <= TTL).map(s => ({ ...identity(s), ready: s.ready, active: s.active, heartbeatAgeMs: Date.now() - s.heartbeat, capabilities: [...APP3_READ_TOOLS,...LOCAL_EDIT_TOOLS] })) }
+    return { sessions: [...state.sessions.values()].filter(s => s.projectId === project.projectId && !s.closedAt && Date.now() - s.heartbeat <= TTL).map(s => ({ ...identity(s), ready: s.ready, active: s.active, heartbeatAgeMs: Date.now() - s.heartbeat, capabilities: [...APP3_READ_TOOLS,...LOCAL_EDIT_TOOLS,...APP3_EXPORT_TOOLS] })) }
   }
   if (command === 'app3.session.register') {
     fields(a, ['sessionId', 'epoch', 'characterId', 'sourceSha256', 'sourceMotionId', 'ready', 'active', 'context'])
@@ -135,7 +139,7 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     const s: Session = { projectId: project.projectId, sessionId: a.sessionId, epoch: a.epoch, characterId: a.characterId, sourceSha256: a.sourceSha256, ...(typeof a.sourceMotionId === 'string' ? { sourceMotionId: a.sourceMotionId } : {}), receiverToken: randomUUID(), heartbeat: Date.now(), ready: a.ready, active: a.active, context: a.context, tickets: new Map() }
     state.sessions.set(s.sessionId, s)
     // Bound dead leases; never evict a live session to make room.
-    for (const [id, old] of state.sessions) if (Date.now() - old.heartbeat > TTL * 2) state.sessions.delete(id)
+    for (const [id, old] of state.sessions) if (old.closedAt ? Date.now()-old.closedAt>TTL*5 : Date.now()-old.heartbeat>TTL*2) state.sessions.delete(id)
     return { ...identity(s), receiverToken: s.receiverToken }
   }
   const receiver = ['app3.session.poll', 'app3.session.result', 'app3.session.close', 'app3.session.claim'].includes(command)
@@ -143,12 +147,19 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
   const extras: Record<string, string[]> = { 'app3.context.get': [], 'app3.command.submit': ['tool', 'parameters', 'expectedAnimationRevision'], 'app3.command.result': ['commandId'], 'app3.session.poll': ['ready', 'active', 'context'], 'app3.session.result': ['commandId', 'result', 'context'], 'app3.session.close': [], 'app3.session.claim': ['commandId'] }
   if (!(command in extras)) fail('UNSUPPORTED_CAPABILITY', 422)
   fields(a, [...common, ...extras[command]])
-  const s = session(project, a, receiver)
+  const s = session(project, a, receiver, command === 'app3.command.result' || command === 'app3.session.result')
+  if (s.closedAt && command !== 'app3.command.result') {
+    if (a.receiverToken !== s.receiverToken) fail('RECEIVER_REJECTED',403)
+    const old = ticket(s,a.commandId)
+    if (command !== 'app3.session.result' || !old.nextLease || old.completion !== JSON.stringify(a.result)) fail('SESSION_REPLACED')
+    return { acknowledged:true, commandId:old.commandId, nextLease:old.nextLease }
+  }
   if (command === 'app3.context.get') return { ...identity(s), ready: s.ready, active: s.active, context: s.context, freshness: 'cached-heartbeat', heartbeatAgeMs: Date.now() - s.heartbeat }
   if (command === 'app3.command.submit') {
-    const editing=LOCAL_EDIT_TOOLS.includes(a.tool as any)
+    const exporting=APP3_EXPORT_TOOLS.includes(a.tool as any)
+    const editing=LOCAL_EDIT_TOOLS.includes(a.tool as any)||exporting
     if(editing){
-      validateApp3Edit(a.tool,a.parameters)
+      if(exporting)validateApp3Export(a.tool,a.parameters);else validateApp3Edit(a.tool,a.parameters)
       if(!Number.isInteger(expectedProjectRevision))fail('VALIDATION_FAILED',400)
       if(expectedProjectRevision!==project.revision)fail('REVISION_CONFLICT')
       if(typeof a.expectedAnimationRevision!=='string'||!a.expectedAnimationRevision.length)fail('VALIDATION_FAILED',400)
@@ -158,15 +169,20 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     const fingerprint = createHash('sha256').update(JSON.stringify({ tool: a.tool, parameters: a.parameters,expectedAnimationRevision:a.expectedAnimationRevision,projectRevision:editing?expectedProjectRevision:undefined })).digest('hex')
     const existing = [...s.tickets.values()].find(t => t.requestId === requestId)
     if (existing) { if (existing.fingerprint !== fingerprint) fail('REQUEST_ID_CONFLICT'); return { ...identity(s), commandId: existing.commandId, status: existing.status } }
+    if(s.opening)ticket(s,s.opening)
+    if(s.closedAt)fail('SESSION_REPLACED')
+    if(s.opening)fail('APP3_BUSY')
     if (s.tickets.size >= 256) fail('QUEUE_FULL', 429)
     if (dryRun) return { valid: true }
     const t: Ticket = { commandId: randomUUID(), requestId, fingerprint, tool: a.tool as string, args: a.parameters as Record<string,unknown>, ...(editing?{projectRevision:expectedProjectRevision,expectedAnimationRevision:a.expectedAnimationRevision as string}:{}), status: 'queued', created: Date.now() }
+    if(a.tool==='shotOpen'){if(!preparedShot)fail('SHOT_PACKAGE_REQUIRED');if(preparedShot.characterId!==s.characterId||preparedShot.sourceRevision!==project.revision)fail('IDENTITY_MISMATCH');t.proof=preparedShot;s.opening=t.commandId}
+    if(a.tool==='shotExport'){if(!s.shot)fail('SHOT_PACKAGE_REQUIRED');t.proof=s.shot}
     s.tickets.set(t.commandId, t)
     return { ...identity(s), commandId: t.commandId, status: t.status }
   }
   if (command === 'app3.command.result') { const t = ticket(s, a.commandId); return { ...identity(s), commandId: t.commandId, status: t.status, ...(t.result ? { result: t.result } : {}), ...(t.status === 'expired' ? { error: t.expiredError } : {}) } }
   if (dryRun) return { valid: true }
-  if (command === 'app3.session.close') { state.sessions.delete(s.sessionId); return { closed: true } }
+  if (command === 'app3.session.close') { s.closedAt=Date.now();s.ready=false;for(const t of s.tickets.values())if(!['done','expired'].includes(t.status)){t.status='expired';t.expiredError='SESSION_REPLACED'};return { closed: true } }
   if (command === 'app3.session.poll') {
     if (typeof a.ready !== 'boolean' || typeof a.active !== 'boolean' || !record(a.context)) fail('VALIDATION_FAILED', 400)
     s.heartbeat = Date.now(); s.ready = a.ready; s.active = a.active; s.context = a.context
@@ -174,16 +190,16 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     for (const [id, t] of s.tickets) { ticket(s, id); if (Date.now() - t.created > TTL * 5) s.tickets.delete(id) }
     const next = [...s.tickets.values()].find(t => t.status === 'dispatched') ?? [...s.tickets.values()].find(t => t.status === 'queued')
     if(next?.projectRevision!==undefined&&next.status==='queued'&&(next.projectRevision!==project.revision||!s.active)){
-      next.status='done';next.result={ok:false,error:next.projectRevision!==project.revision?'REVISION_CONFLICT':'APP3_INACTIVE'};return {...identity(s),commands:[]}
+      if(next.tool==='shotOpen')s.opening=undefined;next.status='done';next.result={ok:false,error:next.projectRevision!==project.revision?'REVISION_CONFLICT':'APP3_INACTIVE'};return {...identity(s),commands:[]}
     }
-    if (next && s.ready) { next.status = 'dispatched'; return { ...identity(s), commands: [{ commandId: next.commandId, tool: next.tool, args: next.args, ...(next.expectedAnimationRevision?{expectedAnimationRevision:next.expectedAnimationRevision,projectRevision:next.projectRevision}:{}) }] } }
+    if (next && s.ready) { next.status = 'dispatched'; return { ...identity(s), commands: [{ commandId: next.commandId, tool: next.tool, args: next.args, ...(next.proof ? {shot:next.proof}:{}), ...(next.expectedAnimationRevision?{expectedAnimationRevision:next.expectedAnimationRevision,projectRevision:next.projectRevision}:{}) }] } }
     return { ...identity(s), commands: [] }
   }
   const t = ticket(s, a.commandId)
   if(command==='app3.session.claim'){
     if(t.status!=='dispatched')fail('COMMAND_OUTCOME_UNKNOWN')
     if(t.projectRevision!==undefined){if(t.projectRevision!==project.revision)fail('REVISION_CONFLICT');if(!s.active)fail('APP3_INACTIVE')}
-    return {valid:true}
+    return {valid:true,tool:t.tool,...(t.proof?{shot:t.proof}:{}),expectedAnimationRevision:t.expectedAnimationRevision}
   }
   if (!record(a.result) || typeof a.result.ok !== 'boolean' || !record(a.context)) fail('VALIDATION_FAILED', 400)
   if (t.status === 'done') {
@@ -191,6 +207,45 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     return { acknowledged: true, commandId: t.commandId }
   }
   if (t.status !== 'dispatched') fail('COMMAND_OUTCOME_UNKNOWN')
-  t.result = a.result; t.status = 'done'; s.context = a.context; s.heartbeat = Date.now()
-  return { acknowledged: true, commandId: t.commandId }
+  let completedResult=a.result
+  if(['export_animation','shotExport'].includes(t.tool)&&a.result.ok===true&&!validatedArtifact)fail('ARTIFACT_VALIDATION_REQUIRED')
+  t.completion=JSON.stringify(a.result)
+  if(t.tool==='shotOpen' && a.result.ok===true){
+    const value=a.result.value
+    if(!t.proof||!record(value)||value.sourceSha256!==t.proof.glbSha256||value.baseShotSha256!==t.proof.baseShotSha256||value.shotId!==t.proof.shotId||value.actionUuid!==t.proof.actionUuid||value.characterId!==t.proof.characterId||JSON.stringify(value.frameRange)!==JSON.stringify(t.proof.frameRange)||value.fps!==t.proof.fps)fail('IDENTITY_MISMATCH')
+    fields(value,['shotId','baseShotSha256','characterId','actionUuid','sourceSha256','frameRange','fps'])
+    if(a.context.ready!==true||typeof a.context.revision!=='string')fail('VALIDATION_FAILED')
+    if(t.projectRevision!==project.revision)fail('REVISION_CONFLICT')
+    const next:Session={projectId:s.projectId,sessionId:randomUUID(),epoch:randomUUID(),characterId:s.characterId,sourceSha256:t.proof.glbSha256,sourceMotionId:t.proof.actionUuid,receiverToken:randomUUID(),heartbeat:Date.now(),ready:true,active:s.active,context:a.context,tickets:new Map(),shot:t.proof}
+    state.sessions.set(next.sessionId,next);s.closedAt=Date.now();s.ready=false;s.opening=undefined
+    t.nextLease={...identity(next),receiverToken:next.receiverToken}
+    completedResult={ok:true,value:{...value,...identity(next)}}
+  }
+  if(t.tool==='shotOpen')s.opening=undefined
+  t.result = completedResult as Record<string,unknown>; t.status = 'done'; s.context = a.context; s.heartbeat = Date.now()
+  return { acknowledged: true, commandId: t.commandId,...(t.nextLease?{nextLease:t.nextLease}:{}) }
+}
+
+export function app3ArtifactClaim(project: UnifiedProject, args: Record<string,unknown>) {
+ const s=session(project,args,true),t=ticket(s,args.commandId)
+ if(!['export_animation','shotExport'].includes(t.tool)||t.status!=='dispatched')fail('COMMAND_OUTCOME_UNKNOWN')
+ if(t.projectRevision!==project.revision)fail('REVISION_CONFLICT')
+ if(!s.active)fail('APP3_INACTIVE')
+ return {tool:t.tool,parameters:t.args,proof:t.proof,expectedAnimationRevision:t.expectedAnimationRevision}
+}
+export function validateApp3Export(tool: unknown, value: unknown): asserts value is Record<string,unknown> {
+ if(!record(value))fail('VALIDATION_FAILED',400)
+ if(tool==='export_animation'){fields(value,['format']);if(!['bobj','fbx'].includes(String(value.format)))fail('VALIDATION_FAILED',400)}
+ else if(tool==='shotOpen'){fields(value,['jobId','fileId']);identifier(value.jobId);if(typeof value.fileId!=='string'||!/^\d{1,2}$/.test(value.fileId))fail('VALIDATION_FAILED',400)}
+ else if(tool==='shotExport'){fields(value,['includeMinecraft20']);if(value.includeMinecraft20!==undefined&&typeof value.includeMinecraft20!=='boolean')fail('VALIDATION_FAILED',400)}
+ else fail('UNSUPPORTED_CAPABILITY',422)
+}
+
+/** Authenticate cached artifact acknowledgments as strictly as the initial completion. */
+export function app3ArtifactReplay(project:UnifiedProject,args:Record<string,unknown>){
+ const s=session(project,args,true,true)
+ if(args.receiverToken!==s.receiverToken)fail('RECEIVER_REJECTED',403)
+ const t=ticket(s,args.commandId)
+ if(!['export_animation','shotExport'].includes(t.tool)||!['dispatched','done'].includes(t.status))fail('COMMAND_OUTCOME_UNKNOWN')
+ return t.status==='done'
 }

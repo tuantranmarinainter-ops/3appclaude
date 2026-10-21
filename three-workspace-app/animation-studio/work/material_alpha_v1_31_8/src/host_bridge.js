@@ -7,12 +7,15 @@
   let loadedRig = null
   let localBinding = null
   let localLease = null
+  let localTransition = null
   let localBusy = false
   let localGeneration = 0
   let localError = 'APP3_NOT_READY'
   let disposed = false
   let opening = false
+  let artifactBusy = false
   let bindingBusy = false
+  const artifactCalls = new Map()
   let parentAccessible = false
   try { parentAccessible = parent !== window && parent.location.origin === location.origin } catch {}
   const editorIdentity = () => { const c = localContext(); return JSON.stringify([c.rig, c.rootUuid, c.slot, c.activeRoot]) }
@@ -41,14 +44,14 @@
     return matches
   }
   const broker = async (command, args, projectId) => {
-    const response = await fetch('/api/unified/commands', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: crypto.randomUUID(), projectId, command, args }) })
+    const response = await fetch('/api/unified/commands', { signal: globalThis.AbortSignal?.timeout?.(45000), method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: crypto.randomUUID(), projectId, command, args }) })
     const body = await response.json()
     if (!response.ok || body.ok !== true) throw Error(body.error?.code || 'APP3_TRANSPORT_ERROR')
     return body.result
   }
   const leaseArgs = lease => ({ sessionId: lease.sessionId, epoch: lease.epoch, characterId: lease.characterId, serverInstance: lease.serverInstance, receiverToken: lease.receiverToken })
   async function resetLocal() {
-    localGeneration++
+    localGeneration++;localTransition=null
     const old = localLease; localLease = null; localBinding = null
     window.__studio?.director?.bridge()?.resetLocal()
     if (old) try { await broker('app3.session.close', leaseArgs(old), old.projectId) } catch {}
@@ -87,6 +90,7 @@
     localBusy = true
     const lease = localLease, generation = localGeneration
     try {
+      if(localTransition){await artifactCommand(localTransition.cmd,localTransition.lease,localTransition.generation);return}
       const context = localContext()
       if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('APP3_BINDING_REQUIRED') }
       const response = await broker('app3.session.poll', { ...leaseArgs(lease), ready: !!context.ready, active: hostVisible(), context }, lease.projectId)
@@ -94,6 +98,11 @@
       if (['projectId', 'sessionId', 'epoch', 'characterId', 'serverInstance'].some(key => response[key] !== lease[key])) throw Error('SESSION_REPLACED')
       for (const cmd of response.commands || []) {
         if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('SESSION_REPLACED') }
+        if (['export_animation','shotOpen','shotExport'].includes(cmd.tool)) {
+          await artifactCommand(cmd, lease, generation)
+          if (localLease !== lease) return
+          continue
+        }
         const result = await window.__studio.director.bridge().localCall(cmd, JSON.stringify([lease.projectId, lease.sessionId, lease.epoch, lease.characterId, lease.serverInstance]), { isActive: hostVisible, isShot: () => !!window.__studio.shot?.session, verify: async () => { await broker('app3.session.claim', { ...leaseArgs(lease), commandId: cmd.commandId }, lease.projectId); if (generation !== localGeneration || localLease !== lease || editorIdentity() !== loadedRig) throw Error('SESSION_REPLACED') } })
         if (generation !== localGeneration || localLease !== lease) return
         if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('SESSION_REPLACED') }
@@ -104,6 +113,107 @@
       localError = error.message
       if (['SESSION_REPLACED', 'APP3_NOT_OPEN', 'APP3_OFFLINE', 'RECEIVER_REJECTED'].includes(localError)) { await resetLocal(); loadedSha = null; loadedRig = null }
     } finally { localBusy = false }
+  }
+  const shotIdentity = () => {
+    const session=window.__studio?.shot?.session
+    return session ? {shotId:session.shot.shotId,baseShotSha256:session.baseShotSha256,characterId:session.character.characterId,actionUuid:session.character.actionUuid,frameRange:session.shot.frameRange,fps:session.shot.fps,sourceSha256:session.character.glbSha256} : null
+  }
+  const checkShot = proof => {
+    const current=shotIdentity()
+    if(!current||['shotId','baseShotSha256','characterId','actionUuid','fps','sourceSha256'].some(k=>current[k]!== (k==='sourceSha256'?proof.glbSha256:proof[k]))||JSON.stringify(current.frameRange)!==JSON.stringify(proof.frameRange))throw Error('IDENTITY_MISMATCH')
+  }
+  const assertClean = () => {
+    const studio=window.__studio,context=localContext()
+    if(studio.state.draft||studio.state.sourceClip||context.preview)throw Error('PATCH_PENDING')
+  }
+  async function openShot(bytes,interactive=true) {
+    const studio=window.__studio
+    if(!studio.shot?.openZip)throw Error('CONTRACT_UNSUPPORTED')
+    if(studio.state.draft||studio.state.dirty&&JSON.stringify(studio.serialized(false))!==savedSnapshot&&savedSnapshot)throw Error('UNSAVED_CHANGES')
+    if(await studio.shot.openZip(bytes,{interactive})===false)throw Error('OPEN_CANCELLED')
+    savedSnapshot=JSON.stringify(studio.serialized(false))
+    return shotIdentity()
+  }
+  async function artifactCommand(cmd,lease,generation) {
+    const key=JSON.stringify([lease.sessionId,lease.epoch,cmd.commandId]),fingerprint=JSON.stringify(cmd)
+    let entry=artifactCalls.get(key)
+    if(entry&&entry.fingerprint!==fingerprint)throw Error('REQUEST_ID_CONFLICT')
+    if(!entry){
+      const verify=async(changed=false)=>{
+        if(disposed||generation!==localGeneration||localLease!==lease)throw Error('SESSION_REPLACED')
+        if(!hostVisible())throw Error('APP3_INACTIVE')
+        if(!changed&&(editorIdentity()!==loadedRig||await actualSha()!==loadedSha))throw Error('IDENTITY_MISMATCH')
+        if(!changed&&localContext().revision!==cmd.expectedAnimationRevision)throw Error('REVISION_CONFLICT')
+        await broker('app3.session.claim',{...leaseArgs(lease),commandId:cmd.commandId},lease.projectId)
+        if(disposed||generation!==localGeneration||localLease!==lease)throw Error('SESSION_REPLACED')
+        if(!hostVisible())throw Error('APP3_INACTIVE')
+        if(!changed&&(editorIdentity()!==loadedRig||await actualSha()!==loadedSha||localContext().revision!==cmd.expectedAnimationRevision))throw Error('REVISION_CONFLICT')
+        if(changed){checkShot(cmd.shot);if(await actualSha()!==cmd.shot.glbSha256)throw Error('IDENTITY_MISMATCH')}
+      }
+      entry={fingerprint,verify,promise:(async()=>{
+        let replaced=false
+        try{
+          await verify();assertClean()
+          if(cmd.tool==='shotOpen'){
+            if(opening)throw Error('APP3_BUSY');opening=true
+            const wasInert=!!document.body.inert;document.body.inert=true
+            try{
+              const proof=cmd.shot
+              const response=await fetch(`/api/unified/projects/${encodeURIComponent(lease.projectId)}/jobs/${encodeURIComponent(proof.jobId)}/files/${encodeURIComponent(proof.fileId)}`,{signal:globalThis.AbortSignal?.timeout?.(45000)})
+              if(!response.ok)throw Error('SHOT_PACKAGE_REQUIRED')
+              const bytes=await response.arrayBuffer()
+              if(await digest(bytes)!==proof.zipSha256)throw Error('IDENTITY_MISMATCH')
+              await verify();assertClean()
+              await openShot(bytes,false);replaced=true;document.body.inert=wasInert;entry.release=window.__studio.director.lockArtifact();entry.locked=true;checkShot(proof)
+              if(await actualSha()!==proof.glbSha256)throw Error('IDENTITY_MISMATCH')
+              await verify(true)
+              return {result:{ok:true,value:shotIdentity()},transition:true}
+            }finally{opening=false;if(!entry.release)document.body.inert=wasInert}
+          }
+          if(cmd.tool==='shotExport')checkShot(cmd.shot)
+          const output=cmd.tool==='shotExport'?{bytes:await window.__studio.shot.exportZip({includeMinecraft20:!!cmd.args.includeMinecraft20}),filename:'shot.result.zip'}:await window.__studio.director.exportBytes(cmd.args.format,cmd.expectedAnimationRevision)
+          entry.release=window.__studio.director.lockArtifact();entry.locked=true
+          await verify();assertClean();if(cmd.tool==='shotExport')checkShot(cmd.shot)
+          const response=await fetch('/api/unified/uploads',{signal:globalThis.AbortSignal?.timeout?.(45000),method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(output.filename)},body:output.bytes})
+          const upload=await response.json();if(!response.ok)throw Error(upload.error?.code||'UPLOAD_FAILED')
+          await verify();assertClean();if(cmd.tool==='shotExport')checkShot(cmd.shot)
+          return {uploadId:upload.uploadId,animationRevision:localContext().revision,context:localContext()}
+        }catch(error){
+          if(editorIdentity()!==loadedRig)replaced=true
+          else try{if(await actualSha()!==loadedSha)replaced=true}catch{replaced=true}
+          return {result:{ok:false,error:String(error.message||error)},replaced}
+        }
+      })()}
+      artifactCalls.set(key,entry)
+      if(artifactCalls.size>256)artifactCalls.delete(artifactCalls.keys().next().value)
+    }
+    artifactBusy=true
+    const output=await entry.promise
+    if(disposed||generation!==localGeneration||localLease!==lease){entry.release?.();artifactBusy=false;return}
+    try {
+    if(output.uploadId){
+      if(!entry.locked){entry.release=window.__studio.director.lockArtifact();entry.locked=true}
+      await entry.verify();assertClean();if(cmd.tool==='shotExport')checkShot(cmd.shot)
+    }
+    if(output.transition){
+      if(!entry.locked){entry.release=window.__studio.director.lockArtifact();entry.locked=true}
+      checkShot(cmd.shot);if(await actualSha()!==cmd.shot.glbSha256)throw Error('IDENTITY_MISMATCH')
+      localTransition={cmd,lease,generation}
+    }
+    const acknowledgment=output.uploadId?await broker('app3.session.artifact',{...leaseArgs(lease),commandId:cmd.commandId,uploadId:output.uploadId,animationRevision:output.animationRevision,context:output.context},lease.projectId):await broker('app3.session.result',{...leaseArgs(lease),commandId:cmd.commandId,result:output.result,context:localContext()},lease.projectId)
+    if(generation!==localGeneration||localLease!==lease)return
+    if(acknowledgment.nextLease){
+      localTransition=null;localGeneration++;window.__studio.director.bridge().resetLocal()
+      localLease=acknowledgment.nextLease;localBinding=null;loadedSha=await actualSha();loadedRig=editorIdentity();localError=null
+    }else if(output.replaced){await resetLocal();loadedSha=null;loadedRig=null}
+    } catch(error){
+      if(['VALIDATION_FAILED','ARTIFACT_VALIDATION_REQUIRED','IDENTITY_MISMATCH','REVISION_CONFLICT','SHOT_PACKAGE_REQUIRED','CONTRACT_UNSUPPORTED'].includes(error.message)){
+        delete output.uploadId;output.result={ok:false,error:error.message}
+        await broker('app3.session.result',{...leaseArgs(lease),commandId:cmd.commandId,result:output.result,context:localContext()},lease.projectId)
+        if(output.transition||output.replaced||editorIdentity()!==loadedRig){await resetLocal();loadedSha=null;loadedRig=null}
+      }else{if(!output.transition&&editorIdentity()!==loadedRig){await resetLocal();loadedSha=null;loadedRig=null}throw error}
+    }
+    finally{entry.release?.();entry.locked=false;artifactBusy=false}
   }
   // Context may arrive after the iframe opens. Only exact SHA/unique identity can auto-bind.
   const onProject = () => { if (!disposed && loadedSha && !localLease && !localBusy) void bindLocal().catch(e => { localError = e.message }) }
@@ -126,7 +236,7 @@
     if (event.origin !== location.origin || event.source !== parent || event.data?.channel !== CHANNEL || typeof event.data.requestId !== 'string') return
     const { requestId, type, value } = event.data
     const replaces = type === 'open' || type === 'shotOpen' || type === 'app3-bind'
-    if (replaces && opening) { reply(requestId, false, 'APP3_BUSY'); return }
+    if (replaces && (opening || artifactBusy)) { reply(requestId, false, 'APP3_BUSY'); return }
     if (replaces) opening = true
     try {
       const studio = await waitForStudio()
@@ -160,8 +270,7 @@
         if (studio.state.draft || studio.state.dirty && JSON.stringify(studio.serialized(false)) !== savedSnapshot && savedSnapshot) throw new Error('Có animation chưa lưu. Hãy lưu hoặc bỏ sửa trước khi mở shot.')
         if (!studio.shot?.openZip) throw new Error('Bản Animation Studio này không hỗ trợ gói shot.')
         await resetLocal(); loadedSha = null; loadedRig = null
-        await studio.shot.openZip(value.bytes)
-        savedSnapshot = JSON.stringify(studio.serialized(false))
+        await openShot(value.bytes)
         const session = studio.shot.session
         if (session) { loadedSha = session.character.glbSha256; loadedRig = editorIdentity(); await bindLocal().catch(e => { localError = e.message }) }
         reply(requestId, true, { shotId: session?.shot?.shotId, characterId: session?.character?.characterId })

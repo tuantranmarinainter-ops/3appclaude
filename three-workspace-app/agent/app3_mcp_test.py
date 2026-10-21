@@ -28,7 +28,7 @@ class App3MCPTests(unittest.TestCase):
         tool = response["result"]["tools"][0]
         self.assertEqual(tool["inputSchema"]["properties"]["command"]["enum"], list(m.COMMANDS))
         self.assertIn("apply_patch", tool["description"])
-        self.assertNotIn("export_animation", tool["description"])
+        self.assertIn("export_animation", tool["description"])
 
     def test_rejects_mutations_and_receiver_operations(self):
         for name in ("app3.session.register", "app3.session.poll", "app3.session.result", "motion.edit"):
@@ -47,6 +47,17 @@ class App3MCPTests(unittest.TestCase):
         v = payload(); v["receiverToken"] = "secret"; cases.append(v)
         for v in cases:
             with self.subTest(value=v), self.assertRaises(ValueError): m.validate(v)
+
+    def test_exports_use_handles_and_require_both_revisions(self):
+        valid = (("export_animation", {"format": "bobj"}), ("export_animation", {"format": "fbx"}), ("shotOpen", {"jobId": str(uuid.uuid4()), "fileId": "0"}), ("shotExport", {"includeMinecraft20": False}))
+        for tool, params in valid:
+            v = payload(); v["args"].update(tool=tool, parameters=params, expectedAnimationRevision="native:revision"); v["expectedRevision"] = 4
+            self.assertEqual(m.validate(v), v)
+            del v["expectedRevision"]
+            with self.assertRaises(ValueError): m.validate(v)
+        for tool, params in (("export_animation", {"format": "glb"}), ("shotOpen", {"path": "/tmp/arbitrary.zip"}), ("shotOpen", {"jobId": str(uuid.uuid4()), "fileId": "٠"}), ("shotExport", {"includeMinecraft20": 1}), ("shotExport", {"data": "base64"})):
+            v = payload(); v["args"].update(tool=tool, parameters=params, expectedAnimationRevision="native:revision"); v["expectedRevision"] = 4
+            with self.assertRaises(ValueError): m.validate(v)
 
     def test_authenticated_transport_preserves_request_identity(self):
         v = payload()

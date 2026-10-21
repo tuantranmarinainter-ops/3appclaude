@@ -136,7 +136,7 @@ test('mutation broker separates revision types, fails closed after lost dispatch
  assert.throws(()=>call(p,'app3.session.claim',{...r,commandId:t.commandId}),/REVISION_CONFLICT/);
  const capabilities=call(p,'app3.session.list',{}).sessions[0].capabilities;
  for(const tool of ['create_blocking','set_pose','insert_breakdown','set_marker','set_idea','apply_patch'])assert.ok(capabilities.includes(tool));
- for(const tool of ['export_animation','preview_scene_patch'])assert.ok(!capabilities.includes(tool));
+ for(const tool of ['preview_scene_patch'])assert.ok(!capabilities.includes(tool));
  const queued=execute(p,'app3.command.submit',a,randomUUID(),false,8);p.revision=9;
  call(p,'app3.session.result',{...r,commandId:t.commandId,result:{ok:false,error:'REVISION_CONFLICT'},context:{}});
  poll();assert.equal(call(p,'app3.command.result',{...id,commandId:queued.commandId}).result.error,'REVISION_CONFLICT');
@@ -148,4 +148,65 @@ test('E3 both JS schemas reject unsafe parameters and accept the same five tools
   for(const[tool,args]of cases){assert.doesNotThrow(()=>validate(tool,args));assert.throws(()=>validate(tool,{...args,unknown:1}),/VALIDATION_FAILED/);}
   for(const[tool,args]of [['retime_segment',{markerId:'m',time:NaN}],['set_hold',{markerId:'m',duration:Infinity}],['smooth_motion',{boneIds:['b0'],start:0,end:2,window:1.5}],['smooth_motion',{boneIds:['b0'],start:0,end:2,channels:['q','q']}],['edit_keyframes',{refs:[{id:'b0',time:1,kind:'keys'}],action:'move'}],['edit_curves',{boneId:'b0',path:'r',axis:1,times:[0]}],['edit_curves',{boneId:'b0',path:'p',axis:0,times:[0],slope:Infinity}],['edit_curves',{boneId:'b0',path:'p',axis:true,times:[0],type:'linear'}]])assert.throws(()=>validate(tool,args),/VALIDATION_FAILED/);
  }
+});
+
+test('shot transition retires original lease, keeps result readable and private token only in receiver ack',()=>{
+ const p=project();p.revision=7;const motion=randomUUID();p.motions[motion]={id:motion};const l=register(p),id=identity(l),r=receiver(l);
+ const proof={shotId:randomUUID(),baseShotSha256:'b'.repeat(64),characterId:l.characterId,actionUuid:motion,glbSha256:'c'.repeat(64),zipSha256:'d'.repeat(64),frameRange:[100,160],fps:30,sourceRevision:7,jobId:randomUUID(),fileId:'0'};
+ const args={...id,tool:'shotOpen',parameters:{jobId:proof.jobId,fileId:'0'},expectedAnimationRevision:'native:7'},requestId=randomUUID();
+ assert.throws(()=>execute(p,'app3.command.submit',args,requestId,false,7),/SHOT_PACKAGE_REQUIRED/);
+ const ticket=execute(p,'app3.command.submit',args,requestId,false,7,proof);
+ assert.equal(execute(p,'app3.command.submit',args,requestId,false,7,proof).commandId,ticket.commandId);
+ assert.throws(()=>execute(p,'app3.command.submit',{...args,tool:'set_idea',parameters:{idea:'racing'}},randomUUID(),false,7),/APP3_BUSY/);
+ const poll=call(p,'app3.session.poll',{...r,ready:true,active:true,context:{}});assert.equal(poll.commands[0].shot.glbSha256,proof.glbSha256);
+ const complete={...r,commandId:ticket.commandId,result:{ok:true,value:{shotId:proof.shotId,baseShotSha256:proof.baseShotSha256,characterId:proof.characterId,actionUuid:proof.actionUuid,sourceSha256:proof.glbSha256,frameRange:proof.frameRange,fps:30}},context:{ready:true,revision:'new-root'}};
+ assert.throws(()=>call(p,'app3.session.result',{...complete,result:{ok:true,value:{...complete.result.value,sourceSha256:sha}}}),/IDENTITY_MISMATCH/);
+ assert.throws(()=>call(p,'app3.session.result',{...complete,result:{ok:true,value:{...complete.result.value,receiverToken:'secret'}}}),/VALIDATION_FAILED/);
+ const ack=call(p,'app3.session.result',complete);assert.ok(ack.nextLease.receiverToken);assert.notEqual(ack.nextLease.epoch,l.epoch);
+ assert.deepEqual(call(p,'app3.session.result',complete),ack,'lost completion ack replays exactly one next lease');
+ const result=call(p,'app3.command.result',{...id,commandId:ticket.commandId});assert.equal(result.status,'done');assert.equal(result.result.value.epoch,ack.nextLease.epoch);assert.ok(!JSON.stringify(result).includes(ack.nextLease.receiverToken));
+ p.assets[Object.keys(p.assets)[0]].source.sha256='e'.repeat(64);
+ assert.equal(call(p,'app3.command.result',{...id,commandId:ticket.commandId}).status,'done','tombstone independent of old source binding');
+ assert.throws(()=>call(p,'app3.context.get',id),/SESSION_REPLACED/);assert.throws(()=>call(p,'app3.session.poll',{...r,ready:true,active:true,context:{}}),/SESSION_REPLACED/);
+ assert.throws(()=>call(p,'app3.session.result',{...complete,receiverToken:randomUUID()}),/RECEIVER_REJECTED/);
+ assert.equal(call(p,'app3.context.get',identity(ack.nextLease)).context.revision,'new-root','shot SHA is accepted only by broker-created proof');
+ p.revision++;assert.throws(()=>call(p,'app3.context.get',identity(ack.nextLease)),/SESSION_REPLACED/);
+});
+test('export schema and claim require active exact revisions; shot bytes cannot use generic source registration',()=>{
+ const p=project();p.revision=2;const l=register(p),id=identity(l),r=receiver(l);
+ for(const parameters of [{format:'glb'},{format:'fbx',data:'fake'},{}])assert.throws(()=>execute(p,'app3.command.submit',{...id,tool:'export_animation',parameters,expectedAnimationRevision:'r'},randomUUID(),false,2),/VALIDATION_FAILED/);
+ const t=execute(p,'app3.command.submit',{...id,tool:'export_animation',parameters:{format:'fbx'},expectedAnimationRevision:'r'},randomUUID(),false,2);
+ call(p,'app3.session.poll',{...r,ready:true,active:true,context:{}});assert.equal(call(p,'app3.session.claim',{...r,commandId:t.commandId}).tool,'export_animation');
+ p.revision++;assert.throws(()=>call(p,'app3.session.claim',{...r,commandId:t.commandId}),/REVISION_CONFLICT/);
+ assert.throws(()=>register(p,{sourceSha256:'c'.repeat(64)}),/IDENTITY_MISMATCH/);
+});
+
+test('artifact broker Node regressions including actual Python validate-result',()=>{
+ const env={...process.env};delete env.NODE_TEST_CONTEXT;
+ const result=spawnSync(process.execPath,['--import','tsx','--test','../../apps/studio/src/app3Artifacts.test.ts'],{cwd:new URL('../../../../editor/packages/builder/',import.meta.url),encoding:'utf8',timeout:60000,env})
+ assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/pass 3/)
+});
+
+test('expired shot-open retires uncertain dispatched lease but preserves only result reads',()=>{
+ const p=project();p.revision=7;const l=register(p),r=receiver(l),id=identity(l),motion=randomUUID();p.motions[motion]={id:motion};
+ const proof={shotId:randomUUID(),baseShotSha256:'b'.repeat(64),characterId:l.characterId,actionUuid:motion,glbSha256:'c'.repeat(64),zipSha256:'d'.repeat(64),frameRange:[0,30],fps:30,sourceRevision:7,jobId:randomUUID(),fileId:'0'};
+ const t=execute(p,'app3.command.submit',{...id,tool:'shotOpen',parameters:{jobId:proof.jobId,fileId:'0'},expectedAnimationRevision:'r'},randomUUID(),false,7,proof)
+ call(p,'app3.session.poll',{...r,ready:true,active:true,context:{}})
+ const now=Date.now;try{const started=now();Date.now=()=>started+119000;call(p,'app3.session.poll',{...r,ready:true,active:true,context:{}});Date.now=()=>started+120001;const result=call(p,'app3.command.result',{...id,commandId:t.commandId});assert.equal(result.status,'expired');assert.equal(result.error,'COMMAND_OUTCOME_UNKNOWN');assert.throws(()=>call(p,'app3.context.get',id),/SESSION_REPLACED/);assert.equal(call(p,'app3.command.result',{...id,commandId:t.commandId}).status,'expired')}finally{Date.now=now}
+});
+
+test('receiver completes definite artifact validation failures and releases the native lock',async()=>{
+ const f=await hostFixture();f.p.revision=7;let locked=false,exports=0,artifactAttempts=0;
+ f.studio.director.exportBytes=async()=>{exports++;return{filename:'animation.fbx',bytes:new Uint8Array([1,2,3])}}
+ f.studio.director.lockArtifact=()=>{assert.equal(locked,false);locked=true;return()=>{locked=false}}
+ const fetch=f.sandbox.fetch;f.sandbox.fetch=async(url,init)=>{
+  if(url==='/api/unified/uploads')return{ok:true,json:async()=>({uploadId:randomUUID()})}
+  const envelope=JSON.parse(init.body)
+  if(envelope.command==='app3.session.artifact'){artifactAttempts++;return{ok:false,json:async()=>({error:{code:'VALIDATION_FAILED'}})}}
+  return fetch(url,init)
+ }
+ const l=call(f.p,'app3.session.list',{}).sessions[0],t=execute(f.p,'app3.command.submit',{...identity(l),tool:'export_animation',parameters:{format:'fbx'},expectedAnimationRevision:'r1'},randomUUID(),false,7)
+ await f.timers[0]();const result=call(f.p,'app3.command.result',{...identity(l),commandId:t.commandId})
+ assert.equal(result.status,'done');assert.equal(result.result.ok,false);assert.equal(result.result.error,'VALIDATION_FAILED');assert.equal(locked,false);assert.equal(exports,1);assert.equal(artifactAttempts,1)
+ await f.timers[0]();assert.equal(exports,1);assert.equal(artifactAttempts,1)
 });
