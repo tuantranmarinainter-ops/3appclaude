@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSilhouetteSync } from './hooks/useSilhouetteSync'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 
@@ -12,6 +13,7 @@ type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { 
 
 export function AnimationCreationPanel({ projectId, project, active, onProject, onEditorDirty }: { projectId: string; project: UnifiedProject; active: boolean; onProject: (project: UnifiedProject) => void; onEditorDirty: (dirty: boolean) => void }) {
   const frame = useRef<HTMLIFrameElement>(null)
+  useSilhouetteSync(frame)
   const openedRevision = useRef<number | null>(null)
   const pending = useRef(new Map<string, { resolve: (value: BridgeReply['value']) => void; reject: (error: Error) => void }>())
   const [characterId, setCharacterId] = useState(Object.keys(project.characters)[0] ?? '')

@@ -1,3 +1,7 @@
+import {SilhouetteView} from './silhouette_view.js';
+const silhouetteView=new SilhouetteView();
+const silhouetteControls=new Map();
+function syncSilhouetteControl(g){if(silhouetteView.enabled){if(!silhouetteControls.has(g))silhouetteControls.set(g,g.enabled);g.enabled=false;}else if(silhouetteControls.has(g)){g.enabled=silhouetteControls.get(g);silhouetteControls.delete(g);}}
 import * as Director from './animation_director.js';
 import {DirectorPanel} from './director_panel.js';
 import {StudioBridge} from './studio_bridge.js';
@@ -83,7 +87,7 @@ function writeKeys(ids,onlyChains=null){assertEditingAllowed();if(draft&&C.joint
 function makeView(container,edit=false){
  const scene=new T.Scene();scene.background=new T.Color($('background').value);
  const camera=new T.PerspectiveCamera(38,1,.01,200),ortho=new T.OrthographicCamera(-2,2,2,-2,.01,200);camera.up.set(0,0,1);ortho.up.copy(camera.up);camera.position.set(3,-4.8,2.1);ortho.position.copy(camera.position);
- const renderer=new T.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.outputColorSpace=T.SRGBColorSpace;container.appendChild(renderer.domElement);
+ const renderer=new T.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.outputColorSpace=T.SRGBColorSpace;renderer.domElement.classList.add('studio-scene-canvas');container.appendChild(renderer.domElement);
  const orbit=new OrbitControls(camera,renderer.domElement);orbit.target.set(0,0,1);orbit.enableDamping=false;
  scene.add(new T.AmbientLight(0xffffff,1.6));for(const position of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){const light=new T.DirectionalLight(0xffffff,.8);light.position.fromArray(position);scene.add(light);}
  const grid=new T.GridHelper(8,16,0x4a515b,0x343c46);grid.material.transparent=true;grid.material.opacity=.45;scene.add(grid);
@@ -94,7 +98,7 @@ function makeView(container,edit=false){
  const v={grid,gridXY,gridYZ,worldAxes,ground:Ground.create(scene),container,scene,camera,perspective:camera,ortho,renderer,orbit,wrapper,visual,line,rig:null,nodes:[],segments:[],axes:[],labels:[],dirty:true,orthographic:false,edit};
  if(edit){
   for(const [key,tool] of [['gizmo','rotate'],['moveGizmo','translate']]){
-   const g=v[key]=new TransformControls(camera,renderer.domElement);g.setMode(tool);g.setSpace('local');scene.add(g.getHelper());
+   const g=v[key]=new TransformControls(camera,renderer.domElement);g.setMode(tool);g.setSpace('local');scene.add(g.getHelper());syncSilhouetteControl(g);
    g.addEventListener('change',()=>{v.dirty=true;editView.dirty=true;});
    g.addEventListener('dragging-changed',e=>{orbit.enabled=!e.value;playing=false;});
    g.addEventListener('mouseDown',()=>{v.before=snapshot();v.gizmoCancelled=false;});
@@ -104,7 +108,7 @@ function makeView(container,edit=false){
  }
  orbit.addEventListener('change',()=>{v.dirty=true;if(!edit&&$('syncCameras').checked&&!v.syncing){const other=v===compareA?compareB:compareA;if(other){other.syncing=true;V.projection(other,v.orthographic);syncProjectionButton(other);other.camera.zoom=v.camera.zoom;other.camera.updateProjectionMatrix();const basis=new T.Quaternion().setFromUnitVectors(v.camera.up,other.camera.up);other.camera.position.copy(v.camera.position).applyQuaternion(basis);other.orbit.target.copy(v.orbit.target).applyQuaternion(basis);other.orbit.update();other.dirty=true;other.syncing=false;}}});
  renderer.domElement.addEventListener('pointerdown',e=>{activeCameraView=v;if(v.edit)activeEditView=v;v.down=[e.clientX,e.clientY];});
- renderer.domElement.addEventListener('pointerup',e=>{if(e.button!==0||!v.down||Math.hypot(e.clientX-v.down[0],e.clientY-v.down[1])>5||v.gizmo?.axis||v.moveGizmo?.axis)return;const rect=renderer.domElement.getBoundingClientRect(),ray=new T.Raycaster();ray.setFromCamera(new T.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),v.camera);const candidates=v.nodes.filter(x=>x.visible);for(const node of candidates){node.quaternion.copy(v.camera.quaternion);node.updateWorldMatrix(true,false);}const picks=ray.intersectObjects(candidates);if(v.edit&&pickOnionPose(ray,picks[0]?.distance))return;let picked=picks[0]?.object;if(!picked){picked=candidates.map(node=>{const p=node.position.clone().project(v.camera);return{node,distance:Math.hypot((p.x+1)*rect.width/2+rect.left-e.clientX,(1-p.y)*rect.height/2+rect.top-e.clientY),z:p.z};}).filter(x=>x.distance<=6&&x.z>=-1&&x.z<=1).sort((a,b)=>a.distance-b.distance)[0]?.node;}if(picked){const id=picked.userData.boneId;if(edit)selectUser(id);else selectCompare(v===compareA?'A':'B',id);}});
+ renderer.domElement.addEventListener('pointerup',e=>{if(silhouetteView.enabled||e.button!==0||!v.down||Math.hypot(e.clientX-v.down[0],e.clientY-v.down[1])>5||v.gizmo?.axis||v.moveGizmo?.axis)return;const rect=renderer.domElement.getBoundingClientRect(),ray=new T.Raycaster();ray.setFromCamera(new T.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),v.camera);const candidates=v.nodes.filter(x=>x.visible);for(const node of candidates){node.quaternion.copy(v.camera.quaternion);node.updateWorldMatrix(true,false);}const picks=ray.intersectObjects(candidates);if(v.edit&&pickOnionPose(ray,picks[0]?.distance))return;let picked=picks[0]?.object;if(!picked){picked=candidates.map(node=>{const p=node.position.clone().project(v.camera);return{node,distance:Math.hypot((p.x+1)*rect.width/2+rect.left-e.clientX,(1-p.y)*rect.height/2+rect.top-e.clientY),z:p.z};}).filter(x=>x.distance<=6&&x.z>=-1&&x.z<=1).sort((a,b)=>a.distance-b.distance)[0]?.node;}if(picked){const id=picked.userData.boneId;if(edit)selectUser(id);else selectCompare(v===compareA?'A':'B',id);}});
  renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();v.contextLost=true;info('WebGL context bị mất; đang chờ khôi phục.',true);});renderer.domElement.addEventListener('webglcontextrestored',()=>{v.contextLost=false;v.resizePending=true;v.dirty=true;});
  new ResizeObserver(()=>{v.resizePending=true;v.dirty=true;drawTimeline();drawCurve();}).observe(container);
 
@@ -156,7 +160,7 @@ function configureGizmo(v){if(sourcePreview){v.gizmo.detach();v.moveGizmo.detach
  if(locked||workspaceSelectOnly){v.gizmo.detach();v.moveGizmo.detach();return;}
  if(v.gizmo.object!==object)v.gizmo.attach(object);const primary=tool==='both'?'rotate':tool;if(v.gizmo.mode!==primary)v.gizmo.setMode(primary);if(v.gizmo.space!==$('space').value)v.gizmo.setSpace($('space').value);
  if(tool==='both'&&!pole){if(v.moveGizmo.object!==object)v.moveGizmo.attach(object);}else if(v.moveGizmo.object)v.moveGizmo.detach();if(v.moveGizmo.space!==$('space').value)v.moveGizmo.setSpace($('space').value);
- for(const g of [v.gizmo,v.moveGizmo])g.enabled=true;sizeGizmo(v);
+ for(const g of [v.gizmo,v.moveGizmo]){if(!silhouetteView.enabled)g.enabled=true;syncSilhouetteControl(g);}sizeGizmo(v);
 }
 function constrainControl(chain,id){
  const object=rig.controls[id]?.object;if(!object)return;
@@ -201,13 +205,13 @@ function applyViewportLayout(){
 function installGizmoPriority(v){
  const canvas=v.renderer.domElement;
  canvas.addEventListener('pointerdown',e=>{
-  if(e.button!==0)return;
+  if(silhouetteView.enabled||e.button!==0)return;
   const rect=canvas.getBoundingClientRect(),event={x:(e.clientX-rect.left)/rect.width*2-1,y:-(e.clientY-rect.top)/rect.height*2+1,button:e.button};
   for(const g of [v.gizmo,v.moveGizmo]){g.enabled=true;g.pointerHover(event);}
   if(v.gizmo.axis&&v.moveGizmo.axis){const p=currentObject().getWorldPosition(new T.Vector3()).project(v.camera),radius=Math.hypot(e.clientX-rect.left-(p.x+1)*rect.width/2,e.clientY-rect.top-(1-p.y)*rect.height/2);if(['X','Y','Z'].includes(v.moveGizmo.axis)&&radius>v.gizmoRadius*.9)v.gizmo.enabled=false;else if(radius>v.gizmoRadius*.5)v.moveGizmo.enabled=false;else v.gizmo.enabled=false;}
  },true);
- canvas.addEventListener('pointerup',()=>{for(const g of [v.gizmo,v.moveGizmo])g.enabled=true;});
- canvas.addEventListener('pointercancel',()=>{for(const g of [v.gizmo,v.moveGizmo])g.enabled=true;});
+ canvas.addEventListener('pointerup',()=>{for(const g of [v.gizmo,v.moveGizmo]){if(!silhouetteView.enabled)g.enabled=true;syncSilhouetteControl(g);}});
+ canvas.addEventListener('pointercancel',()=>{for(const g of [v.gizmo,v.moveGizmo]){if(!silhouetteView.enabled)g.enabled=true;syncSilhouetteControl(g);}});
 }
 installGizmoPriority(editView);
 
@@ -275,13 +279,13 @@ function activateRigWidget(d){return selectUser(d.id,false);}
 function cancelRigDrag(){const drag=rigDrag;if(!drag)return;rigDrag=null;for(const v of editViews)v.orbit.enabled=true;for(const [id,p]of Object.entries(drag.before.pose))C.apply(id==='root'?rig.root:record(rig,id)?.o,p);for(const[id,o]of drag.before.options||[])C.kinematics.configure(rig,rig.chains.find(c=>c.id===id),o,false);for(const [id,p]of Object.entries(drag.before.controls))C.apply(rig.controls[id].object,p);for(const [id,m]of drag.before.modes)rig.chains.find(c=>c.id===id).mode=m;draft=drag.before.draft;select(drag.before.selected);refresh();}
 function installRigPointer(view){
  const canvas=view.renderer.domElement;
- canvas.addEventListener('pointerdown',e=>{if(sourcePreview||mode!=='rig'||e.button!==0)return;prepareRigView(view);const d=W.pick(view,e);if(!d)return;const rect=canvas.getBoundingClientRect(),p=d.shape.position.clone().project(view.camera),near=Math.hypot(e.clientX-rect.left-(p.x+1)*rect.width/2,e.clientY-rect.top-(1-p.y)*rect.height/2)<14;if((view.gizmo.axis||view.moveGizmo.axis)&&d.kind!=='root'&&!(['pole','box'].includes(d.kind)&&near))return;activeEditView=view;
+ canvas.addEventListener('pointerdown',e=>{if(silhouetteView.enabled||sourcePreview||mode!=='rig'||e.button!==0)return;prepareRigView(view);const d=W.pick(view,e);if(!d)return;const rect=canvas.getBoundingClientRect(),p=d.shape.position.clone().project(view.camera),near=Math.hypot(e.clientX-rect.left-(p.x+1)*rect.width/2,e.clientY-rect.top-(1-p.y)*rect.height/2)<14;if((view.gizmo.axis||view.moveGizmo.axis)&&d.kind!=='root'&&!(['pole','box'].includes(d.kind)&&near))return;activeEditView=view;
   const before=snapshot(),changed=activateRigWidget(d),target=d.kind==='root'?(d.id==='root'?rig.root:record(rig,d.id)?.o):rig.controls[d.id]?.object;
   rigDrag={d,before,changed,target,moved:false,startX:e.clientX,startY:e.clientY};
   if(target){const origin=target.getWorldPosition(new T.Vector3()),plane=W.dragPlane(view,origin,d.id==='root'),start=W.pointerOnPlane(view,e,plane);Object.assign(rigDrag,{origin,plane,start});}
   for(const g of [view.gizmo,view.moveGizmo])g.axis=null;view.orbit.enabled=false;canvas.setPointerCapture(e.pointerId);e.preventDefault();e.stopImmediatePropagation();
  },true);
- canvas.addEventListener('pointermove',e=>{if(sourcePreview||mode!=='rig')return;if(!rigDrag){prepareRigView(view);const d=W.pick(view,e);if(d!==rigHover){rigHover=d;canvas.style.cursor=d?'pointer':'';view.dirty=true;}return;}
+ canvas.addEventListener('pointermove',e=>{if(silhouetteView.enabled||sourcePreview||mode!=='rig')return;if(!rigDrag){prepareRigView(view);const d=W.pick(view,e);if(d!==rigHover){rigHover=d;canvas.style.cursor=d?'pointer':'';view.dirty=true;}return;}
   const drag=rigDrag;if(!drag.target||!drag.start)return;if(Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)<2)return;
   const point=W.pointerOnPlane(view,e,drag.plane);if(!point)return;
   const world=drag.origin.clone().add(point.sub(drag.start).multiplyScalar(+$('controlDragSensitivity').value));drag.target.position.copy(drag.target.parent.worldToLocal(world));
@@ -311,6 +315,7 @@ function showView(v){
  const pixelRatio=Math.min(devicePixelRatio,Number($('renderQuality').value)||1);if(v.renderer.getPixelRatio()!==pixelRatio){v.renderer.setPixelRatio(pixelRatio);v.resizePending=true;}if(v.resizePending||v.width!==w||v.height!==h){v.renderer.setSize(w,h,false);v.perspective.aspect=w/h;v.perspective.updateProjectionMatrix();v.ortho.left=-2*w/h;v.ortho.right=2*w/h;v.ortho.updateProjectionMatrix();v.width=w;v.height=h;v.resizePending=false;}
 
  if(v.edit){for(const other of editViews){if(other.controlLayer)other.controlLayer.visible=other===v;for(const g of [other.gizmo,other.moveGizmo])g.getHelper().visible=other===v&&!!g.object;}}
+ v.container.classList.toggle('silhouette-view',silhouetteView.enabled);
  window.studioDebug?.syncView(v);const r=v.rig;if(!r)return;const isEdit=v.edit,selectedId=isEdit?(poleJointId()||selected):$(v===compareA?'compareBoneA':'compareBoneB').value;
  const bonesVisible=isEdit?(mode==='rig'?$('rigShowBones').checked:$('showBones').checked):true,meshVisible=isEdit?$('showMesh').checked:$('compareMesh').checked,names=isEdit?$('showNames').checked:$('compareNames').checked,style=$('boneStyle').value,allAxes=isEdit?$('showAxes').checked: false;
  const displayView=v.shared?editView:v;for(const [object,id]of [[displayView.grid,'viewGridXZ'],[displayView.gridXY,'viewGridXY'],[displayView.gridYZ,'viewGridYZ'],[displayView.worldAxes,'viewWorldAxes']])object.visible=isEdit?$(id).checked:object===displayView.worldAxes||object===(v.displayUp==='z'?displayView.gridXY:displayView.grid);
@@ -325,7 +330,7 @@ function showView(v){
  axes.position.copy(wp);axes.quaternion.copy(wq);axes.scale.setScalar(+(isEdit?$('axisSize'):$('compareAxisSize')).value);axes.visible=visible&&(!hand||handMode!=='hidden')&&(isEdit?(allAxes||style==='axes'||$('rigAxes').value==='all'||chosen&&$('rigAxes').value==='selected'):$('compareAxes').checked&&($('compareJointScope').value==='all'||chosen));
  const hideFinger=$('hideFingerNames').checked&&/thumb|index|middle|ring|pinky|finger|f_/i.test(rec.name)&&!chosen;const screen=wp.clone().project(v.camera);const show=(names||!isEdit&&$('compareEuler').checked&&($('compareJointScope').value==='all'||chosen))&&!hideFinger&&visible&&(!hand||handMode!=='hidden')&&screen.z>-1&&screen.z<1;label.hidden=!show;if(show){if(!isEdit){const q=$('compareEulerSpace').value==='world'?rec.o.getWorldQuaternion(new T.Quaternion()):rec.o.quaternion,e=new T.Euler().setFromQuaternion(q,$('eulerOrder').value);label.textContent=names?C.short(rec.name):'';if($('compareEuler').checked&&($('compareJointScope').value==='all'||chosen))label.textContent+=(names?' · ':'')+[e.x,e.y,e.z].map((x,i)=>'XYZ'[i]+': '+deg(x).toFixed(1)+'°').join(' | ');label.classList.toggle('euler-label',$('compareEuler').checked);}else label.textContent=C.short(rec.name);label.style.left=(screen.x*.5+.5)*v.container.clientWidth+'px';label.style.top=(-screen.y*.5+.5)*v.container.clientHeight+'px';label.classList.toggle('selected',chosen);}}
  pos.needsUpdate=true;colors.needsUpdate=true;v.line.visible=bonesVisible&&(style==='line'||style==='axes');for(const [id,c]of Object.entries(r.controls))c.object.visible=mode!=='rig'&&r.chains.find(ch=>id.endsWith(ch.id))?.mode==='ik';
- if(isEdit){if(!inactiveEditorRender)syncRigInspector();sizeGizmo(v);W.update(v,r,rigWidgetSettings());if(!v.controlAxis){v.controlAxis=new T.AxesHelper(1);v.controlAxis.material.depthTest=false;v.controlAxis.renderOrder=22;v.scene.add(v.controlAxis);}v.controlAxis.visible=!!rig.controls[selected]&&$('rigAxes').value!=='none';if(v.controlAxis.visible){const o=currentObject();v.controlAxis.position.copy(o.getWorldPosition(new T.Vector3()));v.controlAxis.quaternion.copy(o.getWorldQuaternion(new T.Quaternion()));v.controlAxis.scale.setScalar(+$('axisSize').value);}}drawCompass(v);v.scene.background.set($('background').value);if(v.edit)for(const other of editViews){if(other.controlLayer)other.controlLayer.visible=other===v;if(other.controlAxis)other.controlAxis.visible=other===v&&!!rig.controls[selected]&&$('rigAxes').value!=='none';for(const g of [other.gizmo,other.moveGizmo])g.getHelper().visible=other===v&&!!g.object;}if(sceneMode&&!sceneEditing){v.controlLayer&&(v.controlLayer.visible=false);v.controlAxis&&(v.controlAxis.visible=false);for(const label of v.labels||[])label.style.display='none';v.gizmo?.detach();v.moveGizmo?.detach();}const debugRestore=window.studioDebug?.prepareRender(v);try{v.renderer.render(v.scene,v.camera);}finally{window.studioDebug?.finishRender(debugRestore);}v.dirty=false;
+ if(isEdit){if(!inactiveEditorRender)syncRigInspector();sizeGizmo(v);W.update(v,r,rigWidgetSettings());if(!v.controlAxis){v.controlAxis=new T.AxesHelper(1);v.controlAxis.material.depthTest=false;v.controlAxis.renderOrder=22;v.scene.add(v.controlAxis);}v.controlAxis.visible=!!rig.controls[selected]&&$('rigAxes').value!=='none';if(v.controlAxis.visible){const o=currentObject();v.controlAxis.position.copy(o.getWorldPosition(new T.Vector3()));v.controlAxis.quaternion.copy(o.getWorldQuaternion(new T.Quaternion()));v.controlAxis.scale.setScalar(+$('axisSize').value);}}drawCompass(v);v.scene.background.set($('background').value);if(v.edit)for(const other of editViews){if(other.controlLayer)other.controlLayer.visible=other===v;if(other.controlAxis)other.controlAxis.visible=other===v&&!!rig.controls[selected]&&$('rigAxes').value!=='none';for(const g of [other.gizmo,other.moveGizmo])g.getHelper().visible=other===v&&!!g.object;}if(sceneMode&&!sceneEditing){v.controlLayer&&(v.controlLayer.visible=false);v.controlAxis&&(v.controlAxis.visible=false);for(const label of v.labels||[])label.style.display='none';v.gizmo?.detach();v.moveGizmo?.detach();}const debugRestore=window.studioDebug?.prepareRender(v);let silhouetteRestore;try{const meshes=sceneMode&&v.edit?[...(sceneEditing?r.mesh:[]),...[...sceneRuntimes.values()].filter(rt=>rt.wrapper.visible).flatMap(rt=>rt.rig.mesh)]:r.mesh;silhouetteRestore=silhouetteView.prepare(v,meshes);v.renderer.render(v.scene,v.camera);}finally{silhouetteRestore?.();window.studioDebug?.finishRender(debugRestore);}v.dirty=false;
 }
 function drawCompass(v){let compass=v.container.querySelector('.world-axis');if(!compass){compass=document.createElement('div');compass.className='world-axis';v.container.append(compass);}let canvas=compass.querySelector('canvas');if(!canvas){compass.replaceChildren();canvas=document.createElement('canvas');canvas.width=100;canvas.height=100;compass.append(canvas);}const ctx=canvas.getContext('2d');ctx.clearRect(0,0,100,100);const inverse=v.camera.quaternion.clone().invert();for(const [label,axis,color]of [['X',new T.Vector3(1,0,0),'#ee9292'],['Y',new T.Vector3(0,1,0),'#8ae0aa'],['Z',new T.Vector3(0,0,1),'#8eafff']]){axis.applyQuaternion(inverse);const x=50+axis.x*28,y=45-axis.y*28;ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(50,45);ctx.lineTo(x,y);ctx.stroke();ctx.fillStyle=color;ctx.font='bold 11px Segoe UI';ctx.fillText(label,x+3,y+3);}ctx.fillStyle='#a3b6cc';ctx.font='9px Segoe UI';ctx.fillText(v.edit?'Blender · Z-up':(v.displayUp==='z'?'World · Z-up':'World · Y-up'),20,91);}
 
@@ -1403,6 +1408,9 @@ document.addEventListener('pointerdown',e=>{if(!e.target.closest('#interpolation
 window.addEventListener('keydown',e=>{if(e.key==='Escape'){interpolationWindow.hidden=true;$('rigPresetMenu').open=false;$('interpolationPicker').setAttribute('aria-expanded','false');}});
 syncInterpolationChoice();
 
+function setSilhouette(enabled){const result=silhouetteView.set(enabled);if(!enabled)for(const g of [...silhouetteControls.keys()])syncSilhouetteControl(g);for(const view of editViews){for(const g of [view.gizmo,view.moveGizmo])syncSilhouetteControl(g);view.renderer.domElement.style.cursor='';}for(const view of [...editViews,compareA,compareB]){view.container.classList.toggle('silhouette-view',enabled);view.dirty=true;}$('silhouetteBtn').setAttribute('aria-pressed',String(enabled));$('silhouetteBtn').classList.toggle('active',enabled);dirtyViews();return result;}
+$('silhouetteBtn').onclick=()=>setSilhouette(!silhouetteView.enabled);
+window.addEventListener('keydown',e=>{if(e.code!=='KeyS'||!e.shiftKey||e.ctrlKey||e.metaKey||e.altKey||e.repeat||e.target.closest?.('input,textarea,select,[contenteditable]')||document.querySelector('dialog[open]'))return;e.preventDefault();e.stopImmediatePropagation();setSilhouette(!silhouetteView.enabled);},{capture:true});
 viewportToolbar=new ViewportToolbar($('viewportGrid'),{changed:persist=>{dirtyViews();if(persist)try{localStorage.setItem('animation-studio-settings',JSON.stringify(readSettings()));}catch{}},reset:()=>{applySettings({...Ground.defaults,meshPoints:false,meshLines:false,meshFaces:true,meshTexture:true,meshSmooth:true,meshFront:false,meshOverlay:false,meshDoubleSided:true,viewGridXZ:false,viewGridXY:true,viewGridYZ:false,viewWorldAxes:false,background:'#171b20'});viewportToolbar.sync();}});
 for(const id of ['meshPoints','meshLines','meshFaces','meshTexture','meshSmooth','meshFront','meshOverlay','meshDoubleSided','viewGridXZ','viewGridXY','viewGridYZ','viewWorldAxes','background'])listen(id,'change',()=>{viewportToolbar.sync();dirtyViews();});
 listen('inPlace','change',()=>{if(sourcePreview){sourcePreview.inPlace=$('inPlace').checked;seekSourceClip(time);return;}if(draft){$('inPlace').checked=!!project.inPlace;info('Ghi key hoặc hủy pose chưa ghi trước khi đổi Đi tại chỗ.',true);return;}project.inPlace=$('inPlace').checked;C.evaluate(rig,project,time);commit();refresh();});
@@ -1413,6 +1421,7 @@ setupModernUI();setupNumericInputs();setupSettingsWindow();applyMouseSettings();
 try{const settings=JSON.parse(localStorage.getItem('animation-studio-settings')||'null');if(settings)applySettings(V.blenderSettings(settings));}catch{}
 $('syncCameras').checked=false;
 window.__studio={
+ silhouette:{set:setSilhouette,get enabled(){return silhouetteView.enabled;}},
  setHostActive(active){if(active&&!hostActive){hostActive=true;lastStamp=performance.now();requestAnimationFrame(frame);}else if(!active)hostActive=false;},
  graph:()=>graphEditor,graphAction,previewSourceClip,endSourcePreview,useQuickClip,
  dual:{enable:setDualEnabled,activate:activateEditorSlot,mode:setDualTimeline,slots:()=>({active:activeEditorSlot,enabled:dualEnabled,timeline:dualTimelineMode,A:editorSlots.A?.project.name,B:editorSlots.B?.project.name})},
