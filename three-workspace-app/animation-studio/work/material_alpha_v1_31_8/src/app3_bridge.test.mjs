@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { randomUUID, createHash, webcrypto } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
-import { StudioBridge, validateLocalRead } from './studio_bridge.js';
+import { StudioBridge, validateLocalRead, validateLocalEdit } from './studio_bridge.js';
 const workspace = new URL('../../../../', import.meta.url);
 const require = createRequire(new URL('../../../../editor/apps/studio/package.json', import.meta.url));
 const ts = require('typescript');
@@ -136,8 +136,16 @@ test('mutation broker separates revision types, fails closed after lost dispatch
  assert.throws(()=>call(p,'app3.session.claim',{...r,commandId:t.commandId}),/REVISION_CONFLICT/);
  const capabilities=call(p,'app3.session.list',{}).sessions[0].capabilities;
  for(const tool of ['create_blocking','set_pose','insert_breakdown','set_marker','set_idea','apply_patch'])assert.ok(capabilities.includes(tool));
- for(const tool of ['export_animation','preview_scene_patch','set_hold','edit_curves'])assert.ok(!capabilities.includes(tool));
+ for(const tool of ['export_animation','preview_scene_patch'])assert.ok(!capabilities.includes(tool));
  const queued=execute(p,'app3.command.submit',a,randomUUID(),false,8);p.revision=9;
  call(p,'app3.session.result',{...r,commandId:t.commandId,result:{ok:false,error:'REVISION_CONFLICT'},context:{}});
  poll();assert.equal(call(p,'app3.command.result',{...id,commandId:queued.commandId}).result.error,'REVISION_CONFLICT');
+});
+
+test('E3 both JS schemas reject unsafe parameters and accept the same five tools',()=>{
+ const cases=[['retime_segment',{markerId:'m',time:1}],['set_hold',{markerId:'m',duration:.5}],['smooth_motion',{boneIds:['b0'],start:0,end:2}],['edit_keyframes',{refs:[{id:'b0',time:1,kind:'keys'}],action:'copy',targetTime:1.5}],['edit_curves',{boneId:'b0',path:'r',axis:1,times:[0,1],type:'linear'}]];
+ for(const validate of [validateLocalEdit,validateApp3Edit]){
+  for(const[tool,args]of cases){assert.doesNotThrow(()=>validate(tool,args));assert.throws(()=>validate(tool,{...args,unknown:1}),/VALIDATION_FAILED/);}
+  for(const[tool,args]of [['retime_segment',{markerId:'m',time:NaN}],['set_hold',{markerId:'m',duration:Infinity}],['smooth_motion',{boneIds:['b0'],start:0,end:2,window:1.5}],['smooth_motion',{boneIds:['b0'],start:0,end:2,channels:['q','q']}],['edit_keyframes',{refs:[{id:'b0',time:1,kind:'keys'}],action:'move'}],['edit_curves',{boneId:'b0',path:'r',axis:1,times:[0]}],['edit_curves',{boneId:'b0',path:'p',axis:0,times:[0],slope:Infinity}],['edit_curves',{boneId:'b0',path:'p',axis:true,times:[0],type:'linear'}]])assert.throws(()=>validate(tool,args),/VALIDATION_FAILED/);
+ }
 });

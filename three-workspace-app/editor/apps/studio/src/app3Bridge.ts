@@ -3,12 +3,12 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 // Process generation is part of every lease/ticket: a restarted broker never replays a dispatched command.
 export const APP3_READ_TOOLS = ['read_keyframes', 'analyze_motion', 'get_scene_context', 'get_animation_context'] as const
-export const LOCAL_EDIT_TOOLS=['create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
+export const LOCAL_EDIT_TOOLS=['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
 export function validateApp3Edit(tool: unknown,value: unknown): asserts value is Record<string, unknown> {
  const args=value as any;
  if(!LOCAL_EDIT_TOOLS.includes(tool as any))throw new App3BridgeError('UNSUPPORTED_CAPABILITY','UNSUPPORTED_CAPABILITY',422);
  if(!args||typeof args!=='object'||Array.isArray(args))throw new App3BridgeError('VALIDATION_FAILED','VALIDATION_FAILED',400);
- const fields=({create_blocking:['markers','idea'],set_pose:['time','transforms','interpolation'],insert_breakdown:['time','boneIds','label','fraction','offsets'],set_marker:['markerId','label','locked','kind'],set_idea:['idea'],preview_patch:['patchId','original'],apply_patch:['patchId'],cancel_patch:['patchId'],undo_animation:[]} as Record<string,string[]>)[String(tool)];
+ const fields=({retime_segment:['markerId','time'],set_hold:['markerId','duration'],smooth_motion:['boneIds','start','end','method','strength','window','channels'],edit_keyframes:['refs','action','targetTime'],edit_curves:['boneId','path','axis','times','type','side','slope'],create_blocking:['markers','idea'],set_pose:['time','transforms','interpolation'],insert_breakdown:['time','boneIds','label','fraction','offsets'],set_marker:['markerId','label','locked','kind'],set_idea:['idea'],preview_patch:['patchId','original'],apply_patch:['patchId'],cancel_patch:['patchId'],undo_animation:[]} as Record<string,string[]>)[String(tool)];
  const fail=(): never=>{throw new App3BridgeError('VALIDATION_FAILED','VALIDATION_FAILED',400);},obj=(x:any)=>x&&typeof x==='object'&&!Array.isArray(x),text=(x:any,n:number)=>typeof x==='string'&&x.length<=n,number=(x:any,min:number,max:number)=>Number.isFinite(x)&&x>=min&&x<=max,vec=(x:any,n:number)=>Array.isArray(x)&&x.length===n&&x.every(Number.isFinite),bone=(x:any)=>text(x,200)&&x.length>0;
  if(Object.keys(args).some(k=>!fields.includes(k)))fail();
  if(tool==='create_blocking'){
@@ -31,6 +31,24 @@ export function validateApp3Edit(tool: unknown,value: unknown): asserts value is
  if(tool==='set_marker'&&(!text(args.markerId,80)||!args.markerId.length||Object.keys(args).length<2))fail();
  if(args.locked!==undefined&&typeof args.locked!=='boolean'||args.kind!==undefined&&!['pose','contact','breakdown','hold'].includes(args.kind))fail();
  if(['preview_patch','apply_patch','cancel_patch'].includes(String(tool))&&(!text(args.patchId,100)||!args.patchId.length))fail();
+
+ if(['retime_segment','set_hold'].includes(String(tool))&&(!text(args.markerId,80)||!args.markerId.length))fail();
+ if(tool==='retime_segment'&&!number(args.time,0,300))fail();
+ if(tool==='set_hold'&&!number(args.duration,Number.MIN_VALUE,30))fail();
+ if(tool==='smooth_motion'){
+  if(!Array.isArray(args.boneIds)||!args.boneIds.length||args.boneIds.length>256||args.boneIds.some((x:any)=>!bone(x))||!number(args.start,0,300)||!number(args.end,args.start,300)||args.end===args.start)fail();
+  if(args.method!==undefined&&!['filter','auto','cubic'].includes(args.method)||args.strength!==undefined&&!number(args.strength,0,1)||args.window!==undefined&&(!Number.isInteger(args.window)||!number(args.window,1,12)))fail();
+  if(args.channels!==undefined&&(!Array.isArray(args.channels)||!args.channels.length||args.channels.length>3||new Set(args.channels).size!==args.channels.length||args.channels.some((x:any)=>!['p','q','s'].includes(x))))fail();
+ }
+ if(tool==='edit_keyframes'){
+  if(!Array.isArray(args.refs)||!args.refs.length||args.refs.length>1000||!['move','copy','delete'].includes(args.action))fail();
+  for(const ref of args.refs)if(!obj(ref)||Object.keys(ref).some(k=>!['id','time','kind'].includes(k))||!bone(ref.id)||ref.kind!=='keys'||!number(ref.time,0,300))fail();
+  if(args.action!=='delete'&&!number(args.targetTime,0,300)||args.targetTime!==undefined&&!number(args.targetTime,0,300))fail();
+ }
+ if(tool==='edit_curves'){
+  if(!bone(args.boneId)||!['p','r','s'].includes(args.path)||![0,1,2].includes(args.axis)||!Array.isArray(args.times)||!args.times.length||args.times.length>1000||args.times.some((x:any)=>!number(x,0,300)))fail();
+  if(args.side!==undefined&&!['in','out','both'].includes(args.side)||args.type!==undefined&&!['linear','step','auto','smooth','spline','break','unify'].includes(args.type)||args.slope!==undefined&&!Number.isFinite(args.slope)||args.slope===undefined&&args.type===undefined)fail();
+ }
  if(args.original!==undefined&&typeof args.original!=='boolean')fail();
 }
 
