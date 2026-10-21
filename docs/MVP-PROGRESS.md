@@ -51,6 +51,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | H2 `scene.export.blend-fbx` (.blend + FBX) | ✅ PR #21 | C2: .blend và FBX mở lại đúng 60.0° ở frame 12 (FBX nhập với Animation Offset = 0) |
 | G1 `scene.layout.read` (AI đọc cảnh) | ✅ PR #22 | C2 frame 12: A trỏ Motion App 3, B Action gốc, t=0.4 s; không đổi revision |
 | G2 `scene.layout.preview/apply` (AI xếp nhân vật) | ✅ PR #24 (lấy riêng G2) | C2: A trái B 1.5000 m, nhìn nhau 0.000°, Undo/Redo đúng; còn chặn nhân vật có key App 3 → G2b |
+| G3 `camera.framing.preview/apply` (AI đặt camera) | ✅ PR #25 (lấy riêng G3) | C2: 130 xương trong khung (max 0.74) frame 0/12/23; toàn > trung > cận; còn camera thấp dưới đất, cận chưa phải cận mặt → G3b |
 | D1b khoá chân không nâng chân | ↩️ PR #23 | Samba: nâng 0 cm, giữ 100% khung chạm, nhưng trượt 0.35/0.46 m (cần < 0.2) |
 
 ## Đang giao (2026-10-21)
