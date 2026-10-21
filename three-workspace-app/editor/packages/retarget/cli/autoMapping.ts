@@ -60,7 +60,7 @@ function wc3ReforgedAliases(): Map<string, string> {
   const result = new Map<string, string>([['Hips', 'spinec00jnt'], ['Spine', 'spinec01jnt'], ['Spine2', 'bonechest'], ['Neck', 'neckc00jnt'], ['Head', 'bonehead']])
   for (const [side, s] of [['Left', 'l'], ['Right', 'r']] as const) {
     result.set(`${side}Shoulder`, `shoulder${s}0shoulderjnt`).set(`${side}Arm`, `arm${s}00jnt`).set(`${side}ForeArm`, `arm${s}02jnt`).set(`${side}Hand`, `arm${s}0endjnt`)
-      .set(`${side}UpLeg`, `leg${s}00jnt`).set(`${side}Leg`, `leg${s}02jnt`).set(`${side}Foot`, `leg${s}0endjnt`).set(`${side}ToeBase`, `foot${s}00jnt`)
+      .set(`${side}UpLeg`, `leg${s}00jnt`).set(`${side}Leg`, `leg${s}02jnt`).set(`${side}Foot`, `leg${s}0endjnt`).set(`${side}ToeBase`, `foot${s}00jnt`).set(`${side}Toe_End`, `foot${s}01jnt`)
     for (const index of [1, 2, 3]) result.set(`${side}HandThumb${index}`, `thumb${s}0${index - 1}jnt`)
     for (const [finger, name] of ['Index', 'Middle', 'Ring', 'Pinky'].entries()) for (const index of [1, 2, 3]) result.set(`${side}Hand${name}${index}`, `finger${s}${finger}${index - 1}jnt`)
   }

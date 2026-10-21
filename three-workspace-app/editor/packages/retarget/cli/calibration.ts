@@ -11,10 +11,14 @@ const LIMB_CHAINS: ReadonlyArray<readonly [string, readonly string[]]> = ['Left'
   [`${side}Hand`, [`${side}HandMiddle1`, `${side}HandIndex1`, `${side}HandRing1`]],
   ...['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].flatMap((finger) => [1, 2].map((index) =>
     [`${side}Hand${finger}${index}`, [`${side}Hand${finger}${index + 1}`]] as const)),
-  [`${side}UpLeg`, [`${side}Leg`]], [`${side}Leg`, [`${side}Foot`]],
+  [`${side}UpLeg`, [`${side}Leg`]], [`${side}Leg`, [`${side}Foot`]], [`${side}Foot`, [`${side}ToeBase`]],
 ] as const)
-// No Foot→ToeBase entry: a rest foot is always "standing flat", but ankle-to-ball pitch is anatomy (WC3 orc 71°, Mixamo 39°).
-// Copying the source's absolute foot direction put targets on tiptoe; feet therefore follow the motion relative to rest.
+/**
+ * A rest foot always stands flat, but ankle-to-ball pitch is anatomy (WC3 orc 71°, Mixamo 39°): copying such a source's
+ * absolute foot direction put targets on tiptoe. Feet whose rest pitches differ by at least this much skip the Foot swing
+ * and keep their own rest as reference (the solver's footDirection pass then drives them); alike feet calibrate as before.
+ */
+const DIFFERENT_FOOT_DEGREES = 10
 
 /**
  * Measured yaw from the source facing to the target facing (facing = left-hip→right-hip axis × up, valid for A/T poses).
@@ -60,7 +64,19 @@ export function buildCalibration(source: RetargetRig, target: RetargetRig, joint
   const byName = new Map(joints.map((joint) => [joint.target, joint]))
   const position = (matrix: Matrix4) => new Vector3().setFromMatrixPosition(matrix)
   const corrections: Array<{ joint: string; degrees: number }> = []
+  const restPitch = (rig: RetargetRig, from?: string, to?: string) => {
+    const a = rig.bones.find((bone) => bone.id === from), b = rig.bones.find((bone) => bone.id === to)
+    if (!a || !b) return null
+    const d = new Vector3().fromArray(b.restWorld, 12).sub(new Vector3().fromArray(a.restWorld, 12))
+    return Math.atan2(d.y, Math.hypot(d.x, d.z)) * 180 / Math.PI
+  }
+  const differentFeet = new Set(['Left', 'Right'].filter((side) => {
+    const foot = byName.get(`${side}Foot`), toe = byName.get(`${side}ToeBase`)
+    const s = restPitch(source, foot?.sourceId ?? undefined, toe?.sourceId ?? undefined), t = restPitch(target, foot?.targetId, toe?.targetId)
+    return s !== null && t !== null && Math.abs(s - t) >= DIFFERENT_FOOT_DEGREES
+  }).map((side) => `${side}Foot`))
   for (const [name, childNames] of mode === 'limbs' ? LIMB_CHAINS : []) {
+    if (differentFeet.has(name)) continue
     const joint = byName.get(name), child = childNames.map((childName) => byName.get(childName)).find((item) => item?.sourceId)
     if (!joint?.sourceId || !child?.sourceId) continue
     const pivot = position(world.get(joint.sourceId)!)
@@ -77,9 +93,10 @@ export function buildCalibration(source: RetargetRig, target: RetargetRig, joint
     const stack = [joint.sourceId]
     while (stack.length) { const id = stack.pop()!; world.set(id, rotate.clone().multiply(world.get(id)!)); stack.push(...(children.get(id) ?? [])) }
   }
-  // Feet keep their own rest as reference (not the copy swung along with the corrected shin): a source standing as in
-  // its rest then gives the target foot its own flat rest, whatever the source's ankle-to-ball pitch is.
+  // Differently shaped feet keep their own rest as reference (not the copy swung along with the corrected shin): a source
+  // standing as in its rest then gives the target foot its own flat rest, whatever the source's ankle-to-ball pitch is.
   for (const side of ['Left', 'Right']) {
+    if (!differentFeet.has(`${side}Foot`)) continue
     const foot = byName.get(`${side}Foot`)?.sourceId
     if (!foot) continue
     const stack = [foot]
