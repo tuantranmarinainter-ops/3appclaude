@@ -62,6 +62,8 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | Silhouette App 2 (nút + Shift+S + scene.render) | ✅ Claude | Bật/tắt trong Studio thật; tắt trả nguyên vật liệu; builder 559/0, Studio 107/0 |
 | Silhouette App 3 + đồng bộ App 2 → App 3 | ✅ PR #41 | Chromium thật: pixel ngoài 2 màu 0.57%, tắt trả ảnh y hệt (0 kênh khác), 12 lần bật/tắt không đổi project, App 2 bật → App 3 bật; 434/434 id |
 | J1 hợp đồng GLB v1.1 (xương phụ `X_*`) + bộ kiểm TS/Python | ✅ PR #42 | retarget 165/165; GLB v1.0 thật (Samba, BloodElf, 85 action MC) vẫn hợp lệ với bộ kiểm mới |
+| J3a App 2 hiện/chỉnh xương phụ | ✅ PR #43 | builder 563, Studio 109/0; đuôi 30° sai 0.019°, hàm pose 20° + Undo; A/B 120 khung Tập 15: 0 pixel khác |
+| Tập 15 một cảnh liền + film BBS FS | ✅ Claude | 20 shot 73 s, previz Shorts 9:16; 10 gói film nativeReadback (chia theo giới hạn worker); chưa thử trong game |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
 | L1 build Studio EPERM trên Windows | ✅ không tái hiện | `pnpm --filter @topview/3d-studio build` thành công 2026-10-21 |
