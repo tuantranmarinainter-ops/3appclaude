@@ -961,10 +961,15 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed; preview again', 409)
     }
     let plan: ReturnType<typeof previewCharacterLayout>
-    try { plan = previewCharacterLayout(project, envelope.args) }
+    try {
+      const layout=await readSceneLayout(project,{frame:envelope.args.frame===undefined?project.scene.content.timeline.frameStart:envelope.args.frame})
+      const world=new Map([...layout.characters.map(c=>[c.nodeId,{position:c.position}] as const),...layout.cameras.map(c=>[c.id,{position:c.position}] as const)])
+      plan = previewCharacterLayout(project, envelope.args,world)
+    }
     catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid layout', 400) }
     if (envelope.command === 'scene.layout.preview') {
-      const response = success(envelope.requestId, id, project.revision, plan)
+      const {operations,...summary}=plan
+      const response = success(envelope.requestId, id, project.revision, summary)
       await saveRequest(envelope, hash, response)
       return response
     }

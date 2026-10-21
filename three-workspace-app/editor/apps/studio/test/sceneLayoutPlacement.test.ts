@@ -20,6 +20,8 @@ test('relative placement and mutual gaze preview/apply, exact history and stale 
  const args={placements:[{characterId:'A',relativeTo:'B',relation:'left',distanceMeters:1.5,lookAt:{characterId:'B'}},{characterId:'B',lookAt:{characterId:'A'}}]}
  const preview=await send(id,'scene.layout.preview',args)
  assert.deepEqual(await readUnifiedProjectState(id),before)
+ assert.equal('operations' in preview.result,false)
+ await assert.rejects(send(id,'scene.layout.preview',{...args,frame:null}))
  const placements=preview.result.placements as any[]
  assert.deepEqual(placements[0].transform.position,{x:1.5,y:0,z:0})
  assert.equal(placements[0].transform.rotation.y,90);assert.equal(placements[1].transform.rotation.y,-90)
@@ -57,4 +59,31 @@ test('grounding uses rest foot height and rejects animated/locked targets',async
  assert.equal(plan.placements[0]!.body.source,'skeleton-rest')
  project.scene.content.nodes.find(n=>n.id==='A')!.locked=true
  assert.throws(()=>previewCharacterLayout(project,{placements:[{characterId:'A'}]}),/unlocked/)
+})
+
+test('placement tracks match node targets exactly and reject Bezier motion between equal endpoints',async()=>{
+ const {previewCharacterLayout}=await import('../src/sceneLayoutPlacement')
+ const id=await setup(),project=await readUnifiedProject(id)
+ const curve=(target:string,keys:unknown[])=>({id:'curve-A',t:['node',target],p:'transform.position',i:0,k:keys})
+ const preview=()=>previewCharacterLayout(project,{placements:[{characterId:'A',position:{x:0,z:0}}]})
+ project.extensions.topview={...project.extensions.topview,fcurves:{version:1,encoding:'compact-v1',fcurves:[curve('prefix-A',[[0,0,'linear','A'],[60,3,'linear','end']])]}}
+ assert.doesNotThrow(preview)
+ project.extensions.topview.fcurves={version:1,encoding:'compact-v1',fcurves:[curve('A',[[0,-3,'bezier','a',undefined,{x:10,y:-2}],[60,-3,'bezier','b']])]}
+ assert.throws(preview,/Dynamic placement fcurve/)
+ project.extensions.topview.fcurves={version:1,encoding:'compact-v1',fcurves:[curve('A',[[0,-3,'bezier','a',undefined,{x:10,y:-3}],[60,-3,'bezier','b']])]}
+ const plan=preview()
+ const replacement=plan.operations[0] as any
+ assert.equal(replacement.type,'document.replace')
+ assert.equal(replacement.fcurves.fcurves[0].k[0][1],0)
+ assert.equal(replacement.fcurves.fcurves[0].k[0][5].y,0)
+})
+
+test('constant transform overlays must stay upright with positive scale when edited',async()=>{
+ const {previewCharacterLayout}=await import('../src/sceneLayoutPlacement')
+ const id=await setup(),project=await readUnifiedProject(id)
+ for(const [prop,value] of [['rotation',[10,0,0]],['scale',[-1,1,1]]] as const) {
+  project.extensions.topview={...project.extensions.topview,fcurves:{version:1,encoding:'compact-v1',fcurves:[],userKeys:{A:{[prop]:[{id:'key',frame:0,value:[...value],interpolation:'linear'}]}}}}
+  assert.throws(()=>previewCharacterLayout(project,{placements:[{characterId:'A'}]}),/upright/)
+  assert.doesNotThrow(()=>previewCharacterLayout(project,{placements:[{characterId:'B',relativeTo:'A',relation:'right',distanceMeters:2}]}))
+ }
 })

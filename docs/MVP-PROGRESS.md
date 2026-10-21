@@ -51,6 +51,7 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | H2 `scene.export.blend-fbx` (.blend + FBX) | ✅ PR #21 | C2: .blend và FBX mở lại đúng 60.0° ở frame 12 (FBX nhập với Animation Offset = 0) |
 | G1 `scene.layout.read` (AI đọc cảnh) | ✅ PR #22 | C2 frame 12: A trỏ Motion App 3, B Action gốc, t=0.4 s; không đổi revision |
 | G2 `scene.layout.preview/apply` (AI xếp nhân vật) | ✅ PR #24 (lấy riêng G2) | C2: A trái B 1.5000 m, nhìn nhau 0.000°, Undo/Redo đúng; còn chặn nhân vật có key App 3 → G2b |
+| G2b xếp lại nhân vật đã qua App 3 | ✅ PR #28 | C2 giữ key App 3: A trái B 1.5000 m, nhìn nhau 0.000° ở frame 0/12/23; key placement cập nhật; Undo trả cả node lẫn key |
 | G3 `camera.framing.preview/apply` (AI đặt camera) | ✅ PR #25 (lấy riêng G3) | C2: 130 xương trong khung (max 0.74) frame 0/12/23; toàn > trung > cận; còn camera thấp dưới đất, cận chưa phải cận mặt → G3b |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
