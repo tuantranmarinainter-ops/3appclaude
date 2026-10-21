@@ -1,3 +1,4 @@
+import { previewCameraFraming } from './cameraFraming'
 import { previewCharacterLayout } from './sceneLayoutPlacement'
 import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
 import { startUnifiedSceneConversion } from './unifiedJobs'
@@ -937,6 +938,22 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (error instanceof Error && 'code' in error && error.code === 'JOB_BUSY') throw new UnifiedStoreError('JOB_BUSY', 'A local job is already active', 423)
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof TypeError ? error.message : 'Normalization plan could not inspect source and target assets', 422)
     }
+  }
+  if (envelope.command === 'camera.framing.preview' || envelope.command === 'camera.framing.apply') {
+    if (envelope.command === 'camera.framing.apply') {
+      if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for framing apply', 400)
+      if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed; preview again', 409)
+    }
+    let plan: Awaited<ReturnType<typeof previewCameraFraming>>
+    try { plan = await previewCameraFraming(project, envelope.args) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid framing', 400) }
+    if (envelope.command === 'camera.framing.preview') {
+      const { operations: _operations, ...summary } = plan
+      const response = success(envelope.requestId, id, project.revision, summary)
+      await saveRequest(envelope, hash, response)
+      return response
+    }
+    envelope = { ...envelope, command: 'scene.apply', args: { operations: plan.operations } }
   }
   if (envelope.command === 'scene.layout.preview' || envelope.command === 'scene.layout.apply') {
     if (envelope.command === 'scene.layout.apply') {
