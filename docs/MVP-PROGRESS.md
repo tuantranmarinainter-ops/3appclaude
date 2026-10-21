@@ -55,6 +55,8 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | G3 `camera.framing.preview/apply` (AI đặt camera) | ✅ PR #25 (lấy riêng G3) | C2: 130 xương trong khung (max 0.74) frame 0/12/23; toàn > trung > cận; còn camera thấp dưới đất, cận chưa phải cận mặt → G3b |
 | G3b camera đúng cỡ cảnh, không dưới sàn | ✅ PR #29 | Thử với Herobrine (Minecraft20) + Gỗ Xưa (Mixamo65): camera thấp y ≥ 0.30 m; toàn > trung > cận; trung cắt đùi, cận cắt bụng |
 | E1 App 3 đọc qua MCP (read_keyframes, analyze_motion, get_scene_context) | ✅ PR #30 | Studio 107/0, App 3 test 51/0 (sửa test gọi python trên Windows), Python OK, 434/434 id giữ nguyên |
+| E2 App 3 blocking qua MCP (preview → apply, một bước Undo) | ✅ PR #31 | Chạy thật Chromium: Python MCP → broker → App 3 Director qua (78 s); sửa MCP ghi UTF-8 trên Windows; build App 3 khớp từng byte; 434/434 id |
+| Silhouette App 2 (nút + Shift+S + scene.render) | ✅ Claude | Bật/tắt trong Studio thật; tắt trả nguyên vật liệu; builder 559/0, Studio 107/0 |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
 | L1 build Studio EPERM trên Windows | ✅ không tái hiện | `pnpm --filter @topview/3d-studio build` thành công 2026-10-21 |
