@@ -42,3 +42,17 @@ class LayoutTests(unittest.TestCase):
                 response=unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": arguments}), invoke)
                 self.assertEqual(invoke.call_args.args[0]["args"], args)
                 self.assertEqual(response["result"]["structuredContent"]["revision"], 8)
+
+    def test_mcp_camera_framing_forwarding_and_apply_revision(self):
+        args={"cameraId": "camera_1", "characterIds": ["A", "B"], "shot": "medium", "angle": "high"}
+        for command in ("camera.framing.preview", "camera.framing.apply"):
+            with self.subTest(command=command):
+                invoke=Mock(return_value={"ok": True, "revision": 9})
+                arguments={"command": command, "projectId": str(uuid.uuid4()), "args": args}
+                if command.endswith("apply"):
+                    unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": arguments}), invoke)
+                    invoke.assert_not_called()
+                    arguments["expectedRevision"]=8
+                response=unified_mcp.handle_message(request("tools/call", {"name": "bbs_unified_command", "arguments": arguments}), invoke)
+                self.assertEqual(invoke.call_args.args[0]["args"], args)
+                self.assertEqual(response["result"]["structuredContent"]["revision"], 9)
