@@ -62,6 +62,26 @@ test('App 1 import keeps Action UUIDs, manifest and rejects broken identity/hash
   assert.notDeepEqual(middle.result.skeletonSamples, zero.result.skeletonSamples)
 
 })
+test('Every Action of one multi-Action App 1 GLB gets its own motionPath entry (all clips resolve, not only the first)', async () => {
+  const out = path.join(temp, 'normalized-two')
+  const run = spawnSync(process.execPath, ['--import', 'tsx', '../retarget/cli/normalize.ts', '--src', path.join(fixture, 'minecraft-actions.bobj'), '--armature', path.join(fixture, 'minecraft20-armature.bobj'), '--target', path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb'), '--out', out, '--action', '27,66'], { cwd: path.join(editor, 'packages/builder'), encoding: 'utf8', timeout: 120000 })
+  assert.equal(run.status, 0, run.stdout + run.stderr)
+  const files = readdirSync(out), two = readFileSync(path.join(out, files.find(x => x.endsWith('.glb'))!)), twoManifest = JSON.parse(readFileSync(path.join(out, files.find(x => x.endsWith('.manifest.json'))!), 'utf8'))
+  assert.equal(twoManifest.actions.length, 2)
+  const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Two actions', scene: makeEmptyDraft('Two actions', 30, 90) } })
+  const projectId = created.projectId
+  let revision = (await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, command: 'asset.import', args: { files: [(await upload(two)).id], format: 'glb', manifest: twoManifest } })).revision
+  const model = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'asset.import', args: { files: [(await upload(readFileSync(path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')), 'target.glb')).id], format: 'glb' } })
+  revision = model.revision
+  for (const action of twoManifest.actions) {
+    const character = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'character.add', args: { assetId: (model.result.assetIds as string[])[0], skeletonId: (model.result.skeletonIds as string[])[0], name: action.name } })
+    revision = (await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: character.revision, command: 'motion.place', args: { characterId: character.result.characterId, motionId: action.uuid, frameStart: 0 } })).revision
+  }
+  const project = await readUnifiedProject(projectId), paths = project.scene.content.asset.motionPath
+  assert.deepEqual(paths.map((entry) => entry.id).sort(), twoManifest.actions.map((action: any) => action.uuid).sort())
+  assert.equal(new Set(paths.map((entry) => entry.path)).size, 1, 'both Actions share the GLB URL')
+  for (const clip of project.scene.content.timeline.animation.motionClips) assert.ok(paths.some((entry) => entry.id === clip.motion.assetId), clip.motion.name)
+})
 test('Repeated UUID/hash reuses Motion; changed hash rejects; other IDs stay v4', async () => {
   generate()
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Dedup', scene: makeEmptyDraft('Dedup', 30, 180) } })

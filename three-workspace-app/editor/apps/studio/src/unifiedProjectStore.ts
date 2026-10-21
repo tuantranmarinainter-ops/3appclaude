@@ -1611,8 +1611,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       clip.motion.assetId = motion.id
       clip.motion.url = url
       clip.motion.name = motionName
-      if (!scene.content.asset.motionPath.some((entry) => entry.id === motion.id || entry.path === url)) scene.content.asset.motionPath.push({ id: motion.id, path: url })
     }
+    // One App 1 GLB carries many Actions under one URL; each Motion still needs its own entry (renderers look it up by id),
+    // while the builder's add-motion intent skips an entry whose path is already listed.
+    if (!scene.content.asset.motionPath.some((entry) => entry.id === motion.id)) scene.content.asset.motionPath.push({ id: motion.id, path: url })
     clip.sourceDuration = motion.durationSeconds
     clip.frameEnd = edit?.frameEnd ?? clip.frameStart + durationFrames - 1
     if (edit && scene.content.timeline.animation.motionClips.some((other) => other.id !== clip.id && other.target.nodeId === clip.target.nodeId && other.frameStart <= clip.frameEnd && other.frameEnd >= clip.frameStart)) {
