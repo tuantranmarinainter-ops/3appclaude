@@ -32,7 +32,7 @@ export interface UnifiedJobView extends Omit<StoredJob, 'result'> {
   result?: Omit<NonNullable<StoredJob['result']>, 'files'> & { files: Omit<StoredFile, 'path'>[] }
 }
 
-interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number }
+interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number; silhouette?: boolean }
 interface FilmExportArgs extends FilmSamplingArgs { filmName: string }
 /** Scene-level packaging on top of `film.export` (`scene.export.bbsFilm`): archive name and extra JSON files in the ZIP root. */
 export interface FilmPackageOptions { archiveName?: string; extraFiles?: Record<string, unknown> }
@@ -281,7 +281,7 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
       const result = await renderFrames({
         document: snapshot.scene, fcurves, frames: args.frames, width: args.width, height: args.height,
         cameraNodeId, sceneSequence: snapshot.scene.content.editorial?.sequences?.[0]?.id,
-        outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets,
+        outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets, ...(args.silhouette ? { silhouette: true } : {}),
       }, { signal, onProgress: async (completed, total) => {
         record.progress = 0.1 + 0.75 * ((cameraIndex + completed / total) / args.cameraNodeIds.length)
         record.updatedAt = new Date().toISOString()

@@ -31,6 +31,8 @@ export interface HeadlessRenderFrameOptions {
   cameraId?: string
   userKeysEnabled?: boolean
   chainCameraMotion?: boolean
+  /** 剪影视图：角色实心暗色、布景浅灰、浅色背景，不改文档。 */
+  silhouette?: boolean
 }
 
 export interface HeadlessRenderer {
@@ -74,6 +76,7 @@ export function createHeadlessRenderer(options: HeadlessRendererOptions): Headle
       if (!cameraId) throw new Error('Document has no camera')
       const cam = stage.getCameraForExport(cameraId)
       if (!cam) throw new Error(`Camera not found: ${cameraId}`)
+      stage.setSilhouette(opts?.silhouette === true)
       renderExportFrame(
         {
           stage,

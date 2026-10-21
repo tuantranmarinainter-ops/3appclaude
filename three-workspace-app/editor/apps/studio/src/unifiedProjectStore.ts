@@ -1009,12 +1009,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     return response
   }
   if (envelope.command === 'scene.render') {
-    const { frames, cameraNodeIds, width, height, outputDirectory } = envelope.args
+    const { frames, cameraNodeIds, width, height, outputDirectory, silhouette } = envelope.args
     const cameras = project.scene.content.nodes.filter((node) => node.type === 'camera')
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Render snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['frames', 'cameraNodeIds', 'width', 'height', 'outputDirectory'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['frames', 'cameraNodeIds', 'width', 'height', 'outputDirectory', 'silhouette'].includes(key)) ||
+      silhouette !== undefined && typeof silhouette !== 'boolean' ||
       !Array.isArray(frames) || !frames.length || frames.length > 9 || frames.some((frame) => !Number.isSafeInteger(frame) || frame < project.scene.content.timeline.frameStart || frame > project.scene.content.timeline.frameEnd) || new Set(frames).size !== frames.length ||
       !Array.isArray(cameraNodeIds) || !cameraNodeIds.length || cameraNodeIds.length > 3 || frames.length * cameraNodeIds.length > 9 ||
       new Set(cameraNodeIds).size !== cameraNodeIds.length || cameraNodeIds.some((cameraId) => typeof cameraId !== 'string' || !cameras.some((camera) => camera.id === cameraId)) ||
@@ -1025,7 +1026,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: frames.length * cameraNodeIds.length })
     try {
-      const job = await startUnifiedSceneRender(project, { frames: frames as number[], cameraNodeIds: cameraNodeIds as string[], width: width as number, height: height as number })
+      const job = await startUnifiedSceneRender(project, { frames: frames as number[], cameraNodeIds: cameraNodeIds as string[], width: width as number, height: height as number, ...(silhouette ? { silhouette: true } : {}) })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress })
       await saveRequest(envelope, hash, response)
       return response

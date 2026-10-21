@@ -97,6 +97,7 @@ import {
   type PathViewHost,
 } from '../objects/PathObject'
 import { clearCameraMotionGuide, syncCameraMotionGuide as applyCameraMotionGuide } from '../objects/CameraMotionGuide'
+import { SilhouetteView } from '../objects/silhouette'
 
 export const FRAME_THROTTLE_MS = 100
 export type { EvalContext, NodeSnapshot } from '../DirectorEngine'
@@ -171,6 +172,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   private highlightPathId: string | null = null
   private loadToken = 0
   private readonly joints = new JointHandleLayer()
+  private readonly silhouetteView = new SilhouetteView()
+  private silhouetteWanted = false
   private jointDrag: JointDrag | null = null
   private jointDragNodeId: string | null = null
   private poseEditingId: string | null = null
@@ -240,6 +243,24 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.mainDirty = true
     this.previewDirty = true
     this.renderLoop.invalidate()
+  }
+
+  /** 剪影视图：只影响显示（编辑视口与导出帧），不写入文档。 */
+  get silhouette(): boolean {
+    return this.silhouetteWanted
+  }
+
+  setSilhouette(enabled: boolean): void {
+    if (enabled === this.silhouetteWanted) return
+    this.silhouetteWanted = enabled
+    if (!enabled) this.silhouetteView.restore(this.scene)
+    this.invalidate()
+  }
+
+  /** 每次绘制前调用（求值会重设天空色）：开启时套剪影材质与背景，新加载的网格也会被换掉；关闭时无操作。 */
+  syncSilhouette(): void {
+    if (!this.silhouetteWanted) return
+    this.silhouetteView.apply(this.scene, [...this.characters.values()].map((ch) => ch.root), [...this.props.values(), ...this.primitives.values()])
   }
 
   private invalidateMain(): void {
@@ -1257,6 +1278,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   }
 
   dispose(): void {
+    this.silhouetteView.restore(this.scene)
+    this.silhouetteView.dispose()
     this.renderLoop.disposed = true
     this.renderLoop.stop()
     this.stopAmbient()
@@ -1340,7 +1363,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.previewDirty = false
     this.stats.renderFrames += 1
     const isolatePreview = this.ambient && !this.playing && !this.viewport.followMode && !this.programPreviewActive
-    const hideOverlays = this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot
+    const hideOverlays = this.silhouetteWanted || this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot
     const viewId = this.programCameraId ?? this.activeCameraId
     const mainAspect = this.viewport.mainAspect()
     const viewAspect = this.aspectForCamera(viewId ? this.cameras.get(viewId)?.node.camera : undefined, mainAspect)
@@ -1349,12 +1372,14 @@ export class Stage implements DirectorEngine, PathViewHost {
       if (previewDirty) {
         this.viewport.previewAspect = viewAspect
         this.evaluate(this.ambientFrame, this.evalUserKeys, this.evalUserKeysEnabled, this.evalChainCameraMotion, true)
+        this.syncSilhouette()
         this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
         this.evaluateCurrent(true)
       }
       if (!mainDirty) return
     } else if (!mainDirty) {
       this.viewport.previewAspect = viewAspect
+      this.syncSilhouette()
       this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
       return
     }
@@ -1380,6 +1405,7 @@ export class Stage implements DirectorEngine, PathViewHost {
       this.gizmoNodeIds?.length ? this.gizmoNodeIds : this.gizmoNodeId ? [this.gizmoNodeId] : [],
     )
     this.viewport.outlineRoots = hideOverlays || this.gizmoSuspended ? [] : this.selectionOutlineRoots(selectedIds)
+    this.syncSilhouette()
     this.viewport.render(
       this.scene,
       this.cameras,

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { DirectorApi } from '@topview/3d-builder'
 import { LocalHostAdapter, type LocalDocumentSource } from '../../../src/LocalHostAdapter'
-import { setLiveStudio } from '../../../src/devtools/liveStudio'
+import { getLiveStudio, setLiveStudio, subscribeLiveStudio } from '../../../src/devtools/liveStudio'
 import { setStudioLocale, useStudioLocale } from '../../../src/devtools/localePreference'
 import { useStudioT } from '../../../src/locale'
 import { ensureUnifiedSession, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
@@ -131,6 +131,14 @@ export function StudioOverlay({
   const [assetBusy, setAssetBusy] = useState(false)
   const [animationEditorDirty, setAnimationEditorDirty] = useState(false)
   const [editorKey, setEditorKey] = useState(0)
+  // Silhouette is a view mode only (never saved): App 2's Stage applies it; App 3 listens for the window event.
+  const [silhouette, setSilhouette] = useState(false)
+  useEffect(() => {
+    const apply = () => getLiveStudio()?.stage.setSilhouette(silhouette)
+    apply()
+    window.dispatchEvent(new CustomEvent('bbs-view-silhouette', { detail: { enabled: silhouette } }))
+    return subscribeLiveStudio(apply)
+  }, [silhouette])
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const assetInputRef = useRef<HTMLInputElement>(null)
   const relinkInputRef = useRef<HTMLInputElement>(null)
@@ -351,6 +359,12 @@ export function StudioOverlay({
         requestAnimationFrame(() => document.getElementById('wb-feature-search')?.focus())
         return
       }
+      if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        setSilhouette((value) => !value)
+        return
+      }
       if ((!event.ctrlKey && !event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
       const command = key === 'z' ? (event.shiftKey ? 'history.redo' : 'history.undo') : key === 'y' ? 'history.redo' : null
@@ -417,6 +431,7 @@ export function StudioOverlay({
             <input ref={relinkInputRef} className="wb-sr-only" type="file" aria-label={vi ? 'Chọn file cần liên kết lại' : 'Choose a file to relink'} onChange={(event) => { const file = event.target.files?.[0]; const assetId = relinkTargetRef.current; event.target.value = ''; relinkTargetRef.current = null; if (file && assetId) void relinkAsset(assetId, file) }} />
             <button type="button" className="wb-host-secondary" onClick={openFeatureSearch} title={vi ? 'Tìm chức năng (Ctrl+K)' : 'Find a feature (Ctrl+K)'}>{vi ? 'Tìm' : 'Find'} <kbd>Ctrl K</kbd></button>
             <button type="button" className="wb-host-secondary" onClick={() => setDrawer('assets')}>{vi ? 'Tài nguyên' : 'Assets'}</button>
+            <button type="button" id="wb-silhouette-toggle" className={`wb-host-secondary${silhouette ? ' is-active' : ''}`} aria-pressed={silhouette} onClick={() => setSilhouette((value) => !value)} title={vi ? 'Xem silhouette: nhân vật tô đặc trên nền sáng (Shift+S)' : 'Silhouette view: solid characters on a light background (Shift+S)'}>{vi ? 'Silhouette' : 'Silhouette'} <kbd>Shift S</kbd></button>
             {activeWorkspace === 'animation' && <button type="button" className="wb-host-secondary" onClick={() => setDrawer('animation')}>{vi ? 'Thêm animation' : 'Add animation'}</button>}
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Hoàn tác' : 'Undo'} title="Undo (Ctrl+Z)" disabled={historyBusy || !projectState?.history.canUndo} onClick={() => void runHistory('history.undo')}>↶</button>
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>

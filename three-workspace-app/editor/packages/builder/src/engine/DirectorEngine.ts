@@ -108,6 +108,10 @@ export interface DirectorEngine {
   readonly poseBank: PoseLibraryBank
   dispose(): void
 
+  /** 剪影视图（只影响显示，不写文档）。 */
+  readonly silhouette: boolean
+  setSilhouette(enabled: boolean): void
+
   attachViewport(role: ViewportRole, canvas: HTMLCanvasElement): void
   detachViewport(role: ViewportRole): void
   mainCanvas(): HTMLCanvasElement | null

@@ -193,7 +193,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
       await onProgress?.(completed, total)
     })
     const result = await page.evaluate(async ({
-      document, fcurves, frames, width, height, publicAssetBase, dracoDecoderPath, cameraNodeId, sceneSequence,
+      document, fcurves, frames, width, height, publicAssetBase, dracoDecoderPath, cameraNodeId, sceneSequence, silhouette,
       localAssetUrls,
     }) => {
       const renderer = await window.createDirectorRenderer({
@@ -208,7 +208,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
       try {
         const pngs = []
         for (const frame of frames) {
-          const blob = await renderer.renderFrame(frame, cameraNodeId ? { cameraId: cameraNodeId } : undefined)
+          const blob = await renderer.renderFrame(frame, { ...(cameraNodeId ? { cameraId: cameraNodeId } : {}), ...(silhouette ? { silhouette: true } : {}) })
           const buffer = await blob.arrayBuffer()
           pngs.push({
             frame,
@@ -228,6 +228,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
       fcurves: body.fcurves ?? null,
       frames,
       cameraNodeId: body.cameraNodeId,
+      silhouette: body.silhouette === true,
       sceneSequence: body.sceneSequence,
       width,
       height,

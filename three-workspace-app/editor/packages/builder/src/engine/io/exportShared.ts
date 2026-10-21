@@ -14,6 +14,8 @@ export interface ExportTarget {
   /** 有主视口时复用它的 WebGL，避免再开上下文把主画布挤掉。 */
   acquireExportGpu?(width: number, height: number): ExportGpu | null
   restoreAfterExport?(): void
+  /** 剪影视图开启时，渲染前把材质换成剪影。 */
+  syncSilhouette?(): void
 }
 
 export interface ExportProgress {
@@ -82,6 +84,7 @@ export function renderExportFrame(
   renderer: THREE.WebGLRenderer,
 ): void {
   opts.stage.evaluate(frame, opts.userKeys, opts.userKeysEnabled, opts.chainCameraMotion)
+  opts.stage.syncSilhouette?.()
   const prevAspect = cam.aspect
   cam.aspect = opts.width / opts.height
   cam.updateProjectionMatrix()
