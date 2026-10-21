@@ -286,7 +286,7 @@ def export_shot_job(base: str, cookie: str, project_id: str, args: dict, output_
 
 
 def command(base: str, cookie: str, name: str, project_id: str | None = None, args: dict | None = None, expected_revision: int | None = None, request_id: str | None = None, dry_run: bool = False) -> dict:
-    if name in {'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit', 'shot.result.import'} and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0):
+    if name in {'scene.layout.apply', 'camera.framing.apply', 'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit', 'shot.result.import'} and (isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0):
         raise ValueError(f'{name} requires the expected_revision of the edited snapshot')
     if request_id is not None and (str(uuid.UUID(request_id)) != request_id or uuid.UUID(request_id).version != 4):
         raise ValueError("request_id must be a canonical UUIDv4")
@@ -468,6 +468,12 @@ def main() -> int:
     layout_read = scene_sub.add_parser("layout-read", help="read compact character/camera layout facts without geometry or raw keys")
     layout_read.add_argument("project_id")
     layout_read.add_argument("--frame", type=float)
+    for name in ("layout-preview", "layout-apply", "framing-preview", "framing-apply"):
+        planned = scene_sub.add_parser(name, help="preview/apply structured character layout or camera framing JSON")
+        planned.add_argument("project_id")
+        planned.add_argument("plan", type=Path, help="JSON object of broker arguments")
+        if name.endswith("apply"):
+            planned.add_argument("--expected-revision", type=int, required=True)
     scene_apply = scene_sub.add_parser("apply", help="apply Topview scene operations from a JSON array")
     scene_apply.add_argument("project_id")
     scene_apply.add_argument("operations", type=Path)
@@ -717,6 +723,14 @@ def main() -> int:
                 if args.frame is not None and not math.isfinite(args.frame):
                     raise ValueError("Layout frame must be finite")
                 result = command(base, cookie, "scene.layout.read", args.project_id, {"frame": args.frame} if args.frame is not None else {})
+            elif args.scene_action in {"layout-preview", "layout-apply", "framing-preview", "framing-apply"}:
+                payload = json.loads(read_bounded_file(args.plan, 1024 * 1024, "Layout/framing JSON cannot exceed 1 MiB").decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("Layout/framing JSON must contain an object")
+                prefix, action = args.scene_action.split("-")
+                name = f"scene.layout.{action}" if prefix == "layout" else f"camera.framing.{action}"
+                result = command(base, cookie, name, args.project_id, payload,
+                                 expected_revision=getattr(args, "expected_revision", None))
             elif args.scene_action == "apply":
                 raw_operations = read_bounded_file(args.operations, 64 * 1024 * 1024, "Scene operation JSON cannot exceed 64 MiB")
                 operations = json.loads(raw_operations.decode("utf-8"))
