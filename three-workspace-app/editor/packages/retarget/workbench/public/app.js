@@ -285,7 +285,7 @@ function readOptions() {
   const get = (name) => form.elements[name]
   const number = (name) => { const value = get(name).value.trim(); return value === '' ? undefined : Number(value) }
   return {
-    mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale') ?? 1, ground: get('ground').value, calibrate: get('calibrate').value,
+    mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale'), ground: get('ground').value, calibrate: get('calibrate').value,
     facingDegrees: number('facingDegrees'), swapSides: get('swapSides').value, unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
   }
 }
@@ -510,7 +510,7 @@ function renderOverview() {
   box.append(h('h3', { text: 'Tỉ lệ & hiệu chỉnh' }), kv([
     report.proportions ? ['Hông nguồn / đích', `${fmt(report.proportions.sourceHipsHeightMeters)} m / ${fmt(report.proportions.targetHipsHeightMeters)} m`] : null,
     report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
-    report.input ? ['Root', `${report.input.rootPolicy} × ${report.input.rootScale}`] : null,
+    report.input ? ['Root', `${report.input.rootPolicy} × ${fmt(report.proportions?.rootScale ?? report.input.rootScale, 4)}${report.proportions?.rootScaleSource === 'auto-units' ? ' (TỰ ĐỘNG: đơn vị file nguồn sai, hông nguồn không cỡ người)' : ''}`] : null,
     report.ground ? ['Chạm sàn', groundSummary(report.ground)] : null,
     report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
     report.sides ? ['Trái / phải', `${report.sides.mode}${report.sides.swapped ? ', đã đảo' : ''}${report.sides.restTurnDegrees ? `, xoay rest ${report.sides.restTurnDegrees}°` : ''} · bằng chứng ${report.sides.evidence}${report.sides.agreement === null ? '' : ` (${fmt(report.sides.agreement)})`}`] : null,

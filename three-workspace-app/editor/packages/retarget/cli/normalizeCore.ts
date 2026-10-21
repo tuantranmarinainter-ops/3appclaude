@@ -156,6 +156,9 @@ export interface InspectRigs { source: { fingerprint: string; bones: Array<{ id:
  * normalized as given (the same gates runNormalize reports); the mapping/Action facts are still returned so a UI can show why.
  * `ready` exists only without a blocker. NOTE: when ready, `request.source.animations` has been pruned in place (reported in `ready.prune`).
  */
+/** Rest hips height a humanoid can have in meters; outside it the source unit is assumed wrong. */
+const HUMAN_HIPS_METERS = [0.2, 3] as const
+
 export async function inspectNormalize(request: NormalizeRequest) {
   const rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
   const basis = sourceToScene(request.unitMeters ?? 1, request.upAxis ?? 'y')
@@ -192,7 +195,13 @@ export async function inspectNormalize(request: NormalizeRequest) {
     joints: mapping.joints.map(({ target, source, via, ambiguous }) => ({ target, source, via, ...(ambiguous ? { ambiguous } : {}) })) }
   const targetHipsHeight = targetRest.get('Hips')?.[13] ?? null
   const suggestedRootScale = sourceHipsHeight && sourceHipsHeight > 0 && targetHipsHeight ? targetHipsHeight / sourceHipsHeight : null
-  const base = { input, actions, mapping, mappingReport, sides, rigs, sourceHipsHeight, targetHipsHeight, suggestedRootScale, targetRest }
+  // No explicit --root-scale: keep meters (DECISIONS) unless the source hips are not human-sized in meters, i.e. the file's
+  // unit is wrong (WC3 GLB: hips 73 "m"); then root travel follows body size so the character stays on the floor.
+  const unitsSuspect = !!sourceHipsHeight && (sourceHipsHeight > HUMAN_HIPS_METERS[1] || sourceHipsHeight < HUMAN_HIPS_METERS[0])
+  const rootScaleSource: 'given' | 'auto-units' | 'default' = request.rootScale !== undefined ? 'given' : unitsSuspect && suggestedRootScale ? 'auto-units' : 'default'
+  const effectiveRootScale = rootScaleSource === 'given' ? request.rootScale! : rootScaleSource === 'auto-units' ? suggestedRootScale! : 1
+  input.rootScale = effectiveRootScale
+  const base = { input, actions, mapping, mappingReport, sides, rigs, sourceHipsHeight, targetHipsHeight, suggestedRootScale, targetRest, effectiveRootScale, rootScaleSource }
 
   const missing = (request.actions ?? []).filter((index) => !actions[index])
   const blocker = !actions.length ? { code: 'NO_ACTION', message: 'Source has no Action', extra: { input, actions } as Record<string, unknown> }
@@ -220,10 +229,11 @@ export async function inspectNormalize(request: NormalizeRequest) {
 
 export async function runNormalize(request: NormalizeRequest) {
   const started = Date.now()
-  const rootPolicy = request.rootPolicy ?? 'preserve', rootScale = request.rootScale ?? 1
+  const rootPolicy = request.rootPolicy ?? 'preserve'
   request.onProgress?.('inspect', 0, 1)
   const inspected = await inspectNormalize(request)
   if (inspected.blocker) return blocked(inspected.blocker.code, inspected.blocker.message, inspected.blocker.extra)
+  const rootScale = inspected.effectiveRootScale, rootScaleSource = inspected.rootScaleSource
   const { input, actions, mapping, mappingReport, sourceHipsHeight, targetRest, suggestedRootScale } = inspected
   const { prune, prunedActions, actionsReport, sourceOptions, targetOptions, calibration } = inspected.ready
 
@@ -333,7 +343,7 @@ export async function runNormalize(request: NormalizeRequest) {
       maxDegrees: Math.max(0, ...calibration.corrections.map((item) => item.degrees)), corrections: calibration.corrections },
     // Root travel is copied in meters by default (DECISIONS); for very different body sizes pass --root-scale <suggested>.
     proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
-      suggestedRootScale },
+      suggestedRootScale, rootScale, rootScaleSource },
     loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: primary.unmappedSourceBoneIds.length,
       unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },

@@ -55,3 +55,26 @@ test('off leaves frames alone', () => {
   const frames = [frame(0, 0.9, 0, -0.06)]
   assert.equal(adjustGround(rig, frames, 'off').applied, false)
 })
+
+test('source in the wrong unit (hips tens of "meters") gets body-relative root travel automatically and stays on the floor', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve, dirname } = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const { loadAsset } = await import('../cli/loadAsset.ts')
+  const { runNormalize } = await import('../cli/normalizeCore.ts')
+  const here = dirname(fileURLToPath(import.meta.url)), bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
+  const target = resolve(here, '../../../../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
+  const run = async (unitMeters: number, rootScale?: number) => runNormalize({
+    source: await loadAsset(readFileSync(resolve(bobjDir, 'minecraft-actions.bobj')), 'bobj', { bobjArmature: readFileSync(resolve(bobjDir, 'minecraft20-armature.bobj')) }),
+    sourceLabel: 'mc', sourceSha256: '5'.repeat(64), target: await loadAsset(readFileSync(target), 'glb', { skeletonOnly: true }), targetLabel: 't', targetSha256: '6'.repeat(64),
+    actions: [0], unitMeters, ...(rootScale === undefined ? {} : { rootScale }) })
+  const huge = await run(80)
+  assert.equal(huge.status, 'PASS')
+  assert.equal(huge.report.proportions.rootScaleSource, 'auto-units')
+  assert.ok(Math.abs(huge.report.proportions.rootScale - huge.report.proportions.suggestedRootScale!) < 1e-12)
+  const [low, high] = huge.report.roundtrip.perAction[0]!.hipsHeightRangeMeters
+  assert.ok(low! > 0.3 && high! < 2, `hips stay human-sized: ${low}..${high}`)
+  const given = await run(80, 1)
+  assert.equal(given.report.proportions.rootScaleSource, 'given')
+  assert.equal((await run(1)).report.proportions.rootScaleSource, 'default')
+})

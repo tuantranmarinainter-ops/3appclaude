@@ -5,7 +5,7 @@ import type { UniversalBakeFrame } from './universalBake'
 /** off = untouched; lift = raise the whole Action so no foot sinks below the rest floor; level = also lower a floating Action; frame = lift per frame (smoothed). */
 export type GroundMode = 'off' | 'lift' | 'level' | 'frame'
 export const GROUND_MODES: readonly GroundMode[] = ['off', 'lift', 'level', 'frame']
-const FOOT = /(?:left|right)(?:foot|toebase)$/i
+const FOOT = /(?:left|right)(?:foot|toebase|toe_?end)$/i
 const SMOOTH_RADIUS = 2
 
 export interface GroundReport { mode: GroundMode; restFloorMeters: number | null; actionFloorMeters: number | null; offsetMeters: number; maxOffsetMeters: number; applied: boolean; skipped?: 'OFFSET_TOO_LARGE' }

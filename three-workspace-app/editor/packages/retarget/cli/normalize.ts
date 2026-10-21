@@ -23,7 +23,7 @@ import { exportMinecraft20 } from './toMinecraft20.ts'
 const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
   action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
-  root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string', default: '1' }, ground: { type: 'string', default: 'lift' }, mapping: { type: 'string' }, armature: { type: 'string' },
+  root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string' }, ground: { type: 'string', default: 'lift' }, mapping: { type: 'string' }, armature: { type: 'string' },
   mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
 
@@ -65,7 +65,7 @@ try {
     source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
     actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
-    upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
+    upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
     calibrate: values.calibrate as 'limbs' | 'none', swapSides: values['swap-sides'] as 'auto' | 'on' | 'off', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),
   })
