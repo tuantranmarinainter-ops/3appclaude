@@ -1,3 +1,6 @@
+import {inspectShot,sha256,safePackagePath,shotSourceTime} from './shot_package.js';
+import {unzipSync} from 'three/addons/libs/fflate.module.js';
+let studioShot=null;
 import * as Director from './animation_director.js';
 import {DirectorPanel} from './director_panel.js';
 import {StudioBridge} from './studio_bridge.js';
@@ -11,7 +14,7 @@ import * as Ground from './ground_environment.js';
 import {ScenePanel} from './scene_panel.js';
 import {bobj as exportBOBJ} from './bobj_export.js';
 let minimalBooting=true;
-let workspaceSelectOnly=false, timelineHeightBeforeGraph=null;
+let workspaceSelectOnly=false, timelineHeightBeforeGraph=null,studioSceneLayoutSnapshot=null;
 import {ClipPreview} from './source_preview.js';
 let sourcePreview=null,sourcePreviewLocks=null,quickClipRig=null;
 import * as Tex from './texture_assets.js';
@@ -360,8 +363,8 @@ function syncTime(){if(sceneMode&&!sceneEditing){$('frameInput').value=Math.floo
 function syncProject(){$('inPlace').checked=!!project.inPlace;$('inPlaceExport').checked=!!project.inPlaceExport;syncLabPanel();$('clipName').value=project.name;$('duration').value=project.duration;$('fps').value=project.fps;$('loopA').value=+(project.loop[0]*timelineRate()).toFixed(3);$('loopB').value=+(project.loop[1]*timelineRate()).toFixed(3);renderPoses();drawTimeline();drawCurve();}
 function seek(t,live=false){if(sceneMode&&!sceneEditing)return sceneSeek(t);if(sourcePreview){seekSourceClip(t);return;}if(!Number.isFinite(t))throw Error('Thời gian không hợp lệ.');time=T.MathUtils.clamp(t,0,(directorPending?.showing||project).duration);draft=false;C.evaluate(rig,directorPending?.showing||easingPreview?.project||project,time);$('draftBadge').textContent=$('uiLanguage').value==='en'?'Pose keyed':'Pose đã ghi';$('draftBadge').classList.remove('dirty');if(live){syncTransform();syncTime();drawTimeline();dirtyViews();}else refresh();}
 function renderPoses(){$('poseList').replaceChildren();project.poses.forEach((pose,index)=>{const row=document.createElement('div');row.className='pose-item';const btn=document.createElement('button');btn.textContent=pose.name;btn.onclick=guard(()=>{if(pose.fingerprint!==rig.fingerprint)throw Error('Pose thuộc rig khác.');for(const[id,p]of Object.entries(pose.data)){const o=id==='root'?rig.root:record(rig,id)?.o;if(o)C.apply(o,p);}rig.root.updateMatrixWorld(true);markPose(null,Object.keys(pose.data));});const del=document.createElement('button');del.textContent='×';del.title='Xóa pose';del.onclick=()=>{project.poses.splice(index,1);commit();renderPoses();};const dup=document.createElement('button');dup.textContent='＋';dup.title='Nhân bản';dup.onclick=()=>{project.poses.push({...C.clone(pose),name:pose.name+' copy'});commit();renderPoses();};row.append(btn,dup,del);$('poseList').append(row);});}
-async function install(r){directorCancel();endSourcePreview(false);assertEditingAllowed();cancelEasingPreview();easingPanel?.hide();smoothingPanel?.hide();studioMode='classic';studioBanks={classic:null,lab:null};$('studioMode').value='classic';stopTimelineScrub();endTimelineKeyDrag(true);playing=false;rig=r;mount(editView,r);setupIK(r);W.build(editView,r);for(const v of editViews.slice(1))bindSharedView(v);project=C.newProject(r);$('sourceUnits').value=/\.(fbx|mdx|mdl|skn)$/i.test(r.name)?'cm':'m';time=0;selected='root';selectionKeys=[];history=[];historyIndex=-1;draft=false;dirty=false;history.push(snapshot());historyIndex=0;renderBones();fillOptions($('rigSelect'),[['','Tất cả armature'],...r.armatures.map(a=>[a.id,a.name])]);fillOptions($('ikChain'),r.chains.map(c=>[c.id,c.label]));syncProject();select('root');applyViewportLayout();syncButtons();$('saveBtn').textContent='Lưu dự án';$('rigSummary').textContent=r.profile+' · '+r.records.length+' xương · '+r.mesh.length+' mesh · '+r.clips.length+' clip gốc\n'+r.warnings.join('\n');mapping={};info('Sẵn sàng · '+r.name+' · FK/IK, pose, keyframe. Clip gốc được giữ riêng để đối chiếu.');}
-async function loadModel(bytes,name,skipConfirm=false,resources=[],companions=[]){const token=++importToken;const candidate=await parseAsset(bytes,name,false,resources,companions);if(token!==importToken){disposeObject(candidate.root);return;}if(!skipConfirm&&(dirty||Object.values(studioBanks).some(b=>b?.dirty))&&!confirm('Có thay đổi chưa lưu trong một hoặc cả hai chế độ. Thay model?')){disposeObject(candidate.root);return;}await install(candidate);}
+async function install(r){clearStudioShot();directorCancel();endSourcePreview(false);assertEditingAllowed();cancelEasingPreview();easingPanel?.hide();smoothingPanel?.hide();studioMode='classic';studioBanks={classic:null,lab:null};$('studioMode').value='classic';stopTimelineScrub();endTimelineKeyDrag(true);playing=false;rig=r;mount(editView,r);setupIK(r);W.build(editView,r);for(const v of editViews.slice(1))bindSharedView(v);project=C.newProject(r);$('sourceUnits').value=/\.(fbx|mdx|mdl|skn)$/i.test(r.name)?'cm':'m';time=0;selected='root';selectionKeys=[];history=[];historyIndex=-1;draft=false;dirty=false;history.push(snapshot());historyIndex=0;renderBones();fillOptions($('rigSelect'),[['','Tất cả armature'],...r.armatures.map(a=>[a.id,a.name])]);fillOptions($('ikChain'),r.chains.map(c=>[c.id,c.label]));syncProject();select('root');applyViewportLayout();syncButtons();$('saveBtn').textContent='Lưu dự án';$('rigSummary').textContent=r.profile+' · '+r.records.length+' xương · '+r.mesh.length+' mesh · '+r.clips.length+' clip gốc\n'+r.warnings.join('\n');mapping={};info('Sẵn sàng · '+r.name+' · FK/IK, pose, keyframe. Clip gốc được giữ riêng để đối chiếu.');}
+async function loadModel(bytes,name,skipConfirm=false,resources=[],companions=[],prepare=null){const token=++importToken;const candidate=await parseAsset(bytes,name,false,resources,companions);if(token!==importToken){disposeObject(candidate.root);return false;}if(!skipConfirm&&(dirty||Object.values(studioBanks).some(b=>b?.dirty))&&!confirm('Có thay đổi chưa lưu trong một hoặc cả hai chế độ. Thay model?')){disposeObject(candidate.root);return false;}try{if(prepare)prepare(candidate);}catch(error){disposeObject(candidate.root);throw error;}await install(candidate);return true;}
 function scaleValues(){if($('scaleTarget').value==='skin')return project?.skinAdjustments?.[selected]||[1,1,1];const rest=selected==='root'?rig?.rootRest.s:record(rig,selected)?.rest.s;return currentObject()?.scale.toArray().map((v,i)=>rest?.[i]?v/rest[i]:v)||[1,1,1];}
 function numericPose(kind,finish=true,changedId){assertEditingAllowed();
  const skin=kind==='s'&&$('scaleTarget').value==='skin';if(!skin&&boneIKChain()){syncTransform();return;}
@@ -568,7 +571,7 @@ async function loadProject(data){endSourcePreview(false);assertEditingAllowed();
  if((dirty||Object.values(studioBanks).some(b=>b?.dirty))&&!confirm('Có thay đổi chưa lưu trong một hoặc cả hai chế độ. Thay dự án bằng JSON?')){if(candidate!==rig)disposeObject(candidate.root);return;}
  Tex.validateOverrides(candidate,data.textureOverrides||[]);if(candidate!==rig)await Tex.restore(candidate,data.textureOverrides||[]);
  if(candidate!==rig)await install(candidate);else{clearTextureDisplays(candidate);await Tex.restore(candidate,data.textureOverrides||[]);}if(rig.isBOBJ)rig.bobjEulerOrder=data.rig.bobjEulerOrder||'ZYX';
- onionRevision++;project=validated;S.apply(rig,project.skinAdjustments);rig.activeRoot=data.rig.activeRoot||null;time=T.MathUtils.clamp(Number.isFinite(data.time)?data.time:0,0,project.duration);C.evaluate(rig,project,time);
+ clearStudioShot();onionRevision++;project=validated;S.apply(rig,project.skinAdjustments);rig.activeRoot=data.rig.activeRoot||null;time=T.MathUtils.clamp(Number.isFinite(data.time)?data.time:0,0,project.duration);C.evaluate(rig,project,time);
  // Draft chỉ được áp nếu cùng cấu trúc transform đã được validation.
  if(data.draft){const test={...C.clone(project),poses:[{name:'draft',data:data.draft}]};C.validateProject(test,rig);for(const[id,p]of Object.entries(data.draft))C.apply(id==='root'?rig.root:rig.controls[id]?.object||record(rig,id).o,p);}
  if(data.draftRigOptions)for(const[id,o]of data.draftRigOptions)C.kinematics.configure(rig,rig.chains.find(c=>c.id===id),o,false);
@@ -706,11 +709,24 @@ function clampStudioTimelineHeight(value){
  const grip=document.querySelector('[data-resize=timeline]');if(grip){grip.setAttribute('aria-valuemin',min);grip.setAttribute('aria-valuemax',max);grip.setAttribute('aria-valuenow',Math.round(height));}
  return height;
 }
+function rememberStudioSceneLayout(){
+ if(studioSceneLayoutSnapshot)return;
+ if(!sceneMode)persistLayout();
+ studioSceneLayoutSnapshot={workspaces:C.clone(workspaceLayouts),timelineHeightBeforeGraph};
+}
+function restoreStudioSceneLayout(){
+ if(!studioSceneLayoutSnapshot)return;
+ const saved=studioSceneLayoutSnapshot;studioSceneLayoutSnapshot=null;
+ workspaceLayouts=validateWorkspaceLayout({version:1,workspaces:saved.workspaces});timelineHeightBeforeGraph=saved.timelineHeightBeforeGraph;
+ applyWorkspaceLayout();persistLayout();
+}
 function setAnimationEditor(value){
  stopTimelineScrub();const area=$('animationArea'),previous=area.dataset.editor,graphMode=v=>v==='graph'||v==='split';
  if(graphMode(value)&&!graphMode(previous))timelineHeightBeforeGraph=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||260;
  if(!graphMode(value)&&graphMode(previous)&&timelineHeightBeforeGraph!==null){document.documentElement.style.setProperty('--timeline-height',timelineHeightBeforeGraph+'px');timelineHeightBeforeGraph=null;}
  $('animationEditor').value=value;area.dataset.editor=value;
+ syncStudioGraphLayout(value);
+ if(value==='graph'&&graphEditor)graphEditor.height=220;
  $('editorHint').textContent=value==='graph'?'XYZ · Nội suy':value==='dope'?'Các khớp · Keyframe':'Tick / Frame · Keyframe';
  if(value==='graph'||value==='split'){$('graphPanel').open=true;const height=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||220;clampStudioTimelineHeight(Math.max(height,320));}
  if(mode!=='compare')clampStudioTimelineHeight(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')));
@@ -749,13 +765,15 @@ function setupModernUI(){
   const handle=document.querySelector('[data-resize="'+kind+'"]');handle.setAttribute('aria-valuemin',min);handle.setAttribute('aria-valuemax',Math.max(min,max));handle.setAttribute('aria-valuenow',Math.round(n));
  };
  persistLayout=()=>{
+  if(sceneMode||studioSceneLayoutSnapshot)return;
   if(mode!=='compare'){
    if(!mobileLayout){layoutState.leftClosed=workspace.classList.contains('left-closed');layoutState.rightClosed=workspace.classList.contains('right-closed');}
    layoutState.timelineClosed=workspace.classList.contains('timeline-closed');layoutState.animationEditor=$('animationEditor').value;layoutState.leftEditor=$('poseSection').hidden?'tree':'pose';
   }
-  try{localStorage.setItem('animation-studio-workspaces-v1',JSON.stringify({version:1,workspaces:workspaceLayouts}));localStorage.setItem('animation-studio-layout-v1',JSON.stringify(layoutState));}catch{}
+  try{localStorage.setItem('animation-studio-workspaces-v2',JSON.stringify({version:1,workspaces:workspaceLayouts}));localStorage.setItem('animation-studio-layout-v2',JSON.stringify(layoutState));}catch{}
  };
  applyWorkspaceLayout=()=>{
+  if(sceneMode||studioSceneLayoutSnapshot)return;
   layoutState=workspaceLayouts[mode];mobileLayout=false;
   if(mode!=='compare'){
    for(const kind of ['left','right','timeline']){document.documentElement.style.removeProperty(kind==='timeline'?'--timeline-height':kind==='left'?'--rig-height':'--right-width');if(Number.isFinite(layoutState[kind]))dimension(kind,layoutState[kind],false);}
@@ -767,9 +785,9 @@ function setupModernUI(){
   sync();
  };
  try{
-  const saved=localStorage.getItem('animation-studio-workspaces-v1');
+  const saved=localStorage.getItem('animation-studio-workspaces-v2');
   if(saved)workspaceLayouts=validateWorkspaceLayout(JSON.parse(saved));
-  else workspaceLayouts=validateWorkspaceLayout({version:1,workspaces:{create:JSON.parse(localStorage.getItem('animation-studio-layout-v1')||'{}')}});
+  else workspaceLayouts=validateWorkspaceLayout({version:1,workspaces:{create:JSON.parse(localStorage.getItem('animation-studio-layout-v2')||'{}')}});
  }catch{}
  applyWorkspaceLayout();
  window.addEventListener('resize',()=>{cancelAreaResize();applyWorkspaceLayout();});

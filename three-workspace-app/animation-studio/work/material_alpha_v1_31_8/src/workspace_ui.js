@@ -47,7 +47,7 @@ function setupStudioWorkspace(){
  $('selectBodyKeys').textContent='Chọn key tại đây';$('selectBodyKeys').title='Chọn toàn thân tại frame hiện tại';
  $('minimalKeyOptions').querySelector('summary').textContent='Chỉnh key · Nội suy · Thời lượng';
  const help=$('help').querySelector('ol');help.children[2].textContent='Trong Animation, bật Control Rig ở thanh 3D. Chọn khớp rồi mở tab Thuộc tính bên phải để chỉnh FK/IK, Snap và Transform.';
- setupStudioAdvancedTools();setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();setupStudioSceneWorkspace();
+ setupStudioShot();setupStudioAdvancedTools();setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();setupStudioSceneWorkspace();
  const timelineGrip=document.querySelector('[data-resize=timeline]');timelineGrip.title='Kéo để đổi chiều cao editor · khung 3D giữ ít nhất 45% cửa sổ';
  const fitTimeline=()=>{if(mode!=='compare')clampStudioTimelineHeight(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||240);};
  const sizing=new ResizeObserver(fitTimeline);for(const el of [document.querySelector('.stage'),toolbar,transport])sizing.observe(el);fitTimeline();
@@ -148,10 +148,13 @@ function setupStudioSceneWorkspace(){
   workspace.append(panel);$('modeCreate').after(button);
   const title=panel.querySelector('.scene-title');
   title.addEventListener('pointerdown',event=>{if(!event.target.closest('button'))event.stopImmediatePropagation();},true);
+  button.addEventListener('click',rememberStudioSceneLayout,true);
   const sync=()=>{
+   if(sceneMode)rememberStudioSceneLayout();
    workspace.classList.toggle('studio-scene-mode',!!sceneMode);
    workspace.classList.toggle('studio-scene-editing',!!sceneEditing);
    button.setAttribute('aria-pressed',String(!!sceneMode));
+   if(!sceneMode&&panel.hidden)restoreStudioSceneLayout();
    editView.dirty=true;
   };
   const observer=new MutationObserver(sync);observer.observe(panel,{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true});sync();
@@ -159,4 +162,28 @@ function setupStudioSceneWorkspace(){
  };
  if(connect())return;
  const ready=new MutationObserver(()=>{if(connect())ready.disconnect();});ready.observe(document.body,{childList:true,subtree:true});
+}
+
+// Reparent controls only while Graph is active, preserving all IDs, values and listeners.
+function syncStudioGraphLayout(value){
+ const options=$('minimalKeyOptions'),tools=$('studioKeyTools'),transport=document.querySelector('.transport');
+ const graph=value==='graph';document.body.classList.toggle('studio-graph-mode',graph);
+ if(!options||!tools||!transport)return;
+ if(graph){
+  if(!options.dataset.graphCompact){options.dataset.graphCompact='true';options.dataset.beforeGraphOpen=String(options.open);options.open=false;}
+  let content=options.querySelector('.studio-graph-options');if(!content){content=document.createElement('div');content.className='studio-graph-options';for(const child of [...options.children])if(child.tagName!=='SUMMARY')content.append(child);options.append(content);}
+  if(tools.parentElement!==content)content.prepend(tools);
+  const quick=transport.querySelector('.quick-animation');if(quick)content.append(quick);
+  content.append($('playbackDiagnostics'));
+  $('animationArea').querySelector('.area-header').append(options);
+  const panel=$('graphPanel'),footer=panel.querySelector('.graph-editbar');let menu=panel.querySelector('.studio-graph-tools');
+  if(!menu){menu=document.createElement('details');menu.className='studio-graph-tools';const summary=document.createElement('summary');summary.textContent='Key / Nội suy';menu.append(summary);panel.querySelector('.graphbar').append(menu);}
+  menu.hidden=false;menu.append(footer);
+ }else if(options.dataset.graphCompact){
+  $('animationBottom').prepend(options);options.before(tools);const quick=options.querySelector('.quick-animation');if(quick)transport.prepend(quick);
+  transport.querySelector('.studio-group').append($('playbackDiagnostics'));
+  const content=options.querySelector('.studio-graph-options');if(content){for(const child of [...content.children])options.append(child);content.remove();}
+  const panel=$('graphPanel'),menu=panel.querySelector('.studio-graph-tools');if(menu){panel.append(menu.querySelector('.graph-editbar'));menu.open=false;menu.hidden=true;}
+  options.open=options.dataset.beforeGraphOpen==='true';delete options.dataset.graphCompact;delete options.dataset.beforeGraphOpen;
+ }
 }

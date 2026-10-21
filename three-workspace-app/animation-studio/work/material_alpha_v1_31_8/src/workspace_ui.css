@@ -113,3 +113,27 @@ body.studio-workspace{font:13px/1.5 'Segoe UI',Arial,sans-serif}
 .studio-workspace #createWorkspace.studio-scene-editing:not(.minimal-sidebar-closed)>#minimalSidebar{display:flex;grid-column:2;grid-row:1}
 .studio-workspace #createWorkspace.studio-scene-editing.minimal-sidebar-closed:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) minmax(310px,32%)}
 .studio-workspace #createWorkspace.studio-scene-editing:not(.minimal-sidebar-closed)>#sceneStudioDialog{grid-column:3}
+
+/* Graph focus keeps the curve visible; every secondary control remains in its original editor subtree. */
+.studio-graph-mode #createWorkspace .stage-toolbar{height:44px;min-height:44px;padding:4px 8px!important;flex-wrap:nowrap;gap:4px}
+.studio-graph-mode #createWorkspace .stage-toolbar>.row{flex-wrap:nowrap!important;gap:4px}
+.studio-graph-mode .stage-toolbar .studio-group{flex-wrap:nowrap;gap:2px}
+.studio-graph-mode #createWorkspace .transport{height:40px;min-height:40px;padding:4px 8px;gap:5px;grid-template-columns:1fr auto 1fr;overflow:visible}
+.studio-graph-mode #createWorkspace .transport>.studio-group{flex-wrap:nowrap;gap:3px;grid-column:auto}
+.studio-graph-mode #animationArea>.area-header{height:34px;min-height:34px;padding:2px 6px;gap:4px;overflow:visible}
+.studio-graph-mode #animationArea .editor-tabs button{min-height:26px;padding:2px 5px}
+.studio-graph-mode #editorHint{display:none}
+.studio-graph-mode #minimalKeyOptions{position:relative;z-index:45;margin-left:auto;flex:none}
+.studio-graph-mode #minimalKeyOptions>summary{padding:3px 7px;font-size:10px;border:0;white-space:nowrap}
+.studio-graph-options{position:absolute;right:0;bottom:calc(100% + 8px);width:min(650px,80vw);max-height:55vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 24px #0006;padding:8px}
+.studio-graph-mode #minimalKeyOptions .key-editor{display:flex}
+.studio-graph-mode #animationArea,.studio-graph-mode #animationArea .animation-bottom{overflow:visible}
+.studio-graph-mode #graphPanel{padding:0!important;margin:0;border:0}
+.studio-graph-mode #graphPanel>summary{display:none}
+.studio-graph-mode #graphPanel .graphbar{height:32px;min-height:32px;padding:1px 6px;flex-wrap:nowrap;gap:4px;font-size:10px;border-top:0}
+.studio-graph-mode #graphPanel .graphbar label,.studio-graph-mode #graphAxes{flex-wrap:nowrap;gap:2px}
+.studio-graph-mode #graphPanel .graphbar button,.studio-graph-mode #graphPanel .graphbar select{min-height:25px;padding:2px 4px;font-size:10px}
+.studio-graph-mode #curve{min-height:220px}
+.studio-graph-tools{position:relative;flex:none;margin:0;padding:0;border:0;z-index:44}
+.studio-graph-tools>summary{padding:3px 6px;white-space:nowrap}
+.studio-graph-tools>.graph-editbar{position:absolute;right:0;bottom:calc(100% + 8px);width:min(650px,80vw);max-height:55vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 24px #0006;padding:8px}
