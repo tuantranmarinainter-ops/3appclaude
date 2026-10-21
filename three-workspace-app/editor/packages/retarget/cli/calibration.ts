@@ -11,8 +11,10 @@ const LIMB_CHAINS: ReadonlyArray<readonly [string, readonly string[]]> = ['Left'
   [`${side}Hand`, [`${side}HandMiddle1`, `${side}HandIndex1`, `${side}HandRing1`]],
   ...['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'].flatMap((finger) => [1, 2].map((index) =>
     [`${side}Hand${finger}${index}`, [`${side}Hand${finger}${index + 1}`]] as const)),
-  [`${side}UpLeg`, [`${side}Leg`]], [`${side}Leg`, [`${side}Foot`]], [`${side}Foot`, [`${side}ToeBase`]],
+  [`${side}UpLeg`, [`${side}Leg`]], [`${side}Leg`, [`${side}Foot`]],
 ] as const)
+// No Foot→ToeBase entry: a rest foot is always "standing flat", but ankle-to-ball pitch is anatomy (WC3 orc 71°, Mixamo 39°).
+// Copying the source's absolute foot direction put targets on tiptoe; feet therefore follow the motion relative to rest.
 
 /**
  * Measured yaw from the source facing to the target facing (facing = left-hip→right-hip axis × up, valid for A/T poses).
@@ -74,6 +76,14 @@ export function buildCalibration(source: RetargetRig, target: RetargetRig, joint
       .multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z))
     const stack = [joint.sourceId]
     while (stack.length) { const id = stack.pop()!; world.set(id, rotate.clone().multiply(world.get(id)!)); stack.push(...(children.get(id) ?? [])) }
+  }
+  // Feet keep their own rest as reference (not the copy swung along with the corrected shin): a source standing as in
+  // its rest then gives the target foot its own flat rest, whatever the source's ankle-to-ball pitch is.
+  for (const side of ['Left', 'Right']) {
+    const foot = byName.get(`${side}Foot`)?.sourceId
+    if (!foot) continue
+    const stack = [foot]
+    while (stack.length) { const id = stack.pop()!; world.set(id, new Matrix4().fromArray(source.bones.find((bone) => bone.id === id)!.restWorld)); stack.push(...(children.get(id) ?? [])) }
   }
   const runtime: UniversalCalibrationRuntime = {
     sourceReference: source.bones.map((bone) => ({ id: bone.id, world: world.get(bone.id)!.toArray() })),

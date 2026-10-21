@@ -5,6 +5,7 @@ import { universalFramesToGlb } from './universalGlb'
 import { estimateUniversalBakeCost } from './universalBake'
 import type { UniversalBakeFrame } from './universalBake'
 import { adjustGround, type GroundMode } from './groundAdjust'
+import { applyFootDirection, planFootDirection } from './footDirection'
 import { createNormalizationMetrics } from './normalizationMetrics'
 import type { UniversalCalibrationRuntime } from './universalCalibration'
 
@@ -20,6 +21,8 @@ export interface NormalizeAnimationInput {
   rootTranslationScale?: number
   /** Vertical foot-floor fix (default 'off' here; the CLI/Workbench pass their own default). */
   groundMode?: GroundMode
+  /** Feet follow the source ankle→ball direction instead of its rotation delta (see footDirection.ts). */
+  footDirection?: boolean
   rootTranslationPolicy?: 'preserve' | 'in-place'
   calibration?: UniversalCalibrationRuntime
   requiredTargetJointIds?: readonly string[]
@@ -43,11 +46,13 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
     if (!resourceCost.withinBudget) throw new RangeError('Normalization exceeds the node-sample or estimated-memory budget; shorten the clip, lower FPS, or inspect a smaller rig')
     const solver = createUniversalRetargeter(source.rig, target.rig, input.pairs, input.rootTranslationScale, input.rootTranslationPolicy, input.calibration)
     const frames: UniversalBakeFrame[] = []
+    const feet = input.footDirection ? planFootDirection(source.rig, target.rig, input.pairs, input.calibration) : []
     const metrics = createNormalizationMetrics(source.rig, target.rig, input.pairs, input.rootTranslationPolicy ?? 'preserve', input.rootTranslationScale ?? 1)
     for (let index = 0; index <= steps; index++) {
       signal?.throwIfAborted()
       const timeSeconds = Math.min(index / input.fps, action.durationSeconds)
       const sample = source.sample(input.actionIndex, timeSeconds), bones = solver.evaluate(sample)
+      applyFootDirection(feet, target.rig, sample, bones, input.calibration?.alignmentRotation)
       metrics.observe(sample, bones)
       frames.push({ frame: index, timeSeconds, bones })
       if (index % 32 === 31) await new Promise<void>((resolve) => setTimeout(resolve, 0))

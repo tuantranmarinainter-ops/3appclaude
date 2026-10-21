@@ -249,7 +249,7 @@ export async function runNormalize(request: NormalizeRequest) {
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', requiredTargetJointIds: mapping.requiredTargetIds,
+        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
         calibration: calibration.runtime })
       exported.push({ action, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
