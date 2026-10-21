@@ -1,0 +1,9 @@
+{
+  "name": "animation-studio-1-31-8-mdx-alpha",
+  "version": "1.31.8",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-material-site.mjs"
+  }
+}

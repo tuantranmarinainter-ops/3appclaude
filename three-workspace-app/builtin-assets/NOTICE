@@ -22,3 +22,7 @@ Attribution when you redistribute or adapt these assets:
 Indicate if you changed them. The rest of the repository (code, schemas,
 documentation) is licensed under the Apache License 2.0; see the LICENSE and
 NOTICE files at the repository root.
+
+animation-studio/sample.fbx is NOT a Topview asset: it is the Mixamo T-pose sample bundled
+into Animation Studio 1.31.8 (App 3) by its build (see ../animation-studio/README.md).
+Mixamo content is subject to Adobe's Mixamo terms, not CC BY 4.0.

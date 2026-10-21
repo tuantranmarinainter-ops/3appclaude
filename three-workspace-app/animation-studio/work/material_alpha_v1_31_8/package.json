@@ -1,0 +1,21 @@
+{
+  "name": "animation-studio-scene",
+  "version": "1.31.5",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node src/build.mjs",
+    "test": "cd ../.. && node tests/material_remove_v1_31_5.mjs",
+    "test:hd": "cd ../.. && node tests/scene_regression_hd_v1_31_4.mjs",
+    "test:legacy": "cd ../.. && node tests/warcraft_math_v1_29_0.mjs && node tests/warcraft_edge_v1_29_0.mjs && node tests/lol_import_v1_30_0.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "module",
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "gl-matrix": "^3.3.0",
+    "linkedom": "^0.18.13"
+  },
+  "private": true
+}

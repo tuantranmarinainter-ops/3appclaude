@@ -1,0 +1,6 @@
+{
+  "version": "25.0.0",
+  "source": "https://raw.githubusercontent.com/tweenjs/tween.js/v25.0.0/dist/tween.esm.js",
+  "license": "LICENSE_TWEEN.txt",
+  "extractSha256": "84b1baa2601aaad0e54ff34d638caaf9f8f0003343a2a8e70b0e0081120ee23f"
+}
