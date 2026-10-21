@@ -23,11 +23,12 @@ class App3MCPTests(unittest.TestCase):
         for command in m.COMMANDS:
             self.assertEqual(m.validate(payload(command))["command"], command)
 
-    def test_schema_only_advertises_read_tools(self):
+    def test_schema_advertises_implemented_tools(self):
         response = m.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"_meta": META}})
         tool = response["result"]["tools"][0]
         self.assertEqual(tool["inputSchema"]["properties"]["command"]["enum"], list(m.COMMANDS))
-        self.assertNotIn("apply_patch", tool["description"])
+        self.assertIn("apply_patch", tool["description"])
+        self.assertNotIn("export_animation", tool["description"])
 
     def test_rejects_mutations_and_receiver_operations(self):
         for name in ("app3.session.register", "app3.session.poll", "app3.session.result", "motion.edit"):
@@ -53,6 +54,17 @@ class App3MCPTests(unittest.TestCase):
             self.assertTrue(m.run_app3_command(v)["ok"])
             session.assert_called_once_with("http://127.0.0.1:3013")
             command.assert_called_once_with("http://127.0.0.1:3013", "bbs_unified_session=opaque", v["command"], v["projectId"], v["args"], request_id=v["requestId"])
+
+    def test_edits_require_both_revisions_and_strict_parameters(self):
+        for tool, params in (("create_blocking", {"markers": [{"time": 0, "label": "Start"}, {"time": 1, "label": "End"}]}), ("set_pose", {"time": 0, "transforms": {"b0": {"p": [0,0,0], "q": [0,0,0,1], "s": [1,1,1]}}}), ("insert_breakdown", {"time": .5, "boneIds": ["b0"]}), ("set_marker", {"markerId": "pose0", "locked": True}), ("set_idea", {"idea": "Note"}), ("apply_patch", {"patchId": "patch-1"}), ("undo_animation", {})):
+            v = payload(); v["args"].update(tool=tool, parameters=params, expectedAnimationRevision="native:string"); v["expectedRevision"] = 2
+            self.assertEqual(m.validate(v), v)
+            v["expectedRevision"] = "2"
+            with self.assertRaises(ValueError): m.validate(v)
+            v["expectedRevision"] = 2; v["args"]["expectedAnimationRevision"] = 2
+            with self.assertRaises(ValueError): m.validate(v)
+        v = payload(); v["args"].update(tool="set_pose", parameters={"time": 0, "transforms": {"root": {"p": [0,0,0], "q": [0,0,0,0], "s": [1,1,1]}}}, expectedAnimationRevision="r"); v["expectedRevision"] = 1
+        with self.assertRaises(ValueError): m.validate(v)
 
     def test_metadata_and_errors(self):
         self.assertIn("error", m.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))

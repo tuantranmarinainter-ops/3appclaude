@@ -1,4 +1,4 @@
-"""Read-only App 3 MCP over the authenticated local unified broker.
+"""App 3 reads and staged native animation edits over the authenticated local broker.
 
 Run: python -m agent.app3_mcp. Commands never select an arbitrary editor session.
 app3.context.get is cached heartbeat state; get_animation_context is a fresh queued read.
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 import uuid
 from typing import Any, Callable
@@ -15,15 +16,17 @@ from .unified_cli import CliError, command, local_base, open_session
 from .unified_mcp import PROTOCOL_VERSION, _valid_meta
 
 READ_TOOLS = ("read_keyframes", "analyze_motion", "get_scene_context", "get_animation_context")
+EDIT_TOOLS = ("create_blocking", "set_pose", "insert_breakdown", "set_marker", "set_idea", "preview_patch", "apply_patch", "cancel_patch", "undo_animation")
 COMMANDS = ("app3.session.list", "app3.context.get", "app3.command.submit", "app3.command.result")
 TOOL = {
     "name": "bbs_app3_command",
-    "description": "Read the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit only read_keyframes, analyze_motion, get_scene_context or get_animation_context using args.tool and args.parameters; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. No animation/scene mutations or exports are exposed.",
+    "description": "Read and stage edits in the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit read_keyframes, analyze_motion, get_scene_context, get_animation_context or create_blocking, set_pose, insert_breakdown, set_marker, set_idea, preview_patch, apply_patch, cancel_patch, undo_animation using args.tool and args.parameters. Edits require numeric expectedRevision and string args.expectedAnimationRevision; review staged patchId before apply_patch; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. Only these native animation edits are exposed; scene writes and exports are unavailable.",
     "inputSchema": {"type": "object", "properties": {
         "command": {"type": "string", "enum": list(COMMANDS)},
         "projectId": {"type": "string", "format": "uuid"},
         "args": {"type": "object"},
         "requestId": {"type": "string", "format": "uuid"},
+        "expectedRevision": {"type": "integer", "minimum": 0},
     }, "required": ["command", "projectId", "args"], "additionalProperties": False},
 }
 SERVER_INFO = {"name": "bbs-app3-local", "version": "0.1.0"}
@@ -37,10 +40,10 @@ def identifier(value: Any) -> bool:
 
 
 def validate(arguments: Any) -> dict:
-    if not isinstance(arguments, dict) or set(arguments) - {"command", "projectId", "args", "requestId"}:
+    if not isinstance(arguments, dict) or set(arguments) - {"command", "projectId", "args", "requestId", "expectedRevision"}:
         raise ValueError("Invalid command envelope")
     if arguments.get("command") not in COMMANDS or not identifier(arguments.get("projectId")) or not isinstance(arguments.get("args"), dict):
-        raise ValueError("Read-only command, project UUID and args are required")
+        raise ValueError("Supported command, project UUID and args are required")
     if "requestId" in arguments and not identifier(arguments["requestId"]):
         raise ValueError("requestId must be a UUID")
     args = arguments["args"]
@@ -48,13 +51,22 @@ def validate(arguments: Any) -> dict:
     identity = {"sessionId", "epoch", "characterId", "serverInstance"}
     required = set() if name == "app3.session.list" else identity
     extra = {"tool", "parameters"} if name == "app3.command.submit" else {"commandId"} if name == "app3.command.result" else set()
+    editing = name == "app3.command.submit" and args.get("tool") in EDIT_TOOLS
+    if editing:
+        extra.add("expectedAnimationRevision")
+        if type(arguments.get("expectedRevision")) is not int or arguments["expectedRevision"] < 0 or not isinstance(args.get("expectedAnimationRevision"), str) or not args["expectedAnimationRevision"]:
+            raise ValueError("Numeric project revision and string animation revision required")
+    if "expectedRevision" in arguments and (type(arguments["expectedRevision"]) is not int or arguments["expectedRevision"] < 0):
+        raise ValueError("Invalid project revision")
     if set(args) != required | extra or any(not identifier(args[key]) for key in required | ({"commandId"} if "commandId" in extra else set())):
         raise ValueError("Exact session/epoch/character/server identity is required")
     if name == "app3.command.submit":
         tool, params = args["tool"], args["parameters"]
-        if tool not in READ_TOOLS or not isinstance(params, dict):
+        if editing:
+            validate_edit(tool, params)
+        elif tool not in READ_TOOLS or not isinstance(params, dict):
             raise ValueError("Unsupported read tool")
-        allowed = {"boneIds", "start", "end"} if tool == "read_keyframes" else {"boneIds", "start", "end", "samples"} if tool == "analyze_motion" else set()
+        allowed = set(params) if editing else ({"boneIds", "start", "end"} if tool == "read_keyframes" else {"boneIds", "start", "end", "samples"} if tool == "analyze_motion" else set())
         if set(params) - allowed:
             raise ValueError("Unknown read parameter")
         if "boneIds" in params and (not isinstance(params["boneIds"], list) or not 1 <= len(params["boneIds"]) <= 256 or any(not isinstance(x, str) or not 1 <= len(x) <= 200 for x in params["boneIds"])):
@@ -71,10 +83,49 @@ def validate(arguments: Any) -> dict:
     return arguments
 
 
+def validate_edit(tool, p):
+    fields = {
+        "create_blocking": {"markers", "idea"}, "set_pose": {"time", "transforms", "interpolation"},
+        "insert_breakdown": {"time", "boneIds", "label", "fraction", "offsets"},
+        "set_marker": {"markerId", "label", "locked", "kind"}, "set_idea": {"idea"},
+        "preview_patch": {"patchId", "original"}, "apply_patch": {"patchId"}, "cancel_patch": {"patchId"}, "undo_animation": set(),
+    }
+    def require(ok):
+        if not ok: raise ValueError("Invalid edit parameter")
+    def text(v, n): return isinstance(v, str) and len(v) <= n
+    def number(v, a, b): return type(v) in (float, int) and math.isfinite(v) and a <= v <= b
+    def vector(v, n): return isinstance(v, list) and len(v) == n and all(type(x) in (int, float) and math.isfinite(x) for x in v)
+    require(isinstance(p, dict) and not set(p) - fields[tool])
+    if tool == "create_blocking":
+        require(isinstance(p.get("markers"), list) and 2 <= len(p["markers"]) <= 128)
+        for m in p["markers"]:
+            require(isinstance(m, dict) and not set(m) - {"id", "time", "label", "kind", "locked"} and number(m.get("time"), 0, 300) and text(m.get("label"), 160))
+            if "id" in m: require(text(m["id"], 80) and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", m["id"]) is not None)
+            if "kind" in m: require(m["kind"] in ("pose", "contact", "breakdown", "hold"))
+            if "locked" in m: require(type(m["locked"]) is bool)
+    if "idea" in p or tool == "set_idea": require(text(p.get("idea"), 4000))
+    if tool in ("set_pose", "insert_breakdown"): require(number(p.get("time"), 0, 300))
+    if tool == "set_pose":
+        require(isinstance(p.get("transforms"), dict) and 1 <= len(p["transforms"]) <= 256)
+        for bone, t in p["transforms"].items():
+            require(text(bone, 200) and bool(bone) and isinstance(t, dict) and set(t) == {"p", "q", "s"} and vector(t["p"], 3) and vector(t["q"], 4) and vector(t["s"], 3) and math.hypot(*t["q"]) >= 1e-8)
+        if "interpolation" in p: require(p["interpolation"] in ("step", "linear", "auto", "cubic", "smooth"))
+    if tool == "insert_breakdown":
+        require(isinstance(p.get("boneIds"), list) and 1 <= len(p["boneIds"]) <= 256 and all(text(x, 200) and x for x in p["boneIds"]))
+        if "fraction" in p: require(number(p["fraction"], 0, 1))
+        if "offsets" in p: require(isinstance(p["offsets"], dict) and all(k in p["boneIds"] and vector(v, 3) for k, v in p["offsets"].items()))
+    if tool == "set_marker": require(text(p.get("markerId"), 80) and bool(p["markerId"]) and len(p) >= 2)
+    if "label" in p: require(text(p["label"], 160))
+    if "locked" in p: require(type(p["locked"]) is bool)
+    if "kind" in p: require(p["kind"] in ("pose", "contact", "breakdown", "hold"))
+    if tool in ("preview_patch", "apply_patch", "cancel_patch"): require(text(p.get("patchId"), 100) and bool(p["patchId"]))
+    if "original" in p: require(type(p["original"]) is bool)
+
+
 def run_app3_command(arguments: dict) -> dict:
     arguments = validate(arguments)
     base = local_base()
-    return command(base, open_session(base), arguments["command"], arguments["projectId"], arguments["args"], request_id=arguments.get("requestId"))
+    return command(base, open_session(base), arguments["command"], arguments["projectId"], arguments["args"], request_id=arguments.get("requestId"), **({"expected_revision": arguments["expectedRevision"]} if "expectedRevision" in arguments else {}))
 
 
 def handle_message(message: Any, invoke: Callable[[dict], dict] = run_app3_command) -> dict | None:
