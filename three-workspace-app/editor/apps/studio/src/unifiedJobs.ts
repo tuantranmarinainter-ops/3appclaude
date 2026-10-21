@@ -231,7 +231,9 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     if (signal.aborted || error instanceof DOMException && error.name === 'AbortError') record.state = 'cancelled'
     else {
       record.state = 'failed'
-      record.error = { code: 'FILM_EXPORT_FAILED', message: 'Film export failed; check the local Blender 4.2+ and Java 17 setup, model profile, and project samples.' }
+      // Keep the first line of the real cause (no paths beyond the message itself) so failures can be diagnosed.
+      const cause = error instanceof Error ? error.message.split(/\r?\n/)[0]!.slice(0, 300) : ''
+      record.error = { code: 'FILM_EXPORT_FAILED', message: `Film export failed; check the local Blender 4.2+ and Java 17 setup, model profile, and project samples.${cause ? ` Cause: ${cause}` : ''}` }
     }
     await rm(path.join(base, 'files'), { recursive: true, force: true })
   } finally {

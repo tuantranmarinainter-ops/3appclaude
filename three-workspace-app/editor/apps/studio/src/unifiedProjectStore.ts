@@ -1497,7 +1497,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     const motionName = nativeMotion ? asset.displayName : (metadata as Record<string, unknown>).name as string
     const clipIndex = nativeMotion ? 0 : (metadata as Record<string, unknown>).clipIndex as number
-    const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(asset.id)}/source${nativeMotion ? '?format=glb' : ''}`
+    // The browser MotionPlayer picks GLTFLoader only for `format=glb` URLs; App 1 GLB Motions need it too, not just native edits.
+    const glbSource = nativeMotion || asset.source.mediaType === 'model/gltf-binary'
+    const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(asset.id)}/source${glbSource ? '?format=glb' : ''}`
     const clip = edit ? scene.content.timeline.animation.motionClips.find((item) => item.id === edit.binding.clipId)! : appendMotionClip(scene, {
       type: 'add-motion', libraryId: motion.id, name: motionName, fbxKey: url,
       targetNodeId: character.nodeId, frameStart: frameStart as number, durationSeconds: sourceLength / (speed as number),
