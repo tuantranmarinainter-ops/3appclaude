@@ -1,9 +1,13 @@
 # CLAUDE.md - App 1: Chuẩn hóa Rig & Animation (Workspace 01)
 
 ## Phạm vi hiện tại
-- CHỈ làm App 1 (Workspace 01). KHÔNG sửa Topview (`packages/builder`) hay Animation Studio,
-  trừ khi người dùng yêu cầu rõ.
+- App 1 (Workspace 01): sửa trong `packages/retarget` và phần normalization của `apps/studio`.
+- App 2 (Scene, người dùng cho phép 2026-10-21): được sửa `packages/builder` và `apps/studio`.
+  Session App 2 không sửa `packages/retarget`, session App 1 không sửa `packages/builder`.
+  Animation Studio (App 3) chưa sửa trừ khi người dùng yêu cầu rõ.
 - Mọi quyết định đã chốt nằm trong `docs/DECISIONS.md`. Đọc file đó trước khi làm.
+- Trước khi sửa solver/mapping/calibration/chân/tay: đọc `docs/RETARGET-LESSONS.md` (lỗi đã gặp, cách đã bị loại,
+  quy tắc đo). Report PASS không đủ: phải đo số trên GLB và giữ nguyên kết quả mẫu Mixamo (Samba).
 - Hồ sơ Codex để lại: `handoff/PROGRESS.md`, `handoff/CHECKPOINT.json`,
   `docs/three-workspace-app/docs/features/rig-animation-normalization.md`,
   `docs/three-workspace-app/docs/features/workspace01-remaining.md`.
