@@ -46,6 +46,15 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | D4 thân trên Minecraft20 | ⏳ | |
 | D1 khoá chân IK | ⏳ | |
 
+## Đang giao (2026-10-21)
+| Ai | Việc | Issue |
+| --- | --- | --- |
+| Codex phiên 1 | D5 Workbench chọn đoạn + huỷ | #5 |
+| Codex phiên 2 (đã xong D6) | L3+L4 CI GitHub Actions + `test:all` | #8 |
+| Codex tài khoản 2 (đã xong EPIC-B) | EPIC-G: AI xếp nhân vật + camera qua MCP | #9 |
+| ChatGPT Plus | Tìm hiểu định dạng film/cảnh BBS FS, `.scene.bobj` | #10 |
+| Claude | C1–C2 ráp nối + chạy trọn chuỗi | — |
+
 ## Cần người dùng
 | Việc | Trạng thái |
 | --- | --- |
