@@ -1,0 +1,47 @@
+name: CI
+on:
+  push:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+    defaults:
+      run:
+        working-directory: three-workspace-app/editor
+    steps:
+      - uses: actions/checkout@v4
+      # This repository has no packageManager field. Keep the tested fallback
+      # compatible with its v9 lockfile; setup/action uses packageManager when set.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          package_json_file: three-workspace-app/editor/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: three-workspace-app/editor/pnpm-lock.yaml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium and OS libraries for Studio renderer tests
+        run: pnpm --filter @topview/3d-studio exec playwright install --with-deps chromium
+      - run: pnpm test:all
+      - name: Upload suite summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: three-workspace-app/editor/.test-results/summary.json
+          if-no-files-found: warn

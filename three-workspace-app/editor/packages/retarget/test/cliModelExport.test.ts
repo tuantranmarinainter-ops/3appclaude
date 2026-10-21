@@ -108,18 +108,18 @@ async function checkModelExport(path: string, unitMeters: number, expectImages: 
   return { meshes: report.model.meshes, vertices, maxInfluencesBefore: report.model.maxInfluencesBefore, maxInfluences, maxSumError, images: images.length, maxError, jointFit: report.model.jointFit.maxMeters, animations: json.animations.length, dropped: report.model.droppedWeight, affected: report.model.affectedVertices }
 }
 
-test('Xbot (Mixamo GLB, no images) exports a skinned model with every Action', async () => {
+test('Xbot (Mixamo GLB, no images) exports a skinned model with every Action', { skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture missing: C:/w01-samples/Xbot.glb' }, async () => {
   const numbers = await checkModelExport('C:/w01-samples/Xbot.glb', 1, false)
   console.log('Xbot', JSON.stringify(numbers))
 })
 
-test('Michelle (Mixamo GLB with textures) embeds the original image bytes', async () => {
+test('Michelle (Mixamo GLB with textures) embeds the original image bytes', { skip: existsSync('C:/w01-samples/Michelle.glb') ? false : 'External fixture missing: C:/w01-samples/Michelle.glb' }, async () => {
   const numbers = await checkModelExport('C:/w01-samples/Michelle.glb', 1, true)
   console.log('Michelle', JSON.stringify(numbers))
 })
 
 const fbxPath = 'C:/Users/Administrator/Downloads/MODEL WARCRAFT/NAP MODEL CHO CLAUDE/MIXAMO/X BOT Hip Hop Dancing.fbx'
-test('Mixamo FBX with skin exports a skinned model', { skip: !existsSync(fbxPath) }, async () => {
+test('Mixamo FBX with skin exports a skinned model', { skip: existsSync(fbxPath) ? false : `External fixture missing: ${fbxPath}` }, async () => {
   const numbers = await checkModelExport(fbxPath, 0.01, false)
   console.log('FBX', JSON.stringify(numbers))
 })
@@ -180,7 +180,7 @@ test('synthetic skin: 6 influences are cut to 4 with weights renormalized, unmap
   assert.equal(json.materials.length, 1)
 })
 
-test('non-Mixamo family is BLOCKED before the mesh source is even loaded', async () => {
+test('non-Mixamo family is BLOCKED before the mesh source is even loaded', { skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture missing: C:/w01-samples/Xbot.glb' }, async () => {
   const animation = await normalizeBytes(readFileSync('C:/w01-samples/Xbot.glb'), 'glb', 1)
   assert.ok('glb' in animation)
   // Pretend the auto mapping saw another family: the gate reads the report, not the file.
@@ -200,7 +200,7 @@ test('Draco and meshopt sources are BLOCKED with DRACO_UNSUPPORTED', () => {
   }
 })
 
-test('CLI: --mode model writes mode=model manifest and exits 2 for a non-Mixamo family', { timeout: 120_000 }, () => {
+test('CLI: --mode model writes mode=model manifest and exits 2 for a non-Mixamo family', { timeout: 120_000, skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture missing: C:/w01-samples/Xbot.glb' }, () => {
   const out = mkdtempSync(join(tmpdir(), 'w01-model-'))
   const run = (src: string, extra: string[] = []) => spawnSync(process.execPath, ['--import', 'tsx', cliPath, '--src', src, '--target', targetPath, '--out', join(out, src.split('/').pop()!.replace(/\W/g, '_')), '--mode', 'model', ...extra], { cwd: tsxHome, encoding: 'utf8' })
   const ok = run('C:/w01-samples/Xbot.glb')
