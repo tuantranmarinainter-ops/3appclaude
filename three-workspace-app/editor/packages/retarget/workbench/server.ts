@@ -41,7 +41,7 @@ function threeRoot(): string {
   return dirname(dirname(require.resolve('three'))) // .../three/build/three.cjs -> .../three (package.json is not an exported subpath)
 }
 
-type RunState = { id: string; state: 'running' | 'done' | 'error'; stage: string; done: number; total: number; startedAt: number; elapsedMs: number; dir: string
+type RunState = { id: string; state: 'running' | 'done' | 'error' | 'CANCELLED'; controller: AbortController; stage: string; done: number; total: number; startedAt: number; elapsedMs: number; dir: string
   result?: { runId: string; status: string; report: Record<string, any>; manifest: unknown; files: Array<RunFile & { url: string }> }; error?: string }
 
 export async function startWorkbench(options: { port?: number } = {}): Promise<Workbench> {
@@ -170,19 +170,25 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     const id = randomBytes(6).toString('hex')
     const dir = join(sessionDir, 'runs', id)
     mkdirSync(dir, { recursive: true })
-    const state: RunState = { id, state: 'running', stage: 'queued', done: 0, total: 1, startedAt: Date.now(), elapsedMs: 0, dir }
+    const state: RunState = { id, controller: new AbortController(), state: 'running', stage: 'queued', done: 0, total: 1, startedAt: Date.now(), elapsedMs: 0, dir }
     runs.set(id, state); active = state
     const onProgress = async (stage: string, done: number, total: number) => {
+      state.controller.signal.throwIfAborted()
       state.stage = stage; state.done = done; state.total = total; state.elapsedMs = Date.now() - state.startedAt
       await new Promise<void>((ok) => setImmediate(ok)) // let HTTP polls through between Actions
     }
     void (async () => {
       try {
-        const result = await runPipeline(source, target, options, body.mappingPreset ?? null, family, dir, onProgress)
+        const result = await runPipeline(source, target, options, body.mappingPreset ?? null, family, dir, onProgress, state.controller.signal)
         state.result = { runId: id, status: result.status, report: result.report, manifest: result.manifest,
           files: result.files.map((file) => ({ ...file, url: `/api/runs/${id}/files/${encodeURIComponent(file.name)}` })) }
         state.state = 'done'
       } catch (error) {
+        if (state.controller.signal.aborted) {
+          state.state = 'CANCELLED'; state.stage = 'CANCELLED'
+          rmSync(dir, { recursive: true, force: true })
+          return
+        }
         state.state = 'error'; state.error = error instanceof Error ? error.message : String(error)
         console.error(`run ${id} failed:`, error)
       } finally { state.elapsedMs = Date.now() - state.startedAt; if (active === state) active = null }
@@ -227,8 +233,15 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       if (body.wait === false) return json(res, 202, runView(state))
       // Synchronous mode: resolve when the run finishes (same JSON the polling endpoint serves under `result`).
       while (state.state === 'running') await new Promise((ok) => setTimeout(ok, 20))
+      if (state.state === 'CANCELLED') return json(res, 200, { runId: state.id, status: 'CANCELLED', files: [] })
       if (state.state === 'error') return fail(res, 500, `Run failed: ${state.error}`)
       return json(res, 200, { ...state.result!, elapsedMs: state.elapsedMs })
+    }
+    if (method === 'POST' && (match = path.match(/^\/api\/runs\/(\w+)\/cancel$/))) {
+      const state = runs.get(match[1]!)
+      if (!state) return fail(res, 404, 'Unknown runId')
+      if (state.state === 'running') state.controller.abort()
+      return json(res, 202, runView(state))
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)$/))) {
       const state = runs.get(match[1]!)

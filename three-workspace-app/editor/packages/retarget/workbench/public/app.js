@@ -41,7 +41,7 @@ const state = {
   source: null, targets: [], target: null,
   inspect: null, inspecting: false, inspectError: null, inspectSeq: 0,
   rows: [], filter: 'all', search: '', preset: null, presetFamily: null, dirty: false,
-  checked: new Set(), actionFilter: '',
+  actionRanges: {}, checked: new Set(), actionFilter: '',
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
 }
@@ -190,7 +190,7 @@ function refreshSteps() {
 // ---------------------------------------------------------------- step 1: source
 async function useSource(info) {
   state.source = info; state.inspect = null; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
-  state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.selected = null
+  state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.actionRanges = {}; state.selected = null
   viewer.clearResult(); fillActionSelect(); drawContacts(null, 0); frames = 0; $('timeline').max = '0'
   $('armatureBox').hidden = info.format !== 'bobj'
   clear($('sourceInfo')).append(h('span', {}, h('b', { text: info.name }), ` · .${info.format} · ${fmtBytes(info.bytes)}`), h('span', { text: `sha256 ${info.sha256.slice(0, 16)}…` }),
@@ -412,7 +412,7 @@ async function runNow() {
   const reason = canRunReason()
   if (reason) { toast(reason, 'err'); return }
   const all = selectedActionIndices()
-  const options = { ...readOptions(), preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true
   $('progress').hidden = false
   setProgress('queued', 0, 1, 0)
@@ -420,18 +420,23 @@ async function runNow() {
   try {
     const started = await api('/api/runs', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, options, wait: false,
       ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) } })
+    state.run = started.runId
+    $('cancelBtn').hidden = false
     let current = started, failures = 0
     while (current.state === 'running') {
       await sleep(300)
       try { current = await api(`/api/runs/${started.runId}`); failures = 0 } catch (error) { if (++failures > 5) throw error }
       setProgress(current.stage, current.done, current.total, current.elapsedMs)
     }
+    if (current.state === 'CANCELLED') { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok'); return }
     if (current.state === 'error') throw new Error(current.error)
     await finishRun(current.result, options)
   } catch (error) {
     toast(`Chạy thất bại: ${error.message}`, 'err', true)
     $('runInfo').textContent = `Chạy thất bại: ${error.message}`
   } finally {
+    state.run = null
+    $('cancelBtn').hidden = true
     state.running = false
     $('progress').hidden = true
     refreshSteps()
@@ -462,6 +467,10 @@ async function finishRun(result, options) {
   toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
 }
 $('runBtn').addEventListener('click', runNow)
+$('cancelBtn').addEventListener('click', async () => {
+  if (!state.run) return
+  try { await api(`/api/runs/${state.run}/cancel`, { method: 'POST' }) } catch (error) { toast(error.message, 'err') }
+})
 
 // ---------------------------------------------------------------- tabs
 function activateTab(name) {
@@ -664,7 +673,7 @@ function renderActions(rebuild) {
     h('button', { type: 'button', text: 'Bỏ hết', onclick: () => { state.checked.clear(); markRunInputsChanged() } }),
     h('button', { type: 'button', text: 'Chỉ hợp lệ', title: 'Bỏ Action rỗng / không hỗ trợ', onclick: () => { state.checked = new Set(info.actions.filter((action) => action.ready && action.durationSeconds > 0).map((action) => action.index)); markRunInputsChanged() } }),
     h('span', { class: 'chip', text: `${selectedActionIndices().length}/${info.actions.length} sẽ xuất` }))
-  const head = h('tr', {}, h('th', { text: '' }), h('th', { class: 'num', text: '#' }), h('th', { text: 'Tên' }), h('th', { class: 'num', text: 'Giây' }), h('th', { text: 'Trạng thái' }),
+  const head = h('tr', {}, h('th', { text: '' }), h('th', { class: 'num', text: '#' }), h('th', { text: 'Tên' }), h('th', { class: 'num', text: 'Giây' }), h('th', { text: 'Từ – đến (giây)' }), h('th', { text: 'Trạng thái' }),
     withResult ? [h('th', { text: 'Kết quả' }), h('th', { class: 'num', text: 'Hông min–max (m)' }), h('th', { class: 'num', text: 'Trượt (m)' }), h('th', { text: 'Cảnh báo' })] : null)
   const body = h('tbody')
   for (const action of shown) {
@@ -673,11 +682,22 @@ function renderActions(rebuild) {
     const per = mapped?.perAction, quality = per?.quality
     const checkbox = h('input', { type: 'checkbox', 'aria-label': `Xuất Action ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => { event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false) } })
     checkbox.checked = state.checked.has(action.index)
+    const range = state.actionRanges[action.index] ?? [0, action.durationSeconds]
+    const rangeInputs = [0, 1].map((side) => h('input', { type: 'number', min: '0', max: String(action.durationSeconds), step: 'any', value: String(range[side]),
+      'aria-label': `${side ? 'Đến' : 'Từ'} giây ${action.name}`, onclick: (event) => event.stopPropagation(),
+      onchange: (event) => {
+        const next = [...(state.actionRanges[action.index] ?? [0, action.durationSeconds])]
+        next[side] = Number(event.target.value)
+        if (!event.target.value || !Number.isFinite(next[side]) || next[0] < 0 || next[1] > action.durationSeconds || next[1] <= next[0]) {
+          event.target.value = String(range[side]); toast('Khoảng thời gian phải nằm trong Action và từ < đến', 'err'); return
+        }
+        state.actionRanges[action.index] = next; markRunInputsChanged(false)
+      } }))
     const status = !(action.durationSeconds > 0) ? 'rỗng' : action.ready ? 'sẵn sàng' : `kênh không hỗ trợ (${action.issueCount})`
     body.append(h('tr', { class: `clickable ${state.selected === action.index ? 'sel' : ''}`, dataset: { index: String(action.index) }, tabindex: '0', onclick: () => selectAction(action.index),
       onkeydown: (event) => { if (event.key === 'Enter') selectAction(action.index) } },
       h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
-      h('td', { text: status }),
+      h('td', {}, rangeInputs), h('td', { text: status }),
       withResult ? [h('td', {}, per ? chip(per.status) : skipped ? h('span', { class: 'chip warn', title: skipped.message, text: skipped.code }) : '–'),
         h('td', { class: 'num', text: per ? `${fmt(per.hipsHeightRangeMeters[0])}–${fmt(per.hipsHeightRangeMeters[1])}` : '–' }),
         h('td', { class: 'num', text: quality ? fmt(Math.max(quality.footSlideMeters.left, quality.footSlideMeters.right)) : '–' }),
