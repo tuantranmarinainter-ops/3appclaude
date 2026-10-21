@@ -221,6 +221,7 @@ export function validateDirectorDocument(value: unknown): value is DirectorDocum
 }
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_V4_OR_V8 = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 
 function hasKeys(value: Record<string, unknown>, required: string[], allowed = required): boolean {
@@ -353,7 +354,7 @@ function validMapping(value: unknown, key: string, project: UnifiedProject): val
 
 function validMotion(value: unknown, key: string, project: UnifiedProject): value is Motion {
   return isRecord(value) && hasKeys(value, ['id', 'assetId', 'skeletonId', 'durationSeconds', 'sourceFps', 'sourceClip', 'evaluator', 'edit', 'derivedFrom']) &&
-    value.id === key && isUuid(key) && typeof value.assetId === 'string' && !!project.assets[value.assetId as AssetID] &&
+    value.id === key && UUID_V4_OR_V8.test(key) && typeof value.assetId === 'string' && !!project.assets[value.assetId as AssetID] &&
     ['model', 'motion'].includes(project.assets[value.assetId as AssetID].kind) &&
     typeof value.skeletonId === 'string' && !!project.skeletons[value.skeletonId] && isFiniteNumber(value.durationSeconds) && value.durationSeconds > 0 &&
     isFiniteNumber(value.sourceFps) && value.sourceFps > 0 && validBlobRef(value.sourceClip) &&

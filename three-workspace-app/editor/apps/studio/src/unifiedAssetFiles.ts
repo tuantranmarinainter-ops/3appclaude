@@ -14,7 +14,7 @@ const HASH = /^[0-9a-f]{64}$/
 
 export interface StagedAssetUpload { id: string; name: string; sha256: string; byteLength: number; bytes: Buffer }
 export interface ImportedMotion { motion: Motion; name: string; clipIndex: number; nativeFingerprint: { kind: 'fbx' | 'gltf'; name: string; clip: string; duration: number; tracks: number; content: string }; boneNames?: string[] }
-export interface ImportedAsset { asset: Asset; skeleton: SkeletonProfile | null; skeletonProfiles?: SkeletonProfile[]; motions: ImportedMotion[]; normalizationReport?: { ref: BlobRef; bytes: Buffer }; modelRebindReport?: { ref: BlobRef; bytes: Buffer }; modelInfo?: { format: 'fbx' | 'gltf'; metersPerUnit: number; basisToScene: number[] }; issue?: { code: string; message: string }; issues?: Array<{ code: string; message: string; actionIndex?: number }> }
+export interface ImportedAsset { app1Manifest?: Record<string, unknown>; asset: Asset; skeleton: SkeletonProfile | null; skeletonProfiles?: SkeletonProfile[]; motions: ImportedMotion[]; normalizationReport?: { ref: BlobRef; bytes: Buffer }; modelRebindReport?: { ref: BlobRef; bytes: Buffer }; modelInfo?: { format: 'fbx' | 'gltf'; metersPerUnit: number; basisToScene: number[] }; issue?: { code: string; message: string }; issues?: Array<{ code: string; message: string; actionIndex?: number }> }
 
 function root(): string {
   return path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects'))

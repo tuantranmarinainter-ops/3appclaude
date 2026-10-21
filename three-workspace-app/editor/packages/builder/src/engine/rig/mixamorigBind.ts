@@ -9,7 +9,7 @@ import type * as THREE from 'three'
 export const MIXAMORIG_CM_HIPS_MIN = 8
 
 export function mixamorigHips(root: THREE.Object3D): THREE.Object3D | undefined {
-  return root.getObjectByName('mixamorigHips')
+  return root.getObjectByName('mixamorigHips') ?? root.getObjectByName('mixamorig:Hips') ?? root.getObjectByName('Hips')
 }
 
 export function isCentimeterMixamorig(root: THREE.Object3D): boolean {
@@ -27,4 +27,11 @@ export function mixamorigBindKey(root: THREE.Object3D): string {
 export function mixamorigPositionScale(destLen: number, srcLen: number, fallback: number): number {
   if (srcLen < 1e-4) return fallback
   return destLen / srcLen
+}
+
+/** Runtime binding alias only: source files and scene bone names remain unchanged. */
+export function mixamoBindName(name: string): string {
+  const bare = name.split(':').pop()!.replace(/^mixamorig\d*/i, '')
+  return /^(Hips|Spine[12]?|Neck|Head|HeadTop_End|(?:Left|Right)(?:Shoulder|Arm|ForeArm|Hand(?:Thumb|Index|Middle|Ring|Pinky)?[1-4]?|UpLeg|Leg|Foot|ToeBase|Toe_End))$/.test(bare)
+    ? `mixamorig${bare}` : name
 }

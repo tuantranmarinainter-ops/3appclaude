@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js'
 import type { DirectorDocument } from '../../contract/types'
-import { isCentimeterMixamorig } from '../rig/mixamorigBind'
+import { isCentimeterMixamorig, mixamorigHips } from '../rig/mixamorigBind'
 import {
   characterMediaRef,
   motionMediaRef,
@@ -120,10 +120,7 @@ export class AssetLoader {
   mixamorigTemplate(): THREE.Object3D | undefined {
     let metric: THREE.Object3D | undefined
     for (const template of this.usedCharacterTemplates) {
-      let found = false
-      template.traverse((o) => {
-        if (!found && o.name.toLowerCase().startsWith('mixamorig')) found = true
-      })
+      const found = !!mixamorigHips(template)
       if (!found) continue
       // 回退模板优先厘米绑定，避免米制 Child 把官方角色动作烘错。
       if (isCentimeterMixamorig(template)) return template

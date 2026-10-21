@@ -1,3 +1,4 @@
+import { attachApp1Manifest } from './app1Manifest'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -19,6 +20,7 @@ import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnima
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const MOTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export class UnifiedStoreError extends Error {
   constructor(readonly code: string, message: string, readonly status: number, readonly details?: Record<string, unknown>) { super(message) }
@@ -1109,7 +1111,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       stagedAssetImports = [{ upload, imported }]
     } else {
     const { files, format = 'auto' } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['files', 'format', 'unitMeters', 'basis', 'skeletonProfileId', 'modelRebindReport'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['files', 'format', 'unitMeters', 'basis', 'skeletonProfileId', 'modelRebindReport', 'manifest'].includes(key)) ||
       !Array.isArray(files) || files.length < 1 || files.length > 32 || typeof format !== 'string' || !['auto', 'glb', 'gltf', 'fbx', 'bobj', 'mdx', 'mdl', 'league', 'png', 'jpg', 'dds', 'pose-json'].includes(format)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'asset.import expects 1–32 staged file handles and a supported format', 400)
     }
@@ -1137,6 +1139,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       }
     } catch (error) {
       throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', error instanceof Error ? error.message : 'Asset import failed', 422)
+    }
+    if (envelope.args.manifest !== undefined) {
+      if (files.length !== 1 || !['auto', 'glb'].includes(format)) throw new UnifiedStoreError('VALIDATION_FAILED', 'App 1 manifest requires exactly one GLB', 400)
+      const item = stagedAssetImports[0]!
+      try { attachApp1Manifest(item.imported, item.upload.bytes, envelope.args.manifest) }
+      catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'App 1 manifest is invalid', 400) }
     }
     if (envelope.args.modelRebindReport !== undefined) {
       if (files.length !== 1 || !['auto', 'glb'].includes(format) || skeletonProfileId !== undefined) throw new UnifiedStoreError('VALIDATION_FAILED', 'A model rebind report requires one imported GLB and its embedded canonical skeleton', 400)
@@ -1312,7 +1320,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const { sessionId, sourceMotionId, targetCharacterId, mappingId, nativeProject } = envelope.args
     if (Object.keys(envelope.args).some((key) => !['sessionId', 'sourceMotionId', 'targetCharacterId', 'mappingId', 'nativeProject'].includes(key)) ||
       sessionId !== undefined && (typeof sessionId !== 'string' || !UUID.test(sessionId)) ||
-      typeof sourceMotionId !== 'string' || !UUID.test(sourceMotionId) || typeof targetCharacterId !== 'string' || !UUID.test(targetCharacterId) ||
+      typeof sourceMotionId !== 'string' || !MOTION_UUID.test(sourceMotionId) || typeof targetCharacterId !== 'string' || !UUID.test(targetCharacterId) ||
       typeof mappingId !== 'string' || !UUID.test(mappingId) || !isRetargetProjectV99(nativeProject)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'retarget.session.set requires valid IDs and a V9.12 project JSON', 400)
     }
@@ -1355,7 +1363,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const { characterId, motionId, clipId, edit, derivativeBase64 } = envelope.args
     const allowed = ['characterId', 'motionId', 'clipId', 'edit', 'derivativeBase64']
     if (Object.keys(envelope.args).some((key) => !allowed.includes(key)) || typeof characterId !== 'string' || !UUID.test(characterId) ||
-      motionId !== undefined && (typeof motionId !== 'string' || !UUID.test(motionId)) || clipId !== undefined && (typeof clipId !== 'string' || !clipId.trim()) ||
+      motionId !== undefined && (typeof motionId !== 'string' || !MOTION_UUID.test(motionId)) || clipId !== undefined && (typeof clipId !== 'string' || !clipId.trim()) ||
       !isRecord(edit) || !validateJsonPayload(edit, 32 * 1024 * 1024) || typeof derivativeBase64 !== 'string' || derivativeBase64.length > 96 * 1024 * 1024) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'motion.edit requires a Character, native project JSON and a base64 GLB derivative', 400)
     }
@@ -1429,7 +1437,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const args = edit?.args ?? envelope.args
     const { motionId, characterId, frameStart = 0, sourceStartSeconds = 0, sourceLengthSeconds, speed = 1, loop = false, reverse = false } = args
     if (Object.keys(args).some((key) => !['motionId', 'characterId', 'frameStart', 'sourceStartSeconds', 'sourceLengthSeconds', 'speed', 'loop', 'reverse'].includes(key)) ||
-      typeof motionId !== 'string' || !UUID.test(motionId) || typeof characterId !== 'string' || !UUID.test(characterId) ||
+      typeof motionId !== 'string' || !MOTION_UUID.test(motionId) || typeof characterId !== 'string' || !UUID.test(characterId) ||
       !Number.isSafeInteger(frameStart) || (frameStart as number) < 0 ||
       typeof sourceStartSeconds !== 'number' || !Number.isFinite(sourceStartSeconds) || sourceStartSeconds < 0 ||
       sourceLengthSeconds !== undefined && (typeof sourceLengthSeconds !== 'number' || !Number.isFinite(sourceLengthSeconds) || sourceLengthSeconds <= 0) ||
@@ -1443,7 +1451,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     // shortcut: FBX clips require an identical rig; enable different rigs after V9.12 bake parity is verified.
     const sourceProfile = project.skeletons[motion.skeletonId]
     const targetProfile = project.skeletons[character.skeletonId]
-    if (!sourceProfile || !targetProfile || sourceProfile.fingerprint !== targetProfile.fingerprint || sourceProfile.metersPerUnit !== targetProfile.metersPerUnit) {
+    if (!sourceProfile || !targetProfile || (sourceProfile.fingerprint !== targetProfile.fingerprint && !(isMixamo65Topology(sourceProfile.bones) && isMixamo65Topology(targetProfile.bones))) || sourceProfile.metersPerUnit !== targetProfile.metersPerUnit) {
       throw new UnifiedStoreError('PROFILE_MISMATCH', 'Timeline placement requires the same skeleton fingerprint and unit; retarget first for a different rig', 422)
     }
     const asset = project.assets[motion.assetId]
@@ -1453,7 +1461,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const gltfMotion = asset?.source.mediaType === 'model/gltf-binary' || asset?.source.mediaType === 'model/gltf+json'
     if (!asset || !['model', 'motion'].includes(asset.kind) || (!nativeMotion && (!['application/vnd.autodesk.fbx', 'model/gltf-binary', 'model/gltf+json'].includes(asset.source.mediaType) || !isRecord(metadata) ||
       !Number.isSafeInteger(metadata.clipIndex) || (metadata.clipIndex as number) < 0 || typeof metadata.name !== 'string' || !metadata.name.trim() ||
-      gltfMotion && (!Array.isArray(metadata.boneNames) || metadata.boneNames.some((name) => typeof name !== 'string' || !targetProfile?.bones.some((bone) => bone.name === name)))))) {
+      gltfMotion && (!Array.isArray(metadata.boneNames) || metadata.boneNames.some((name) => typeof name !== 'string' || !targetProfile?.bones.some((bone) => canonicalJointName(bone.name) === canonicalJointName(name))))))) {
       throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', 'Motion has no supported FBX/glTF clip or its channels do not match the selected Character profile', 422)
     }
     const scene = structuredClone(project.scene)
@@ -1643,6 +1651,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         const modelMetadata = { ...(isRecord(next.extensions.assetImportModels) ? next.extensions.assetImportModels : {}) }
         for (const { imported } of stagedAssetImports) {
           const assetId = imported.asset.id
+          if (imported.app1Manifest) {
+            const manifests = { ...(isRecord(next.extensions.app1Manifests) ? next.extensions.app1Manifests : {}) }
+            manifests[assetId] = imported.app1Manifest
+            next.extensions.app1Manifests = manifests
+          }
           if (!next.assets[assetId]) {
             next.assets[assetId] = imported.asset
             assetIds.push(assetId)
@@ -1684,6 +1697,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
               const metadata = motionMetadata[motionId]
               return motion.assetId === assetId && motion.skeletonId === skeletonId && isRecord(metadata) && metadata.clipIndex === item.clipIndex
             })
+            if (imported.app1Manifest && next.motions[item.motion.id]) {
+              const existing = next.motions[item.motion.id]!
+              if (existing.sourceClip.sha256 !== imported.asset.source.sha256) throw new UnifiedStoreError('ASSET_CONFLICT', 'App 1 Action UUID already exists with a different GLB SHA-256', 409)
+              motionIds.push(existing.id)
+              continue
+            }
+            if (duplicate && imported.app1Manifest && duplicate[0] !== item.motion.id) throw new UnifiedStoreError('ASSET_CONFLICT', 'This clip was already imported with another Action UUID', 409)
             if (duplicate) {
               const oldMetadata = (isRecord(motionMetadata[duplicate[0]]) ? motionMetadata[duplicate[0]] : {}) as Record<string, unknown>
               const sourceFileName = next.assets[assetId]?.provenance.original.path.split('/').at(-1) ?? item.nativeFingerprint.name
