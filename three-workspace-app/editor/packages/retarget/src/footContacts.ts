@@ -14,3 +14,24 @@ export function contactRanges(mask: readonly boolean[]): Array<[number, number]>
   mask.forEach((yes, i) => { if (!yes) return; const last = ranges[ranges.length - 1]; if (last && last[1] === i - 1) last[1] = i; else ranges.push([i, i]) })
   return ranges
 }
+
+export interface FootContactSample {
+  y: number
+  joint: string
+  time: number
+  xz: Record<string, readonly [number, number]>
+}
+/** Lowest ToeBase/Foot point; keep the current joint in both frames at heel/toe hand-over. */
+export function measureFootContact(samples: readonly FootContactSample[], groundY: number) {
+  const mask = contactMask(samples, groundY)
+  let slideMeters = 0, maxSpeed = 0
+  for (let i = 1; i < samples.length; i++) {
+    if (!mask[i] || !mask[i - 1]) continue
+    const current = samples[i]!, previous = samples[i - 1]!, a = previous.xz[current.joint], b = current.xz[current.joint]
+    if (!a || !b) continue
+    const distance = Math.hypot(b[0] - a[0], b[1] - a[1])
+    slideMeters += distance
+    maxSpeed = Math.max(maxSpeed, distance / (current.time - previous.time))
+  }
+  return { contactFrames: mask.filter(Boolean).length, contactRanges: contactRanges(mask), slideMeters, maxSpeed }
+}
