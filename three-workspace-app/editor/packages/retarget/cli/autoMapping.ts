@@ -53,7 +53,8 @@ function familyAliases(family: 'ue' | 'cc' | 'lol', names: ReadonlySet<string>):
  * Warcraft III Reforged rigs (WhiteoutLib GltfConverter): limbs are 5-joint chains `arm_L0_0..4` + `_end` with twist
  * joints at odd indices (0 shoulder, 2 elbow, end wrist; legs: 0 hip, 2 knee, end ankle, foot_0 ball). `spine_C0_0` is
  * the parent of legs and spine, so it plays Hips; the rig has two spine joints, so Mixamo Spine1 stays unmapped.
- * Finger order (finger_L0..L3) is not verified yet; only thumbs are mapped.
+ * Fingers `finger_L0..L3` (each under its own `meta_L0_k` palm joint) are index, middle, ring, pinky: measured on Blademaster
+ * and Archer, the finger root gets farther from the thumb root in that order.
  */
 function wc3ReforgedAliases(): Map<string, string> {
   const result = new Map<string, string>([['Hips', 'spinec00jnt'], ['Spine', 'spinec01jnt'], ['Spine2', 'bonechest'], ['Neck', 'neckc00jnt'], ['Head', 'bonehead']])
@@ -61,6 +62,7 @@ function wc3ReforgedAliases(): Map<string, string> {
     result.set(`${side}Shoulder`, `shoulder${s}0shoulderjnt`).set(`${side}Arm`, `arm${s}00jnt`).set(`${side}ForeArm`, `arm${s}02jnt`).set(`${side}Hand`, `arm${s}0endjnt`)
       .set(`${side}UpLeg`, `leg${s}00jnt`).set(`${side}Leg`, `leg${s}02jnt`).set(`${side}Foot`, `leg${s}0endjnt`).set(`${side}ToeBase`, `foot${s}00jnt`)
     for (const index of [1, 2, 3]) result.set(`${side}HandThumb${index}`, `thumb${s}0${index - 1}jnt`)
+    for (const [finger, name] of ['Index', 'Middle', 'Ring', 'Pinky'].entries()) for (const index of [1, 2, 3]) result.set(`${side}Hand${name}${index}`, `finger${s}${finger}${index - 1}jnt`)
   }
   return result
 }
