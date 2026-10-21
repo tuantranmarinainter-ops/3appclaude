@@ -1,49 +1,86 @@
 import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, resolve, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const editor = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const app = resolve(editor, '..')
-const app3 = join(app, 'animation-studio')
-const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const python = process.env.PYTHON_EXECUTABLE || (process.platform === 'win32' ? 'python' : 'python3')
-const tests = dir => readdirSync(join(editor, dir)).filter(n => n.endsWith('.test.ts')).sort().map(n => join(editor, dir, n))
+const workspace = resolve(editor, '..')
+const builder = join(editor, 'packages/builder')
+const app3 = join(workspace, 'animation-studio')
+const app3Work = join(app3, 'work/material_alpha_v1_31_8')
+const output = join(editor, '.test-results')
+mkdirSync(output, { recursive: true })
+
+// Use the invoking pnpm executable on every platform, including Windows.
+const pnpm = process.env.npm_execpath
+  ? [process.execPath, process.env.npm_execpath]
+  : [process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm']
+const files = (directory) => readdirSync(directory).filter(name => name.endsWith('.test.ts')).sort().map(name => join(directory, name))
+const nodeTests = (directory) => [process.execPath, '--import', 'tsx', '--test', '--test-reporter=tap', '--test-concurrency=1', ...files(directory)]
 const steps = [
-  ['Builder build', editor, pnpm, ['--filter', '@topview/3d-builder', 'build']],
-  ['Typecheck', editor, pnpm, ['typecheck']],
-  ['Lint/locales', editor, pnpm, ['lint']],
-  ['Builder tests', editor, pnpm, ['test:evaluate']],
-  ['Retarget tests', join(editor,'packages/builder'), pnpm, ['exec','tsx','--test','--test-reporter=tap',...tests('packages/retarget/test')]],
-  ['Studio tests', join(editor,'packages/builder'), pnpm, ['exec','tsx','--test','--test-reporter=tap',...tests('apps/studio/test')]],
-  ['Python tests', app, python, ['-m','unittest','agent.test_unified_cli','agent.test_unified_mcp','agent.test_shot_package']],
-  ['App 3 build', app3, process.execPath, ['work/material_alpha_v1_31_8/src/build.mjs']],
-  ['App 3 features', app3, process.execPath, ['tools/check-features.mjs','../editor/apps/studio/public/animation-studio/v1.31.8/index.html','outputs/Animation_Studio_v1_32_0.html']],
-  ['App 3 tests', join(app3,'work/material_alpha_v1_31_8'), process.execPath, ['--test','--test-reporter=tap','src/shot_package.test.mjs']],
+  ['install', [...pnpm, 'install', '--frozen-lockfile'], editor],
+  ['builder-build', [...pnpm, '--filter', '@topview/3d-builder', 'build'], editor],
+  ['typecheck', [...pnpm, 'typecheck'], editor],
+  ['lint', [...pnpm, 'lint'], editor],
+  ['builder-tests', [...pnpm, 'test:evaluate'], editor, 'vitest'],
+  ['retarget-tests', nodeTests(join(editor, 'packages/retarget/test')), builder, 'tap'],
+  ['studio-tests', nodeTests(join(editor, 'apps/studio/test')), builder, 'tap'],
+  ['python-tests', [process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), '-m', 'unittest', '-v', 'agent.test_unified_cli', 'agent.test_unified_mcp', 'agent.test_shot_package'], workspace, 'python'],
+  ['app3-build', [process.execPath, 'src/build.mjs'], app3Work],
+  ['app3-features', [process.execPath, 'tools/check-features.mjs', '../editor/apps/studio/public/animation-studio/v1.31.8/index.html', 'outputs/Animation_Studio_v1_32_0.html'], app3],
+  ['app3-tests', [process.execPath, '--test', '--test-reporter=tap', 'src/shot_package.test.mjs'], app3Work, 'tap'],
 ]
-mkdirSync(join(app3,'outputs'),{recursive:true})
-const results=[]
-for (const [name,cwd,command,args] of steps) {
-  console.log(`\n>>> ${name}`)
-  const started=Date.now()
-  let output=''
-  const code=await new Promise(resolveExit=>{
-    const child=spawn(command,args,{cwd,env:{...process.env,FORCE_COLOR:'0'},stdio:['ignore','pipe','pipe']})
-    for(const stream of [child.stdout,child.stderr]) stream.on('data',chunk=>{output+=chunk;process.stdout.write(chunk)})
-    child.on('error',err=>{output+=String(err);console.error(err)})
-    child.on('close',code=>resolveExit(code ?? 1))
-  })
-  const count = label => Number(output.match(new RegExp(`^# ${label} (\\d+)`,'m'))?.[1] ?? 0)
-  let counts
-  if(/^# tests /m.test(output)) counts={tests:count('tests'),passed:count('pass'),failed:count('fail'),skipped:count('skipped')}
-  else if(name==='Python tests') { const n=Number(output.match(/Ran (\d+) tests?/)?.[1] ?? 0); const skips=Number(output.match(/skipped=(\d+)/)?.[1] ?? 0); const failed=Number(output.match(/failures=(\d+)/)?.[1] ?? 0)+Number(output.match(/errors=(\d+)/)?.[1] ?? 0); counts={tests:n,passed:code===0?n-skips:Math.max(0,n-skips-failed),failed,skipped:skips} }
-  else if(name==='Builder tests') { const line=output.match(/^\s*Tests\s+(.+)$/m)?.[1] ?? ''; const n=kind=>Number(line.match(new RegExp(`(\\d+) ${kind}`))?.[1]??0); counts={passed:n('passed'),failed:n('failed'),skipped:n('skipped')};counts.tests=counts.passed+counts.failed+counts.skipped }
-  results.push({name,status:code===0?'PASS':'FAIL',exitCode:code,elapsedMs:Date.now()-started,...counts})
-  // Keep independent suites running to give a complete report, but never hide a nonzero exit status.
+
+function counts(text, format) {
+  const clean = text.replace(/\x1b\[[0-9;]*m/g, '')
+  if (format === 'tap') {
+    const value = name => Number(clean.match(new RegExp('^# ' + name + ' (\\d+)$', 'm'))?.[1] ?? NaN)
+    return { total: value('tests'), passed: value('pass'), failed: value('fail'), skipped: value('skipped'), cancelled: value('cancelled'), todo: value('todo') }
+  }
+  if (format === 'vitest') {
+    const summary = clean.match(/^\s*Tests\s+(.+)$/m)?.[1] ?? ''
+    const value = name => Number(summary.match(new RegExp('(\\d+) ' + name))?.[1] ?? 0)
+    return { total: Number(summary.match(/\((\d+)\)/)?.[1] ?? NaN), passed: value('passed'), failed: value('failed'), skipped: value('skipped') }
+  }
+  const total = Number(clean.match(/Ran (\d+) tests? in /)?.[1] ?? NaN)
+  const value = name => Number(clean.match(new RegExp(name + '=(\\d+)'))?.[1] ?? 0)
+  const failed = value('failures') + value('errors') + value('unexpected successes')
+  const skipped = value('skipped')
+  const expectedFailures = value('expected failures')
+  return { total, passed: total - failed - skipped - expectedFailures, failed, skipped, expectedFailures }
 }
-const summaryDir=join(editor,'.test-results')
-mkdirSync(summaryDir,{recursive:true})
-writeFileSync(join(summaryDir,'summary.json'),JSON.stringify({results},null,2)+'\n')
-console.table(results.map(({name,status,tests,passed,failed,skipped})=>({name,status,tests,passed,failed,skipped})))
-if(process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,'## Test results\n\n| Suite | Status | Passed | Failed | Skipped |\n| --- | --- | --- | --- | --- |\n'+results.map(r=>`| ${r.name} | ${r.status} | ${r.passed??'—'} | ${r.failed??'—'} | ${r.skipped??'—'} |`).join('\n')+'\n')
-process.exitCode=results.some(r=>r.exitCode!==0)?1:0
+
+async function run([name, command, cwd, format]) {
+  console.log(`\n=== ${name}: ${command.join(' ')} ===`)
+  let text = ''
+  const start = Date.now()
+  const code = await new Promise(resolveCode => {
+    const child = spawn(command[0], command.slice(1), { cwd, env: { ...process.env, FORCE_COLOR: '0' }, stdio: ['inherit', 'pipe', 'pipe'] })
+    for (const [stream, destination] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
+      stream.on('data', chunk => { text += chunk.toString(); destination.write(chunk) })
+    }
+    child.on('error', error => { text += error.stack; console.error(error.message) })
+    child.on('close', code => resolveCode(code ?? 1))
+  })
+  writeFileSync(join(output, name + '.log'), text)
+  const result = { name, status: code === 0 ? 'PASS' : 'FAIL', exitCode: code, seconds: Math.round((Date.now() - start) / 1000) }
+  if (format) {
+    result.counts = counts(text, format)
+    if (!Number.isFinite(result.counts.total) || result.counts.total < 1) {
+      result.status = 'FAIL'
+      result.error = 'Test summary missing; see log. No test counts inferred.'
+    }
+  }
+  return result
+}
+
+mkdirSync(join(app3, 'outputs'), { recursive: true })
+const results = []
+for (const step of steps) results.push(await run(step))
+writeFileSync(join(output, 'summary.json'), JSON.stringify(results, null, 2) + '\n')
+const rows = results.map(r => `| ${r.name} | ${r.status} | ${r.counts?.passed ?? '—'} | ${r.counts?.failed ?? '—'} | ${r.counts?.skipped ?? '—'} | ${r.seconds} |`)
+const summary = ['## Test all', '', '| Suite / gate | Result | Passed | Failed | Skipped | Seconds |', '| --- | --- | ---: | ---: | ---: | ---: |', ...rows, '', 'Full logs and machine-readable counts: `three-workspace-app/editor/.test-results/`.', ''].join('\n')
+console.log('\n' + summary)
+writeFileSync(join(output, 'summary.md'), summary)
+if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+process.exitCode = results.some(result => result.status !== 'PASS') ? 1 : 0
