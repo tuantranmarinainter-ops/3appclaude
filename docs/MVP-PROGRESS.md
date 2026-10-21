@@ -53,6 +53,8 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | G2 `scene.layout.preview/apply` (AI xếp nhân vật) | ✅ PR #24 (lấy riêng G2) | C2: A trái B 1.5000 m, nhìn nhau 0.000°, Undo/Redo đúng; còn chặn nhân vật có key App 3 → G2b |
 | G3 `camera.framing.preview/apply` (AI đặt camera) | ✅ PR #25 (lấy riêng G3) | C2: 130 xương trong khung (max 0.74) frame 0/12/23; toàn > trung > cận; còn camera thấp dưới đất, cận chưa phải cận mặt → G3b |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
+| H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
+| L1 build Studio EPERM trên Windows | ✅ không tái hiện | `pnpm --filter @topview/3d-studio build` thành công 2026-10-21 |
 | D1b khoá chân không nâng chân | ✅ PR #23 (thử nghiệm, mặc định tắt) | Samba: cổ chân trượt 3.26/3.05 → 0.000 m, cao 0 cm, giữ 100% khung chạm; điểm thấp nhất 2.23/2.40 → 1.14/1.18 m (nguồn tự trượt 2.12/2.41) |
 
 ## Đang giao (2026-10-21)
