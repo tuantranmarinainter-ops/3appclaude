@@ -35,6 +35,7 @@ export interface NormalizeRequest {
   rootPolicy?: 'preserve' | 'in-place'
   rootScale?: number
   /** Foot-floor fix: off | lift (default) | level | frame. */
+  footLock?: 'on' | 'off'
   ground?: GroundMode
   mappingPreset?: unknown
   /** A/T calibration of limb directions against the target rest (default 'limbs'). */
@@ -255,7 +256,7 @@ export async function runNormalize(request: NormalizeRequest) {
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        range, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
+        range, footLock: request.footLock, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
         calibration: calibration.runtime }, request.signal)
       exported.push({ action: { ...action, durationSeconds: normalized.report.durationSeconds }, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
@@ -357,6 +358,7 @@ export async function runNormalize(request: NormalizeRequest) {
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
     quality: summarizeQuality(perAction),
+    ...(request.footLock === 'on' ? { footLock: { mode: 'on', perAction: exported.map(item => ({ name: item.action.name, ...item.report.footLock })) } } : {}),
     ground: { mode: request.ground ?? 'lift', perAction: exported.map((item) => ({ name: item.action.name, ...item.report.ground })) },
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
     roundtrip, glbSha256, elapsedMs: 0 }

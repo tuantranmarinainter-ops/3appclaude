@@ -22,7 +22,7 @@ import { exportMinecraft20 } from './toMinecraft20.ts'
 
 const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
-  range: { type: 'string' }, action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
+  'foot-lock': { type: 'string', default: 'off' }, range: { type: 'string' }, action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
   root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string' }, ground: { type: 'string', default: 'lift' }, mapping: { type: 'string' }, armature: { type: 'string' },
   mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
@@ -31,6 +31,7 @@ function fail(message: string): never { console.error(`normalize: ${message}`); 
 if (!values.src || !values.target || !values.out) fail('--src, --target and --out are required')
 if (!['y', 'z'].includes(values.up!)) fail('--up must be y or z')
 if (!['preserve', 'in-place'].includes(values.root!)) fail('--root must be preserve or in-place')
+if (!['on', 'off'].includes(values['foot-lock']!)) fail('--foot-lock must be on or off')
 if (!['off', 'lift', 'level', 'frame'].includes(values.ground!)) fail('--ground must be off, lift, level or frame')
 if (!['limbs', 'none'].includes(values.calibrate!)) fail('--calibrate must be limbs or none')
 if (!['auto', 'on', 'off'].includes(values['swap-sides']!)) fail('--swap-sides must be auto, on or off')
@@ -66,7 +67,7 @@ try {
   let result: PipelineResult = early ?? await runNormalize({
     source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
-    range: range as [number, number] | undefined, actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
+    footLock: values['foot-lock'] as 'on' | 'off', range: range as [number, number] | undefined, actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
     upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
     calibrate: values.calibrate as 'limbs' | 'none', swapSides: values['swap-sides'] as 'auto' | 'on' | 'off', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),

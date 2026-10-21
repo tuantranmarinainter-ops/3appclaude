@@ -1,3 +1,4 @@
+import { lockFeet, type FootLockMode } from './footLock'
 import type { Object3D } from 'three'
 import { createThreeRigAdapter, type ThreeRigAdapterOptions } from './threeRigAdapter'
 import { createUniversalRetargeter, validateUniversalMapping, type RetargetBonePair } from './universal'
@@ -21,6 +22,7 @@ export interface NormalizeAnimationInput {
   fps: number
   rootTranslationScale?: number
   /** Vertical foot-floor fix (default 'off' here; the CLI/Workbench pass their own default). */
+  footLock?: FootLockMode
   groundMode?: GroundMode
   /** Feet follow the source ankle→ball direction instead of its rotation delta (see footDirection.ts). */
   footDirection?: boolean
@@ -62,12 +64,13 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
       if (index % 32 === 31) await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }
     const ground = adjustGround(target.rig, frames, input.groundMode ?? 'off')
+    const footLock = input.footLock === 'on' ? lockFeet(target.rig, frames) : undefined
     signal?.throwIfAborted()
     const bytes = universalFramesToGlb(target.rig, target.joints, frames, action.name)
     return { bytes, report: { ...report, sourceFingerprint: source.rig.fingerprint, targetFingerprint: target.rig.fingerprint,
       actionIndex: action.index, actionName: action.name, durationSeconds: duration, sampleFps: input.fps,
       sampleCount: frames.length, sourceJointCount: source.joints.length, targetJointCount: target.joints.length,
-      resourceCost, ground,
+      resourceCost, ground, ...(footLock ? { footLock } : {}),
       excludedSourceBones: input.excludedSourceBones ?? [], metrics: metrics.report(),
       rootTranslationScale: input.rootTranslationScale ?? 1, rootTranslationPolicy: input.rootTranslationPolicy ?? 'preserve', outputMode: 'animation-only' as const } }
   } finally { source.dispose(); target?.dispose() }
