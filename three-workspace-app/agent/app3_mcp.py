@@ -16,11 +16,11 @@ from .unified_cli import CliError, command, local_base, open_session
 from .unified_mcp import PROTOCOL_VERSION, _valid_meta
 
 READ_TOOLS = ("read_keyframes", "analyze_motion", "get_scene_context", "get_animation_context")
-EDIT_TOOLS = ("create_blocking", "set_pose", "insert_breakdown", "set_marker", "set_idea", "preview_patch", "apply_patch", "cancel_patch", "undo_animation")
+EDIT_TOOLS = ("retime_segment", "set_hold", "smooth_motion", "edit_keyframes", "edit_curves", "create_blocking", "set_pose", "insert_breakdown", "set_marker", "set_idea", "preview_patch", "apply_patch", "cancel_patch", "undo_animation")
 COMMANDS = ("app3.session.list", "app3.context.get", "app3.command.submit", "app3.command.result")
 TOOL = {
     "name": "bbs_app3_command",
-    "description": "Read and stage edits in the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit read_keyframes, analyze_motion, get_scene_context, get_animation_context or create_blocking, set_pose, insert_breakdown, set_marker, set_idea, preview_patch, apply_patch, cancel_patch, undo_animation using args.tool and args.parameters. Edits require numeric expectedRevision and string args.expectedAnimationRevision; review staged patchId before apply_patch; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. Only these native animation edits are exposed; scene writes and exports are unavailable.",
+    "description": "Read and stage edits in the open local App 3 editor. List sessions for a project, then pass its exact sessionId, epoch, characterId and serverInstance. Submit read_keyframes, analyze_motion, get_scene_context, get_animation_context or retime_segment, set_hold, smooth_motion, edit_keyframes, edit_curves, create_blocking, set_pose, insert_breakdown, set_marker, set_idea, preview_patch, apply_patch, cancel_patch, undo_animation using args.tool and args.parameters. Times are editor-local seconds, transform values use the context model-local units, rotation curve r is Euler XYZ degrees; no implicit world-space conversion. Shot duration and root transforms are protected. Edits require numeric expectedRevision and string args.expectedAnimationRevision; review staged patchId before apply_patch; poll app3.command.result with commandId and a fresh requestId. A submit retry must reuse its original requestId. context.get returns cached-heartbeat state; get_animation_context submits a fresh iframe read. Only these native animation edits are exposed; scene writes and exports are unavailable.",
     "inputSchema": {"type": "object", "properties": {
         "command": {"type": "string", "enum": list(COMMANDS)},
         "projectId": {"type": "string", "format": "uuid"},
@@ -85,6 +85,9 @@ def validate(arguments: Any) -> dict:
 
 def validate_edit(tool, p):
     fields = {
+        "retime_segment": {"markerId", "time"}, "set_hold": {"markerId", "duration"},
+        "smooth_motion": {"boneIds", "start", "end", "method", "strength", "window", "channels"},
+        "edit_keyframes": {"refs", "action", "targetTime"}, "edit_curves": {"boneId", "path", "axis", "times", "type", "side", "slope"},
         "create_blocking": {"markers", "idea"}, "set_pose": {"time", "transforms", "interpolation"},
         "insert_breakdown": {"time", "boneIds", "label", "fraction", "offsets"},
         "set_marker": {"markerId", "label", "locked", "kind"}, "set_idea": {"idea"},
@@ -119,6 +122,27 @@ def validate_edit(tool, p):
     if "locked" in p: require(type(p["locked"]) is bool)
     if "kind" in p: require(p["kind"] in ("pose", "contact", "breakdown", "hold"))
     if tool in ("preview_patch", "apply_patch", "cancel_patch"): require(text(p.get("patchId"), 100) and bool(p["patchId"]))
+    if tool in ("retime_segment", "set_hold"): require(text(p.get("markerId"), 80) and bool(p["markerId"]))
+    if tool == "retime_segment": require(number(p.get("time"), 0, 300))
+    if tool == "set_hold": require(number(p.get("duration"), 0, 30) and p["duration"] > 0)
+    if tool == "smooth_motion":
+        require(isinstance(p.get("boneIds"), list) and 1 <= len(p["boneIds"]) <= 256 and all(text(x, 200) and x for x in p["boneIds"]))
+        require(number(p.get("start"), 0, 300) and number(p.get("end"), p["start"], 300) and p["end"] > p["start"])
+        if "method" in p: require(p["method"] in ("filter", "auto", "cubic"))
+        if "strength" in p: require(number(p["strength"], 0, 1))
+        if "window" in p: require(type(p["window"]) is int and 1 <= p["window"] <= 12)
+        if "channels" in p: require(isinstance(p["channels"], list) and 1 <= len(p["channels"]) <= 3 and all(isinstance(x, str) and x in ("p", "q", "s") for x in p["channels"]) and len(set(p["channels"])) == len(p["channels"]))
+    if tool == "edit_keyframes":
+        require(isinstance(p.get("refs"), list) and 1 <= len(p["refs"]) <= 1000 and p.get("action") in ("move", "copy", "delete"))
+        for ref in p["refs"]: require(isinstance(ref, dict) and set(ref) == {"id", "time", "kind"} and text(ref["id"], 200) and bool(ref["id"]) and ref["kind"] == "keys" and number(ref["time"], 0, 300))
+        if p["action"] != "delete" or "targetTime" in p: require(number(p.get("targetTime"), 0, 300))
+    if tool == "edit_curves":
+        require(text(p.get("boneId"), 200) and bool(p["boneId"]) and p.get("path") in ("p", "r", "s") and type(p.get("axis")) is int and p["axis"] in (0, 1, 2))
+        require(isinstance(p.get("times"), list) and 1 <= len(p["times"]) <= 1000 and all(number(x, 0, 300) for x in p["times"]))
+        if "side" in p: require(p["side"] in ("in", "out", "both"))
+        if "type" in p: require(p["type"] in ("linear", "step", "auto", "smooth", "spline", "break", "unify"))
+        if "slope" in p: require(type(p["slope"]) in (float, int) and math.isfinite(p["slope"]))
+        require("slope" in p or "type" in p)
     if "original" in p: require(type(p["original"]) is bool)
 
 

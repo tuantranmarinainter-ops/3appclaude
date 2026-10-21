@@ -66,6 +66,15 @@ class App3MCPTests(unittest.TestCase):
         v = payload(); v["args"].update(tool="set_pose", parameters={"time": 0, "transforms": {"root": {"p": [0,0,0], "q": [0,0,0,0], "s": [1,1,1]}}}, expectedAnimationRevision="r"); v["expectedRevision"] = 1
         with self.assertRaises(ValueError): m.validate(v)
 
+    def test_e3_finite_strict_parameters(self):
+        cases = [("retime_segment", {"markerId": "m", "time": 1}), ("set_hold", {"markerId": "m", "duration": .5}), ("smooth_motion", {"boneIds": ["b0"], "start": 0, "end": 2}), ("edit_keyframes", {"refs": [{"id": "b0", "time": 1, "kind": "keys"}], "action": "copy", "targetTime": 1.5}), ("edit_curves", {"boneId": "b0", "path": "r", "axis": 1, "times": [0, 1], "type": "linear"})]
+        for tool, params in cases:
+            v = payload(); v["args"].update(tool=tool, parameters=params, expectedAnimationRevision="r"); v["expectedRevision"] = 1
+            self.assertEqual(m.validate(v), v)
+            with self.assertRaises(ValueError): m.validate_edit(tool, {**params, "unknown": 0})
+        for tool, params in [("retime_segment", {"markerId": "m", "time": True}), ("set_hold", {"markerId": "m", "duration": float("nan")}), ("smooth_motion", {"boneIds": ["b0"], "start": 0, "end": 2, "window": 1.5}), ("edit_keyframes", {"refs": [{"id": "b0", "time": 1, "kind": "keys"}], "action": "move"}), ("edit_curves", {"boneId": "b0", "path": "r", "axis": 1, "times": [0]}), ("edit_curves", {"boneId": "b0", "path": "p", "axis": 0, "times": [0], "slope": float("inf")})]:
+            with self.subTest(tool=tool), self.assertRaises(ValueError): m.validate_edit(tool, params)
+
     def test_metadata_and_errors(self):
         self.assertIn("error", m.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
         self.assertIsNone(m.handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}))

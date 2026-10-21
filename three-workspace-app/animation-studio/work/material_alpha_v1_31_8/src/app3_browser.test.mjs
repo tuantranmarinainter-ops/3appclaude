@@ -59,9 +59,13 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
    for(let n=0;n<40;n++){const result=await python({command:'app3.command.result',projectId,args:{...identity,commandId:ticket.commandId}});if(result.status==='done'){assert.equal(result.result.ok,expectedOk,JSON.stringify(result));return result.result;}await new Promise(r=>setTimeout(r,100));}throw Error('Mutation result timeout');
   }
   const nativeState=()=>frame.evaluate(()=>({json:JSON.stringify(window.__studio.state.project),history:window.__studio.state.historyIndex}));
-  const operations=[['create_blocking',{markers:[{id:'a',time:0,label:'Start'},{id:'z',time:2,label:'End'}]}],['set_pose',{time:0,transforms:{[expected.id]:{p:[3,0,0],q:[0,0,0,1],s:[1,1,1]}}}],['insert_breakdown',{time:1,boneIds:[expected.id],fraction:.25}],['set_marker',{markerId:'a',label:'Ready',locked:true}],['set_idea',{idea:'Preparation note'}]];
+  const e3=process.env.APP3_RUNTIME_E3==='1';
+  if(e3)await frame.evaluate(({id})=>{const s=window.__studio,p=s.serialized(false);p.director={version:1,idea:'',markers:[['a',0],['m',1],['z',2]].map(([id,time])=>({id,time,label:id,kind:'pose',locked:false}))};s.core.addKey(p,id,2,{p:[2,0,0],q:[0,0,0,1],s:[1,1,1]},'linear');return s.loadProject(p);},expected);
+  const operations=e3?[
+   ['retime_segment',{markerId:'m',time:.5}],['set_hold',{markerId:'m',duration:.5}],['smooth_motion',{boneIds:[expected.id],start:0,end:2,method:'auto',channels:['p']}],['edit_keyframes',{refs:[{id:expected.id,time:.5,kind:'keys'}],action:'copy',targetTime:1.5}],['edit_curves',{boneId:expected.id,path:'p',axis:0,times:[.5],side:'out',slope:3}]
+  ]:[['create_blocking',{markers:[{id:'a',time:0,label:'Start'},{id:'z',time:2,label:'End'}]}],['set_pose',{time:0,transforms:{[expected.id]:{p:[3,0,0],q:[0,0,0,1],s:[1,1,1]}}}],['insert_breakdown',{time:1,boneIds:[expected.id],fraction:.25}],['set_marker',{markerId:'a',label:'Ready',locked:true}],['set_idea',{idea:'Preparation note'}]];
   for(const[tool,args]of operations){
-   console.log('E2 browser checking '+tool);
+   console.log((e3?'E3':'E2')+' browser checking '+tool);
    const original=await nativeState(),stage=await edit(tool,args),patchId=stage.value.patchId,revision=stage.value.baseRevision;
    assert.deepEqual(await nativeState(),original,tool+' staging mutated project/history');
    assert.equal((await edit('set_idea',{idea:'Overwrite'},revision,false)).error,'PATCH_PENDING');
@@ -75,10 +79,16 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
    if(tool==='insert_breakdown'){assert.equal(authored.keys[expected.id].find(k=>k.time===1).p[0],2.5);assert.equal(authored.director.markers.find(m=>m.time===1).kind,'breakdown');}
    if(tool==='set_marker'){assert.equal(authored.director.markers[0].label,'Ready');assert.equal(authored.director.markers[0].locked,true);}
    if(tool==='set_idea')assert.equal(authored.director.idea,'Preparation note');
+   if(tool==='retime_segment'){assert.deepEqual(authored.director.markers.map(m=>m.time),[0,.5,2]);assert.equal(authored.keys[expected.id].find(k=>k.time===.5).p[0],1);}
+   if(tool==='set_hold'){assert.equal(authored.duration,2.5);assert.equal(authored.keys[expected.id].find(k=>k.time===1).p[0],1);assert.equal(authored.keys[expected.id].find(k=>k.time===.5).interp,'step');}
+   if(tool==='smooth_motion'){assert.equal(authored.keys[expected.id][0].p[0],0);assert.equal(authored.keys[expected.id].at(-1).p[0],2);}
+   if(tool==='edit_keyframes'){assert.equal(authored.keys[expected.id].find(k=>k.time===1.5).p[0],1);assert.ok(authored.keys[expected.id].some(k=>k.time===.5));}
+   if(tool==='edit_curves')assert.equal(authored.keys[expected.id].find(k=>k.time===.5).graph.channels.p0.out.slope,3);
    // Native UI Undo/Redo proves this is the editor history, including metadata-only edits.
    await frame.locator('#undoBtn').click();assert.deepEqual(await nativeState(),original,tool+' native Undo failed exact project restore');
    await frame.locator('#redoBtn').click();assert.deepEqual(await nativeState(),changed);
   }
+  if(e3){assert.deepEqual(errors,[]);console.log('E3 real MCP: five timing tools, numeric key/curve results, unchanged staged JSON/history, preview, one native Undo/Redo PASS; seconds/model-local units');return;}
   const undoBefore=await nativeState(),undoStage=await edit('set_idea',{idea:'MCP undo verification'});
   await edit('apply_patch',{patchId:undoStage.value.patchId},undoStage.value.baseRevision);
   assert.equal((await nativeState()).history,undoBefore.history+1);

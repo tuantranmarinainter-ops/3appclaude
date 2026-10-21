@@ -10,11 +10,11 @@ export function validateLocalRead(tool,args){
  if(args.start!==undefined&&args.end!==undefined&&args.end<args.start)throw Error('VALIDATION_FAILED');
  if(args.samples!==undefined&&(!Number.isInteger(args.samples)||args.samples<4||args.samples>600))throw Error('VALIDATION_FAILED');
 }
-export const LOCAL_EDIT_TOOLS=Object.freeze(['create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation']);
+export const LOCAL_EDIT_TOOLS=Object.freeze(['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation']);
 export function validateLocalEdit(tool,args){
  if(!LOCAL_EDIT_TOOLS.includes(tool))throw Error('UNSUPPORTED_CAPABILITY');
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('VALIDATION_FAILED');
- const fields={create_blocking:['markers','idea'],set_pose:['time','transforms','interpolation'],insert_breakdown:['time','boneIds','label','fraction','offsets'],set_marker:['markerId','label','locked','kind'],set_idea:['idea'],preview_patch:['patchId','original'],apply_patch:['patchId'],cancel_patch:['patchId'],undo_animation:[]}[tool];
+ const fields={retime_segment:['markerId','time'],set_hold:['markerId','duration'],smooth_motion:['boneIds','start','end','method','strength','window','channels'],edit_keyframes:['refs','action','targetTime'],edit_curves:['boneId','path','axis','times','type','side','slope'],create_blocking:['markers','idea'],set_pose:['time','transforms','interpolation'],insert_breakdown:['time','boneIds','label','fraction','offsets'],set_marker:['markerId','label','locked','kind'],set_idea:['idea'],preview_patch:['patchId','original'],apply_patch:['patchId'],cancel_patch:['patchId'],undo_animation:[]}[tool];
  const fail=()=>{throw Error('VALIDATION_FAILED');},obj=x=>x&&typeof x==='object'&&!Array.isArray(x),text=(x,n)=>typeof x==='string'&&x.length<=n,number=(x,min,max)=>Number.isFinite(x)&&x>=min&&x<=max,vec=(x,n)=>Array.isArray(x)&&x.length===n&&x.every(Number.isFinite),bone=x=>text(x,200)&&x.length>0;
  if(Object.keys(args).some(k=>!fields.includes(k)))fail();
  if(tool==='create_blocking'){
@@ -37,6 +37,24 @@ export function validateLocalEdit(tool,args){
  if(tool==='set_marker'&&(!text(args.markerId,80)||!args.markerId.length||Object.keys(args).length<2))fail();
  if(args.locked!==undefined&&typeof args.locked!=='boolean'||args.kind!==undefined&&!['pose','contact','breakdown','hold'].includes(args.kind))fail();
  if(['preview_patch','apply_patch','cancel_patch'].includes(tool)&&(!text(args.patchId,100)||!args.patchId.length))fail();
+
+ if(['retime_segment','set_hold'].includes(tool)&&(!text(args.markerId,80)||!args.markerId.length))fail();
+ if(tool==='retime_segment'&&!number(args.time,0,300))fail();
+ if(tool==='set_hold'&&!number(args.duration,Number.MIN_VALUE,30))fail();
+ if(tool==='smooth_motion'){
+  if(!Array.isArray(args.boneIds)||!args.boneIds.length||args.boneIds.length>256||args.boneIds.some(x=>!bone(x))||!number(args.start,0,300)||!number(args.end,args.start,300)||args.end===args.start)fail();
+  if(args.method!==undefined&&!['filter','auto','cubic'].includes(args.method)||args.strength!==undefined&&!number(args.strength,0,1)||args.window!==undefined&&(!Number.isInteger(args.window)||!number(args.window,1,12)))fail();
+  if(args.channels!==undefined&&(!Array.isArray(args.channels)||!args.channels.length||args.channels.length>3||new Set(args.channels).size!==args.channels.length||args.channels.some(x=>!['p','q','s'].includes(x))))fail();
+ }
+ if(tool==='edit_keyframes'){
+  if(!Array.isArray(args.refs)||!args.refs.length||args.refs.length>1000||!['move','copy','delete'].includes(args.action))fail();
+  for(const ref of args.refs)if(!obj(ref)||Object.keys(ref).some(k=>!['id','time','kind'].includes(k))||!bone(ref.id)||ref.kind!=='keys'||!number(ref.time,0,300))fail();
+  if(args.action!=='delete'&&!number(args.targetTime,0,300)||args.targetTime!==undefined&&!number(args.targetTime,0,300))fail();
+ }
+ if(tool==='edit_curves'){
+  if(!bone(args.boneId)||!['p','r','s'].includes(args.path)||![0,1,2].includes(args.axis)||!Array.isArray(args.times)||!args.times.length||args.times.length>1000||args.times.some(x=>!number(x,0,300)))fail();
+  if(args.side!==undefined&&!['in','out','both'].includes(args.side)||args.type!==undefined&&!['linear','step','auto','smooth','spline','break','unify'].includes(args.type)||args.slope!==undefined&&!Number.isFinite(args.slope)||args.slope===undefined&&args.type===undefined)fail();
+ }
  if(args.original!==undefined&&typeof args.original!=='boolean')fail();
 }
 export class StudioBridge{
@@ -62,6 +80,23 @@ export class StudioBridge{
      if((options.isActive?options.isActive():options.active)!==true)throw Error('APP3_INACTIVE');
      if(typeof command.expectedAnimationRevision!=='string'||command.expectedAnimationRevision!==context.revision)throw Error('REVISION_CONFLICT');
      if((options.isShot?options.isShot():options.shot)&&command.args.time!==undefined&&command.args.time>context.duration)throw Error('SHOT_RANGE_CONFLICT');
+     // Native Director times are local seconds; transform channels stay in model-local units.
+     // Shot placement owns displacement. Reject root transform edits rather than converting world space.
+     const a=command.args,shot=options.isShot?options.isShot():options.shot;
+     if(shot){
+      if(command.tool==='set_hold')throw Error('SHOT_DURATION_CHANGE_UNSUPPORTED');
+      if(command.tool==='retime_segment'){
+       const last=context.markers?.at(-1);
+       if(!last||Math.abs(last.time-context.duration)>1e-7||last.id===a.markerId&&Math.abs(a.time-context.duration)>1e-7)throw Error('SHOT_DURATION_CHANGE_UNSUPPORTED');
+      }
+      if(command.tool==='smooth_motion'&&(a.end>context.duration||a.start>context.duration)||command.tool==='edit_curves'&&a.times.some(t=>t>context.duration))throw Error('SHOT_RANGE_CONFLICT');
+      if(command.tool==='edit_keyframes'){
+       const shift=a.action==='delete'?0:a.targetTime-Math.min(...a.refs.map(r=>r.time));
+       if(a.refs.some(r=>r.time>context.duration||r.time+shift<0||r.time+shift>context.duration))throw Error('SHOT_RANGE_CONFLICT');
+      }
+      if(command.tool==='edit_keyframes'&&a.refs.some(r=>r.id==='root')||command.tool==='edit_curves'&&a.boneId==='root'||command.tool==='smooth_motion'&&a.boneIds.includes('root'))throw Error('SHOT_ROOT_EDIT_UNSUPPORTED');
+     }
+     if(command.tool==='smooth_motion'&&['auto','cubic'].includes(a.method)&&context.markers?.some(m=>(m.locked||m.kind==='contact')&&m.time>=a.start&&m.time<=a.end))throw Error('PROTECTED_POSE_SMOOTH_UNSUPPORTED');
      const control=['preview_patch','apply_patch','cancel_patch','undo_animation'].includes(command.tool);
      if(!control&&context.preview)throw Error('PATCH_PENDING');
      if(['preview_patch','apply_patch','cancel_patch'].includes(command.tool)&&context.preview?.id!==command.args.patchId)throw Error('PATCH_CONFLICT');
