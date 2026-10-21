@@ -25,6 +25,11 @@ export function resolveHeadlessMediaUrl(ref, publicAssetBase, localAssets = {}) 
   return resolveAssetKey(raw, publicAssetBase, localAssets, kind)
 }
 
+function querySuffix(raw) {
+  const format = /[?&]format=([A-Za-z0-9]+)/.exec(String(raw || ''))?.[1]
+  return format ? `?format=${format}` : ''
+}
+
 export function assetKey(raw) {
   return String(raw || '').replace(/^\/+/, '').split('?')[0]
 }
@@ -33,7 +38,8 @@ function resolveAssetKey(raw, publicAssetBase, localAssets, kind) {
   const key = assetKey(raw)
   if (!key) return ''
   const local = localAssets?.[key]
-  if (local) return local
+  // Keep `format`: the loader is chosen from it (`?format=glb` App 1 motions use GLTFLoader, not FBXLoader).
+  if (local) return local + querySuffix(raw)
   const origin = String(publicAssetBase || '')
     .replace(/\/+$/, '')
     .replace(/\/3d-builder\/public$/i, '')

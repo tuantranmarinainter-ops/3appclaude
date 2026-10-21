@@ -57,3 +57,10 @@ test('user characters need a local file or a public base', () => {
     'http://l/u.glb',
   )
 })
+
+test('local assets keep the source query so GLB motions are not parsed as FBX', () => {
+  const key = 'api/unified/projects/p/assets/m/source'
+  const local = { [key]: 'http://127.0.0.1:9/local-assets/2/2.glb' }
+  assert.equal(resolveHeadlessMediaUrl({ kind: 'motion', sourceUrl: `/${key}?format=glb` }, '', local), 'http://127.0.0.1:9/local-assets/2/2.glb?format=glb')
+  assert.equal(resolveHeadlessMediaUrl(`/${key}`, '', local), 'http://127.0.0.1:9/local-assets/2/2.glb')
+})
