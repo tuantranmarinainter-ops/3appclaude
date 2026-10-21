@@ -11,6 +11,6 @@ export function contactMask(samples: readonly { y: number; time: number }[], gro
 }
 export function contactRanges(mask: readonly boolean[]): Array<[number, number]> {
   const ranges: Array<[number, number]> = []
-  mask.forEach((yes, i) => { if (!yes) return; const last = ranges.at(-1); if (last && last[1] === i - 1) last[1] = i; else ranges.push([i, i]) })
+  mask.forEach((yes, i) => { if (!yes) return; const last = ranges[ranges.length - 1]; if (last && last[1] === i - 1) last[1] = i; else ranges.push([i, i]) })
   return ranges
 }
