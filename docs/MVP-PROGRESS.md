@@ -57,6 +57,8 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | E1 App 3 đọc qua MCP (read_keyframes, analyze_motion, get_scene_context) | ✅ PR #30 | Studio 107/0, App 3 test 51/0 (sửa test gọi python trên Windows), Python OK, 434/434 id giữ nguyên |
 | E2 App 3 blocking qua MCP (preview → apply, một bước Undo) | ✅ PR #31 | Chạy thật Chromium: Python MCP → broker → App 3 Director qua (78 s); sửa MCP ghi UTF-8 trên Windows; build App 3 khớp từng byte; 434/434 id |
 | E3 App 3 chỉnh nhịp/đường cong qua MCP | ✅ PR #32 | App 3 test 81/81, Chromium MCP thật qua (84 s), build khớp từng byte, typecheck toàn workspace sạch |
+| E4 App 3 xuất BOBJ/FBX + mở/xuất gói shot qua MCP | ✅ PR #33 | Chromium MCP thật qua; App 3 92/92; build khớp từng byte |
+| E5 kịch bản "vẫy tay phải 2 lần rồi chống nạnh" qua MCP thật | ✅ PR #34 | Chạy thật: 2 chu kỳ, biên độ 50°, tay cao hơn đầu 0.34 m, cuối tay phải chống hông (cách hông 0.15 m); tay trái giữ nguyên |
 | Silhouette App 2 (nút + Shift+S + scene.render) | ✅ Claude | Bật/tắt trong Studio thật; tắt trả nguyên vật liệu; builder 559/0, Studio 107/0 |
 | G4 kịch bản AI dựng cảnh qua MCP | ✅ PR #26 | Chạy thật trên máy: MCP G1→G2→G3 + 2 ảnh render; sai số vị trí 0 m, hướng ~0°, khung 0.777 |
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
