@@ -867,7 +867,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (envelope.command.startsWith('app3.')) {
     try {
       if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed', 409)
-      const result = executeApp3Bridge(project, envelope.command, envelope.args, envelope.requestId, envelope.dryRun)
+      const result = executeApp3Bridge(project, envelope.command, envelope.args, envelope.requestId, envelope.dryRun, envelope.expectedRevision)
       const response = success(envelope.requestId, id, project.revision, result)
       if (envelope.command === 'app3.command.submit') await saveRequest(envelope, hash, response)
       return response

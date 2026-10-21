@@ -17,7 +17,18 @@
   try { parentAccessible = parent !== window && parent.location.origin === location.origin } catch {}
   const editorIdentity = () => { const c = localContext(); return JSON.stringify([c.rig, c.rootUuid, c.slot, c.activeRoot]) }
   const digest = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('')
-  const hostVisible = () => { try { return localActive && document.visibilityState !== 'hidden' && (!window.frameElement || window.frameElement.getClientRects().length > 0) } catch { return false } }
+  const hostVisible = () => {
+    try {
+      if (!localActive || document.visibilityState === 'hidden') return false
+      const frame = window.frameElement
+      if (frame && !frame.getClientRects().length) return false
+      for (let element = frame; element; element = element.parentElement) {
+        const style = element.ownerDocument.defaultView.getComputedStyle(element)
+        if (style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility) || style.contentVisibility === 'hidden' || style.opacity === '0') return false
+      }
+      return true
+    } catch { return false }
+  }
   const localContext = () => window.__studio?.director?.context() || { ready: false }
   const candidates = () => {
     const matches = []
@@ -82,7 +93,8 @@
       if (generation !== localGeneration || localLease !== lease) return
       if (['projectId', 'sessionId', 'epoch', 'characterId', 'serverInstance'].some(key => response[key] !== lease[key])) throw Error('SESSION_REPLACED')
       for (const cmd of response.commands || []) {
-        const result = await window.__studio.director.bridge().localRead(cmd, JSON.stringify([lease.projectId, lease.sessionId, lease.epoch, lease.characterId, lease.serverInstance]))
+        if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('SESSION_REPLACED') }
+        const result = await window.__studio.director.bridge().localCall(cmd, JSON.stringify([lease.projectId, lease.sessionId, lease.epoch, lease.characterId, lease.serverInstance]), { isActive: hostVisible, isShot: () => !!window.__studio.shot?.session, verify: async () => { await broker('app3.session.claim', { ...leaseArgs(lease), commandId: cmd.commandId }, lease.projectId); if (generation !== localGeneration || localLease !== lease || editorIdentity() !== loadedRig) throw Error('SESSION_REPLACED') } })
         if (generation !== localGeneration || localLease !== lease) return
         if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('SESSION_REPLACED') }
         await broker('app3.session.result', { ...leaseArgs(lease), commandId: cmd.commandId, result, context: localContext() }, lease.projectId)

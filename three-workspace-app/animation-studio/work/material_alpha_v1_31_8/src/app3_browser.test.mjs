@@ -13,7 +13,7 @@ function python(arguments_) {
  const request={jsonrpc:'2.0',id:1,method:'tools/call',params:{_meta:{'io.modelcontextprotocol/protocolVersion':'2026-07-28','io.modelcontextprotocol/clientCapabilities':{}},name:'bbs_app3_command',arguments:arguments_}};
  return new Promise((resolve,reject)=>{const child=spawn(process.env.PYTHON||'python3',['-m','agent.app3_mcp'],{cwd:workspace,env:{...process.env,BBS_APP_URL:base},stdio:['pipe','pipe','pipe']});let output='',errors='';child.stdout.on('data',x=>{output+=x});child.stderr.on('data',x=>{errors+=x});child.on('error',reject);child.on('close',status=>{try{assert.equal(status,0,errors);const response=JSON.parse(output);assert.equal(response.result.isError,false,output);resolve(response.result.structuredContent.result)}catch(e){reject(e)}});child.stdin.end(JSON.stringify(request)+'\n')});
 }
-test('Chromium: real Python MCP → authenticated broker → host bridge → Director reads', {skip:!base,timeout:180000},async()=>{
+test('Chromium: real Python MCP → authenticated broker → host bridge → Director reads', {skip:!base,timeout:300000},async()=>{
  assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/);
  const {chromium}=require('playwright');
  const {makeEmptyDraft}=await import(require.resolve('@topview/3d-builder'));
@@ -51,6 +51,56 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   const scene=await read('get_scene_context');assert.ok(scene.value.revision);
   const fresh=await read('get_animation_context');assert.equal(fresh.value.ready,true);
   assert.equal(await frame.evaluate(()=>JSON.stringify(window.__studio.serialized(false))),before,'read operations changed native project');
+  async function edit(tool,parameters={},revision,expectedOk=true){
+   const native=revision??(await read('get_animation_context')).value.revision;
+   const projectRevision=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision;
+   const submit={command:'app3.command.submit',projectId,expectedRevision:projectRevision,requestId:randomUUID(),args:{...identity,tool,parameters,expectedAnimationRevision:native}};
+   const ticket=await python(submit),duplicate=await python(submit);assert.equal(ticket.commandId,duplicate.commandId);
+   for(let n=0;n<40;n++){const result=await python({command:'app3.command.result',projectId,args:{...identity,commandId:ticket.commandId}});if(result.status==='done'){assert.equal(result.result.ok,expectedOk,JSON.stringify(result));return result.result;}await new Promise(r=>setTimeout(r,100));}throw Error('Mutation result timeout');
+  }
+  const nativeState=()=>frame.evaluate(()=>({json:JSON.stringify(window.__studio.state.project),history:window.__studio.state.historyIndex}));
+  const operations=[['create_blocking',{markers:[{id:'a',time:0,label:'Start'},{id:'z',time:2,label:'End'}]}],['set_pose',{time:0,transforms:{[expected.id]:{p:[3,0,0],q:[0,0,0,1],s:[1,1,1]}}}],['insert_breakdown',{time:1,boneIds:[expected.id],fraction:.25}],['set_marker',{markerId:'a',label:'Ready',locked:true}],['set_idea',{idea:'Preparation note'}]];
+  for(const[tool,args]of operations){
+   console.log('E2 browser checking '+tool);
+   const original=await nativeState(),stage=await edit(tool,args),patchId=stage.value.patchId,revision=stage.value.baseRevision;
+   assert.deepEqual(await nativeState(),original,tool+' staging mutated project/history');
+   assert.equal((await edit('set_idea',{idea:'Overwrite'},revision,false)).error,'PATCH_PENDING');
+   assert.equal((await edit('cancel_patch',{patchId:'wrong-patch'},revision,false)).error,'PATCH_CONFLICT');
+   for(const original of [true,false])await edit('preview_patch',{patchId,original},revision);
+   assert.deepEqual(await nativeState(),original);
+   const applied=await edit('apply_patch',{patchId},revision);assert.equal(applied.value.undoSteps,1);assert.equal((await nativeState()).history,original.history+1);
+   const changed=await nativeState();assert.notEqual(changed.json,original.json);const authored=JSON.parse(changed.json);
+   if(tool==='create_blocking'){assert.deepEqual(authored.director.markers.map(m=>m.time),[0,2]);assert.ok(Object.values(authored.keys).flat().every(k=>k.interp==='step'));}
+   if(tool==='set_pose')assert.equal(authored.keys[expected.id].find(k=>k.time===0).p[0],3);
+   if(tool==='insert_breakdown'){assert.equal(authored.keys[expected.id].find(k=>k.time===1).p[0],2.5);assert.equal(authored.director.markers.find(m=>m.time===1).kind,'breakdown');}
+   if(tool==='set_marker'){assert.equal(authored.director.markers[0].label,'Ready');assert.equal(authored.director.markers[0].locked,true);}
+   if(tool==='set_idea')assert.equal(authored.director.idea,'Preparation note');
+   // Native UI Undo/Redo proves this is the editor history, including metadata-only edits.
+   await frame.locator('#undoBtn').click();assert.deepEqual(await nativeState(),original,tool+' native Undo failed exact project restore');
+   await frame.locator('#redoBtn').click();assert.deepEqual(await nativeState(),changed);
+  }
+  const undoBefore=await nativeState(),undoStage=await edit('set_idea',{idea:'MCP undo verification'});
+  await edit('apply_patch',{patchId:undoStage.value.patchId},undoStage.value.baseRevision);
+  assert.equal((await nativeState()).history,undoBefore.history+1);
+  await edit('undo_animation');assert.deepEqual(await nativeState(),undoBefore,'MCP Undo did not restore exact native project/history');
+  const cancelBefore=await nativeState(),cancel=await edit('set_idea',{idea:'cancelled'});await edit('cancel_patch',{patchId:cancel.value.patchId},cancel.value.baseRevision);assert.deepEqual(await nativeState(),cancelBefore);
+  const stale=await edit('set_idea',{idea:'stale candidate'}),staleRevision=stale.value.baseRevision;
+  // A real native UI edit changes the revision after staging.
+  await frame.locator('#duration').evaluate(input=>{input.value='3';input.dispatchEvent(new Event('change',{bubbles:true}));});
+  assert.equal((await edit('apply_patch',{patchId:stale.value.patchId},staleRevision,false)).error,'REVISION_CONFLICT');
+  const staleJson=await nativeState();assert.equal((await edit('cancel_patch',{patchId:stale.value.patchId},staleRevision,false)).error,'REVISION_CONFLICT');
+  assert.equal((await edit('cancel_patch',{patchId:stale.value.patchId},undefined,false)).error,'PATCH_CONFLICT');assert.deepEqual(await nativeState(),staleJson);
+  assert.equal((await read('get_animation_context')).value.preview,null,'native UI commit must invalidate pending candidate');
+  await frame.locator('#undoBtn').click();
+  const current=(await read('get_animation_context')).value;
+  if(current.preview)await edit('cancel_patch',{patchId:current.preview.id},current.revision);
+  await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/2 Scene/}).click();
+  await new Promise(r=>setTimeout(r,1200));
+  const inactiveRevision=(await read('get_animation_context')).value.revision;
+  const inactiveProject=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision;
+  const inactive=await request.post(base+'/api/unified/commands',{headers,data:{requestId:randomUUID(),command:'app3.command.submit',projectId,expectedRevision:inactiveProject,args:{...identity,tool:'set_idea',parameters:{idea:'hidden'},expectedAnimationRevision:inactiveRevision}}});assert.equal((await inactive.json()).error.code,'APP3_INACTIVE');
+  await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
+  console.log('E2 runtime: all five staged tools immutable; preview/pending/wrong cancel; duplicate apply + exactly one native Undo/Redo; stale UI revision and inactive rejection PASS');
   const second=await command('character.add',{assetId,skeletonId,name:'Shared asset second'},projectId);
   await page.reload();await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
   await page.locator('.wb-animation-creation-frame').waitFor();

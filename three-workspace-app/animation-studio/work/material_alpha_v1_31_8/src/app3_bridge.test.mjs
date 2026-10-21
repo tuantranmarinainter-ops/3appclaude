@@ -1,3 +1,4 @@
+import './app3_director.test.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -11,7 +12,7 @@ const require = createRequire(new URL('../../../../editor/apps/studio/package.js
 const ts = require('typescript');
 const source = readFileSync(new URL('../../../../editor/apps/studio/src/app3Bridge.ts', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { executeApp3Bridge: execute, app3BindingCandidates, validateApp3Read } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
+const { executeApp3Bridge: execute, app3BindingCandidates, validateApp3Read, validateApp3Edit } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
 const sha = 'a'.repeat(64);
 function project() { const id = randomUUID(), characterId = randomUUID(), assetId = randomUUID(); return { projectId: id, characters: { [characterId]: { id: characterId, assetId } }, assets: { [assetId]: { source: { sha256: sha } } }, motions: {}, bindings: {} }; }
 function register(p, extra={}) { const args = { sessionId: randomUUID(), epoch: randomUUID(), characterId: Object.keys(p.characters)[0], sourceSha256: sha, ready: true, active: true, context: { ready: true }, ...extra }; return execute(p, 'app3.session.register', args, randomUUID()); }
@@ -120,4 +121,23 @@ test('queue timeout distinguishes unsent and dispatched results, and heartbeat e
 test('Python App3 MCP suite is part of the existing App3 test:all entry',()=>{
  const child=spawnSync(process.env.PYTHON||(process.platform==='win32'?'python':'python3'),['-m','unittest','-v','agent.app3_mcp_test'],{cwd:workspace,encoding:'utf8'});
  assert.equal(child.status,0,child.stdout+child.stderr);assert.match(child.stderr,/Ran [1-9]\d* tests/);
+});
+
+test('mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools',()=>{
+ for(const value of [null,[],{idea:'x',unknown:true}])assert.throws(()=>validateApp3Edit('set_idea',value),error=>error.code==='VALIDATION_FAILED'&&error.status===400);
+ const p=project();p.revision=7;const l=register(p),id=identity(l),r=receiver(l),a={...id,tool:'set_idea',parameters:{idea:'candidate'},expectedAnimationRevision:'native:7'};
+ const edit=(args=a,rev=7)=>execute(p,'app3.command.submit',args,randomUUID(),false,rev);
+ assert.throws(()=>execute(p,'app3.command.submit',a,randomUUID()),/VALIDATION_FAILED/);
+ assert.throws(()=>edit(a,'7'),/VALIDATION_FAILED/);
+ assert.throws(()=>edit({...a,expectedAnimationRevision:7}),/VALIDATION_FAILED/);
+ const t=edit();const poll=()=>call(p,'app3.session.poll',{...r,ready:true,active:true,context:{ready:true}});
+ assert.equal(poll().commands[0].projectRevision,7);p.revision=8;
+ assert.equal(poll().commands[0].commandId,t.commandId,'lost poll retries same ticket');
+ assert.throws(()=>call(p,'app3.session.claim',{...r,commandId:t.commandId}),/REVISION_CONFLICT/);
+ const capabilities=call(p,'app3.session.list',{}).sessions[0].capabilities;
+ for(const tool of ['create_blocking','set_pose','insert_breakdown','set_marker','set_idea','apply_patch'])assert.ok(capabilities.includes(tool));
+ for(const tool of ['export_animation','preview_scene_patch','set_hold','edit_curves'])assert.ok(!capabilities.includes(tool));
+ const queued=execute(p,'app3.command.submit',a,randomUUID(),false,8);p.revision=9;
+ call(p,'app3.session.result',{...r,commandId:t.commandId,result:{ok:false,error:'REVISION_CONFLICT'},context:{}});
+ poll();assert.equal(call(p,'app3.command.result',{...id,commandId:queued.commandId}).result.error,'REVISION_CONFLICT');
 });
