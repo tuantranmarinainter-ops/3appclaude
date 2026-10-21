@@ -19,6 +19,7 @@ import {
   buildPreset, DEFAULT_ARMATURE, describeSource, inspect, parseFamily, parseOptions, runPipeline, sha256, UserError,
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
+import { steveAvailable, steveClips, steveFiles, steveMesh } from './steve.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
@@ -197,6 +198,15 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     let match: RegExpMatchArray | null
     if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/file$/))) return sendFile(res, getTarget(match[1]).path, MIME['.glb'])
     if (method === 'POST' && path === '/api/sources') return handleSources(req, res)
+    // Steve (Minecraft20 preview model): local asset outside the repo, see steve.ts.
+    if (method === 'GET' && path === '/api/steve') {
+      if (!steveAvailable()) return json(res, 200, { available: false, dir: steveFiles().dir })
+      return json(res, 200, { available: true, dir: steveFiles().dir, textureUrl: '/api/steve/texture', mesh: steveMesh() })
+    }
+    if (method === 'GET' && path === '/api/steve/texture') {
+      if (!steveAvailable()) return fail(res, 404, 'Steve assets not found')
+      return sendFile(res, steveFiles().texture, MIME['.png'])
+    }
     if (method === 'GET' && (match = path.match(/^\/api\/sources\/(\w+)\/file$/))) {
       const record = getSource(match[1])
       if (record.format === 'gltf') return sendBytes(res, viewerGlb(record), MIME['.glb'])
@@ -226,6 +236,12 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const state = runs.get(match[1]!)
       if (!state) return fail(res, 404, 'Unknown runId')
       return json(res, 200, runView(state))
+    }
+    if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/steve$/))) {
+      const state = runs.get(match[1]!), file = state?.result?.files.find((item) => item.kind === 'bobj')
+      if (!state || !file) return fail(res, 404, 'This run has no Minecraft20 .bobj')
+      if (!steveAvailable()) return fail(res, 404, `Steve assets not found in ${steveFiles().dir}`)
+      return json(res, 200, { clips: steveClips(readFileSync(join(state.dir, file.name), 'utf8')) })
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/files\/([^/]+)$/))) {
       const state = runs.get(match[1]!)

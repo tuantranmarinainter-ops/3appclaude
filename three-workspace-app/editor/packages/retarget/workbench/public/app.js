@@ -254,11 +254,25 @@ function renderTargets() {
 function setMc20(on) {
   if (!!state.mc20 === on) return
   state.mc20 = on
+  // Switching the view never touches the options (that would mark the result stale); only a missing .bobj output is turned on.
   const box = $('optionsForm').elements.bobj
-  box.checked = on
-  box.dispatchEvent(new Event('change', { bubbles: true }))
+  if (on && !box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })) }
   renderTargets()
-  if (on) toast('Đã chọn Minecraft 20: chạy sẽ xuất thêm .bobj (xem tab Minecraft20). GLB vẫn dùng nhân vật Mixamo đang chọn.', 'ok')
+  $('rightCaption').textContent = on ? 'Kết quả trên Steve (Minecraft 20, .bobj)' : 'Kết quả trên nhân vật đích'
+  if (!on) { viewer.hideSteve(); setOverlay('right', ''); if (state.selected !== undefined) selectAction(state.selected); return }
+  showSteveResult()
+}
+/** Steve in the right pane; with a run that wrote a .bobj, its Actions play on him (the GLB still uses the Mixamo character). */
+async function showSteveResult() {
+  setOverlay('right', 'Đang tải Steve…')
+  try {
+    await viewer.showSteve()
+    const run = state.result?.files?.some((file) => file.kind === 'bobj') ? state.result.runId : null
+    if (run) await viewer.loadSteveClips(run)
+    setOverlay('right', '')
+    if (!run) toast('Đã nạp Steve (Minecraft 20). Bấm "Chạy chuẩn hoá" để xuất .bobj và phát animation trên Steve.', 'ok')
+  } catch (error) { setOverlay('right', `Không tải được Steve: ${error.message}`, true) }
+  if (state.selected !== undefined) selectAction(state.selected)
 }
 async function chooseTarget(target) {
   if (state.target?.id === target.id) return
@@ -441,6 +455,7 @@ async function finishRun(result, options) {
   if (glb) {
     setOverlay('right', 'Đang tải GLB kết quả vào viewer…')
     try { await viewer.loadResult(glb.url, report.model || result.manifest?.glb?.mode === 'model' ? 'model' : 'animation'); setOverlay('right', '') } catch (error) { setOverlay('right', `Không phát được GLB kết quả: ${error.message}`, true) }
+    if (state.mc20) await showSteveResult()
     const first = report.roundtrip?.primaryAction ?? manifestActions[0]?.sourceActionIndex ?? state.selected ?? 0
     selectAction(first)
   } else setOverlay('right', `Không có GLB: ${result.status}${report.blocker ? ` — ${report.blocker.code}` : ''}`)

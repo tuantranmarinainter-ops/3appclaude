@@ -158,6 +158,42 @@ export function retargetTrackNames(clip, scene) {
   return { clip: new THREE.AnimationClip(clip.name, clip.duration, tracks), bound, total: tracks.length }
 }
 
+/** BOBJ bone names contain dots (`low_left_arm.end`), which three.js track paths cannot address. */
+const steveNode = (name) => `steve_${name.replace(/[^\w]/g, '_')}`
+
+/** Steve SkinnedMesh from the server's mesh data (bind = rest world; vertices are in rest world space). */
+export async function buildSteve(data, textureUrl) {
+  const group = new THREE.Group()
+  const bones = data.bones.map((bone) => {
+    const node = new THREE.Bone(); node.name = steveNode(bone.name)
+    new THREE.Matrix4().fromArray(bone.restLocal).decompose(node.position, node.quaternion, node.scale)
+    return node
+  })
+  data.bones.forEach((bone, index) => { const parent = data.bones.findIndex((other) => other.name === bone.parent); (parent >= 0 ? bones[parent] : group).add(bones[index]) })
+  group.updateMatrixWorld(true)
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.uvs, 2))
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(data.skinIndices, 4))
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(data.skinWeights, 4))
+  geometry.computeVertexNormals()
+  const texture = await new THREE.TextureLoader().loadAsync(textureUrl)
+  texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter; texture.colorSpace = THREE.SRGBColorSpace
+  const mesh = new THREE.SkinnedMesh(geometry, new THREE.MeshLambertMaterial({ map: texture, side: THREE.DoubleSide, alphaTest: 0.5 }))
+  mesh.bind(new THREE.Skeleton(bones), new THREE.Matrix4())
+  group.add(mesh)
+  return group
+}
+
+/** Server clip JSON (per-tick bone-local tracks) → AnimationClips addressing the Steve bones. */
+export function steveClips(clips) {
+  return clips.map((clip) => new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.flatMap((track) => [
+    new THREE.VectorKeyframeTrack(`${steveNode(track.bone)}.position`, clip.times, track.position),
+    new THREE.QuaternionKeyframeTrack(`${steveNode(track.bone)}.quaternion`, clip.times, track.quaternion),
+    new THREE.VectorKeyframeTrack(`${steveNode(track.bone)}.scale`, clip.times, track.scale),
+  ])))
+}
+
 export class Viewer {
   constructor(leftHost, rightHost, onFrame) {
     this.left = new Pane(leftHost)
@@ -200,13 +236,14 @@ export class Viewer {
     this.targetScene = (await loadModel(url, 'glb')).scene
     this.result = null
     this.renamed.clear()
-    this.right.setModel(this.targetScene)
+    if (!this.steveMode) this.right.setModel(this.targetScene)
   }
 
   async loadResult(url, mode) {
     const loaded = await loadModel(url, 'glb')
     this.result = { mode, animations: loaded.animations, scene: loaded.scene }
     this.renamed.clear()
+    if (this.steveMode) return
     if (mode === 'model') this.right.setModel(loaded.scene)
     else if (this.targetScene) this.right.setModel(this.targetScene)
   }
@@ -214,8 +251,34 @@ export class Viewer {
   clearResult() {
     this.result = null
     this.renamed.clear()
-    if (this.targetScene) this.right.setModel(this.targetScene)
+    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene) }
+    else if (this.targetScene) this.right.setModel(this.targetScene)
     this.right.setClip(null)
+  }
+
+  /** Right pane shows Steve (Minecraft20) instead of the Mixamo target; clips come later from a run's .bobj. */
+  async showSteve() {
+    if (!this.steve) {
+      const info = await (await fetch('/api/steve')).json()
+      if (!info.available) throw new Error(`Chưa có mô hình Steve. Đặt default_simple.bobj và steve.png vào ${info.dir}`)
+      this.steve = { scene: await buildSteve(info.mesh, info.textureUrl), clips: [] }
+    }
+    this.steveMode = true
+    this.right.setModel(this.steve.scene)
+  }
+
+  /** Back to the Mixamo target (and its GLB result, if any). */
+  hideSteve() {
+    this.steveMode = false
+    if (this.result?.mode === 'model') this.right.setModel(this.result.scene)
+    else if (this.targetScene) this.right.setModel(this.targetScene)
+  }
+
+  async loadSteveClips(runId) {
+    const response = await fetch(`/api/runs/${runId}/steve`)
+    const body = await response.json()
+    if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`)
+    this.steve.clips = steveClips(body.clips)
   }
 
   /** Plays source Action `sourceIndex` (left) and GLB animation `glbIndex` (right, if a result exists). Returns binding facts for the UI. */
@@ -223,7 +286,12 @@ export class Viewer {
     const sourceClip = sourceIndex === null || sourceIndex === undefined ? null : this.source?.animations[sourceIndex] ?? null
     this.left.setClip(sourceClip)
     let rightInfo = null
-    if (this.result && glbIndex !== null && glbIndex !== undefined && this.result.animations[glbIndex]) {
+    if (this.steveMode) {
+      // .bobj Actions follow the GLB animation order (exportMinecraft20 walks the GLB), so glbIndex addresses both.
+      const clip = glbIndex === null || glbIndex === undefined ? null : this.steve?.clips[glbIndex] ?? null
+      this.right.setClip(clip)
+      if (clip) rightInfo = { bound: clip.tracks.length, total: clip.tracks.length }
+    } else if (this.result && glbIndex !== null && glbIndex !== undefined && this.result.animations[glbIndex]) {
       const raw = this.result.animations[glbIndex]
       if (this.result.mode === 'model') { this.right.setClip(raw); rightInfo = { bound: raw.tracks.length, total: raw.tracks.length } }
       else {
