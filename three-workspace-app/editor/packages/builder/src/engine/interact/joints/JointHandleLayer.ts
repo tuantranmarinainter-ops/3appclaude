@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { EDITOR_LAYER } from '../../core/Layers'
-import { JOINT_HANDLE_SPECS, resolveHandleBones, type JointHandleSpec } from './jointPosing'
+import { JOINT_HANDLE_SPECS, extraJointHandleSpecs, resolveHandleBones, type JointHandleSpec } from './jointPosing'
 import type { PoseCanonicalKey } from '../../rig/applyPose'
 
 const IDLE = 0xb3b3b3
@@ -12,24 +12,27 @@ export class JointHandleLayer {
   private readonly geometry = new THREE.SphereGeometry(0.5, 16, 12)
   private readonly ray = new THREE.Raycaster()
 
+  private currentRoot: THREE.Object3D | null = null
+
+  spec(id: string, root?: THREE.Object3D): JointHandleSpec | undefined {
+    const specs = root ? [...JOINT_HANDLE_SPECS, ...extraJointHandleSpecs(root)] : this.handles.map(handle => handle.userData.spec as JointHandleSpec)
+    return specs.find(spec => spec.id === id)
+  }
+
+  private makeHandle(spec: JointHandleSpec) {
+    const material = new THREE.MeshBasicMaterial({ color: IDLE, transparent: true, opacity: 0.8, depthTest: false, depthWrite: false })
+    const mesh = new THREE.Mesh(this.geometry, material)
+    mesh.renderOrder = 1000
+    mesh.userData.spec = spec
+    mesh.layers.set(EDITOR_LAYER)
+    this.group.add(mesh)
+    return mesh
+  }
+
   constructor() {
     this.group.name = 'stage-joint-handles'
     this.group.visible = false
-    this.handles = JOINT_HANDLE_SPECS.map((spec) => {
-      const material = new THREE.MeshBasicMaterial({
-        color: IDLE,
-        transparent: true,
-        opacity: 0.8,
-        depthTest: false,
-        depthWrite: false,
-      })
-      const mesh = new THREE.Mesh(this.geometry, material)
-      mesh.renderOrder = 1000
-      mesh.userData.spec = spec
-      mesh.layers.set(EDITOR_LAYER)
-      this.group.add(mesh)
-      return mesh
-    })
+    this.handles = JOINT_HANDLE_SPECS.map((spec) => this.makeHandle(spec))
     this.group.traverse((obj) => obj.layers.set(EDITOR_LAYER))
   }
 
@@ -64,9 +67,14 @@ export class JointHandleLayer {
   ): void {
     this.group.visible = Boolean(canonical && restPose && root)
     if (!canonical || !restPose || !root) return
+    if (this.currentRoot !== root) {
+      for (const handle of this.handles.splice(JOINT_HANDLE_SPECS.length)) { handle.removeFromParent(); handle.material.dispose() }
+      this.handles.push(...extraJointHandleSpecs(root).map(spec => this.makeHandle(spec)))
+      this.currentRoot = root
+    }
     root.updateWorldMatrix(true, true)
-    this.handles.forEach((handle, index) => {
-      const bones = resolveHandleBones(JOINT_HANDLE_SPECS[index], canonical, restPose)
+    this.handles.forEach((handle) => {
+      const bones = resolveHandleBones(handle.userData.spec as JointHandleSpec, canonical, restPose)
       handle.visible = Boolean(bones)
       if (!bones) return
       bones.tip.getWorldPosition(handle.position)

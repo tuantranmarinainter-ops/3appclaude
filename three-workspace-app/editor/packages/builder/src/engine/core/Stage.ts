@@ -55,7 +55,6 @@ import { beginJointDrag, updateJointDrag, type JointDrag } from '../interact/joi
 import { JointHandleLayer } from '../interact/joints/JointHandleLayer'
 import {
   applyRelativeJoint,
-  JOINT_HANDLE_SPECS,
   relativeToAbsoluteEuler,
 } from '../interact/joints/jointPosing'
 import { MIXAMORIG_TO_UAL1 } from '../../evaluate/retarget/RetargetMap'
@@ -334,8 +333,9 @@ export class Stage implements DirectorEngine, PathViewHost {
 
   poseJointBegin(nodeId: string, specId: string, ndcX: number, ndcY: number): boolean {
     const ch = this.characters.get(nodeId)
-    const spec = JOINT_HANDLE_SPECS.find((item) => item.id === specId)
-    if (!ch || !spec) return false
+    if (!ch) return false
+    const spec = this.joints.spec(specId, ch.root)
+    if (!spec) return false
     const canonical = findCanonicalBones(ch.root, ch.rig === 'ual1' ? ual1PoseName : undefined)
     const forward = new THREE.Vector3(0, 0, spec.id.startsWith('wrist') ? -1 : 1)
       .applyQuaternion(ch.root.getWorldQuaternion(new THREE.Quaternion()))

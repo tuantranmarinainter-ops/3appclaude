@@ -285,7 +285,8 @@ export class CharacterAnimator {
     if (this.activeClipId === clipId && !loop) { action.reset(); action.play() }
     if (this.activeClipId !== clipId) {
       for (const [id, a] of this.actions) {
-        if (id !== clipId && a.isRunning()) a.stop()
+        // Finished clamped actions still own bindings (including extra joints).
+        if (id !== clipId) a.stop()
       }
       action.reset()
       action.play()
