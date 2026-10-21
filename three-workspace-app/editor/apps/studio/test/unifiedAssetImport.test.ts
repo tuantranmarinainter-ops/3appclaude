@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -1130,7 +1130,7 @@ test('asset.relink restores missing immutable bytes only when the content hash m
   assert.equal((await readUnifiedProject(projectId)).revision, 2)
 })
 
-test('Mixamo FBX import persists its source skeleton and clip motion', { skip: !process.env.BBS_TEST_MIXAMO_FBX }, async () => {
+test('Mixamo FBX import persists its source skeleton and clip motion', { skip: process.env.BBS_TEST_MIXAMO_FBX && existsSync(process.env.BBS_TEST_MIXAMO_FBX) ? false : 'External FBX fixture missing; set BBS_TEST_MIXAMO_FBX to an existing file' }, async () => {
   const created = await executeUnifiedCommand({
     requestId: randomUUID(), command: 'project.create',
     args: { name: 'Mixamo FBX import test', scene: makeEmptyDraft('Mixamo FBX import test', 30, 90, { fov: 50, position: { x: 1, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 } }) },

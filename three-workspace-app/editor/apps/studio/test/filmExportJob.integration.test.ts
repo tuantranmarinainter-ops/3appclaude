@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
@@ -11,7 +12,7 @@ import { sampleProjectFilm } from '../src/unifiedFilmSampling.ts'
 const sourcePath = process.env.BBS_FILM_E2E_FBX
 const sourceBasis = [1, 0, 0, 0, 0, 1, 0, -1, 0]
 
-test('film.export converts animated project Characters and reads back a native Film ZIP', { skip: !sourcePath }, async () => {
+test('film.export converts animated project Characters and reads back a native Film ZIP', { skip: sourcePath && existsSync(sourcePath) ? false : 'External FBX fixture missing; set BBS_FILM_E2E_FBX to an existing file' }, async () => {
   const bytes = await readFile(sourcePath!)
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: {
     name: 'Film export integration', scene: makeEmptyDraft('Film export integration', 30, 29, { fov: 50, position: { x: 1, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } }),
