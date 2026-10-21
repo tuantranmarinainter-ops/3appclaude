@@ -56,6 +56,9 @@ test('App 1 import keeps Action UUIDs, manifest and rejects broken identity/hash
   const zero = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'scene.evaluate', args: { frame: 0 } })
   const middle = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'scene.evaluate', args: { frame: 15 } })
   assert.deepEqual(middle.result.issues, [])
+  // C2: the browser MotionPlayer only uses GLTFLoader for `format=glb` URLs (App 1 Motions are GLB, not FBX).
+  const placed = (await readUnifiedProject(projectId)).scene.content.timeline.animation.motionClips[0]!
+  assert.match(placed.motion.url, /format=glb/)
   assert.notDeepEqual(middle.result.skeletonSamples, zero.result.skeletonSamples)
 
 })

@@ -54,7 +54,8 @@ export function preflightProjectFilm(project: UnifiedProject, args: FilmSampling
     const asset = project.assets[character.assetId]!
     if (node.metadata?.rig !== 'direct' || node.character?.animation?.posePresetId) fail('Film sampling requires an imported direct rig without an unresolved library pose')
     if (!['application/vnd.autodesk.fbx', 'model/gltf-binary'].includes(asset.source.mediaType)) fail('Film model conversion currently requires FBX or GLB source bytes')
-    if (profile.bones.length > 512 || profile.bones.some((bone) => !/^[A-Za-z0-9_.-]{1,128}$/.test(bone.name))) fail('Film model bone names or count exceed the BOBJ worker profile')
+    // ':' is allowed: GLB Mixamo rigs keep `mixamorig:Hips`, and the Blender converter maps such names to safe BOBJ IDs (safe_bone_names).
+    if (profile.bones.length > 512 || profile.bones.some((bone) => !/^[A-Za-z0-9_.:-]{1,128}$/.test(bone.name))) fail('Film model bone names or count exceed the BOBJ worker profile')
     if (profile.metersPerUnit !== node.metadata?.modelUnitMeters) fail('Film Character units disagree with its Skeleton Profile')
     boneCount += profile.bones.length
     return { characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
