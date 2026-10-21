@@ -11,7 +11,8 @@
     "lint": "eslint . && pnpm check:locales",
     "check:locales": "node scripts/check-locales.cjs",
     "test:evaluate": "pnpm --filter @topview/3d-builder test:evaluate",
-    "generate:golden": "pnpm --filter @topview/3d-builder generate:golden"
+    "generate:golden": "pnpm --filter @topview/3d-builder generate:golden",
+    "test:all": "node scripts/test-all.mjs"
   },
   "devDependencies": {
     "eslint": "8.57.1",
@@ -22,5 +23,12 @@
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

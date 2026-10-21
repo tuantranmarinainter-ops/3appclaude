@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Select pnpm from packageManager (legacy fallback)
+        id: pnpm
+        working-directory: three-workspace-app/editor
+        run: |
+          node -e "const p = require('./package.json').packageManager || 'pnpm@10.14.0'; if (!/^pnpm@/.test(p)) throw new Error('Expected pnpm packageManager'); require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + p.slice(5) + '\n')"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.pnpm.outputs.version }}
+          package_json_file: three-workspace-app/editor/package.json
+      - name: Install, build and run all gates and tests
+        working-directory: three-workspace-app/editor
+        run: pnpm test:all
+      - name: Upload test counts and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: three-workspace-app/editor/.test-results/
+          include-hidden-files: true
+          if-no-files-found: warn
