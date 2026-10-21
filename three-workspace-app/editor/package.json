@@ -10,6 +10,7 @@
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint . && pnpm check:locales",
     "check:locales": "node scripts/check-locales.cjs",
+    "test:all": "node scripts/test-all.mjs",
     "test:evaluate": "pnpm --filter @topview/3d-builder test:evaluate",
     "generate:golden": "pnpm --filter @topview/3d-builder generate:golden"
   },
@@ -18,6 +19,9 @@
     "eslint-config-next": "15.1.9",
     "tsup": "8.0.1",
     "typescript": "5.3.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "unrs-resolver"]
   },
   "engines": {
     "node": ">=18.0.0",
