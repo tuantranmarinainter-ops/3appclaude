@@ -139,7 +139,7 @@ test('shot.export creates a two-character ZIP accepted by TS and Python validato
   assert.throws(()=>unzipPackage(Buffer.from('broken zip')))
 })
 
-test('Result round trip creates a new Motion and placement in one Undo step; stale revision fails', async () => {
+for (const constant of [false,true]) test(`Result round trip (${constant ? 'constant' : 'dynamic'} placement) and layout preserve atomic history`, async () => {
   const {getUnifiedJob,readUnifiedJobFile}=await import('../src/unifiedJobs')
   const {unzipPackage,zipPackage,jsonBytes,sha256,validateResult}=await import('../src/shotPackage')
   const fixture=await shotFixture()
@@ -152,7 +152,7 @@ test('Result round trip creates a new Motion and placement in one Undo step; sta
   const edited=Buffer.concat([originalBytes.subarray(0,12),Buffer.alloc(8),padded,originalBytes.subarray(20+length)])
   edited.writeUInt32LE(edited.length,8);edited.writeUInt32LE(padded.length,12);edited.writeUInt32LE(0x4e4f534a,16)
   const id=randomUUID(),newManifest={...manifest,glbSha256:sha256(edited),actions:[{...manifest.actions[0],uuid:id,originalActionUuid:character.actionUuid}]}
-  const result={version:'1.0.0',shotId:shot.shotId,baseShotSha256:sha256(shotFiles['shot.json']!),edits:[{characterId:character.characterId,originalActionUuid:character.actionUuid,newActionUuid:id,glb:'edited.glb',manifest:'edited.manifest.json',glbSha256:sha256(edited),placementKeys:[{frame:0,position:[3,0,0],yawDegrees:45},{frame:fixture.frameEnd,position:[4,0,0],yawDegrees:90}]}]}
+  const result={version:'1.0.0',shotId:shot.shotId,baseShotSha256:sha256(shotFiles['shot.json']!),edits:[{characterId:character.characterId,originalActionUuid:character.actionUuid,newActionUuid:id,glb:'edited.glb',manifest:'edited.manifest.json',glbSha256:sha256(edited),placementKeys:[{frame:0,position:[3,0,0],yawDegrees:45},{frame:fixture.frameEnd,position:[constant?3:4,0,0],yawDegrees:constant?45:90}]}]}
   const files={'result.json':jsonBytes(result),'edited.glb':edited,'edited.manifest.json':jsonBytes(newManifest)}
   assert.deepEqual(validateResult(files,shotFiles),[])
   const staged=await upload(Buffer.from(zipPackage(files)),'result.zip')
@@ -167,6 +167,43 @@ test('Result round trip creates a new Motion and placement in one Undo step; sta
   const evaluated=await executeUnifiedCommand({requestId:randomUUID(),projectId:fixture.projectId,command:'scene.evaluate',args:{frame:0}})
   const node=after.characters[character.characterId]!.nodeId
   assert.equal((evaluated.result.transforms as any)[node].position.x,3)
+  const layoutArgs={frame:Math.floor(fixture.frameEnd/2),placements:[{characterId:character.characterId,position:{x:1,z:2},lookAt:{point:{x:2,z:2}}}]}
+  if (constant) {
+    const preview=await fixture.send('scene.layout.preview',layoutArgs)
+    assert.deepEqual(await readUnifiedProject(fixture.projectId),after)
+    const applied=await fixture.send('scene.layout.apply',layoutArgs)
+    assert.equal(applied.revision,after.revision+1)
+    const placed=await readUnifiedProject(fixture.projectId)
+    const expected=(preview.result.placements as any[])[0].transform
+    let maxPositionError=0,maxYawError=0
+    for(const frame of [0,Math.floor(fixture.frameEnd/2),fixture.frameEnd]) {
+      const read=await fixture.send('scene.evaluate',{frame})
+      const actual=(read.result.transforms as any)[node]
+      maxPositionError=Math.max(maxPositionError,Math.hypot(actual.position.x-expected.position.x,actual.position.y-expected.position.y,actual.position.z-expected.position.z))
+      maxYawError=Math.max(maxYawError,Math.abs(actual.rotation.y-90))
+      assert.ok(maxPositionError<=0.01)
+      assert.ok(maxYawError<=1)
+    }
+    await fixture.send('history.undo',{})
+    const undo=await readUnifiedProject(fixture.projectId)
+    assert.deepEqual(undo.scene,after.scene);assert.deepEqual(undo.extensions,after.extensions)
+    await fixture.send('history.redo',{})
+    const redo=await readUnifiedProject(fixture.projectId)
+    assert.deepEqual(redo.scene,placed.scene);assert.deepEqual(redo.extensions,placed.extensions)
+    await fixture.send('history.undo',{})
+    console.log(`G2b imported constant placement: maximum position error ${maxPositionError} m; maximum yaw error ${maxYawError} degrees at start/middle/end; Undo/Redo exact`)
+  } else {
+    await assert.rejects(fixture.send('scene.layout.apply',layoutArgs),/Dynamic placement/)
+    assert.deepEqual(await readUnifiedProject(fixture.projectId),after)
+    const frame=Math.floor(fixture.frameEnd/2)
+    const reference=await fixture.send('scene.evaluate',{frame})
+    const position=(reference.result.transforms as any)[node].position
+    const readOnly=await fixture.send('scene.layout.preview',{frame,placements:[{characterId:fixture.characters[1],relativeTo:character.characterId,relation:'left',distanceMeters:2,lookAt:{characterId:character.characterId}}]})
+    const transform=(readOnly.result.placements as any[])[0].transform
+    assert.ok(Math.abs(transform.position.x-(position.x-2))<0.01)
+    assert.ok(Math.abs(transform.rotation.y-90)<1)
+    assert.deepEqual(await readUnifiedProject(fixture.projectId),after)
+  }
   await fixture.send('history.undo',{})
   const undone=await readUnifiedProject(fixture.projectId)
   assert.deepEqual(undone.motions,before.motions);assert.deepEqual(undone.scene,before.scene);assert.deepEqual(undone.extensions,before.extensions)

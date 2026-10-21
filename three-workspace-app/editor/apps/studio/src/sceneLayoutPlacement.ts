@@ -1,5 +1,7 @@
+import { constantPlacementKeys,updateConstantPlacementKeys } from './constantPlacementKeys'
+import { projectEvaluationScene } from './unifiedSkeletonEvaluation'
 import { Matrix4, Quaternion, Vector3 } from 'three'
-import { sceneBasisMatrix } from '@topview/3d-builder/evaluate'
+import { sceneBasisMatrix,createFrameSnapshot,evaluateFrame } from '@topview/3d-builder/evaluate'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 
 export const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -29,13 +31,13 @@ export function characterNode(project: UnifiedProject, id: unknown) {
   if (!node) throw new TypeError(`Character not found: ${id}`)
   return node
 }
-export function requireStaticPlacement(project: UnifiedProject, nodeId: string, writing = true) {
+export function requireStaticPlacement(project: UnifiedProject, nodeId: string, writing = true, evaluated?: UnifiedProject['scene']['content']['nodes'][number]['transform']) {
+  if(!writing)return
   const node = project.scene.content.nodes.find(n => n.id === nodeId)!
   if (writing && node.locked || node.parentId) throw new TypeError('Layout edits require unlocked, unparented nodes')
-  if (node.type === 'character' && (Math.abs(node.transform.rotation.x)>1e-6 || Math.abs(node.transform.rotation.z)>1e-6 || Object.values(node.transform.scale).some(v=>v<=0))) throw new TypeError('Layout requires upright characters with positive scale')
-  const curves = project.extensions.topview?.fcurves
-  // Existing motion is retained, but transform animation could override an authored placement.
-  if (curves && JSON.stringify(curves).includes(JSON.stringify(nodeId))) throw new TypeError('Layout edits do not overwrite existing transform keys')
+  const transform=evaluated??node.transform
+  if (node.type === 'character' && (Math.abs(transform.rotation.x)>1e-6 || Math.abs(transform.rotation.z)>1e-6 || Object.values(transform.scale).some(v=>v<=0))) throw new TypeError('Layout requires upright characters with positive scale')
+  constantPlacementKeys(project,nodeId)
   const animation = project.scene.content.timeline.animation
   if (animation.motionClips.some(c => c.target.nodeId === nodeId && c.motion.rootMotion?.policy === 'trajectory') ||
       animation.cameraMotionClips.some(c => c.target.nodeId === nodeId) ||
@@ -53,20 +55,23 @@ export function bodyDimensions(project: UnifiedProject, nodeId: string) {
 }
 
 /** World axes: left=-X, front=+Z. Distances are horizontal centre-to-centre meters. */
-export function previewCharacterLayout(project: UnifiedProject, args: Record<string, unknown>) {
-  fields(args,['placements'])
+export function previewCharacterLayout(project: UnifiedProject, args: Record<string, unknown>, world?: Map<string,{position:{x:number;y:number;z:number}}>) {
+  fields(args,['placements','frame'])
+  const timeline=project.scene.content.timeline,frame=args.frame===undefined?timeline.frameStart:args.frame
+  if(typeof frame!=='number'||!Number.isFinite(frame)||frame<timeline.frameStart||frame>timeline.frameEnd)throw new TypeError('Invalid layout frame')
+  const snapshot=createFrameSnapshot();evaluateFrame(projectEvaluationScene(project),frame,snapshot)
   if (!Array.isArray(args.placements) || !args.placements.length || args.placements.length > 32) throw new TypeError('placements must contain 1–32 edits')
   const edits = new Map<string, Record<string, unknown>>()
   for (const value of args.placements) {
     if (!record(value)) throw new TypeError('Invalid placement')
     fields(value,['characterId','position','relativeTo','relation','distanceMeters','lookAt'])
-    const node = characterNode(project,value.characterId); requireStaticPlacement(project,node.id)
+    const node = characterNode(project,value.characterId); requireStaticPlacement(project,node.id,true,snapshot.transforms.get(node.id))
     if (edits.has(node.id)) throw new TypeError('Duplicate character placement')
     if (value.position !== undefined && value.relativeTo !== undefined) throw new TypeError('Choose position or relativeTo')
     if (value.relativeTo === undefined && (value.relation !== undefined || value.distanceMeters !== undefined)) throw new TypeError('Relative placement requires relativeTo')
     edits.set(node.id,value)
   }
-  const transforms = new Map(project.scene.content.nodes.filter(n => n.type === 'character').map(n => [n.id,structuredClone(n.transform)]))
+  const transforms = new Map(project.scene.content.nodes.filter(n => n.type === 'character').map(n => [n.id,{...structuredClone(n.transform),...structuredClone(snapshot.transforms.get(n.id)),position:structuredClone(world?.get(n.id)?.position??snapshot.transforms.get(n.id)!.position)}]))
   const pending = new Set<string>(), done = new Set<string>()
   const resolve = (id: string): void => {
     if (done.has(id) || !edits.has(id)) return
@@ -104,7 +109,7 @@ export function previewCharacterLayout(project: UnifiedProject, args: Record<str
     }
     else if (edit.lookAt.cameraId !== undefined) {
       const camera=project.scene.content.nodes.find(n=>n.id===(edit.lookAt as Record<string,unknown>).cameraId&&n.type==='camera')
-      if(camera){requireStaticPlacement(project,camera.id,false);target=camera.transform.position}
+      if(camera){requireStaticPlacement(project,camera.id,false);target=world?.get(camera.id)?.position??snapshot.transforms.get(camera.id)!.position}
     }
     else if (record(edit.lookAt.point)) {
       fields(edit.lookAt.point,['x','z'])
@@ -121,7 +126,10 @@ export function previewCharacterLayout(project: UnifiedProject, args: Record<str
     if(!edits.has(a)&&!edits.has(b))continue
     if(Math.hypot(ta.position.x-tb.position.x,ta.position.z-tb.position.z)+1e-8<bodyDimensions(project,a).radius+bodyDimensions(project,b).radius) throw new TypeError('Requested layout overlaps character body radii; increase distance')
   }
-  const placements=[...edits.keys()].map(nodeId=>({nodeId,transform:transforms.get(nodeId)!,body:bodyDimensions(project,nodeId)}))
-  return {sourceRevision:project.revision,coordinateSystem:'world +Y up, +Z forward, left=-X',placements,
-    operations:placements.map(p=>({type:'node.transform.patch',nodeId:p.nodeId,position:p.transform.position,rotation:p.transform.rotation}))}
+  const placements=[...edits.keys()].map(nodeId=>({nodeId,transform:{position:transforms.get(nodeId)!.position,rotation:transforms.get(nodeId)!.rotation,scale:transforms.get(nodeId)!.scale},body:bodyDimensions(project,nodeId)}))
+  const changedKeys=updateConstantPlacementKeys(project,placements)
+  const document=structuredClone(project.scene)
+  for(const p of placements)document.content.nodes.find(n=>n.id===p.nodeId)!.transform=p.transform
+  return {sourceRevision:project.revision,frame,coordinateSystem:'world +Y up, +Z forward, left=-X',placements,
+    operations:changedKeys?[{type:'document.replace',document,fcurves:changedKeys}]:placements.map(p=>({type:'node.transform.patch',nodeId:p.nodeId,position:p.transform.position,rotation:p.transform.rotation}))}
 }
