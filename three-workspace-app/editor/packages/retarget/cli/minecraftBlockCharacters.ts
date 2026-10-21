@@ -42,18 +42,32 @@ function humanoid(c: { head: string; hair?: string; eyes: string; eyeWhite?: str
   return boxes
 }
 
+const den = humanoid({ head: '#202024', eyes: '#3FA9FF', shirt: '#141418', sleeve: '#141418', hand: '#26262A', pants: '#141418', shoes: '#0E0E10' })
+const ga = humanoid({ head: '#F2D65C', eyes: '#151515', shirt: '#EFE6CC', sleeve: '#F2D65C', hand: '#F2D65C', pants: '#6B3E26', shoes: '#4A2A18' })
+const mystery = humanoid({ head: '#141414', eyes: '#141414', shirt: '#1A1A1A', sleeve: '#1A1A1A', hand: '#1A1A1A', pants: '#1A1A1A', shoes: '#101010' })
+
+/** Roles from the Tập 15 storyboard (docs/storyboards); `steve` and `enderman` are plain references. */
 export const ROLES: Role[] = [
-  { name: 'herobrine', boxes: humanoid({ head: '#B98A68', hair: '#3B2A1E', eyes: '#F4F4F4', shirt: '#2C9AA0', sleeve: '#2C9AA0', hand: '#B98A68', pants: '#3542A0', shoes: '#4A4A4A' }) },
+  // Herobrine: grey skin, white glowing eyes with pink glow under them, black hair, bare grey torso, dark grey trousers.
+  { name: 'herobrine', boxes: [...humanoid({ head: '#C9C9C9', hair: '#1F1F1F', eyes: '#FFFFFF', shirt: '#BEBEBE', sleeve: '#BEBEBE', hand: '#C9C9C9', pants: '#4A4A4A', shoes: '#333333' }),
+    box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8')] },
   { name: 'steve', boxes: humanoid({ head: '#B98A68', hair: '#3B2A1E', eyes: '#4B3A8A', eyeWhite: '#F4F4F4', shirt: '#2C9AA0', sleeve: '#2C9AA0', hand: '#B98A68', pants: '#3542A0', shoes: '#4A4A4A' }) },
   { name: 'enderman', boxes: humanoid({ head: '#151515', eyes: '#C04BFF', shirt: '#151515', sleeve: '#151515', hand: '#151515', pants: '#151515', shoes: '#151515' }, 2, 8) },
-  { name: 'chicken', boxes: [
-    box('head', [-2, 24, -1.5], [2, 30, 1.5], '#F2F2F2'), box('head', [-2, 26, 1.5], [2, 28, 3.5], '#F2B233'), box('head', [-1, 24, 1.5], [1, 26, 2.5], '#D23B2B'),
-    box('head', [-2.05, 28, 0.5], [-1, 29, 1.55], '#151515'), box('head', [1, 28, 0.5], [2.05, 29, 1.55], '#151515'),
-    box('low_body', [-3, 16, -4], [3, 24, 4], '#F2F2F2'), box('body', [-3, 12, -4], [3, 16, 4], '#F2F2F2'),
-    box('left_arm', [3, 16, -3], [4, 22, 3], '#E6E6E6'), box('low_left_arm', [3, 13, -3], [4, 16, 3], '#E6E6E6'),
-    box('right_arm', [-4, 16, -3], [-3, 22, 3], '#E6E6E6'), box('low_right_arm', [-4, 13, -3], [-3, 16, 3], '#E6E6E6'),
-    box('left_leg', [0.5, 6, -0.5], [1.5, 12, 0.5], '#F2B233'), box('low_left_leg', [0, 0, -1], [2, 6, 1.5], '#F2B233'),
-    box('right_leg', [-1.5, 6, -0.5], [-0.5, 12, 0.5], '#F2B233'), box('low_leg_right', [-2, 0, -1], [0, 6, 1.5], '#F2B233')] },
+  // Đen: charcoal body, blue eyes, black coat with a red scarf, red front trim and gold studs.
+  { name: 'den', boxes: [...den,
+    box('low_body', [-4.05, 22, -2.05], [4.05, 24, 2.05], '#B3262E'), box('low_body', [-1, 18, 2], [1, 22, 2.05], '#B3262E'), box('body', [-1, 12, 2], [1, 18, 2.05], '#B3262E'),
+    box('low_body', [-3, 20, 2], [-2, 21, 2.1], '#D4A017'), box('low_body', [2, 20, 2], [3, 21, 2.1], '#D4A017'),
+    box('left_arm', [4, 22, -2.05], [8.05, 24, 2.05], '#B3262E'), box('right_arm', [-8.05, 22, -2.05], [-4, 24, 2.05], '#B3262E')] },
+  // Gà: chicken-headed humanoid, orange beak, red head band, bandaged cream torso, brown trousers.
+  { name: 'ga', boxes: [...ga,
+    box('head', [-1.5, 25.5, 4], [1.5, 27, 5.5], '#F28C28'), box('head', [-4.1, 29, -4.1], [4.1, 30.5, 4.1], '#C8302A'), box('head', [-1, 28, -5], [1, 30, -4.1], '#C8302A'),
+    box('low_body', [-4.05, 21, -2.05], [4.05, 22, 2.05], '#FFFFFF'), box('body', [-4.05, 15, -2.05], [4.05, 16, 2.05], '#FFFFFF'),
+    box('left_arm', [3.95, 20, -2.05], [8.05, 21, 2.05], '#FFFFFF'), box('low_right_arm', [-8.05, 14, -2.05], [-3.95, 15, 2.05], '#FFFFFF')] },
+  // Người bí ẩn: hooded black cloak with red trim; no face.
+  { name: 'mystery', boxes: [...mystery,
+    box('head', [-4.4, 23.6, -4.4], [4.4, 32.4, 4.4], '#1A1A1A'), box('low_body', [-4.6, 18, -2.6], [4.6, 24, 2.6], '#1A1A1A'), box('body', [-4.6, 9, -2.6], [4.6, 18, 2.6], '#1A1A1A'),
+    box('low_body', [-4.65, 18, 2.6], [-3.6, 24, 2.65], '#8E1C1C'), box('low_body', [3.6, 18, 2.6], [4.65, 24, 2.65], '#8E1C1C'),
+    box('body', [-4.65, 9, 2.6], [-3.6, 18, 2.65], '#8E1C1C'), box('body', [3.6, 9, 2.6], [4.65, 18, 2.65], '#8E1C1C')] },
 ]
 
 const ARMATURE = resolve(import.meta.dirname, '../../../apps/studio/public/retarget/v9.12')
@@ -107,21 +121,16 @@ export function writeSkeleton(w: Writer, root: Object3D, rootName = 'minecraft20
   return { bones, index }
 }
 
-export function characterGlb(root: Object3D, role: Role): Uint8Array {
-  const w = new Writer(), { bones, index } = writeSkeleton(w, root)
-  const jointOf = new Map(bones.map((bone, i) => [bone.name, i]))
-  const ibm = new Float32Array(bones.length * 16)
-  bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
-  const byColor = new Map<string, Box[]>()
-  for (const item of role.boxes) {
-    if (!jointOf.has(item.bone)) throw new TypeError(`Unknown Minecraft20 bone ${item.bone}`)
-    const key = item.color.join(','); byColor.set(key, [...(byColor.get(key) ?? []), item])
-  }
-  w.json.materials = []; const primitives: any[] = []
+/** One primitive per colour; `joint` set → rigid skin weights (JOINTS_0/WEIGHTS_0). Box corners are multiplied by `unit`. */
+function boxPrimitives(w: Writer, items: Array<{ min: number[]; max: number[]; color: Rgb; joint?: number }>, unit: number) {
+  const byColor = new Map<string, typeof items>()
+  for (const item of items) { const key = item.color.join(','); byColor.set(key, [...(byColor.get(key) ?? []), item]) }
+  w.json.materials ??= []; const primitives: any[] = []
   for (const [, boxes] of byColor) {
+    const skinned = boxes[0]!.joint !== undefined
     const position: number[] = [], normal: number[] = [], joints: number[] = [], weights: number[] = [], indices: number[] = []
     for (const item of boxes) {
-      const [x0, y0, z0] = item.min.map((v) => v * PX), [x1, y1, z1] = item.max.map((v) => v * PX)
+      const [x0, y0, z0] = item.min.map((v) => v * unit), [x1, y1, z1] = item.max.map((v) => v * unit)
       const faces: Array<[number[], number[][]]> = [
         [[1, 0, 0], [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]]], [[-1, 0, 0], [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]]],
         [[0, 1, 0], [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]]], [[0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]],
@@ -129,15 +138,35 @@ export function characterGlb(root: Object3D, role: Role): Uint8Array {
       ]
       for (const [n, corners] of faces) {
         const base = position.length / 3
-        for (const corner of corners) { position.push(...corner); normal.push(...n); joints.push(jointOf.get(item.bone)!, 0, 0, 0); weights.push(1, 0, 0, 0) }
+        for (const corner of corners) { position.push(...corner); normal.push(...n); if (skinned) { joints.push(item.joint!, 0, 0, 0); weights.push(1, 0, 0, 0) } }
         indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
       }
     }
+    if (position.length / 3 > 65535) throw new RangeError('Too many box vertices for one colour; split the set')
     w.json.materials.push({ pbrMetallicRoughness: { baseColorFactor: [...boxes[0]!.color, 1], metallicFactor: 0, roughnessFactor: 0.9 } })
-    primitives.push({ attributes: { POSITION: w.accessor(new Float32Array(position), 'VEC3', 5126, 34962, true), NORMAL: w.accessor(new Float32Array(normal), 'VEC3', 5126, 34962),
-      JOINTS_0: w.accessor(new Uint16Array(joints), 'VEC4', 5123, 34962), WEIGHTS_0: w.accessor(new Float32Array(weights), 'VEC4', 5126, 34962) },
-    indices: w.accessor(new Uint16Array(indices), 'SCALAR', 5123, 34963), material: w.json.materials.length - 1 })
+    const attributes: Record<string, number> = { POSITION: w.accessor(new Float32Array(position), 'VEC3', 5126, 34962, true), NORMAL: w.accessor(new Float32Array(normal), 'VEC3', 5126, 34962) }
+    if (skinned) Object.assign(attributes, { JOINTS_0: w.accessor(new Uint16Array(joints), 'VEC4', 5123, 34962), WEIGHTS_0: w.accessor(new Float32Array(weights), 'VEC4', 5126, 34962) })
+    primitives.push({ attributes, indices: w.accessor(new Uint16Array(indices), 'SCALAR', 5123, 34963), material: w.json.materials.length - 1 })
   }
+  return primitives
+}
+
+/** Static block set (props/backdrops): boxes in metres, flat colours, one unskinned mesh. */
+export interface SetBox { min: [number, number, number]; max: [number, number, number]; color: string }
+export function setGlb(name: string, boxes: readonly SetBox[]): Uint8Array {
+  const w = new Writer()
+  w.json.meshes = [{ name, primitives: boxPrimitives(w, boxes.map((item) => ({ min: item.min, max: item.max, color: hex(item.color) })), 1) }]
+  w.json.nodes.push({ name, mesh: 0 }); w.json.scenes[0].nodes.push(0)
+  return w.glb()
+}
+
+export function characterGlb(root: Object3D, role: Role): Uint8Array {
+  const w = new Writer(), { bones, index } = writeSkeleton(w, root)
+  const jointOf = new Map(bones.map((bone, i) => [bone.name, i]))
+  const ibm = new Float32Array(bones.length * 16)
+  bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
+  for (const item of role.boxes) if (!jointOf.has(item.bone)) throw new TypeError(`Unknown Minecraft20 bone ${item.bone}`)
+  const primitives = boxPrimitives(w, role.boxes.map((item) => ({ ...item, joint: jointOf.get(item.bone)! })), PX)
   w.json.meshes = [{ name: role.name, primitives }]
   w.json.skins = [{ joints: bones.map((bone) => index.get(bone)!), inverseBindMatrices: w.accessor(ibm, 'MAT4', 5126) }]
   w.json.nodes.push({ name: `${role.name}_mesh`, mesh: 0, skin: 0 }); w.json.scenes[0].nodes.push(w.json.nodes.length - 1)
