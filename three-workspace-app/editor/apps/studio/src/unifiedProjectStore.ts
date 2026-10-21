@@ -1,3 +1,4 @@
+import { executeApp3Bridge, App3BridgeError } from './app3Bridge'
 import { previewCameraFraming } from './cameraFraming'
 import { previewCharacterLayout } from './sceneLayoutPlacement'
 import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
@@ -863,6 +864,18 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (!envelope.projectId) throw new UnifiedStoreError('VALIDATION_FAILED', 'projectId is required', 400)
   const id = envelope.projectId
   const project = await readUnifiedProject(id)
+  if (envelope.command.startsWith('app3.')) {
+    try {
+      if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed', 409)
+      const result = executeApp3Bridge(project, envelope.command, envelope.args, envelope.requestId, envelope.dryRun)
+      const response = success(envelope.requestId, id, project.revision, result)
+      if (envelope.command === 'app3.command.submit') await saveRequest(envelope, hash, response)
+      return response
+    } catch (error) {
+      if (error instanceof App3BridgeError) throw new UnifiedStoreError(error.code, error.message, error.status)
+      throw error
+    }
+  }
   if (envelope.command === 'project.inspect') {
     if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'project.inspect does not accept arguments in this phase', 400)
     const response = success(envelope.requestId, id, project.revision, { project })

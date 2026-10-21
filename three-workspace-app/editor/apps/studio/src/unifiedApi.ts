@@ -1,5 +1,14 @@
 import type { CommandEnvelope, CommandSuccess, HistorySummary, UnifiedProject } from '@bbs/animation-workspace-shared'
 
+// Same-origin iframe context publication. No selected-character inference and no credentials.
+declare global { interface Window { __bbsApp3Projects?: Record<string, UnifiedProject> } }
+function publishApp3Project(project: UnifiedProject) {
+  if (typeof window === 'undefined') return
+  const projects = window.__bbsApp3Projects ??= {}
+  projects[project.projectId] = project
+  window.dispatchEvent(new CustomEvent('bbs-app3-project', { detail: { projectId: project.projectId } }))
+}
+
 let sessionPromise: Promise<void> | null = null
 
 export function ensureUnifiedSession(force = false): Promise<void> {
@@ -15,7 +24,9 @@ export async function loadUnifiedProject(projectId: string): Promise<{ project: 
   let response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' })
   if (response.status === 401) { await ensureUnifiedSession(true); response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' }) }
   if (!response.ok) throw new Error(`Project load failed (${response.status})`)
-  return response.json() as Promise<{ project: UnifiedProject; history: HistorySummary }>
+  const body = await response.json() as { project: UnifiedProject; history: HistorySummary }
+  publishApp3Project(body.project)
+  return body
 }
 
 export async function loadUnifiedProjects<T>(): Promise<T> {
