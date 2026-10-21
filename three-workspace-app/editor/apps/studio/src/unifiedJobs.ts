@@ -1,3 +1,4 @@
+import { stageSceneConversion, type SceneConversionArgs } from './sceneConversion'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -16,7 +17,7 @@ interface StoredFile { id: string; name: string; mimeType: string; sizeBytes: nu
 interface StoredJob {
   jobId: string
   projectId: string
-  type: 'scene.export.glb' | 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
+  type: 'scene.export.blend-fbx' | 'scene.export.glb' | 'shot.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
   state: UnifiedJobState
   sourceRevision: number
   sourceSha256: string
@@ -485,13 +486,50 @@ export async function startUnifiedAssignment(project: UnifiedProject, args: Assi
   return publicJob(record)
 }
 
+/** Blender conversion is an immutable artifact job, with the existing cancellation/process-tree lifecycle. */
+export async function startUnifiedSceneConversion(project: UnifiedProject, args: SceneConversionArgs): Promise<UnifiedJobView> {
+  if ([...runtimes.values()].some(runtime => runtime.active)) throw Object.assign(new Error('A local job is already active'), { code: 'JOB_BUSY', status: 423 })
+  const snapshot = structuredClone(project), inputs = structuredClone(args), jobId = randomUUID(), now = new Date().toISOString()
+  const record: StoredJob = { jobId, projectId: project.projectId, type: 'scene.export.blend-fbx', state: 'queued', sourceRevision: project.revision,
+    sourceSha256: digest(Buffer.from(JSON.stringify(snapshot))), progress: 0, createdAt: now, updatedAt: now }
+  const runtime: Runtime = { record, controller: new AbortController(), active: true }
+  runtimes.set(jobId, runtime)
+  try { await pruneOldJobs(project.projectId); await persist(record) }
+  catch(error) { runtimes.delete(jobId); throw error }
+  const work = path.join(jobRoot(project.projectId, jobId), 'scene-work')
+  runtime.done = new Promise<void>(resolve => setTimeout(resolve, 0)).then(async () => {
+    try {
+      runtime.controller.signal.throwIfAborted()
+      record.state = 'running'; record.progress = 0.1; await persist(record)
+      const built = await stageSceneConversion(snapshot, inputs, work, runtime.controller.signal, runLocalCommand, agentRoot)
+      runtime.controller.signal.throwIfAborted()
+      const name = 'scene-export.zip'
+      await writeFile(path.join(jobRoot(project.projectId, jobId), name), built.bytes, { flag: 'wx' })
+      runtime.controller.signal.throwIfAborted()
+      record.result = { files: [{ id: '0', name, mimeType: 'application/zip', sizeBytes: built.bytes.length, sha256: digest(built.bytes), path: name }], provenance: built.provenance, warnings: [], blockedRequests: [] }
+      record.state = 'succeeded'; record.progress = 1
+    } catch(error) {
+      record.state = runtime.controller.signal.aborted ? 'cancelled' : 'failed'
+      const message = error instanceof Error ? error.message : 'Scene conversion failed'
+      record.error = { code: runtime.controller.signal.aborted ? 'CANCELLED' : message.includes('NOT_RUN:') ? 'BLENDER_UNAVAILABLE' : 'SCENE_CONVERSION_FAILED', message }
+      await rm(path.join(jobRoot(project.projectId, jobId), 'scene-export.zip'), { force: true })
+    } finally {
+      await rm(work, { recursive: true, force: true })
+      record.updatedAt = new Date().toISOString()
+      try { await persist(record) } finally { runtime.active = false }
+    }
+  })
+  void runtime.done.catch(() => undefined)
+  return publicJob(record)
+}
+
 async function readRecord(projectId: string, jobId: string): Promise<StoredJob | null> {
   if (!UUID.test(jobId) || !UUID.test(projectId)) return null
   const runtime = runtimes.get(jobId)
   if (runtime?.record.projectId === projectId) return runtime.record
   try {
     const parsed = JSON.parse(await readFile(recordPath(projectId, jobId), 'utf8')) as StoredJob
-    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.glb', 'shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
+    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
     if (parsed.state === 'queued' || parsed.state === 'running') {
       parsed.state = 'failed'
       parsed.error = { code: 'HOST_RESTARTED', message: 'The local host restarted before the job completed.' }
@@ -515,7 +553,7 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   if (!record) throw Object.assign(new Error('Render job not found'), { code: 'NOT_FOUND', status: 404 })
   const pending = runtimes.get(jobId)
   if (pending?.active && ['succeeded', 'failed', 'cancelled'].includes(record.state)) await pending.done
-  if (record.state === 'succeeded') return { state: record.state, committed: !['scene.export.glb', 'shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
+  if (record.state === 'succeeded') return { state: record.state, committed: !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'rig.normalization.run', 'animation.assignment.run'].includes(record.type) }
   if (record.state === 'failed' || record.state === 'cancelled') return { state: record.state, committed: false }
   const runtime = runtimes.get(jobId)
   if (!runtime) return { state: record.state, committed: false }

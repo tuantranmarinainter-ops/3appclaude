@@ -1,3 +1,5 @@
+import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
+import { startUnifiedSceneConversion } from './unifiedJobs'
 import { exportSceneGlb, storeSceneGlb, validateSceneGlbArgs, type SceneGlbArgs } from './sceneGlb'
 import { prepareShotResult, applyShotResult } from './shotResult'
 import { createShotPackage, saveShotExport, type ShotExportArgs } from './shotExchange'
@@ -985,6 +987,21 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       return response
     } catch (error) {
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Scene GLB export failed', 400)
+    }
+  }
+  if (envelope.command === 'scene.export.blend-fbx') {
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Scene conversion source revision changed', 409)
+    try {
+      const args = envelope.args as unknown as SceneConversionArgs
+      await validateSceneConversionArgs(project, args)
+      if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision })
+      const job = await startUnifiedSceneConversion(project, args)
+      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress })
+      await saveRequest(envelope, hash, response)
+      return response
+    } catch(error) {
+      const native = error as { code?: string; status?: number }
+      throw new UnifiedStoreError(native.code ?? 'VALIDATION_FAILED', error instanceof Error ? error.message : 'Scene conversion could not start', native.status ?? 400)
     }
   }
   if (envelope.command === 'shot.export') {
