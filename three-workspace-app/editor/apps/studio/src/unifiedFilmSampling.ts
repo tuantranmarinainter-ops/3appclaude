@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { validateProject } from '@bbs/animation-workspace-shared'
 import { validateEditorial } from '@topview/3d-builder/evaluate'
@@ -19,6 +20,35 @@ const MAX_TICKS = 255 // The pinned worker accepts at most 256 keys, including t
 const MAX_BONE_SAMPLES = 32768
 
 function fail(message: string): never { throw new TypeError(message) }
+
+type ProfileBone = UnifiedProject['skeletons'][string]['bones'][number]
+type RestTRS = { position: number[]; rotation: number[]; scale: number[] }
+/**
+ * Bones the Film pipeline bakes, named like the runtime samples and the Blender converter's `sourceName` (three.js
+ * sanitized: `mixamorig:Hips` → `mixamorigHips`). A leading chain of non-deform root nodes (GLB armature object such as
+ * `FEMALE_ADULT_Armature`) is not exported as a BOBJ bone, so its rest transform is folded into the first real bone.
+ */
+export function filmSourceBones(bones: readonly ProfileBone[]) {
+  const children = new Map<string | null, ProfileBone[]>()
+  for (const bone of bones) children.set(bone.parentId, [...(children.get(bone.parentId) ?? []), bone])
+  const dropped = new Set<string>()
+  let carried = new Matrix4()
+  let roots = children.get(null) ?? []
+  while (roots.length === 1 && roots[0]!.deform === false && (children.get(roots[0]!.id)?.length ?? 0) > 0) {
+    const rest = roots[0]!.rest as RestTRS
+    carried = carried.clone().multiply(new Matrix4().compose(new Vector3().fromArray(rest.position), new Quaternion().fromArray(rest.rotation), new Vector3().fromArray(rest.scale)))
+    dropped.add(roots[0]!.id)
+    roots = children.get(roots[0]!.id) ?? []
+  }
+  const kept = bones.filter((bone) => !dropped.has(bone.id)).map(({ id, name, parentId, rest }) => {
+    if (parentId === null || !dropped.has(parentId)) return { id, name: PropertyBinding.sanitizeNodeName(name), parentId, rest }
+    const r = rest as RestTRS, local = carried.clone().multiply(new Matrix4().compose(new Vector3().fromArray(r.position), new Quaternion().fromArray(r.rotation), new Vector3().fromArray(r.scale)))
+    const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3(); local.decompose(position, rotation, scale)
+    return { id, name: PropertyBinding.sanitizeNodeName(name), parentId: null, rest: { position: position.toArray(), rotation: rotation.toArray(), scale: scale.toArray() } }
+  })
+  if (new Set(kept.map((bone) => bone.name)).size !== kept.length) fail('Film bone names collide after normalization')
+  return kept
+}
 
 /** Metadata preflight only; decoding and hash verification still happen before sampling. */
 export function preflightProjectFilm(project: UnifiedProject, args: FilmSamplingArgs) {
@@ -54,13 +84,12 @@ export function preflightProjectFilm(project: UnifiedProject, args: FilmSampling
     const asset = project.assets[character.assetId]!
     if (node.metadata?.rig !== 'direct' || node.character?.animation?.posePresetId) fail('Film sampling requires an imported direct rig without an unresolved library pose')
     if (!['application/vnd.autodesk.fbx', 'model/gltf-binary'].includes(asset.source.mediaType)) fail('Film model conversion currently requires FBX or GLB source bytes')
-    // ':' is allowed: GLB Mixamo rigs keep `mixamorig:Hips`, and the Blender converter maps such names to safe BOBJ IDs (safe_bone_names).
-    if (profile.bones.length > 512 || profile.bones.some((bone) => !/^[A-Za-z0-9_.:-]{1,128}$/.test(bone.name))) fail('Film model bone names or count exceed the BOBJ worker profile')
+    if (profile.bones.length > 512 || filmSourceBones(profile.bones).some((bone) => !/^[A-Za-z0-9_.-]{1,128}$/.test(bone.name))) fail('Film model bone names or count exceed the BOBJ worker profile')
     if (profile.metersPerUnit !== node.metadata?.modelUnitMeters) fail('Film Character units disagree with its Skeleton Profile')
     boneCount += profile.bones.length
     return { characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
       source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint,
-      sourceBones: profile.bones.map(({ id: boneId, name, parentId, rest }) => ({ id: boneId, name, parentId, rest })) }
+      sourceBones: filmSourceBones(profile.bones) }
   })
   if (boneCount * (Math.round(ticks) + 1) > MAX_BONE_SAMPLES) fail('Film range exceeds the in-memory bone sample budget; shorten the range or select fewer Characters')
   return { durationTicks: Math.round(ticks), models }
