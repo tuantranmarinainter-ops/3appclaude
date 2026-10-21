@@ -67,6 +67,11 @@ thiếu role chính.
   chỉnh ở App 3 bằng Edit Motion Layer; sau này có **thư viện thế tay** (chọn thế tay có sẵn, thay vào keyframe, chỉnh nhẹ).
   Bản ghép ngón WoW/LoL (D2: thêm ngón út + đốt Tip WoW, đốt đầu ngón gập 2/3 đốt giữa) để riêng ở nhánh
   `claude/d2-fingers`, chưa merge, chờ người dùng thử.
+- Quyết định 2026-10-21 (người dùng, dựng storyboard): **nhân vật Minecraft (Steve/Herobrine, Enderman, Gà) dùng khung
+  Minecraft20 20 xương**, lưới khối hộp theo tỉ lệ Steve, tô màu (không dùng skin Mojang); chạy thẳng 85 Action V9.12 theo
+  tên xương, không retarget (`packages/retarget/cli/minecraftBlockCharacters.ts`). **Gỗ Xưa dùng Mixamo65, màu xanh lá**
+  (nhân vật Man builtin tô lại, `apps/studio/scripts/recolorCharacter.mts`). **121 pose Topview** chuyển thành Action
+  Mixamo65 một khung giữ 1 s (`apps/studio/scripts/topviewPosesToActions.mts`) để dùng được ở Studio, render, film, App 3.
 
 ## Kết quả rà soát bàn giao Codex (DOC-116)
 - Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.

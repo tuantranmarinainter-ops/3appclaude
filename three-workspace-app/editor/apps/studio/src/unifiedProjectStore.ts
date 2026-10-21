@@ -1307,7 +1307,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (!model || model.kind !== 'model') throw new UnifiedStoreError('ASSET_MISSING', 'Character model asset is missing', 422)
     if (!project.skeletons[skeletonId]) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Character skeleton profile is missing', 422)
     const profile = project.skeletons[skeletonId]!
-    if (profile.provenance.original.sha256 !== model.source.sha256) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Character profile must belong to the selected model asset', 422)
+    const rigs = isRecord(project.extensions.assetSkeletonFingerprints) ? project.extensions.assetSkeletonFingerprints[assetId] : null
+    const sharedRig = Array.isArray(rigs) && rigs.includes(profile.fingerprint)
+    if (profile.provenance.original.sha256 !== model.source.sha256 && !sharedRig) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Character profile must belong to the selected model asset', 422)
     if (transform !== undefined && !finiteSceneTransform(transform)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'Character transform must contain finite position, rotation and scale XYZ values', 400)
     }
@@ -1826,6 +1828,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
             }
             profileIds.set(profile.id, profileId)
             skeletonIds.push(profileId)
+          }
+          // Profiles are shared by fingerprint, so a second model on the same rig gets the first model's profile;
+          // remember the model's own fingerprints so character.add can accept that shared profile.
+          if (imported.modelInfo && importedProfiles.length) {
+            const rigs = { ...(isRecord(next.extensions.assetSkeletonFingerprints) ? next.extensions.assetSkeletonFingerprints : {}) }
+            if (!Array.isArray(rigs[assetId])) { rigs[assetId] = importedProfiles.map((profile) => profile.fingerprint); next.extensions.assetSkeletonFingerprints = rigs }
           }
           for (const item of imported.motions) {
             const skeletonId = profileIds.get(item.motion.skeletonId) ?? (importedProfiles.length === 1 ? profileIds.get(importedProfiles[0]!.id) : undefined)
