@@ -59,6 +59,10 @@ thiếu role chính.
 - Bổ sung 2026-10-20: App 1 xuất thêm (tuỳ chọn) `.bobj` **action** Minecraft20 cho BBS FS, đi từ chính GLB Mixamo65
   đã xuất qua solver ngược V9.12 (Mixamo65→Minecraft20). Đây là action/animation, không phải film BBS — film vẫn
   thuộc App 2. Định dạng theo exporter BBSFix: tick nguyên 20 Hz, Euler XYZ, `LINEAR`.
+- Quyết định 2026-10-21 (người dùng xem video Samba tắt/bật): **khoá chân `--foot-lock` giữ mặc định `off`**, không bật
+  mặc định, không thêm vào Workbench. Bản bật (D1/D1b) hết trượt cổ chân nhưng giật, không tự nhiên. Chỉ mở lại khi có
+  cách chuyển mượt cho khe ngắn giữa hai lần chạm, và phải qua so sánh video + đo gia tốc xoay chân (xem
+  `docs/RETARGET-LESSONS.md`).
 
 ## Kết quả rà soát bàn giao Codex (DOC-116)
 - Quy mô W01: retarget/src 18 file (~137 KB), host+UI ~7k dòng, ~28 file test.
