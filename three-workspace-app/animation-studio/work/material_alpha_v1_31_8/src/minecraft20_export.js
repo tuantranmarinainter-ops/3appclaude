@@ -3,20 +3,21 @@ const ARMATURE={"bones":[{"name":"anchor","parent":null,"head":[0,0.75,0],"tail"
 import * as T from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
+import {untwistLimbs,limbTwistDegrees} from './minecraft20_postprocess.js';
 import {createReverseRetargeter} from './shot_reverse.js';
 import {bobj} from './bobj_export.js';
 import {readGLB,writeGLB} from './shot_export.js';
-export async function minecraft20BOBJ(glb){
+export async function minecraft20BOBJ(glb,{onSample}={}){
  const loaded=await new GLTFLoader().parseAsync(glb.buffer.slice(glb.byteOffset,glb.byteOffset+glb.byteLength),''),source=loaded.scene,clip=loaded.animations[0],bones=[];source.traverse(o=>{if(o.isBone)bones.push(o);});source.updateMatrixWorld(true);
  if(bones.length!==65||!clip)throw Error('Minecraft20 export requires Mixamo65 + one Action.');
  const rest=bones.map(o=>({name:o.name,restWorldPosition:o.getWorldPosition(new T.Vector3()).toArray(),restWorldQuaternion:o.getWorldQuaternion(new T.Quaternion()).toArray()}));
  const solver=createReverseRetargeter(ARMATURE),root=new T.Group();root.name='Minecraft20';const targets=new Map(ARMATURE.bones.map(b=>{const o=new T.Bone();o.name=b.name;return[b.name,o];}));
  for(const b of ARMATURE.bones){const o=targets.get(b.name),matrix=new T.Matrix4().fromArray(b.restWorld);if(b.parent)matrix.premultiply(new T.Matrix4().fromArray(ARMATURE.bones.find(x=>x.name===b.parent).restWorld).invert());matrix.decompose(o.position,o.quaternion,o.scale);(b.parent?targets.get(b.parent):root).add(o);}
- const arrays=new Map([...targets].map(([n])=>[n,{p:[],q:[],s:[]}])),times=Array.from({length:Math.ceil(clip.duration*30)+1},(_,i)=>Math.min(clip.duration,i/30)),mixer=new T.AnimationMixer(source),action=mixer.clipAction(clip);action.setLoop(T.LoopOnce,1);action.clampWhenFinished=true;action.play();
- try{for(const t of times){mixer.setTime(t);source.updateMatrixWorld(true);const pose=bones.map((o,i)=>({...rest[i],worldPosition:o.getWorldPosition(new T.Vector3()).toArray(),worldQuaternion:o.getWorldQuaternion(new T.Quaternion()).toArray()}));for(const solved of solver.evaluate(pose,{rootTravelMode:'follow'})){const a=arrays.get(solved.name);a.p.push(...solved.position);a.q.push(...solved.rotation);a.s.push(...solved.scale);}}}finally{mixer.stopAllAction();mixer.uncacheRoot(source);}
+ const arrays=new Map([...targets].map(([n])=>[n,{p:[],q:[],s:[]}])),times=Array.from({length:Math.ceil(clip.duration*20)+1},(_,i)=>Math.min(clip.duration,i/20)),mixer=new T.AnimationMixer(source),action=mixer.clipAction(clip);action.setLoop(T.LoopOnce,1);action.clampWhenFinished=true;action.play();
+ try{for(const t of times){mixer.setTime(t);source.updateMatrixWorld(true);const pose=bones.map((o,i)=>({...rest[i],worldPosition:o.getWorldPosition(new T.Vector3()).toArray(),worldQuaternion:o.getWorldQuaternion(new T.Quaternion()).toArray()}));const solved=solver.evaluate(pose,{rootTravelMode:'follow'}),worlds=new Map(solved.map(b=>[b.name,new T.Matrix4().fromArray(b.worldMatrix)])),corrected=untwistLimbs(ARMATURE,worlds);onSample?.({time:t,armature:ARMATURE,worlds:corrected.worlds,maxBeforeDegrees:corrected.maxBeforeDegrees,maxAfterDegrees:Math.max(0,...Object.values(limbTwistDegrees(ARMATURE,corrected.worlds)))});for(const bone of ARMATURE.bones){const local=corrected.worlds.get(bone.name).clone();if(bone.parent)local.premultiply(corrected.worlds.get(bone.parent).clone().invert());const p=new T.Vector3(),q=new T.Quaternion(),scale=new T.Vector3();local.decompose(p,q,scale);const a=arrays.get(bone.name);a.p.push(...p.toArray());a.q.push(...q.toArray());a.s.push(...scale.toArray());}}}finally{mixer.stopAllAction();mixer.uncacheRoot(source);}
  const tracks=[];for(const[n,o]of targets){const a=arrays.get(n);tracks.push(new T.VectorKeyframeTrack(o.uuid+'.position',times,a.p),new T.QuaternionKeyframeTrack(o.uuid+'.quaternion',times,a.q),new T.VectorKeyframeTrack(o.uuid+'.scale',times,a.s));}
  const buffer=await new GLTFExporter().parseAsync(root,{binary:true,onlyVisible:false,animations:[new T.AnimationClip(clip.name,clip.duration,tracks)],trs:true}),{json,rest:bin}=readGLB(buffer);json.skins=[{joints:[...targets.keys()].map(n=>json.nodes.findIndex(o=>o.name===n))}];
- const text=await bobj(writeGLB(json,bin).buffer,30,{includeMesh:false,up:'y'});
+ const text=await bobj(writeGLB(json,bin).buffer,20,{includeMesh:false,up:'y',preserveJointNames:true});
  // The existing generic exporter adds an identity StudioRoot. Minecraft20 has 20 physical joints.
  let skip=false;return text.split('\n').filter(line=>{if(line.startsWith('arm_bone StudioRoot '))return false;if(line.startsWith('ao '))skip=line==='ao StudioRoot';return !skip;}).map(line=>line.startsWith('arm_bone ')?line.replace(' StudioRoot ','  '):line).join('\n');
 }

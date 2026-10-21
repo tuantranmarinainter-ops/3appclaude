@@ -18,9 +18,11 @@ function continuousEuler(q,previous){
 
 // Text BOBJ dialect already consumed by bobj_loader.js / BBS: rest * pose,
 // row-major armature-space rest matrices, radians ZYX, 20 ticks per second.
-export async function bobj(buffer,fps,{includeMesh=true,up='y',flipUV=true}={}){
+export async function bobj(buffer,fps,{includeMesh=true,up='y',flipUV=true,preserveJointNames=false}={}){
  if(!Number.isFinite(fps)||fps<1||fps>120)throw Error('BOBJ: FPS không hợp lệ.');
  const gltf=await new GLTFLoader().parseAsync(buffer,''),clip=gltf.animations[0];if(!clip)throw Error('Không có animation để xuất BOBJ.');
+ // Bind tracks before restoring punctuation stripped by GLTFLoader (Minecraft hand .end joints).
+ if(preserveJointNames){for(const track of clip.tracks){const binding=T.PropertyBinding.parseTrackName(track.name),node=T.PropertyBinding.findNode(gltf.scene,binding.nodeName);if(node&&!binding.objectName)track.name=node.uuid+'.'+binding.propertyName+(binding.propertyIndex!==undefined?'['+binding.propertyIndex+']':'');}gltf.scene.traverse(o=>{if(typeof o.userData.name==='string'&&o.userData.name)o.name=o.userData.name;});}
  const scene=gltf.scene,objects=[];scene.updateMatrixWorld(true);scene.traverse(o=>{if(o.isBone||o.userData.studioJoint)objects.push(o);});
  if(!objects.length)throw Error('BOBJ: không tìm thấy xương.');
  // BBS consumes integer ticks. Sample directly at 20 Hz, preserving t=0;
