@@ -42,9 +42,9 @@ test('contact IK removes intentional slide below 1 cm, preserves hips, lengths a
  assert.ok(after.finish(1.1,null).footSlideMeters.left<0.01)
 })
 
-test('unreachable contacts are reported without stretching or nonfinite transforms',()=>{
+test('disjoint contact reach regions re-anchor without stretching or nonfinite transforms',()=>{
  const {rig,frames}=sliding();for(let i=0;i<frames.length;i++)for(const bone of frames[i]!.bones){bone.world[12]!+=i*0.1;if(bone.targetBoneName==='Hips')bone.position[0]!+=i*0.1}
- const result=lockFeet(rig,frames);assert.ok(result.unreachableFrames>0)
+ const result=lockFeet(rig,frames);assert.ok(result.reAnchoredSegments>2,'multiple stable segments handle disjoint reach regions')
  assert.ok(frames.every(f=>f.bones.every(b=>[...b.world,...b.rotation].every(Number.isFinite))))
 })
 
@@ -74,7 +74,7 @@ test('GLB roundtrip preserves contact height and lengths when the anchor is unre
   return {targetBoneId:b.id,targetBoneName:b.id,position:p.toArray(),rotation:q.toArray(),scale:s.toArray(),world:world.toArray()}
  })}))
  const original=structuredClone(frames),joints=rig.bones.map(b=>b.id),off=universalFramesToGlb(rig,joints,original)
- const result=lockFeet(rig,frames);assert.ok(result.unreachableFrames>0)
+ const result=lockFeet(rig,frames);assert.ok(result.reAnchoredSegments>0)
  const load=async(bytes:Uint8Array)=>{const gltf=await new GLTFLoader().parseAsync(Uint8Array.from(bytes).buffer,'');gltf.scene.animations=gltf.animations;return createThreeRigAdapter(gltf.scene,{fingerprint:'roundtrip'})}
  const before=await load(off),after=await load(universalFramesToGlb(rig,joints,frames))
  const samples=(adapter:typeof before)=>Array.from({length:61},(_,i)=>new Map(adapter.sample(0,i/30).map(b=>[adapter.rig.bones.find(r=>r.id===b.id)!.name!,point(b.world)])))
@@ -116,4 +116,28 @@ test('entry/exit ramps keep authored ankle height and blend without a correction
   assert.ok(Math.abs(correction-previous)<0.03,'smooth boundary correction')
   previous=correction
  }
+})
+
+test('planted Foot yaw stays fixed and blends smoothly at both contact ends',()=>{
+ const {rig,frames}=sliding()
+ const angle=(world:number[])=>{const q=new Quaternion();new Matrix4().fromArray(world).decompose(new Vector3(),q,new Vector3());return 2*Math.atan2(q.y,q.w)}
+ for(const [i,frame] of frames.entries()){
+  const lift=i<15?0.15*(15-i)/15:i>45?0.15*(i-45)/15:0
+  for(const bone of frame.bones){
+   bone.world[13]!+=lift
+   if(bone.targetBoneName==='Hips')bone.position[1]!+=lift
+   if(bone.targetBoneName.endsWith('Foot')){
+    const p=point(bone.world),q=new Quaternion().setFromAxisAngle(new Vector3(0,1,0),i/60)
+    bone.rotation=q.toArray();bone.world=new Matrix4().compose(p,q,one).toArray()
+   }
+  }
+ }
+ const original=structuredClone(frames),report=lockFeet(rig,frames),[start,end]=report.contactRanges.left.find(([a,b])=>b>a)!
+ const reference=angle(original[start]!.bones.find(b=>b.targetBoneId==='LeftFoot')!.world)
+ for(let i=0;i<frames.length;i++){
+  const yaw=angle(frames[i]!.bones.find(b=>b.targetBoneId==='LeftFoot')!.world)
+  if(i>=start&&i<=end)assert.ok(Math.abs(yaw-reference)<1e-6)
+  if(i){const previous=angle(frames[i-1]!.bones.find(b=>b.targetBoneId==='LeftFoot')!.world);assert.ok(Math.abs(yaw-previous)<0.3,'bounded yaw transition')}
+ }
+ for(const i of [0,60])assert.deepEqual(frames[i]!.bones.find(b=>b.targetBoneId==='LeftFoot'),original[i]!.bones.find(b=>b.targetBoneId==='LeftFoot'))
 })
