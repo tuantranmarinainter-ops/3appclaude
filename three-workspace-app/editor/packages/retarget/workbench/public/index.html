@@ -67,6 +67,15 @@
             <label class="field">Root
               <select name="rootPolicy"><option value="preserve">Giữ chuyển động root (mét)</option><option value="in-place">Tại chỗ (in-place)</option></select>
             </label>
+            <label class="field">Chạm sàn (chân lún đất)
+              <select name="ground">
+                <option value="lift">Nâng lên nếu chân lún (khuyên dùng)</option>
+                <option value="frame">Nâng theo từng khung (chống lún mọi khung)</option>
+                <option value="level">Đặt chân đúng sàn (cả nâng và hạ)</option>
+                <option value="off">Tắt</option>
+              </select>
+              <small>Chỉ dời cả người theo trục dọc; không đổi góc xoay khớp.</small>
+            </label>
             <label class="field">Hệ số root (<code>--root-scale</code>)
               <span class="row"><input type="number" name="rootScale" value="1" min="0" step="0.001"><button type="button" id="applyScaleBtn" hidden></button></span>
               <small id="scaleHint"></small>

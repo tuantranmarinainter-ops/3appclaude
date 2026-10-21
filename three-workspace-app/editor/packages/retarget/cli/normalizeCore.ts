@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { AnimationClip, Matrix4, PropertyBinding, type Bone, type Object3D, type SkinnedMesh } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
+import type { GroundMode } from '../src/groundAdjust.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
@@ -30,6 +31,8 @@ export interface NormalizeRequest {
   upAxis?: 'y' | 'z'
   rootPolicy?: 'preserve' | 'in-place'
   rootScale?: number
+  /** Foot-floor fix: off | lift (default) | level | frame. */
+  ground?: GroundMode
   mappingPreset?: unknown
   /** A/T calibration of limb directions against the target rest (default 'limbs'). */
   calibrate?: CalibrationMode
@@ -160,7 +163,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
   const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
     actions: request.actions ? [...request.actions] : 'all' as const, unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
-    fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs', swapSides: request.swapSides ?? 'auto' }
+    fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs', swapSides: request.swapSides ?? 'auto', ground: request.ground ?? 'lift' }
 
   const src = createThreeRigAdapter(request.source, { ...sourceOptions, collectUnsupportedTracks: true })
   const dst = createThreeRigAdapter(request.target, targetOptions)
@@ -236,7 +239,7 @@ export async function runNormalize(request: NormalizeRequest) {
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, requiredTargetJointIds: mapping.requiredTargetIds,
+        actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', requiredTargetJointIds: mapping.requiredTargetIds,
         calibration: calibration.runtime })
       exported.push({ action, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
@@ -336,6 +339,7 @@ export async function runNormalize(request: NormalizeRequest) {
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
     quality: summarizeQuality(perAction),
+    ground: { mode: request.ground ?? 'lift', perAction: exported.map((item) => ({ name: item.action.name, ...item.report.ground })) },
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
     roundtrip, glbSha256, elapsedMs: 0 }
   const preview = request.preview ? renderContactSheet(previewFrames, new Map(MIXAMO65_BONE_PARENTS)) : undefined

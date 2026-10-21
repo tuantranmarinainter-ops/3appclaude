@@ -243,10 +243,22 @@ for (const type of ['dragover', 'drop']) window.addEventListener(type, (event) =
 function renderTargets() {
   const box = clear($('targets'))
   for (const target of state.targets) {
-    const selected = state.target?.id === target.id
-    box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(selected), onclick: () => chooseTarget(target) },
+    const selected = state.target?.id === target.id && !state.mc20
+    box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(selected), onclick: () => { setMc20(false); chooseTarget(target) } },
       h('b', { text: `Nhân vật ${target.name}` }), h('small', { text: `hông ${fmt(target.hipsHeightMeters)} m` })))
   }
+  // Minecraft20 is an extra output on top of the Mixamo65 GLB (the solver is Mixamo65 → Minecraft20), so it rides on the selected character.
+  box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20), onclick: () => setMc20(true) },
+    h('b', { text: 'Minecraft 20 (Steve)' }), h('small', { text: 'xuất .bobj cho BBS FS' })))
+}
+function setMc20(on) {
+  if (!!state.mc20 === on) return
+  state.mc20 = on
+  const box = $('optionsForm').elements.bobj
+  box.checked = on
+  box.dispatchEvent(new Event('change', { bubbles: true }))
+  renderTargets()
+  if (on) toast('Đã chọn Minecraft 20: chạy sẽ xuất thêm .bobj (xem tab Minecraft20). GLB vẫn dùng nhân vật Mixamo đang chọn.', 'ok')
 }
 async function chooseTarget(target) {
   if (state.target?.id === target.id) return
@@ -259,12 +271,21 @@ async function chooseTarget(target) {
 }
 
 // ---------------------------------------------------------------- step 3: inspect
+function groundSummary(ground) {
+  const rows = (ground.perAction ?? []).filter((item) => item.applied)
+  const skipped = (ground.perAction ?? []).filter((item) => item.skipped).length
+  const tail = skipped ? ` · BỎ QUA ${skipped} Action vì lệch quá lớn (sai đơn vị/hệ số root?)` : ''
+  if (!rows.length) return `${ground.mode}: không cần dời${tail}`
+  const max = Math.max(...rows.map((item) => item.maxOffsetMeters))
+  return `${ground.mode}: nâng tối đa ${(max * 100).toFixed(1)} cm ở ${rows.length}/${ground.perAction.length} Action${tail}`
+}
+
 function readOptions() {
   const form = $('optionsForm')
   const get = (name) => form.elements[name]
   const number = (name) => { const value = get(name).value.trim(); return value === '' ? undefined : Number(value) }
   return {
-    mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale') ?? 1, calibrate: get('calibrate').value,
+    mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale') ?? 1, ground: get('ground').value, calibrate: get('calibrate').value,
     facingDegrees: number('facingDegrees'), swapSides: get('swapSides').value, unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
   }
 }
@@ -490,6 +511,7 @@ function renderOverview() {
     report.proportions ? ['Hông nguồn / đích', `${fmt(report.proportions.sourceHipsHeightMeters)} m / ${fmt(report.proportions.targetHipsHeightMeters)} m`] : null,
     report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
     report.input ? ['Root', `${report.input.rootPolicy} × ${report.input.rootScale}`] : null,
+    report.ground ? ['Chạm sàn', groundSummary(report.ground)] : null,
     report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
     report.sides ? ['Trái / phải', `${report.sides.mode}${report.sides.swapped ? ', đã đảo' : ''}${report.sides.restTurnDegrees ? `, xoay rest ${report.sides.restTurnDegrees}°` : ''} · bằng chứng ${report.sides.evidence}${report.sides.agreement === null ? '' : ` (${fmt(report.sides.agreement)})`}`] : null,
     report.calibration ? ['Calibration', `${report.calibration.mode}, lệch lớn nhất ${fmt(report.calibration.maxDegrees, 1)}° / ${report.calibration.corrections.length} khớp`] : null,

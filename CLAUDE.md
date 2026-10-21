@@ -48,6 +48,8 @@ Python (từ `three-workspace-app`): `python -m unittest agent.test_unified_cli 
 
 - Xong đợt điều phối 2026-10-20 (đặc tả `docs/W01-TASKS-2026-10-20.md`): T1 đo chân/root, T2 `--mode model`
   (nguồn Mixamo), T3 gate test Studio, T4 mapping theo geometry, T5 **App 1 Workbench** (UI web cục bộ).
+- Chân lún đất: `--ground off|lift|level|frame` (mặc định `lift`; `packages/retarget/src/groundAdjust.ts`) chỉ dời root theo trục dọc để
+  chân/ngón chân không thấp hơn sàn rest của đích; bỏ qua Action nếu lệch > 50% chiều cao hông (sai đơn vị/root-scale). Report: `report.ground`.
 - Chạy Workbench: từ `packages/builder`: `node --import tsx ../retarget/workbench/server.ts --port 3101`
   → `http://127.0.0.1:3101` (hướng dẫn: `packages/retarget/workbench/README.md`).
 

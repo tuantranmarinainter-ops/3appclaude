@@ -30,7 +30,7 @@ export interface SourceRecord { id: string; name: string; format: AssetFormat; p
 export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number }
 
 export interface RunOptions {
-  actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale: number
+  actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
 }
 
@@ -62,7 +62,7 @@ export function parseOptions(value: unknown): RunOptions {
     previewAction: number('previewAction', (n) => Number.isInteger(n) && n >= 0, 'a non-negative Action index'),
     unitMeters: number('unitMeters', (n) => n > 0, 'a positive number'),
     upAxis: oneOf('upAxis', ['y', 'z'], 'y'), rootPolicy: oneOf('rootPolicy', ['preserve', 'in-place'], 'preserve'),
-    rootScale: number('rootScale', (n) => n > 0, 'a positive number') ?? 1,
+    rootScale: number('rootScale', (n) => n > 0, 'a positive number') ?? 1, ground: oneOf('ground', ['off', 'lift', 'level', 'frame'], 'lift'),
     calibrate: oneOf('calibrate', ['limbs', 'none'], 'limbs'), facingDegrees: number('facingDegrees', () => true, 'a number of degrees'),
     swapSides: oneOf('swapSides', ['auto', 'on', 'off'], 'auto'),
     mode: oneOf('mode', ['animation', 'model'], 'animation'), bobj: raw.bobj === true, bobjRoot: oneOf('bobjRoot', ['inPlace', 'follow'], 'inPlace'),
@@ -98,7 +98,7 @@ async function loadScenes(source: SourceRecord, target: TargetRecord) {
 function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptions, scenes: Awaited<ReturnType<typeof loadScenes>>, preset: unknown, presetFamily: SourceFamily | undefined): NormalizeRequest {
   return { source: scenes.source, sourceLabel: source.name, sourceSha256: source.sha256, target: scenes.target, targetLabel: target.file, targetSha256: target.sha256,
     actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
-    rootScale: options.rootScale, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
+    rootScale: options.rootScale, ground: options.ground, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
     calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides }
 }
 

@@ -4,6 +4,7 @@ import { createUniversalRetargeter, validateUniversalMapping, type RetargetBoneP
 import { universalFramesToGlb } from './universalGlb'
 import { estimateUniversalBakeCost } from './universalBake'
 import type { UniversalBakeFrame } from './universalBake'
+import { adjustGround, type GroundMode } from './groundAdjust'
 import { createNormalizationMetrics } from './normalizationMetrics'
 import type { UniversalCalibrationRuntime } from './universalCalibration'
 
@@ -17,6 +18,8 @@ export interface NormalizeAnimationInput {
   actionIndex: number
   fps: number
   rootTranslationScale?: number
+  /** Vertical foot-floor fix (default 'off' here; the CLI/Workbench pass their own default). */
+  groundMode?: GroundMode
   rootTranslationPolicy?: 'preserve' | 'in-place'
   calibration?: UniversalCalibrationRuntime
   requiredTargetJointIds?: readonly string[]
@@ -49,12 +52,13 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
       frames.push({ frame: index, timeSeconds, bones })
       if (index % 32 === 31) await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }
+    const ground = adjustGround(target.rig, frames, input.groundMode ?? 'off')
     signal?.throwIfAborted()
     const bytes = universalFramesToGlb(target.rig, target.joints, frames, action.name)
     return { bytes, report: { ...report, sourceFingerprint: source.rig.fingerprint, targetFingerprint: target.rig.fingerprint,
       actionIndex: action.index, actionName: action.name, durationSeconds: action.durationSeconds, sampleFps: input.fps,
       sampleCount: frames.length, sourceJointCount: source.joints.length, targetJointCount: target.joints.length,
-      resourceCost,
+      resourceCost, ground,
       excludedSourceBones: input.excludedSourceBones ?? [], metrics: metrics.report(),
       rootTranslationScale: input.rootTranslationScale ?? 1, rootTranslationPolicy: input.rootTranslationPolicy ?? 'preserve', outputMode: 'animation-only' as const } }
   } finally { source.dispose(); target?.dispose() }
