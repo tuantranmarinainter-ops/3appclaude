@@ -61,7 +61,8 @@ def test_looping_aura_has_steady_spawn_rate_and_looping_lifetime() -> None:
 
 def test_sprite_with_distortion_material_is_blocked_not_exported_as_plain_sprite() -> None:
     effect_ir = fixture("looping-aura")
-    effect_ir["nodes"][0]["material"] = "backdistortion"
+    sprite = next(node for node in effect_ir["nodes"] if node["renderType"] == "sprite")
+    sprite["material"] = "backdistortion"
     result = convert_effect_ir(effect_ir)
     assert result["status"] == "BLOCKED"
     assert result["schemes"] == []
