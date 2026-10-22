@@ -17,6 +17,8 @@ import { AnimationWorkspace } from './AnimationWorkspace'
 import { HostDrawer } from './HostDrawer'
 import { SceneRenderPanel } from './scene-render'
 import { FilmExportPanel } from './film-export'
+import { SceneReviewPanel } from './scene-review'
+import { planReviewFrames, reviewStatusForSequence } from '../../../src/sceneReview'
 import { DiagnosticsPanel } from '../../../src/devtools/tools/DiagnosticsPanel'
 import { LanguageMenu } from './LanguageMenu'
 import { WORKSPACE_PANELS, type Workspace } from '../../../src/workspaceNavigation'
@@ -86,7 +88,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'diagnostics'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'diagnostics'
 const WORKSPACES: Array<{ id: Workspace; number: string; vi: string; en: string }> = [
   { id: 'retarget', number: '1', vi: 'Chuẩn hóa', en: 'Standardize' },
   { id: 'scene', number: '2', vi: 'Dựng cảnh', en: 'Scene' },
@@ -402,6 +404,32 @@ export function StudioOverlay({
   }, [runHistory, source])
 
   const project = projectState?.project ?? null
+  const reviewSequence = project?.scene.content.editorial?.sequences.find((sequence) => sequence.id === project.scene.content.editorial?.activeSequenceId)
+  const reviewFramePlans = project && reviewSequence ? new Map(planReviewFrames(project, reviewSequence.id).map((item) => [item.clipId, item.frames])) : new Map<string, number[]>()
+  const reviewClips = reviewSequence?.clips.map((clip, index) => ({
+    id: clip.id,
+    name: `${vi ? 'Cảnh' : 'Shot'} ${String(index + 1).padStart(2, '0')}`,
+    frameStart: clip.sourceFrameStart,
+    frameEnd: clip.sourceFrameEnd,
+    frames: reviewFramePlans.get(clip.id) ?? [],
+    ...reviewStatusForSequence(project!, reviewSequence!.id, clip.id),
+  })) ?? []
+  const setReview = useCallback(async (clipId: string, status: 'pending' | 'ok' | 'note', note: string) => {
+    if (!project) return
+    try {
+      await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: documentId, expectedRevision: project.revision,
+        command: 'scene.review.set', args: { sequenceId: reviewSequence?.id, clipId, status, note } })
+      setProjectState(await loadUnifiedProject(documentId))
+      notifyProjectCommit(documentId)
+    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+  }, [documentId, project, reviewSequence?.id])
+  const playReviewClip = useCallback((clipId: string) => {
+    const clip = reviewSequence?.clips.find((item) => item.id === clipId)
+    const stage = getLiveStudio()?.stage
+    if (!clip || !stage) return
+    stage.seek(clip.sourceFrameStart)
+    stage.play()
+  }, [reviewSequence])
   const assetCount = Object.keys(project?.assets ?? {}).length
   const characterCount = Object.keys(project?.characters ?? {}).length
   const clipCount = project?.scene.content.timeline.animation.motionClips.length ?? 0
@@ -457,6 +485,7 @@ export function StudioOverlay({
             <button type="button" className="wb-host-secondary" onClick={() => setDrawer('assets')}>{vi ? 'Tài nguyên' : 'Assets'}</button>
             <button type="button" id="wb-silhouette-toggle" className={`wb-host-secondary${silhouette ? ' is-active' : ''}`} aria-pressed={silhouette} onClick={() => setSilhouette((value) => !value)} title={vi ? 'Xem silhouette: nhân vật tô đặc trên nền sáng (Shift+S)' : 'Silhouette view: solid characters on a light background (Shift+S)'}>{vi ? 'Silhouette' : 'Silhouette'} <kbd>Shift S</kbd></button>
             <button type="button" id="wb-bbs-look-toggle" className={`wb-host-secondary${bbsLook ? ' is-active' : ''}`} aria-pressed={bbsLook} onClick={() => setBbsLook((value) => !value)} title={vi ? 'Xem như BBS FS: ánh sáng, trời và sàn cỏ Minecraft (Shift+B)' : 'BBS look: Minecraft lighting, sky and grass as in BBS FS (Shift+B)'}>{vi ? 'Xem như BBS' : 'BBS look'} <kbd>Shift B</kbd></button>
+            <button type="button" id="wb-scene-review-open" className="wb-host-secondary" onClick={() => setDrawer('review')}>{vi ? 'Duyệt cảnh' : 'Review shots'}</button>
             {activeWorkspace === 'animation' && <button type="button" className="wb-host-secondary" onClick={() => setDrawer('animation')}>{vi ? 'Thêm animation' : 'Add animation'}</button>}
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Hoàn tác' : 'Undo'} title="Undo (Ctrl+Z)" disabled={historyBusy || !projectState?.history.canUndo} onClick={() => void runHistory('history.undo')}>↶</button>
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>
@@ -498,6 +527,9 @@ export function StudioOverlay({
           </HostDrawer>
           <HostDrawer open={drawer === 'export'} title={vi ? 'Xuất dự án' : 'Export project'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-export" onClose={() => setDrawer(null)}>
             <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} /></details></div>
+          </HostDrawer>
+          <HostDrawer open={drawer === 'review'} title={vi ? 'Duyệt cảnh' : 'Scene review'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
+            {reviewSequence ? <SceneReviewPanel clips={reviewClips} images={{}} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} /> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
         </>}
