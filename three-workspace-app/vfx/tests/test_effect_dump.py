@@ -1,51 +1,59 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from effekseer_ai.effect_dump import dump_effect_ir, write_effect_ir
+import pytest
 
 
 class FakeSession:
     path = Path("spark.efkefc")
 
     def node_list(self):
-        return [
-            {"path": "node/root/0", "id": "node/id/sprite-id", "name": "Spark", "children": 0},
-            {"path": "node/root/1", "id": "node/id/other-id", "name": "Other", "children": 0},
-        ]
-
-    def property_list(self, node_path):
-        return [
-            f"{node_path}/RendererType/Value", f"{node_path}/Blend/Value",
-            f"{node_path}/Generation/MaxGeneration/Value", f"{node_path}/Generation/GenerationTime/Value",
-            f"{node_path}/LifeMax/Value", f"{node_path}/GenerationShape/Value",
-        ]
+        return [{"path": "node/root/0", "id": "node/id/sprite-id", "name": "Spark", "children": 0}]
 
     def property_get(self, path):
-        key = path.rsplit("/", 2)[-2]
-        if "other-id" in path and key == "RendererType":
-            return "mesh-unknown"
-        return {
-            "RendererType": "sprite", "Blend": "add", "MaxGeneration": 20,
-            "GenerationTime": 3, "LifeMax": 24, "GenerationShape": "sphere",
-        }[key]
+        values = {
+            "node/root/0/DrawingValues/Type": "Sprite",
+            "node/root/0/RendererCommonValues/AlphaBlend": "Add",
+            "node/root/0/RendererCommonValues/ColorTexture/RelativePath": "Texture/Particle01.png",
+            "node/root/0/CommonValues/MaxGeneration/Value": 20,
+            "node/root/0/CommonValues/Infinite/Value": True,
+            "node/root/0/CommonValues/GenerationTime/Center": 3,
+            "node/root/0/CommonValues/GenerationTime/Amplitude": 1,
+            "node/root/0/CommonValues/Life/Min": 12,
+            "node/root/0/CommonValues/Life/Max": 24,
+            "node/root/0/LocationValues/Type": "PVA",
+        }
+        if path not in values:
+            raise ValueError(path)
+        return values[path]
 
 
-def test_effect_dump_uses_stable_ids_maps_known_fields_and_preserves_raw_properties():
+def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
     result = dump_effect_ir(FakeSession(), fps=60)
-    assert result["schemaVersion"] == 1
-    assert result["name"] == "spark"
-    assert result["fps"] == 60
     first = result["nodes"][0]
-    assert first["id"] == "sprite-id"
-    assert first["parentId"] is None
     assert first["renderType"] == "sprite"
     assert first["blend"] == "add"
-    assert first["generation"] == {"maxGeneration": 20, "generationTime": 3}
-    assert first["life"] == {"max": 24}
-    assert "RendererType/Value" in first["properties"]
-    assert result["nodes"][1]["unsupportedFeatures"] == ["unmapped-core-render-type"]
+    assert first["texture"] == "Texture/Particle01.png"
+    assert first["generation"] == {"maxGeneration": 20, "infinite": True, "generationTime": 3, "generationTimeAmplitude": 1}
+    assert first["life"] == {"min": 12, "max": 24}
+    assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
+    assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
+
+
+def test_unknown_core_enum_is_explicitly_unsupported_not_unknown():
+    class Unknown(FakeSession):
+        def property_get(self, path):
+            if path.endswith("DrawingValues/Type"):
+                return "UnlistedRenderer"
+            return super().property_get(path)
+
+    node = dump_effect_ir(Unknown())["nodes"][0]
+    assert node["renderType"] == "unsupported"
+    assert "unmapped-core-render-type:UnlistedRenderer" in node["unsupportedFeatures"]
 
 
 def test_effect_dump_writes_versioned_json_atomically(tmp_path: Path):
@@ -54,3 +62,33 @@ def test_effect_dump_writes_versioned_json_atomically(tmp_path: Path):
     serialized = json.loads(output.read_text(encoding="utf-8"))
     assert serialized["schemaVersion"] == 1
     assert not output.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.integration
+def test_official_core_samples_map_or_block_expected_renderers():
+    import os
+    from effekseer_ai.ir_to_bbs import convert_effect_ir
+    from effekseer_ai.session import EffectSession
+
+    dll = os.environ.get("EFFEKSEER_AI_BIN_DIR")
+    samples = os.environ.get("EFFEKSEER_AI_SAMPLE_DIR")
+    if not dll or not samples:
+        pytest.skip("Set EFFEKSEER_AI_BIN_DIR and EFFEKSEER_AI_SAMPLE_DIR; official samples are not bundled")
+    root = Path(samples)
+    expected = {
+        "Simple_Sprite_BillBoard": "export",
+        "Simple_SpawnMethod1": "export",
+        "Simple_Ribbon_Sword": "ribbon",
+        "Simple_Ring_Shape1": "ring",
+        "Simple_Distortion": "distortion",
+    }
+    for stem, expectation in expected.items():
+        source = next(root.rglob(f"{stem}.efkefc"), None)
+        assert source is not None, f"Missing official sample {stem}.efkefc"
+        effect_ir = dump_effect_ir(EffectSession.open(source))
+        converted = convert_effect_ir(effect_ir)
+        if expectation == "export":
+            assert converted["schemes"], stem
+        else:
+            assert converted["status"] == "BLOCKED", stem
+            assert any(expectation in str(entry.get("detail", "")).lower() or expectation in str(entry.get("property", "")).lower() for entry in converted["blocked"]), stem

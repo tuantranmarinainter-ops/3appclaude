@@ -12,15 +12,18 @@ from typing import Any
 
 TICKS_PER_SECOND = 20
 TIME_QUANTUM = 1 / TICKS_PER_SECOND
-ADD_BRIGHTNESS_BOOST = 2.0
+ADD_DEFAULTS = {"alphaScale": 1.0, "coreExponent": 1.5, "haloSize": 1.9, "haloAlpha": 0.55, "haloColorBoost": 0.25}
 
 
-def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) -> dict[str, Any]:
+def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, add_options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return Snowstorm schemes and a per-property support report."""
     if (not isinstance(effect_ir, dict) or isinstance(effect_ir.get("schemaVersion"), bool)
             or effect_ir.get("schemaVersion") != 1):
         raise ValueError("EffectIR schemaVersion must be 1")
     fps = _number(effect_ir.get("fps", 60), "fps", minimum=0.000001)
+    add_options = {**ADD_DEFAULTS, **(add_options or {})}
+    for option, minimum in (("alphaScale", 0), ("coreExponent", 0.000001), ("haloSize", 0.000001), ("haloAlpha", 0), ("haloColorBoost", 0)):
+        add_options[option] = _number(add_options[option], f"add.{option}", minimum=minimum)
     nodes = effect_ir.get("nodes")
     if not isinstance(nodes, list):
         raise ValueError("EffectIR nodes must be a list")
@@ -225,7 +228,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
             "particles_alpha" if blend == "alpha" else "particles_blend"
         )
         if blend in {"add", "additive"}:
-            result["properties"].append(_entry(node_path, "blend", "APPROX", "Additive blend uses alpha material and a recorded brightness boost"))
+            result["properties"].append(_entry(node_path, "blend", "APPROX", "Additive blend is approximated with luminance alpha, white core and halo layers"))
         elif not node_blockers:
             result["properties"].append(_entry(node_path, "blend", "OK", f"Mapped to {material}"))
 
@@ -236,10 +239,9 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
             node_blockers.append(_entry(node_path, "color", "BLOCKED", str(error)))
             color = [1.0, 1.0, 1.0, 1.0]
         if blend in {"add", "additive"}:
-            boosted = [min(1.0, channel * ADD_BRIGHTNESS_BOOST) for channel in color[:3]] + [color[3]]
-            color = boosted
-            warning = _entry(node_path, "blend", "WARNING", "Effekseer Add falls back to alpha blending; highlights may look less additive")
-            warning["fallback"] = {"material": "particles_blend", "brightnessBoost": ADD_BRIGHTNESS_BOOST, "outputColor": color}
+            warning = _entry(node_path, "blend", "WARNING", "Effekseer Add is approximated by a derived luminance-alpha texture, white core and halo emitter")
+            warning["code"] = "ADD_BLEND_APPROXIMATED"
+            warning["fallback"] = {"material": "particles_blend", **add_options, "luminance": {"red": 0.2126, "green": 0.7152, "blue": 0.0722}, "coreFormula": "color*(1-L^coreExponent)+white*L^coreExponent", "textureAlpha": "L*alphaScale", "drawOrder": ["halo", "core"]}
             node_warnings.append(warning)
         if color[3] < 1:
             node_warnings.append(_entry(node_path, "color.alpha", "APPROX", "Snowstorm tint exports RGB; source alpha must be baked into the texture or is not preserved"))
@@ -344,7 +346,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
         if flipbook_data is not None:
             components["minecraft:particle_appearance_billboard"]["uv"]["flipbook"] = flipbook_data
         identifier = f"vfx:{_slug(effect_ir.get('name', 'effect'))}_{_slug(node.get('name', node_id))}_{_slug(node_id)}"
-        schemes.append({
+        scheme = {
             "id": node_id,
             "path": node_path,
             "json": {
@@ -357,7 +359,19 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
                     "components": components,
                 },
             },
-        })
+        }
+        if blend in {"add", "additive"}:
+            scheme["addBlend"] = {"sourceTexture": texture, "options": add_options, "layer": "core", "derivedTexture": f"textures/vfx/add/{_slug(node_id)}_core.png"}
+            halo = json.loads(json.dumps(scheme))
+            halo["id"] = f"{node_id}-halo"
+            halo["addBlend"]["layer"] = "halo"
+            halo["addBlend"]["derivedTexture"] = f"textures/vfx/add/{_slug(node_id)}_halo.png"
+            halo_components = halo["json"]["particle_effect"]["components"]
+            halo_components["minecraft:particle_appearance_billboard"]["size"] = [value * add_options["haloSize"] for value in node_size]
+            halo_components["minecraft:particle_appearance_tinting"]["color"] = _hex_color([min(1, c + add_options["haloColorBoost"]) for c in color[:3]] + [color[3] * add_options["haloAlpha"]])
+            halo["json"]["particle_effect"]["description"]["identifier"] += "_halo"
+            schemes.append(halo)
+        schemes.append(scheme)
         result["status"] = "PARTIAL" if node_blockers else ("WARNING" if node_warnings else "OK")
         result["time"] = {
             "generationIntervalSeconds": generation_seconds,
@@ -386,9 +400,9 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
     }
 
 
-def convert_to_directory(effect_ir: dict[str, Any], out_dir: str | Path, allow_partial: bool = False) -> dict[str, Any]:
+def convert_to_directory(effect_ir: dict[str, Any], out_dir: str | Path, allow_partial: bool = False, add_options: dict[str, Any] | None = None) -> dict[str, Any]:
     """Write each accepted node scheme and a complete report to a directory."""
-    result = convert_effect_ir(effect_ir, allow_partial)
+    result = convert_effect_ir(effect_ir, allow_partial, add_options)
     output = Path(out_dir)
     output.mkdir(parents=True, exist_ok=True)
     previous_report = output / "report.json"
@@ -418,10 +432,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("effect_ir", help="EffectIR JSON file")
     parser.add_argument("out", help="Output directory for Snowstorm schemes and report.json")
     parser.add_argument("--allow-partial", action="store_true", help="Export supported nodes while reporting blocked nodes")
+    for key, flag, help_text in (("alphaScale", "alpha-scale", "Luminance-derived texture alpha multiplier"), ("coreExponent", "core-exponent", "White-core luminance exponent"), ("haloSize", "halo-size", "Halo size multiplier"), ("haloAlpha", "halo-alpha", "Halo alpha multiplier"), ("haloColorBoost", "halo-color-boost", "Halo RGB boost")):
+        parser.add_argument(f"--add-{flag}", type=float, default=ADD_DEFAULTS[key], help=help_text)
     args = parser.parse_args(argv)
     try:
         effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
-        result = convert_to_directory(effect_ir, args.out, args.allow_partial)
+        result = convert_to_directory(effect_ir, args.out, args.allow_partial, {"alphaScale": args.add_alpha_scale, "coreExponent": args.add_core_exponent, "haloSize": args.add_halo_size, "haloAlpha": args.add_halo_alpha, "haloColorBoost": args.add_halo_color_boost})
     except (OSError, json.JSONDecodeError, ValueError) as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, ensure_ascii=False))
         return 2

@@ -18,17 +18,26 @@ def fixture(name: str) -> dict:
 def test_glow_ring_explosion_emits_snowstorm_billboards_and_add_warnings() -> None:
     result = convert_effect_ir(fixture("glow-ring-explosion"))
     assert result["status"] == "PASS"
-    assert len(result["schemes"]) == 2
+    assert len(result["schemes"]) == 3
+    assert [s["addBlend"]["layer"] for s in result["schemes"][:2]] == ["halo", "core"]
     ring = next(scheme["json"]["particle_effect"] for scheme in result["schemes"] if scheme["id"] == "ring")
     assert ring["description"]["basic_render_parameters"]["material"] == "particles_blend"
     assert ring["description"]["basic_render_parameters"]["texture"] == "assets:textures/vfx/glow-ring.png"
     assert ring["components"]["minecraft:emitter_shape_disc"]["offset"] == [0, 0, 0]
     assert ring["components"]["minecraft:emitter_rate_steady"]["spawn_rate"] == 20
     assert ring["components"]["minecraft:emitter_lifetime_once"]["active_time"] == 3
-    warning = next(w for w in result["warnings"] if w["property"] == "blend")
+    warning = next(w for w in result["warnings"] if w.get("code") == "ADD_BLEND_APPROXIMATED")
     assert warning["status"] == "WARNING"
-    assert warning["fallback"]["brightnessBoost"] == 2.0
-    assert warning["fallback"]["outputColor"] == [0.5, 0.9, 1.0, 0.9]
+    assert warning["fallback"]["coreExponent"] == 1.5
+    assert warning["fallback"]["haloSize"] == 1.9
+    assert warning["fallback"]["haloAlpha"] == 0.55
+
+
+def test_add_blend_coefficients_are_cli_configurable():
+    result = convert_effect_ir(fixture("glow-ring-explosion"), add_options={"haloSize": 2.1, "haloAlpha": 0.4})
+    warning = next(w for w in result["warnings"] if w.get("code") == "ADD_BLEND_APPROXIMATED")
+    assert warning["fallback"]["haloSize"] == 2.1
+    assert warning["fallback"]["haloAlpha"] == 0.4
 
 
 def test_ice_sword_ribbon_is_blocked_with_sprite_replacement_suggestion() -> None:

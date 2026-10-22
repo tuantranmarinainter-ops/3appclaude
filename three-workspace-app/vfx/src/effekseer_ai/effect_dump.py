@@ -1,117 +1,101 @@
-"""Extract a conservative, versioned JSON snapshot from an open Core session."""
+"""Export Effekseer Core 1.80.6 documents to the portable EffectIR subset."""
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 
-def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> dict[str, Any]:
-    """Serialize public Core properties into EffectIR without claiming unsupported mappings."""
-    nodes = session.node_list()
-    paths = {str(item["path"]): str(item["id"]) for item in nodes}
-    output_nodes: list[dict[str, Any]] = []
-    for item in nodes:
-        node_path = str(item["path"])
-        stable_ref = str(item["id"])
-        leaves = session.property_list(stable_ref)
-        raw: dict[str, Any] = {}
-        values: dict[str, Any] = {}
-        for property_path in leaves:
-            try:
-                value = session.property_get(property_path)
-            except Exception:
-                continue
-            raw[property_path.removeprefix(f"{stable_ref}/")] = _json_value(value)
-            terminal = property_path.rstrip("/").split("/")[-1]
-            if terminal.lower() == "value":
-                segments = property_path.rstrip("/").split("/")
-                terminal = segments[-2] if len(segments) > 1 else terminal
-            values[_key(terminal)] = _json_value(value)
+_RENDER_TYPES = {"sprite": "sprite", "ribbon": "ribbon", "track": "track", "ring": "ring", "model": "model", "proceduralmodel": "proceduralmodel", "distortion": "distortion"}
+_BLENDS = {"blend": "blend", "opacity": "opacity", "add": "add", "sub": "sub", "mul": "mul"}
 
-        render_value = _pick(values, "renderType", "rendererType")
-        if render_value is None:
-            # Unknown Core renderer types must block conversion instead of being mislabeled as sprites.
-            render_type = "unknown"
-        else:
-            render_type = str(render_value).lower()
-        parent_path = node_path.rpartition("/")[0]
-        parent_id = paths.get(parent_path)
-        normalized = {
-            "id": stable_ref.removeprefix("node/id/"),
-            "path": stable_ref,
-            "parentId": parent_id.removeprefix("node/id/") if parent_id else None,
-            "name": str(item.get("name", stable_ref)),
-            "renderType": render_type,
-            "properties": raw,
-            "unsupportedFeatures": [] if render_type in {"sprite", "none", "group", "ribbon", "track"}
-            else ["unmapped-core-render-type"],
+
+def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> dict[str, Any]:
+    nodes = session.node_list()
+    result: dict[str, Any] = {"schemaVersion": 1, "name": name or Path(str(session.path or "effect")).stem, "fps": fps, "nodes": []}
+    for item in nodes:
+        path = str(item["path"])
+        stable_id = str(item["id"]).removeprefix("node/id/")
+        parent = path.rsplit("/", 1)[0]
+        parent_id = next((str(n["id"]).removeprefix("node/id/") for n in nodes if str(n["path"]) == parent), None)
+        field_paths: dict[str, str] = {}
+
+        def get(field: str, candidates: tuple[str, ...], default: Any = None) -> Any:
+            for suffix in candidates:
+                property_path = f"{path}/{suffix}"
+                try:
+                    value = session.property_get(property_path)
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    continue
+                field_paths[field] = property_path
+                return value
+            return default
+
+        raw_render = get("renderType", ("DrawingValues/Type",), None)
+        normalized_render = _key(raw_render)
+        render_type = _RENDER_TYPES.get(normalized_render)
+        unsupported = [] if render_type else [f"unmapped-core-render-type:{raw_render!s}"]
+        raw_blend = get("blend", ("RendererCommonValues/AlphaBlend",), "Blend")
+        blend = _BLENDS.get(_key(raw_blend))
+        if blend is None:
+            unsupported.append(f"unmapped-core-blend:{raw_blend!s}")
+            blend = "unsupported"
+        texture = get("texture", ("RendererCommonValues/ColorTexture/RelativePath",), None)
+        max_generation = get("generation.maxGeneration", ("CommonValues/MaxGeneration/Value",), 1)
+        infinite = get("generation.infinite", ("CommonValues/Infinite/Value",), False)
+        generation_time = get("generation.generationTime", ("CommonValues/GenerationTime/Center", "CommonValues/GenerationTime/Value"), 1)
+        generation_amp = get("generation.generationTimeAmplitude", ("CommonValues/GenerationTime/Amplitude",), 0)
+        life_min = get("life.min", ("CommonValues/Life/Min", "CommonValues/Life/Center"), None)
+        life_max = get("life.max", ("CommonValues/Life/Max", "CommonValues/Life/Value"), None)
+        if life_min is None and life_max is not None:
+            life_min = life_max
+        if life_max is None and life_min is not None:
+            life_max = life_min
+        location_type = get("location.type", ("LocationValues/Type",), "Fixed")
+        node: dict[str, Any] = {
+            "id": stable_id, "path": path, "name": str(item.get("name", stable_id)), "parentId": parent_id,
+            "renderType": render_type or "unsupported", "blend": blend,
+            "generation": {"maxGeneration": _int(max_generation, 1), "infinite": bool(infinite), "generationTime": _num(generation_time, 1)},
+            "life": {"min": _num(life_min, 60), "max": _num(life_max, 60)},
+            "location": {"type": str(location_type).lower(), "position": [0, 0, 0], "direction": [0, 1, 0], "velocity": [0, 0, 0], "acceleration": [0, 0, 0]},
+            "color": [1, 1, 1, 1], "size": [1, 1], "sourcePaths": field_paths,
         }
-        _copy_values(normalized, values)
-        output_nodes.append(normalized)
-    return {
-        "schemaVersion": 1,
-        "name": name or (Path(str(session.path)).stem if getattr(session, "path", None) else "effect"),
-        "fps": fps,
-        "nodes": output_nodes,
-    }
+        if texture:
+            node["texture"] = str(texture).replace("\\", "/")
+        if unsupported:
+            node["unsupportedFeatures"] = unsupported
+        if generation_amp:
+            node["generation"]["generationTimeAmplitude"] = _num(generation_amp, 0)
+        result["nodes"].append(node)
+    return result
 
 
 def write_effect_ir(session: Any, output: str | Path, name: str | None = None, fps: float = 60) -> Path:
+    data = dump_effect_ir(session, name=name, fps=fps)
     destination = Path(output)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".tmp")
-    temporary.write_text(json.dumps(dump_effect_ir(session, name, fps), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(destination)
     return destination
 
 
-def _copy_values(node: dict[str, Any], values: dict[str, Any]) -> None:
-    aliases = {
-        "blend": ("blend", "blendType"), "texture": ("texture", "texturePath"),
-        "size": ("size", "sizeValue"), "color": ("color", "colorValue"),
-        "lighting": ("lighting", "isLighting"),
-    }
-    for output, keys in aliases.items():
-        value = _pick(values, *keys)
-        if value is not None:
-            node[output] = value
-
-    generation = {key: values[key] for key in ("maxgeneration", "generationtime", "generationtimeoffset", "infinite") if key in values}
-    if generation:
-        node["generation"] = {
-            {"maxgeneration": "maxGeneration", "generationtime": "generationTime",
-             "generationtimeoffset": "generationTimeOffset", "infinite": "infinite"}[key]: value
-            for key, value in generation.items()
-        }
-    life = {key: values[key] for key in ("life", "lifemin", "lifemax") if key in values}
-    if life:
-        node["life"] = {"min": life.get("lifemin", life.get("life")), "max": life.get("lifemax", life.get("life"))}
-        node["life"] = {key: value for key, value in node["life"].items() if value is not None}
-    location = {key: values[key] for key in ("locationtype", "generationshape", "position", "direction", "velocity", "acceleration") if key in values}
-    if location:
-        node["location"] = {
-            {"locationtype": "type", "generationshape": "shape"}.get(key, key): value
-            for key, value in location.items()
-        }
+def _key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
 
 
-def _pick(values: dict[str, Any], *keys: str) -> Any:
-    for key in keys:
-        normalized = _key(key)
-        if normalized in values:
-            return values[normalized]
-    return None
+def _num(value: Any, default: float) -> float:
+    try:
+        number = float(value)
+        return number if number == number and abs(number) != float("inf") else default
+    except (TypeError, ValueError):
+        return default
 
 
-def _key(value: str) -> str:
-    return "".join(character.lower() for character in value if character.isalnum())
-
-
-def _json_value(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if isinstance(value, (list, tuple)):
-        return [_json_value(child) for child in value]
-    return str(value)
+def _int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
