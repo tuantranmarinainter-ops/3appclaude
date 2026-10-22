@@ -11,14 +11,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .ir_to_bbs import convert_effect_ir
+from .add_texture import add_layers
 
 
 def build_bbs_package(
     effect_ir: dict[str, Any], output_zip: str | Path, assets_root: str | Path,
     allow_partial: bool = False,
+    add_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Package schemes, licensed source textures, and conversion report atomically."""
-    converted = convert_effect_ir(effect_ir, allow_partial)
+    converted = convert_effect_ir(effect_ir, allow_partial, add_options)
     if converted["status"] == "BLOCKED":
         return {"status": "BLOCKED", "error": "Conversion has blocked nodes; pass allow_partial explicitly to package supported nodes", "conversion": converted}
 
@@ -41,7 +43,19 @@ def build_bbs_package(
         manifest[relative] = {**entry, "path": relative, "source": str(source)}
 
     texture_files: dict[str, Path] = {}
+    generated_textures: dict[str, tuple[Path, str, dict[str, Any]]] = {}
     for scheme in converted["schemes"]:
+        add = scheme.get("addBlend")
+        if add:
+            source_ref = scheme["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"]
+            source_relative = _safe_relative(source_ref.removeprefix("assets:"))
+            metadata = manifest.get(source_relative)
+            if metadata is None:
+                raise ValueError(f"Add texture is missing license/credit manifest metadata: {source_relative}")
+            generated_relative = _safe_relative(add["derivedTexture"])
+            generated_textures[generated_relative] = (Path(metadata["source"]), str(add["layer"]), dict(add["options"]))
+            scheme["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{generated_relative}"
+            continue
         texture = scheme["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"]
         if texture == "assets:textures/particle/particles":
             continue
@@ -68,13 +82,20 @@ def build_bbs_package(
                 )
             for relative, source in sorted(texture_files.items()):
                 archive.write(source, f"config/bbs/assets/{relative}")
+            transformed_cache: dict[Path, tuple[bytes, bytes]] = {}
+            for relative, (source, layer, options) in sorted(generated_textures.items()):
+                if source not in transformed_cache:
+                    transformed_cache[source] = add_layers(source.read_bytes(), options["coreExponent"], options["alphaScale"])
+                payload = transformed_cache[source][0 if layer == "core" else 1]
+                archive.writestr(f"config/bbs/assets/{relative}", payload)
+            package_assets = [{key: value for key, value in metadata.items() if key != "source"} for relative, metadata in sorted(manifest.items()) if relative in texture_files]
+            for relative, (source, _layer, _options) in sorted(generated_textures.items()):
+                source_meta = next(meta for meta in manifest.values() if Path(meta["source"]) == source)
+                package_assets.append({"path": relative, "credit": source_meta["credit"], "license": source_meta["license"], "derivedFrom": source_meta["path"], "transform": "Effekseer Add luminance alpha/core treatment"})
             package_manifest = {
                 "schemaVersion": 1,
                 "format": "BBS FS 2.7 Snowstorm resource package",
-                "assets": [
-                    {key: value for key, value in metadata.items() if key != "source"}
-                    for relative, metadata in sorted(manifest.items()) if relative in texture_files
-                ],
+                "assets": package_assets,
             }
             archive.writestr("config/bbs/effekseer-ai-manifest.json", json.dumps(package_manifest, ensure_ascii=False, indent=2) + "\n")
             archive.writestr("config/bbs/effekseer-ai-report.json", json.dumps(converted, ensure_ascii=False, indent=2) + "\n")
@@ -85,7 +106,7 @@ def build_bbs_package(
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-    return {"status": converted["status"], "path": str(out_path), "schemes": len(converted["schemes"]), "textures": len(texture_files), "conversion": converted}
+    return {"status": converted["status"], "path": str(out_path), "schemes": len(converted["schemes"]), "textures": len(texture_files) + len(generated_textures), "conversion": converted}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
         result = build_bbs_package(effect_ir, args.output_zip, args.assets_root, args.allow_partial)
-    except (OSError, json.JSONDecodeError, ValueError) as error:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, ensure_ascii=False))
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))

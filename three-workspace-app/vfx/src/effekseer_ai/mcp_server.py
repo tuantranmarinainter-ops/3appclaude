@@ -64,8 +64,11 @@ def create_server() -> FastMCP:
         """Package an EffectIR JSON file as a BBS FS 2.7 resource ZIP."""
         import json
 
-        effect_ir = json.loads(Path(effect_ir_path).read_text(encoding="utf-8"))
-        return build_bbs_package(effect_ir, output_zip, assets_root, allow_partial)
+        try:
+            effect_ir = json.loads(Path(effect_ir_path).read_text(encoding="utf-8"))
+            return build_bbs_package(effect_ir, output_zip, assets_root, allow_partial)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
+            return {"status": "ERROR", "error": str(error)}
 
     @server.tool()
     def effect_export(path: str, magnification: float = 1.0) -> dict[str, str]:

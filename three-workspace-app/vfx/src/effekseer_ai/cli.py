@@ -56,7 +56,8 @@ def _preview(args: argparse.Namespace) -> dict[str, Any]:
 
 def _bbs_package(args: argparse.Namespace) -> dict[str, Any]:
     effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
-    return build_bbs_package(effect_ir, args.output_zip, args.assets_root, args.allow_partial)
+    options = {"alphaScale": args.add_alpha_scale, "coreExponent": args.add_core_exponent, "haloSize": args.add_halo_size, "haloAlpha": args.add_halo_alpha, "haloColorBoost": args.add_halo_color_boost}
+    return build_bbs_package(effect_ir, args.output_zip, args.assets_root, args.allow_partial, options)
 
 
 def _node_list(args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -174,6 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
     package.add_argument("output_zip", help="Destination ZIP file")
     package.add_argument("--assets-root", default=".")
     package.add_argument("--allow-partial", action="store_true")
+    package.add_argument("--add-alpha-scale", type=float, default=1.0)
+    package.add_argument("--add-core-exponent", type=float, default=1.5)
+    package.add_argument("--add-halo-size", type=float, default=1.9)
+    package.add_argument("--add-halo-alpha", type=float, default=0.55)
+    package.add_argument("--add-halo-color-boost", type=float, default=0.25)
 
     node_list = command("node-list", _node_list)
     node_list.add_argument("effect")
@@ -233,7 +239,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    _emit(args.handler(args))
+    try:
+        result = args.handler(args)
+        _emit(result)
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
+        if args.command != "bbs-package":
+            raise
+        _emit({"status": "ERROR", "error": str(error)})
+        return 2
+    if args.command == "bbs-package" and result.get("status") == "BLOCKED":
+        return 1
     return 0
 
 

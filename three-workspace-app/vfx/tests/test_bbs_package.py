@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from effekseer_ai.bbs_package import build_bbs_package
+from effekseer_ai.add_texture import _decode, _encode
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ir" / "glow-ring-explosion.json"
@@ -18,7 +19,7 @@ def with_asset_manifest(root: Path) -> dict:
     for texture in ("textures/vfx/glow-ring.png", "textures/vfx/glow-burst.png"):
         source = root / texture
         source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_bytes(b"synthetic-test-texture")
+        source.write_bytes(_encode(1, 1, bytes((255, 128, 0, 255))))
         assets.append({"path": texture, "source": texture, "license": "CC0-1.0", "credit": "Synthetic test fixture"})
     effect["assets"] = assets
     return effect
@@ -30,13 +31,18 @@ def test_package_contains_particles_textures_report_and_credits(tmp_path: Path) 
     result = build_bbs_package(effect, output, tmp_path)
 
     assert result["status"] == "PASS"
-    assert result["schemes"] == 2
-    assert result["textures"] == 2
+    assert result["schemes"] == 3
+    assert result["textures"] == 3
     with zipfile.ZipFile(output) as archive:
         names = set(archive.namelist())
         assert "config/bbs/assets/particles/ring.json" in names
         assert "config/bbs/assets/particles/burst.json" in names
-        assert "config/bbs/assets/textures/vfx/glow-ring.png" in names
+        assert "config/bbs/assets/textures/vfx/add/ring_core.png" in names
+        assert "config/bbs/assets/textures/vfx/add/ring_halo.png" in names
+        core = archive.read("config/bbs/assets/textures/vfx/add/ring_core.png")
+        halo = archive.read("config/bbs/assets/textures/vfx/add/ring_halo.png")
+        assert _decode(core)[2][3] == _decode(halo)[2][3]  # texture alpha is luminance-derived
+        assert _decode(core)[2][:3] != _decode(halo)[2][:3]  # core is mixed toward white
         assert "config/bbs/effekseer-ai-manifest.json" in names
         assert "config/bbs/effekseer-ai-report.json" in names
         assert "CREDITS.md" in names
@@ -80,3 +86,13 @@ def test_cli_bbs_package_command_runs_end_to_end(tmp_path: Path, capsys: pytest.
     assert code == 0
     assert result["status"] == "PASS"
     assert output.is_file()
+
+
+def test_cli_bbs_package_errors_are_json_with_nonzero_exit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from effekseer_ai.cli import main
+
+    code = main(["bbs-package", str(tmp_path / "missing.json"), str(tmp_path / "bad.zip")])
+    result = json.loads(capsys.readouterr().out)
+    assert code == 2
+    assert result["status"] == "ERROR"
+    assert "error" in result
