@@ -140,7 +140,8 @@ export function CatalogPane({ tab }: { tab: LibraryTab }): ReactElement {
         onChip={onChip}
         catalog={catalog}
       />
-      {tab === 'motion' && selectedCharacter && adapter.browseLibraryAction ? (
+      {/* The rail has no Motion tab (TAB_ORDER), so offer the shared library from the Characters tab as well. */}
+      {(tab === 'motion' || tab === 'character') && selectedCharacter && adapter.browseLibraryAction ? (
         <button type="button" className="t3d-leftrail-message" onClick={() => void run('library', async () => { await adapter.browseLibraryAction?.(apiDocumentId, selectedCharacter.id); return null })}>
           Open Action Library for selected Character
         </button>

@@ -18,6 +18,7 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
       try {
         const THREE = await import('three')
         const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
+        const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js')
         if (disposed || !element) return
         const scene = new THREE.Scene()
         scene.background = new THREE.Color('#15191f')
@@ -27,11 +28,14 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         element.replaceChildren(renderer.domElement)
-        const loader = new GLTFLoader()
+        // Built-in characters are Draco-compressed; Studio serves the decoder at /draco/.
+        const draco = new DRACOLoader().setDecoderPath('/draco/')
+        const loader = new GLTFLoader().setDRACOLoader(draco)
         const [character, action] = await Promise.all([
           loader.loadAsync(characterUrl),
           loader.loadAsync(`/api/library/animation/${encodeURIComponent(uuid)}`),
         ])
+        draco.dispose()
         if (disposed) { renderer.dispose(); return }
         scene.add(character.scene)
         const bounds = new THREE.Box3().setFromObject(character.scene)
