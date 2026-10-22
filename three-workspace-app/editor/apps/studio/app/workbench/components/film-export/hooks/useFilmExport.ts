@@ -11,8 +11,11 @@ function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.p
 export function useFilmExport(project: UnifiedProject) {
   const vi = useStudioLocale() === 'vi'
   const characters = Object.values(project.characters)
+  const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
   const sequences = project.scene.content.editorial?.sequences ?? []
+  const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
+  const [propIds, setPropIds] = useState<string[]>(props.map((node) => node.id))
   const [sequenceId, setSequenceId] = useState(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
   const [exportMode, setExportMode] = useState<'film' | 'series'>('film')
   const [startFrame, setStartFrame] = useState(project.scene.content.timeline.frameStart)
@@ -32,14 +35,16 @@ export function useFilmExport(project: UnifiedProject) {
   const preflightGeneration = useRef(0)
 
   const range = { startFrame, endFrame }
-  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, characterIds, sequenceId, range, viewportAspect })
+  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, content, characterIds, propIds, sequenceId, range, viewportAspect })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
   const passedKey = useRef<string | null>(null)
   useEffect(() => {
     const revision = project.revision
     const generation = ++preflightGeneration.current
-    const args = { characterIds: [...characterIds], sequenceId, range: { ...range }, viewportAspect }
+    const args = exportMode === 'series'
+      ? { characterIds: [...characterIds], sequenceId, range: { ...range }, viewportAspect }
+      : { content, characterIds: content === 'backdrops' ? [] : [...characterIds], propIds: content === 'characters' ? [] : [...propIds], sequenceId, range: { ...range }, viewportAspect }
     const requestKey = JSON.stringify({ projectId: project.projectId, revision, ...args })
     setPreflight(null); setPreflightRevision(null); setPreflightKey(null); passedKey.current = null; setCheckingPreflight(true)
     const timer = setTimeout(() => {
@@ -62,7 +67,7 @@ export function useFilmExport(project: UnifiedProject) {
       })
     }, 250)
     return () => { clearTimeout(timer); preflightGeneration.current++ }
-  }, [project.projectId, project.revision, characterIds.join('\0'), sequenceId, startFrame, endFrame, viewportAspect])
+  }, [project.projectId, project.revision, exportMode, content, characterIds.join('\0'), propIds.join('\0'), sequenceId, startFrame, endFrame, viewportAspect])
 
   // The whole-range preflight enforces single-Film limits (ticks, cameras, bones) that a series splits around; the series job
   // validates every segment itself. TODO(B10/B11 follow-up): run the preflight per planned segment instead.
@@ -85,7 +90,15 @@ export function useFilmExport(project: UnifiedProject) {
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
     const sourceRevision = project.revision
-    if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
+    if (exportMode === 'series' || content !== 'backdrops') {
+      if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
+    }
+    if (exportMode === 'film' && content !== 'characters' && (!propIds.length || new Set(propIds).size !== propIds.length || propIds.some((id) => !props.some((node) => node.id === id)))) {
+      setError(vi ? 'Chọn ít nhất một hậu cảnh hợp lệ.' : 'Choose at least one valid backdrop.'); return
+    }
+    if (exportMode === 'film' && content !== 'characters') {
+      setError(vi ? 'Máy chủ chưa nhận chế độ nội dung cho Film export.' : 'The server Film export contract does not yet accept content modes.'); return
+    }
     if (!sequences.some((sequence) => sequence.id === sequenceId)) { setError(vi ? 'Chọn chuỗi camera có trong dự án.' : 'Choose a camera sequence in the project.'); return }
     if (exportMode === 'film' && (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) || startFrame < project.scene.content.timeline.frameStart || endFrame > project.scene.content.timeline.frameEnd || endFrame < startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
     const maxNameLength = exportMode === 'series' ? 56 : 64
@@ -130,7 +143,7 @@ export function useFilmExport(project: UnifiedProject) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
-  return { characters, sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
+  return { characters, props, content, setContent, propIds, setPropIds, sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport }
 }

@@ -4,6 +4,7 @@ import { resolveFilmFrameAspect } from './filmFrame'
 
 /** `scene.export.bbsFilm` arguments; every field is optional and defaults to "the whole scene". */
 export interface SceneBbsFilmArgs {
+  content?: 'characters' | 'backdrops' | 'both'
   sequenceId?: string
   frameStart?: number
   frameEnd?: number
@@ -28,6 +29,7 @@ export interface ResolvedSceneBbsFilm {
     sequenceId: string
     range: { startFrame: number; endFrame: number }
     viewportAspect: number
+    content: 'characters' | 'backdrops' | 'both'
     characterIds: string[]
     propIds: string[]
     cameraNodeIds: string[]
@@ -36,7 +38,7 @@ export interface ResolvedSceneBbsFilm {
   }
 }
 
-const KEYS = ['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
+const KEYS = ['content', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 function fail(message: string): never { throw new TypeError(message) }
@@ -55,6 +57,9 @@ export function safeFilmName(value: string): string {
 export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<string, unknown>): ResolvedSceneBbsFilm {
   if (Object.keys(raw).some((key) => !KEYS.includes(key))) fail(`scene.export.bbsFilm accepts only ${KEYS.join(', ')}`)
   const args = raw as SceneBbsFilmArgs
+  // Preserve the existing scene command behavior when callers explicitly passed propIds before content was added.
+  const content = args.content ?? (args.propIds?.length ? 'both' : 'characters')
+  if (!['characters', 'backdrops', 'both'].includes(content)) fail('content must be characters, backdrops, or both')
   if (args.mode !== undefined && args.mode !== 'editable') fail('scene.export.bbsFilm supports mode "editable" only; the pinned worker has no playback-only package yet')
   const defaulted: string[] = []
   const sequences = (project.scene.content.editorial?.sequences ?? []).filter((item) => item.clips.length)
@@ -69,7 +74,8 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   const endFrame = args.frameEnd ?? sequence.clips.at(-1)!.sourceFrameEnd
   if (args.frameStart === undefined) defaulted.push('frameStart')
   if (args.frameEnd === undefined) defaulted.push('frameEnd')
-  let characterIds = args.characterIds
+  if (content === 'backdrops' && args.characterIds?.length) fail('Backdrop-only Film content cannot include Characters')
+  let characterIds = content === 'backdrops' ? [] : args.characterIds
   if (characterIds === undefined) {
     const nodes = new Set(project.scene.content.nodes.map((node) => node.id))
     characterIds = Object.keys(project.characters).filter((id) => nodes.has(project.characters[id]!.nodeId))
@@ -77,8 +83,11 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
     defaulted.push('characterIds')
   }
   const propNodes = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
-  const propIds = args.propIds === undefined ? [] : args.propIds === 'all' ? propNodes.map((node) => node.id) : args.propIds
+  const propIds = content === 'characters' ? (args.propIds === undefined ? [] : args.propIds === 'all' ? propNodes.map((node) => node.id) : args.propIds)
+    : (args.propIds === undefined ? propNodes.map((node) => node.id) : args.propIds === 'all' ? propNodes.map((node) => node.id) : args.propIds)
   if (!Array.isArray(propIds) || propIds.length > 64 || new Set(propIds).size !== propIds.length) fail('propIds must be "all" or up to 64 unique prop node IDs')
+  if (content === 'characters' && propIds.length) fail('Characters-only Film content cannot include backdrops')
+  if (content === 'backdrops' && !propIds.length) fail('Backdrop-only Film content requires at least one backdrop prop')
   for (const propId of propIds) {
     const node = propNodes.find((item) => item.id === propId)
     if (!node) fail(`Prop ${String(propId)} is not a model prop in this scene`)
@@ -93,9 +102,9 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   if (typeof filmName !== 'string' || !SAFE_NAME.test(filmName) || filmName.endsWith('.')) fail('name must use 1-64 safe ASCII characters')
   const range = { startFrame, endFrame }
   return {
-    film: { characterIds, propIds, sequenceId, range, viewportAspect, filmName },
+    film: { characterIds, content, propIds, sequenceId, range, viewportAspect, filmName },
     archiveName: `${filmName}.bbs-film.zip`,
-    sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', sequenceId, range, viewportAspect,
+    sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', content, sequenceId, range, viewportAspect,
       characterIds, propIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },
   }
 }

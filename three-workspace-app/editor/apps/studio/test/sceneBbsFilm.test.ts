@@ -10,7 +10,10 @@ import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 import { stageAssetUpload } from '../src/unifiedAssetFiles'
 import { getUnifiedJob, readUnifiedJobFile } from '../src/unifiedJobs'
-import { safeFilmName } from '../src/sceneBbsFilm'
+import { resolveSceneBbsFilmArgs, safeFilmName } from '../src/sceneBbsFilm'
+import { filmSourceBones, preflightProjectFilm, sampleProjectFilm } from '../src/unifiedFilmSampling'
+import { appendFilmBackdropActors } from '../src/unifiedJobs'
+import { buildFilmExportManifest, FILM_MODEL_FACING_OFFSET, type ConvertedFilmModelProfile } from '../src/filmManifest'
 
 const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const temp = mkdtempSync(path.join(tmpdir(), 'scene-bbs-film-'))
@@ -42,7 +45,24 @@ async function twoCharacterScene() {
   ] }] }
   const applied = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'scene.apply', args: {
     operations: [{ type: 'document.replace', document: scene, fcurves: project.extensions.topview?.fcurves ?? null }] } })
-  return { projectId, characterIds, revision: applied.revision, scene }
+  const prop = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: applied.revision, command: 'prop.add', args: { assetId, name: 'Backdrop', transform: { position: { x: 2, y: 0, z: -3 }, rotation: { x: 0, y: 27, z: 0 }, scale: { x: 1, y: 1, z: 1 } } } })
+  const finalProject = await readUnifiedProject(projectId)
+  return { projectId, assetId, characterIds, propId: String(prop.result.nodeId), revision: prop.revision, scene: finalProject.scene }
+}
+
+async function backdropOnlyScene() {
+  const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Backdrop only', scene: makeEmptyDraft('Backdrop only', 30, 29, { fov: 50, position: { x: 1, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 } }) } })
+  const projectId = String(created.projectId)
+  const staged = await stageAssetUpload('builtin.glb', new ReadableStream({ start(c) { c.enqueue(readFileSync(builtin)); c.close() } }))
+  const model = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, command: 'asset.import', args: { files: [staged.id], format: 'glb' } })
+  const assetId = (model.result.assetIds as string[])[0]!
+  const prop = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: model.revision, command: 'prop.add', args: { assetId, name: 'Only backdrop', transform: { position: { x: 4, y: 1, z: 2 }, rotation: { x: 0, y: 35, z: 0 }, scale: { x: 1, y: 1, z: 1 } } } })
+  const project = await readUnifiedProject(projectId)
+  const scene = structuredClone(project.scene)
+  scene.content.editorial = { version: 1, activeSequenceId: 'seq', sequences: [{ id: 'seq', clips: [{ id: 'shot', cameraNodeId: 'camera_1', sourceFrameStart: 0, sourceFrameEnd: 29 }] }] }
+  const applied = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: prop.revision, command: 'scene.apply', args: {
+    operations: [{ type: 'document.replace', document: scene, fcurves: project.extensions.topview?.fcurves ?? null }] } })
+  return { projectId, propId: String(prop.result.nodeId), revision: applied.revision }
 }
 
 test('safeFilmName folds Vietnamese scene names into BBS-safe ASCII', () => {
@@ -52,13 +72,15 @@ test('safeFilmName folds Vietnamese scene names into BBS-safe ASCII', () => {
 })
 
 test('scene.export.bbsFilm defaults to every Character and the whole camera sequence, and rejects what Film cannot hold', async () => {
-  const { projectId, characterIds, revision, scene } = await twoCharacterScene()
+  const { projectId, characterIds, propId, revision, scene } = await twoCharacterScene()
   const dry = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: {} })
   assert.equal(dry.result.valid, true)
   assert.equal(dry.result.archiveName, 'Canh-hai-nguoi.bbs-film.zip')
   assert.equal(dry.result.durationTicks, 20)
   const plan = dry.result.sceneExport as Record<string, unknown>
   assert.deepEqual(plan.characterIds, characterIds)
+  assert.equal(plan.content, 'characters')
+  assert.deepEqual(plan.propIds, [])
   assert.deepEqual(plan.cameraNodeIds, ['camera_1', 'camera_2'])
   assert.deepEqual(plan.range, { startFrame: 0, endFrame: 29 })
   assert.deepEqual(plan.rootMotion, { actorPath: 'replay-transform', actionRoot: 'pose-track' })
@@ -70,6 +92,9 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
   await reject({ characterIds: ['missing'] }, /Characters/)
   await reject({ name: '../x' }, /safe ASCII/)
   await reject({ cameras: [] }, /accepts only/)
+  await reject({ content: 'other' }, /content must be/)
+  await reject({ content: 'characters', propIds: [propId] }, /cannot include backdrops/)
+  await reject({ content: 'backdrops', characterIds }, /cannot include Characters/)
   const twoSequences = structuredClone(scene)
   twoSequences.content.editorial!.sequences.push({ id: 'seq-2', clips: [{ id: 'shot-3', cameraNodeId: 'camera_2', sourceFrameStart: 0, sourceFrameEnd: 29 }] })
   const project = await readUnifiedProject(projectId)
@@ -79,6 +104,118 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
   const picked = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { sequenceId: 'seq-2', name: 'take-2' } })
   assert.deepEqual((picked.result.sceneExport as Record<string, unknown>).cameraNodeIds, ['camera_2'])
   assert.equal(picked.result.archiveName, 'take-2.bbs-film.zip')
+  const both = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'both', sequenceId: 'seq' } })
+  const bothPlan = both.result.sceneExport as Record<string, unknown>
+  assert.equal(bothPlan.content, 'both')
+  assert.deepEqual(bothPlan.characterIds, characterIds)
+  assert.deepEqual(bothPlan.propIds, [propId])
+  const backdrops = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'backdrops', sequenceId: 'seq' } })
+  const backdropPlan = backdrops.result.sceneExport as Record<string, unknown>
+  assert.equal(backdropPlan.content, 'backdrops')
+  assert.deepEqual(backdropPlan.characterIds, [])
+  assert.deepEqual(backdropPlan.propIds, [propId])
+  const legacyProps = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { sequenceId: 'seq', propIds: [propId] } })
+  assert.equal((legacyProps.result.sceneExport as Record<string, unknown>).content, 'both')
+  assert.deepEqual((legacyProps.result.sceneExport as Record<string, unknown>).propIds, [propId])
+  const current = await readUnifiedProject(projectId)
+  const badScale = structuredClone(current)
+  badScale.scene.content.nodes.find((node) => node.id === propId)!.transform.scale.x = 2
+  assert.throws(() => resolveSceneBbsFilmArgs(badScale, { content: 'backdrops', sequenceId: 'seq' }), /unit scale/)
+  const tilted = structuredClone(current)
+  tilted.scene.content.nodes.find((node) => node.id === propId)!.transform.rotation.x = 1
+  assert.throws(() => resolveSceneBbsFilmArgs(tilted, { content: 'backdrops', sequenceId: 'seq' }), /vertical axis/)
+})
+
+test('backdrop-only Film exports sample cameras without Characters and budget imported backdrop bones', async () => {
+  const { projectId, propId } = await backdropOnlyScene()
+  const project = await readUnifiedProject(projectId)
+  const args = { content: 'backdrops' as const, characterIds: [], propIds: [propId], sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
+  const plan = preflightProjectFilm(project, args)
+  const fingerprintMap = project.extensions.assetSkeletonFingerprints as Record<string, string[]>
+  const prop = project.scene.content.nodes.find((node) => node.id === propId)!
+  const assetId = prop.metadata!.assetId as string
+  const profile = Object.values(project.skeletons).find((item) => item.fingerprint === fingerprintMap[assetId]![0])!
+  const exportedBoneCount = filmSourceBones(profile.bones).length
+  assert.equal(plan.content, 'backdrops')
+  assert.deepEqual(plan.characterIds, [])
+  assert.deepEqual(plan.propIds, [propId])
+  assert.equal(plan.models.length, 0)
+  assert.equal(plan.boneSampleCount, exportedBoneCount * 21)
+  const sample = await sampleProjectFilm(project, args)
+  assert.equal(sample.frames.length, 21)
+  assert.ok(sample.frames.every((frame) => frame.skeletons.length === 0))
+  const dry = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'backdrops' } })
+  assert.equal(dry.result.valid, true)
+  assert.deepEqual((dry.result.sceneExport as Record<string, unknown>).characterIds, [])
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'backdrops', propIds: [] } }), /requires at least one backdrop/)
+})
+
+test('film.export rejects the B4 content contract at the existing store allowlist boundary', async () => {
+  const { projectId, propId } = await backdropOnlyScene()
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: {
+    content: 'backdrops', characterIds: [], propIds: [propId], sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9, filmName: 'backdrops-only',
+  } }), (error: unknown) => {
+    assert.equal((error as { code?: string }).code, 'VALIDATION_FAILED')
+    assert.match((error as Error).message, /valid Film sampling arguments/)
+    return true
+  })
+})
+
+function convertedProfile(sourceSha256: string, modelId: string, bones: Array<{ id: string; name: string; parentId: string | null }>): ConvertedFilmModelProfile {
+  const names = new Map(bones.map((bone) => [bone.id, bone.name]))
+  return { schemaVersion: 1, sourceSha256, modelId: `unified/${modelId}`, metersPerUnit: 1,
+    bones: bones.map((bone) => ({ name: bone.name, parent: bone.parentId === null ? null : names.get(bone.parentId)!, bobjRestMatrixRowMajor: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] })),
+    actions: [], textureRequired: false, files: [{ sourcePath: '/tmp/model.bobj', targetPath: 'model.bobj', sha256: 'a'.repeat(64) }] }
+}
+
+test('all three content modes produce the expected Film manifest actors, static backdrop yaw and samples', async () => {
+  const withActors = await twoCharacterScene()
+  const project = await readUnifiedProject(withActors.projectId)
+  const characterArgs = { content: 'characters' as const, characterIds: withActors.characterIds, propIds: [], sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
+  const characterInput = await sampleProjectFilm(project, characterArgs)
+  const characterModel = characterInput.models[0]!
+  const characterProfile = convertedProfile(characterModel.source.sha256, 'character-model', characterModel.sourceBones)
+  const charactersManifest = buildFilmExportManifest(characterInput, new Map([[characterModel.assetId, characterProfile]]), 'characters')
+  assert.equal(charactersManifest.actors.length, withActors.characterIds.length)
+  assert.equal(charactersManifest.models.length, 1)
+  assert.equal(charactersManifest.cameras.length, 2)
+
+  const bothArgs = { ...characterArgs, content: 'both' as const, propIds: [withActors.propId] }
+  const bothInput = await sampleProjectFilm(project, bothArgs)
+  const bothManifest = buildFilmExportManifest(bothInput, new Map([[characterModel.assetId, characterProfile]]), 'both')
+  const prop = project.scene.content.nodes.find((node) => node.id === withActors.propId)!
+  const propAssetId = prop.metadata!.assetId as string
+  const backdropProfile = characterProfile
+  appendFilmBackdropActors(bothManifest, project, [withActors.propId], new Map([[propAssetId, backdropProfile]]), bothInput.durationTicks)
+  assert.equal(bothManifest.actors.length, withActors.characterIds.length + 1)
+  assert.equal(bothManifest.models.length, 1, 'the same source model should be represented once even when used as both Character and backdrop')
+  const backdropActor = bothManifest.actors.find((actor) => actor.characterId === `prop:${withActors.propId}`)!
+  assert.deepEqual(backdropActor.transformSamples, [
+    { tick: 0, x: prop.transform.position.x, y: prop.transform.position.y, z: prop.transform.position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - prop.transform.rotation.y },
+    { tick: bothInput.durationTicks, x: prop.transform.position.x, y: prop.transform.position.y, z: prop.transform.position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - prop.transform.rotation.y },
+  ])
+  assert.deepEqual(backdropActor.poseTracks, [])
+
+  const only = await backdropOnlyScene()
+  const onlyProject = await readUnifiedProject(only.projectId)
+  const backdropArgs = { content: 'backdrops' as const, characterIds: [], propIds: [only.propId], sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
+  const backdropInput = await sampleProjectFilm(onlyProject, backdropArgs)
+  assert.equal(backdropInput.models.length, 0)
+  const backdropManifest = buildFilmExportManifest(backdropInput, new Map(), 'backdrops')
+  const onlyNode = onlyProject.scene.content.nodes.find((node) => node.id === only.propId)!
+  const onlyAssetId = onlyNode.metadata!.assetId as string
+  const onlyFingerprint = (onlyProject.extensions.assetSkeletonFingerprints as Record<string, string[]>)[onlyAssetId]![0]
+  const onlySourceBones = filmSourceBones(Object.values(onlyProject.skeletons).find((item) => item.fingerprint === onlyFingerprint)!.bones)
+  const onlyProfile = convertedProfile(onlyProject.assets[onlyAssetId as keyof typeof onlyProject.assets]!.source.sha256, 'only-backdrop-model', onlySourceBones)
+  appendFilmBackdropActors(backdropManifest, onlyProject, [only.propId], new Map([[onlyAssetId, onlyProfile]]), backdropInput.durationTicks)
+  assert.equal(backdropManifest.actors.length, 1)
+  assert.equal(backdropManifest.models.length, 1)
+  assert.ok(backdropManifest.models[0]!.bones.length > 0)
+  assert.equal(backdropManifest.models[0]!.bones.length, onlySourceBones.length)
+  assert.equal(backdropManifest.cameras.length, 1)
+  assert.equal(backdropManifest.actors[0]!.characterId, `prop:${only.propId}`)
+  assert.equal(backdropManifest.actors[0]!.transformSamples[0]!.yaw, FILM_MODEL_FACING_OFFSET - onlyNode.transform.rotation.y)
+  assert.deepEqual(backdropManifest.actors[0]!.poseTracks, [])
 })
 
 test('film exports use the saved frame aspect unless an explicit numeric override is supplied', async () => {

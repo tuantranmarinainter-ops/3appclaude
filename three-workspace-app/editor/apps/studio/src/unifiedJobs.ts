@@ -46,6 +46,29 @@ const MAX_COMMAND_OUTPUT = 8 * 1024 * 1024
 const COMMAND_TIMEOUT_MS = 15 * 60 * 1000
 const ZIP_SCRIPT = 'import pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]).resolve(strict=True); out=pathlib.Path(sys.argv[2]); files=list(root.rglob("*")); assert files and all(not p.is_symlink() for p in files); z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED); [z.write(p,p.relative_to(root).as_posix()) for p in files if p.is_file()]; z.close()'
 
+type FilmManifest = ReturnType<typeof buildFilmExportManifest>
+
+/** Add static backdrop actors after conversion; this pure step is shared by the job and manifest tests. */
+export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number): void {
+  if (!Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Backdrop Film duration must be a positive whole number of ticks')
+  for (const propId of propIds) {
+    const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+    const assetId = node?.metadata?.assetId
+    if (!node || typeof assetId !== 'string') throw new TypeError(`Backdrop ${propId} is missing from the Film snapshot`)
+    const profile = profiles.get(assetId)
+    if (!profile) throw new TypeError(`Converted BOBJ profile is missing for backdrop ${node.name}`)
+    const model = { id: profile.modelId, bones: profile.bones.map((bone) => bone.name), actions: profile.actions,
+      textureRequired: profile.textureRequired, files: profile.files }
+    const prior = manifest.models.find((item) => item.id === profile.modelId)
+    if (prior && JSON.stringify(prior) !== JSON.stringify(model)) throw new TypeError(`Converted backdrop model ID ${profile.modelId} has conflicting profiles`)
+    if (!prior) manifest.models.push(model)
+    const { position, rotation } = node.transform
+    const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - rotation.y })
+    manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId: profile.modelId,
+      transformSamples: [pose(0), pose(durationTicks)], poseTracks: [] })
+  }
+}
+
 function projectsRoot(): string {
   return path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects'))
 }
@@ -214,16 +237,17 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     signal.throwIfAborted()
     const manifest = buildFilmExportManifest(input, profiles, args.filmName)
-    // Static backdrops: each prop becomes a one-bone BOBJ model and an unanimated actor at its scene placement.
-    const propModels = new Map<string, string>()
+    // Props are converted to BOBJ profiles, then the pure manifest helper adds one static actor per scene node.
+    const propProfiles = new Map<string, ConvertedFilmModelProfile>()
     for (const [index, propId] of (args.propIds ?? []).entries()) {
       signal.throwIfAborted()
       const node = snapshot.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
       const assetId = node?.metadata?.assetId
       if (!node || typeof assetId !== 'string') throw new TypeError(`Prop ${propId} is missing from the Film snapshot`)
-      let modelId = propModels.get(assetId)
-      if (!modelId) {
+      let converted = propProfiles.get(assetId)
+      if (!converted) {
         const resolved = await resolveUnifiedAssetFile(snapshot, assetId, 'source')
+        if (digest(resolved.bytes) !== snapshot.assets[assetId as keyof typeof snapshot.assets]!.source.sha256) throw new TypeError(`Backdrop ${node.name} source hash changed during Film export`)
         const extension = resolved.mediaType === 'application/vnd.autodesk.fbx' ? '.fbx' : '.glb'
         const sourcePath = path.join(work, `prop-${index}${extension}`)
         await writeFile(sourcePath, resolved.bytes, { flag: 'wx' })
@@ -236,19 +260,11 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
         const convertedPath = await realpath(conversion.profilePath), rootPath = await realpath(output)
         if (!convertedPath.startsWith(`${rootPath}${path.sep}`)) throw new TypeError('Film converter profile escaped its staging folder')
         const profile = JSON.parse(await readFile(convertedPath, 'utf8')) as Omit<ConvertedFilmModelProfile, 'files'>
-        modelId = profile.modelId
-        propModels.set(assetId, modelId)
-        if (!manifest.models.some((model) => model.id === modelId)) {
-          manifest.models.push({ id: modelId, bones: profile.bones.map((bone) => bone.name), actions: profile.actions,
-            textureRequired: profile.textureRequired, files: conversion.files as ConvertedFilmModelProfile['files'] })
-        }
+        converted = { ...profile, files: conversion.files as ConvertedFilmModelProfile['files'] }
+        propProfiles.set(assetId, converted)
       }
-      // App 2 yaw (degrees about +Y, forward +Z) is the negative of a BBS replay yaw; converted models face the other way.
-      const { position, rotation } = node.transform
-      const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - rotation.y })
-      manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId,
-        transformSamples: [pose(0), pose(input.durationTicks)], poseTracks: [] } as (typeof manifest.actors)[number])
     }
+    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks)
     const manifestPath = path.join(work, 'manifest.json')
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
     const outputRoot = path.join(work, 'package'); await mkdir(outputRoot)
@@ -515,8 +531,9 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
       Object.keys(options.extraFiles ?? {}).some((name) => !/^[a-z0-9-]{1,40}\.json$/.test(name) || ['export-manifest.json', 'export-report.json'].includes(name))) {
     throw Object.assign(new TypeError('Film package names must be safe and must not replace worker files'), { code: 'VALIDATION_FAILED', status: 400 })
   }
-  preflightProjectFilm(project, args)
-  const snapshot = structuredClone(project), exportArgs = structuredClone(args), jobId = randomUUID()
+  const preflight = preflightProjectFilm(project, args)
+  const snapshot = structuredClone(project), exportArgs = structuredClone({ ...args,
+    content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds }), jobId = randomUUID()
   const record: StoredJob = { jobId, projectId: project.projectId, type: 'film.export', state: 'queued', sourceRevision: project.revision,
     sourceSha256: digest(Buffer.from(JSON.stringify(project))), progress: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
   const runtime: Runtime = { record, controller: new AbortController(), active: true }
