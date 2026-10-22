@@ -101,6 +101,16 @@ effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
 
 By default, any `BLOCKED` node blocks all scheme output. `--allow-partial` writes only supported nodes and retains every blocker in the report. Generation times remain in source frames at the declared FPS; sub-tick bursts use `emitter_rate_instant` so particle counts are retained. Approximations and unsupported features are reported explicitly. See [`docs/VFX-IR-CONTRACT.md`](../../docs/VFX-IR-CONTRACT.md) for the IR shape. The converter is a structural approximation; BBS FS 2.7 in-game playback remains a separate gate.
 
+### Offline preview
+
+Render a local simulation at selected timestamps without network access:
+
+```powershell
+effekseer-ai preview .\effect-ir.json .\preview --timestamps 0,0.25,0.5
+```
+
+The output PNGs and `preview-report.json` are explicitly labeled as simulation only, not Effekseer or BBS FS renders. Optionally place Effekseer reference PNGs named `<effect>_<seconds>s.png` in a directory and pass `--reference-dir`; the command writes a side-by-side comparison and labels its left and right panels. The simulator uses only the exported Snowstorm subset and is not a substitute for the Windows game/runtime gate.
+
 ## MCP server
 
 After installation and environment configuration, start the stdio server:

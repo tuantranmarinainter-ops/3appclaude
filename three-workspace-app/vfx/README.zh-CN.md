@@ -78,7 +78,7 @@ CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
 
 | 分类 | 命令 |
 | --- | --- |
-| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump` |
+| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump`、`preview` |
 | 节点 | `node-list`、`node-add`、`node-rename`、`node-remove`、`node-move` |
 | 属性 | `property-list`、`property-get`、`property-set` |
 | 资源 | `image-import` |
@@ -98,6 +98,16 @@ effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
 ```
 
 默认情况下，只要有节点为 `BLOCKED`，就阻止输出所有 scheme。显式使用 `--allow-partial` 后，只输出受支持节点，并在报告中保留所有阻断项。报告会写明时间换算、20 Hz 量化、近似项和 Additive 到 Alpha 的亮度补偿。EffectIR 结构见 [VFX-IR-CONTRACT.md](../../docs/VFX-IR-CONTRACT.md)。此转换只验证结构近似；仍须单独在 BBS FS 2.7 游戏内验证。
+
+### 离线预览
+
+选择时间点运行本地模拟，不访问网络：
+
+```powershell
+effekseer-ai preview .\effect-ir.json .\preview --timestamps 0,0.25,0.5
+```
+
+输出 PNG 和 `preview-report.json` 会明确标记为模拟结果，不是 Effekseer 或 BBS FS 渲染。可选地将 Effekseer 参考 PNG 按 `<effect>_<seconds>s.png` 命名放入目录，并通过 `--reference-dir` 指定；工具会生成左右并排的对比图，并说明左右两侧的来源。模拟只覆盖导出的 Snowstorm 子集，不能替代 Windows 游戏运行验证。
 
 ## MCP 服务
 
