@@ -7,7 +7,8 @@ import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
 import { resolveSides, turnRig, type SwapSidesMode } from './sides.ts'
-import { glbNodeNames, mergeAnimationGlbs } from './glbContract.ts'
+import { glbNodeNames, mergeAnimationGlbs, preserveExtraBones } from './glbContract.ts'
+import { validateExtraBones } from '../src/extraBones.ts'
 import { loadAsset } from './loadAsset.ts'
 import { QualityMeter, summarizeQuality } from './quality.ts'
 import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
@@ -22,6 +23,8 @@ export type GateStatus = 'NOT_RUN' | 'BLOCKED' | 'FAIL' | 'PASS'
 export interface NormalizeRequest {
   source: Object3D; sourceLabel: string; sourceSha256: string
   target: Object3D; targetLabel: string; targetSha256: string
+  sourceExtraManifest?: { version?: unknown; rig?: unknown; extraBones?: unknown }
+  sourceExtraGlb?: Uint8Array
   /** Source Action indices to export into the one GLB (default: every Action). */
   actions?: readonly number[]
   range?: readonly [number, number]
@@ -270,7 +273,14 @@ export async function runNormalize(request: NormalizeRequest) {
   }
   request.signal?.throwIfAborted()
   await request.onProgress?.('roundtrip', 0, exported.length)
-  const glb = mergeAnimationGlbs(exported.map((item) => item.bytes)), glbSha256 = sha256(glb)
+  const mergedGlb = mergeAnimationGlbs(exported.map((item) => item.bytes))
+  const extras = request.sourceExtraManifest ? validateExtraBones(request.sourceExtraManifest) : []
+  if (extras.length && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
+  const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb!, request.sourceExtraManifest!).glb : mergedGlb
+  const extraNames = new Set(extras.map((bone) => bone.name))
+  const droppedExtraTracks = [...new Set(request.source.animations.flatMap((clip) => clip.tracks
+    .filter((track) => extraNames.has(PropertyBinding.parseTrackName(track.name).nodeName)).map((track) => PropertyBinding.parseTrackName(track.name).nodeName)))].sort()
+  const glbSha256 = sha256(glb)
 
   // Roundtrip: reload the written bytes with GLTFLoader and sample every Action, instead of trusting in-memory frames.
   const previewIndex = Math.max(0, exported.findIndex((item) => item.action.index === request.previewAction))
@@ -314,7 +324,7 @@ export async function runNormalize(request: NormalizeRequest) {
   const prefixedJointNames = glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length
   // Top level = the preview Action's numbers, but `status` is the gate over every Action (spread first so it cannot win).
   const roundtrip = { ...perAction[previewIndex]!, primaryAction: exported[previewIndex]!.action.index, jointCount, animationCount, prefixedJointNames, perAction,
-    status: (mixamoJoints === 65 && jointCount === 65 && animationCount === exported.length && perAction.every((item) => item.status === 'PASS') ? 'PASS' : 'FAIL') as GateStatus }
+    status: (mixamoJoints === 65 && jointCount === 65 + extras.length && animationCount === exported.length && perAction.every((item) => item.status === 'PASS') ? 'PASS' : 'FAIL') as GateStatus }
 
   const boneLengthsMeters = Object.fromEntries(MIXAMO65_BONE_PARENTS.flatMap(([name, parent]) => {
     if (!parent) return []
@@ -322,7 +332,8 @@ export async function runNormalize(request: NormalizeRequest) {
     return [[name, Math.hypot(a[12]! - b[12]!, a[13]! - b[13]!, a[14]! - b[14]!)]]
   }))
   const manifest = {
-    version: CONTRACT_VERSION,
+    version: extras.length ? '1.1.0' : CONTRACT_VERSION,
+    ...(extras.length ? { rig: request.sourceExtraManifest!.rig, extraBones: extras } : {}),
     glb: { bytes: glb.length, mode: 'animation-only' as const },
     glbSha256,
     actions: exported.map(({ action }, glbAnimationIndex) => ({ uuid: actionUuid(request.sourceSha256, action.index, (request.actionRanges?.[action.index] ?? request.range) ? `${action.name}:${(request.actionRanges?.[action.index] ?? request.range)!.join(':')}` : action.name), name: action.name,
@@ -335,7 +346,7 @@ export async function runNormalize(request: NormalizeRequest) {
   const failedActions = skippedActions.filter((item) => item.code === 'ACTION_FAILED')
   const gates = { mapping: 'PASS' as GateStatus, actions: (failedActions.length ? 'FAIL' : 'PASS') as GateStatus, roundtrip: roundtrip.status }
   const contract = {
-    joints65: jointCount === 65 ? 'PASS' : 'FAIL',
+    joints65: jointCount === 65 + extras.length ? 'PASS' : 'FAIL',
     noNamePrefix: prefixedJointNames === 0 ? 'PASS' : 'FAIL',
     fps30: 'PASS',
     multiActionInOneGlb: animationCount === exported.length ? 'PASS' : 'FAIL',
@@ -354,6 +365,7 @@ export async function runNormalize(request: NormalizeRequest) {
     proportions: { sourceHipsHeightMeters: sourceHipsHeight, targetHipsHeightMeters: targetRest.get('Hips')![13]!,
       suggestedRootScale, rootScale, rootScaleSource },
     loss: { prunedTracks: prune.report, scaleTracks: prune.scale, quaternionTracks: prune.quaternions, unmappedSourceBones: primary.unmappedSourceBoneIds.length,
+      extraBoneTracksDropped: droppedExtraTracks,
       unmappedTargetJoints: mapping.joints.filter((joint) => !joint.sourceId).map((joint) => joint.target),
       note: 'Unmapped target joints keep their rest pose relative to the parent.' },
     // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
