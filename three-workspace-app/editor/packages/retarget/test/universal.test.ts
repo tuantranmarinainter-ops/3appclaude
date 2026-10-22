@@ -118,6 +118,39 @@ test('mapped child offsets follow the parent without losing root translation', (
   assert.ok(new Vector3().setFromMatrixPosition(new Matrix4().fromArray(frames[1]!.world)).distanceTo(new Vector3(2.5, 1, 0)) < 1e-6)
 })
 
+test('mapped wrists preserve animated local translation in the forearm frame while finger translation stays out', () => {
+  const sourceForearmRest = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2)
+  const source: RetargetRig = { fingerprint: 'wrist-source', bones: [
+    { id: 'srcHips', name: 'Hips', parentId: null, restWorld: transform([0, 0, 0]) },
+    { id: 'srcForearm', name: 'LeftForeArm', parentId: 'srcHips', restWorld: transform([0, 1, 0]) },
+    { id: 'srcHand', name: 'LeftHand', parentId: 'srcForearm', restWorld: transform([0, 1, 1], sourceForearmRest) },
+    { id: 'srcFinger', name: 'LeftHandIndex1', parentId: 'srcHand', restWorld: transform([0.1, 1, 1], sourceForearmRest) },
+  ] }
+  const target: RetargetRig = { fingerprint: 'wrist-target', bones: [
+    { id: 'dstHips', name: 'Hips', parentId: null, restWorld: transform([0, 0, 0]) },
+    { id: 'dstForearm', name: 'LeftForeArm', parentId: 'dstHips', restWorld: transform([0, 1, 0]) },
+    { id: 'dstHand', name: 'LeftHand', parentId: 'dstForearm', restWorld: transform([0, 2, 0]) },
+    { id: 'dstFinger', name: 'LeftHandIndex1', parentId: 'dstHand', restWorld: transform([0.1, 2, 0]) },
+  ] }
+  const solver = createUniversalRetargeter(source, target, [
+    { sourceBoneId: 'srcHips', targetBoneId: 'dstHips', enabled: true },
+    { sourceBoneId: 'srcForearm', targetBoneId: 'dstForearm', enabled: true },
+    { sourceBoneId: 'srcHand', targetBoneId: 'dstHand', enabled: true },
+    { sourceBoneId: 'srcFinger', targetBoneId: 'dstFinger', enabled: true },
+  ])
+  const sample = [
+    { id: 'srcHips', world: source.bones[0]!.restWorld },
+    { id: 'srcForearm', world: source.bones[1]!.restWorld },
+    { id: 'srcHand', world: transform([0, 1, 1.25], sourceForearmRest) },
+    { id: 'srcFinger', world: transform([0.1, 1, 1.35], sourceForearmRest) },
+  ]
+  const frames = solver.evaluate(sample)
+  const hand = frames.find((frame) => frame.targetBoneId === 'dstHand')!
+  const finger = frames.find((frame) => frame.targetBoneId === 'dstFinger')!
+  assert.ok(new Vector3().setFromMatrixPosition(new Matrix4().fromArray(hand.world)).distanceTo(new Vector3(0, 2, 0.25)) < 1e-6)
+  assert.ok(new Vector3().setFromMatrixPosition(new Matrix4().fromArray(finger.world)).distanceTo(new Vector3(0.1, 2, 0.25)) < 1e-6)
+})
+
 test('transfers a world rotation delta across distinct rest axes and an unmapped target container', () => {
   const sourceRest = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2)
   const targetRest = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)

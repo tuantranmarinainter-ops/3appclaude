@@ -14,7 +14,8 @@ import type { runNormalize } from './normalizeCore.ts'
  * target skeleton and every Action; this module appends the source meshes skinned to that skeleton. It writes glTF JSON
  * itself instead of using GLTFExporter: the exporter needs FileReader/canvas for textures, which Node does not have, and
  * it would re-encode images. Source image bytes are copied untouched into the BIN chunk (bufferView, no external URI).
- * Phase 1: only `mixamo` family sources — weights map 1:1 onto the target joints and the mesh keeps its original shape.
+ * Source skin weights are remapped through the resolved source→Mixamo mapping, and the output rest skeleton is fitted
+ * to those mapped source joints before the source mesh is added.
  */
 export const MAX_INFLUENCES = 4
 const DRACO_EXTENSIONS = ['KHR_draco_mesh_compression', 'EXT_meshopt_compression']
@@ -22,6 +23,7 @@ const SKIN_EXTENSION_NAMES = [...DRACO_EXTENSIONS, 'KHR_mesh_quantization']
 /** Meters between source and target joint rest positions above which the mesh visibly does not sit on the skeleton. */
 const JOINT_FIT_WARN_METERS = 0.05
 const REST_ERROR_LIMIT_METERS = 1e-3
+const MODEL_FIT_FAMILIES = new Set(['mixamo', 'ue', 'cc', 'lol', 'wc3r', 'wow'])
 
 export class ModelBlockedError extends Error {
   constructor(readonly code: string, message: string) { super(message) }
@@ -109,7 +111,7 @@ function readTargetSkeleton(json: Json) {
   }
   const joints: number[] = skin.joints, names = joints.map((joint) => nodes[joint].name as string)
   if (joints.length !== 65 || names.some((name) => !MIXAMO_NAMES.has(canonical(name)) || MIXAMO_NAMES.get(canonical(name)) !== name)) throw new TypeError('Action GLB skin must list the 65 unprefixed Mixamo joints')
-  return { joints, names, worldOf, jointWorld: new Map(names.map((name, i) => [name, worldOf(joints[i]!)] as const)) }
+  return { joints, names, parent, worldOf, jointWorld: new Map(names.map((name, i) => [name, worldOf(joints[i]!)] as const)) }
 }
 
 function isTexturePath(key: string) { return key.endsWith('Texture') }
@@ -120,6 +122,7 @@ export interface ModelReport {
   images: { count: number; bytes: number; embedded: boolean; sourceImages: number }
   materials: number
   restMaxErrorMeters: number
+  fittedJoints: number
   jointFit: { meanMeters: number; maxMeters: number; worstJoint: string }
   reassignedBones: Array<{ bone: string; owner: string }>
   checks: Record<string, 'PASS' | 'FAIL'>
@@ -157,6 +160,63 @@ export async function exportModelGlb(options: ExportModelOptions): Promise<{ glb
   }
 
   options.source.updateMatrixWorld(true)
+  const fittedWorlds = new Map<number, Matrix4>(), fitOffsets = new Map<number, Vector3>()
+  const jointNameByIndex = new Map(skeleton.joints.map((index, slot) => [index, skeleton.names[slot]!] as const))
+  const jointIndexByName = new Map(skeleton.names.map((name, slot) => [name, skeleton.joints[slot]!] as const))
+  const jointIndices = new Set(skeleton.joints)
+  const fitSourceToScene = sourceToScene(options.unitMeters, options.upAxis)
+  const mappedSource = new Map(options.mappedSources)
+  const fittedWorld = (name: string): Matrix4 => {
+    const nodeIndex = jointIndexByName.get(name)!
+    const existing = fittedWorlds.get(nodeIndex)
+    if (existing) return existing
+    const parentIndex = skeleton.parent.get(nodeIndex)
+    const originalParentWorld = parentIndex === undefined ? new Matrix4() : skeleton.worldOf(parentIndex)
+    const fittedParentWorld = parentIndex === undefined ? new Matrix4()
+      : jointIndices.has(parentIndex) ? fittedWorld(jointNameByIndex.get(parentIndex)!) : originalParentWorld
+    const originalLocal = originalParentWorld.clone().invert().multiply(skeleton.jointWorld.get(name)!)
+    const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3()
+    originalLocal.decompose(position, rotation, scale)
+    const sourceName = mappedSource.get(name)
+    const sourceBone = sourceName ? findBone(options.source, sourceName) : undefined
+    if (sourceBone) {
+      const sourceMatrix = fitSourceToScene.clone().multiply(sourceBone.matrixWorld)
+      const desiredWorldPosition = new Vector3().setFromMatrixPosition(sourceMatrix)
+      const fittedPosition = desiredWorldPosition.applyMatrix4(fittedParentWorld.clone().invert())
+      fitOffsets.set(nodeIndex, fittedPosition.clone().sub(position))
+      position.copy(fittedPosition)
+    }
+    const local = new Matrix4().compose(position, rotation, scale)
+    const world = fittedParentWorld.clone().multiply(local)
+    fittedWorlds.set(nodeIndex, world)
+    const node = (out.nodes as Json[])[nodeIndex]!
+    node.translation = position.toArray()
+    node.rotation = rotation.normalize().toArray()
+    node.scale = scale.toArray()
+    delete node.matrix
+    return world
+  }
+  for (const name of skeleton.names) fittedWorld(name)
+
+  // The bake stores local position samples as absolute values. Apply the rest-fit offset to those samples too,
+  // otherwise the first animated frame would snap the joints back to the generic Mixamo proportions.
+  for (const animation of (out.animations ?? []) as Json[]) for (const channel of animation.channels ?? []) {
+    const nodeIndex = channel.target?.node, offset = fitOffsets.get(nodeIndex)
+    if (!offset || channel.target?.path !== 'translation') continue
+    const sampler = animation.samplers?.[channel.sampler]
+    if (!sampler) continue
+    const accessor = out.accessors[sampler.output], view = out.bufferViews[accessor.bufferView]
+    if (accessor.componentType !== 5126 || accessor.type !== 'VEC3') throw new ModelBlockedError('MODEL_ANIMATION_INVALID', 'Joint translation animation must use FLOAT VEC3 samples')
+    const start = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), values = new Float32Array(accessor.count * 3)
+    const sourceView = new DataView(bin.buffer, bin.byteOffset + start, accessor.count * 12)
+    for (let index = 0; index < accessor.count; index++) {
+      values[index * 3] = sourceView.getFloat32(index * 12, true) + offset.x
+      values[index * 3 + 1] = sourceView.getFloat32(index * 12 + 4, true) + offset.y
+      values[index * 3 + 2] = sourceView.getFloat32(index * 12 + 8, true) + offset.z
+    }
+    sampler.output = addAccessor(addView(bytesOf(values)), 5126, accessor.count, 'VEC3')
+  }
+
   const meshes: SkinnedMesh[] = []
   options.source.traverse((node) => { if ((node as SkinnedMesh).isSkinnedMesh) meshes.push(node as SkinnedMesh) })
   if (!meshes.length) throw new ModelBlockedError('MODEL_NO_SKINNED_MESH', 'Source has no skinned mesh; Model mode needs a skinned model')
@@ -331,7 +391,7 @@ export async function exportModelGlb(options: ExportModelOptions): Promise<{ glb
 
   // Inverse bind matrices: skinning at rest is the identity, so the stored positions are the source rest shape.
   const ibm = new Float32Array(65 * 16)
-  skeleton.names.forEach((name, slot) => new Matrix4().copy(skeleton.jointWorld.get(name)!).invert().toArray(ibm, slot * 16))
+  skeleton.names.forEach((name, slot) => new Matrix4().copy(fittedWorlds.get(skeleton.joints[slot]!)!).invert().toArray(ibm, slot * 16))
   out.skins[0].inverseBindMatrices = addAccessor(addView(bytesOf(ibm)), 5126, 65, 'MAT4')
   out.scenes[out.scene ?? 0].nodes.push(...meshNodes)
   out.meshes = outMeshes
@@ -381,17 +441,17 @@ export async function exportModelGlb(options: ExportModelOptions): Promise<{ glb
   const hasExternalUri = [...(finalJson.images ?? []), ...(finalJson.buffers ?? [])].some((item: Json) => item.uri !== undefined)
   const imagesViaView = (finalJson.images ?? []).every((image: Json) => image.bufferView !== undefined)
 
-  // Mesh fit: Phase 1 keeps the source shape, so large joint offsets mean skeleton and mesh proportions differ.
+  // Report the source-to-fitted rest error after writing the fitted Mixamo65 joint positions.
   const fit = joints.map((name) => {
     const sourceName = options.mappedSources.get(name)
     const bone = sourceName ? findBone(options.source, sourceName) : undefined
     if (!bone) return null
-    const p = new Vector3().setFromMatrixPosition(bone.matrixWorld).applyMatrix4(basis), q = new Vector3().setFromMatrixPosition(skeleton.jointWorld.get(name)!)
+    const p = new Vector3().setFromMatrixPosition(bone.matrixWorld).applyMatrix4(basis), q = new Vector3().setFromMatrixPosition(fittedWorlds.get(skeleton.joints[jointSlot.get(name)!]!)!)
     return { name, distance: p.distanceTo(q) }
   }).filter((item): item is { name: string; distance: number } => !!item)
   const worst = fit.reduce((a, b) => (b.distance > a.distance ? b : a), { name: '-', distance: 0 })
   const warnings: Array<{ code: string; message: string }> = []
-  if (worst.distance > JOINT_FIT_WARN_METERS) warnings.push({ code: 'MODEL_NOT_REFIT', message: `Mesh keeps its source shape but joints differ from the target rest by up to ${worst.distance.toFixed(3)} m (${worst.name}); fitting the rig to the model is a later phase` })
+  if (worst.distance > JOINT_FIT_WARN_METERS) warnings.push({ code: 'MODEL_FIT_ERROR', message: `Fitted joints still differ from source rest by up to ${worst.distance.toFixed(3)} m (${worst.name})` })
   if (Math.abs(options.facingYawDegrees) > 1e-6) warnings.push({ code: 'MODEL_FACING_NOT_APPLIED', message: `Animation was calibrated with a ${options.facingYawDegrees.toFixed(0)} degree facing yaw; the mesh was not rotated` })
   if (morphMeshes) warnings.push({ code: 'MORPH_TARGETS_DROPPED', message: `${morphMeshes} mesh(es) have morph targets; they are not exported` })
   if (!files && outMaterials.length) warnings.push({ code: 'TEXTURES_NOT_EXPORTED', message: 'FBX textures are not extracted headless; materials keep their base colour only' })
@@ -406,7 +466,7 @@ export async function exportModelGlb(options: ExportModelOptions): Promise<{ glb
   }
   const report: ModelReport = { meshes: meshes.length, primitives, vertices, maxInfluencesBefore: maxBefore, maxInfluencesAfter: maxAfter, droppedWeight: dropped, affectedVertices: affected,
     images: { count: outImages.length, bytes: imageBytesTotal, embedded: !hasExternalUri && imagesViaView, sourceImages: files?.json.images?.length ?? 0 }, materials: outMaterials.length,
-    restMaxErrorMeters: restMax, jointFit: { meanMeters: fit.length ? fit.reduce((s, i) => s + i.distance, 0) / fit.length : 0, maxMeters: worst.distance, worstJoint: worst.name },
+    restMaxErrorMeters: restMax, fittedJoints: fit.length, jointFit: { meanMeters: fit.length ? fit.reduce((s, i) => s + i.distance, 0) / fit.length : 0, maxMeters: worst.distance, worstJoint: worst.name },
     reassignedBones: [...reassigned].map(([bone, owner]) => ({ bone, owner })), checks, warnings,
     status: Object.values(checks).every((c) => c === 'PASS') ? 'PASS' : 'FAIL' }
   return { glb, report }
@@ -432,7 +492,7 @@ export async function applyModelMode(result: PipelineResult, options: ApplyModel
   const report = result.report as Json
   const blocked = (code: string, message: string) => ({ status: 'BLOCKED' as const, report: { ...report, status: 'BLOCKED', blocker: { code, message } } })
   const family = report.mapping.family as string
-  if (family !== 'mixamo') return blocked('MODEL_MODE_FAMILY_UNSUPPORTED', `Model mode phase 1 supports Mixamo-family sources only (detected: ${family}); fitting rig65 to other models is a later phase`) as PipelineResult
+  if (!MODEL_FIT_FAMILIES.has(family)) return blocked('MODEL_MODE_FAMILY_UNSUPPORTED', `Model mode needs a supported humanoid mapping; detected source family: ${family}`) as PipelineResult
   try {
     const mappedSources = new Map<string, string>((report.mapping.joints as Array<{ target: string; source: string | null }>).flatMap((joint) => joint.source ? [[joint.target, joint.source] as const] : []))
     const { glb, report: model } = await exportModelGlb({ animationGlb: result.glb, source: await options.loadSource(), files: options.files, unitMeters: options.unitMeters, upAxis: options.upAxis,

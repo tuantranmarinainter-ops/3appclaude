@@ -249,6 +249,29 @@ export function createUniversalRetargeter(sourceRig: RetargetRig, targetRig: Ret
               .applyQuaternion(alignment).multiplyScalar(rootTranslationScale)
             worldPosition.add(displacement)
           }
+          // A wrist may have an animated local translation (for example, an IK wrist or a hand control).
+          // Preserve that effector motion without transferring finger translations or changing ordinary
+          // rotation-only Mixamo clips. Express the source delta in the mapped forearm frame, then map it
+          // into the target forearm frame so different rest-axis conventions do not skew the wrist offset.
+          const handMatch = /^(Left|Right)Hand$/.exec(bone.name ?? '')
+          const sourceParentId = mapped.bones[0]?.parentId
+          if (handMatch && mapped.bones.length === 1 && sourceParentId) {
+            const sourceHand = mapped.bones[0]!
+            const sourceParentRest = sourceRest.get(sourceParentId)
+            const sourceParentPose = pose.get(sourceParentId)
+            if (sourceParentRest && sourceParentPose) {
+              const sourceLocalRest = sourceParentRest.clone().invert().multiply(sourceRest.get(sourceHand.id)!)
+              const sourceLocalPose = sourceParentPose.clone().invert().multiply(pose.get(sourceHand.id)!)
+              const localDelta = new Vector3().setFromMatrixPosition(sourceLocalPose).sub(new Vector3().setFromMatrixPosition(sourceLocalRest))
+              if (localDelta.lengthSq() > 1e-16) {
+                const sourceParentRestQ = worldRotation(sourceParentRest)
+                const targetParentRestQ = parentRestWorld ? worldRotation(parentRestWorld) : new Quaternion()
+                const targetParentPoseQ = parentWorld ? worldRotation(parentWorld) : new Quaternion()
+                const sourceToTargetFrame = targetParentRestQ.clone().invert().multiply(alignment).multiply(sourceParentRestQ)
+                worldPosition.add(localDelta.applyQuaternion(sourceToTargetFrame).multiplyScalar(rootTranslationScale).applyQuaternion(targetParentPoseQ))
+              }
+            }
+          }
           const worldScale = new Vector3().setFromMatrixScale(restWorld)
           world = new Matrix4().compose(worldPosition, worldQ, worldScale)
         }
