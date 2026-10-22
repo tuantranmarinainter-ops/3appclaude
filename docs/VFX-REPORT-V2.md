@@ -4,6 +4,7 @@
 
 - Added `effect-dump` CLI to read a `.efkefc` with the existing Effekseer Core session and write versioned EffectIR v1 JSON. It preserves discovered public properties and stable node IDs. Unknown renderer types are marked unsupported so the converter blocks them rather than guessing.
 - Added the documented EffectIR contract and a pure-Python EffectIR-to-BBS FS 2.7 Snowstorm converter. Reports include per-property `OK` / `APPROX` / `BLOCKED` / `WARNING` entries, 60 fps to seconds conversion quantized to 1/20 second, blocked-node behavior, and the Add-to-alpha fallback with the exact 2.0 brightness multiplier.
+- Random `life.min`–`life.max` ranges are retained as `math.random(quantizedMin, quantizedMax)` in `particle_lifetime_expression.max_lifetime`; quantization is reported as `APPROX`. Malformed endpoints are reported `BLOCKED` with no conversion exception.
 - Added hand-authored JSON fixtures for glow-ring explosion, ice sword ribbon, and looping aura. The ribbon fixture is blocked with a sprite-billboard alternative; no scheme is written unless `--allow-partial` is explicit.
 - Output files are replaced atomically, and a rerun removes schemes listed in the prior converter report without deleting unrelated files.
 
@@ -18,7 +19,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 26 passed, 1 skipped, 0 failed. The skip is the integration test below. |
+| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 28 passed, 1 skipped, 0 failed. The skip is the integration test below. |
 | GitHub Actions `test` workflow | NOT_RUN | CI status is unverified for this report update; check PR #50's current run before review. |
 | Integration using Effekseer Core DLL | NOT_RUN | `EFFEKSEER_AI_BIN_DIR` and an actual `.efkefc` sample are unavailable here. On Windows: `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'; python -m pytest -m integration -q`; then `effekseer-ai effect-dump .\\effect.efkefc .\\effect-ir.json`. |
 | BBS FS 2.7 runtime | NOT_RUN | Requires the real game/runtime. On the Windows review machine, install the generated schemes and exercise them in BBS FS 2.7; do not treat schema conversion as a runtime pass. |

@@ -186,6 +186,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
             life_max = _number(life_max, "life.max", minimum=life_min)
         except ValueError as error:
             node_blockers.append(_entry(node_path, "life", "BLOCKED", str(error)))
+            life_min = fps
             life_max = fps
         life_min_seconds = _quantize(life_min / fps)
         life_seconds = _quantize(life_max / fps)

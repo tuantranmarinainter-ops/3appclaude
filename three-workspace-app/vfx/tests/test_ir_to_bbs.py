@@ -99,6 +99,15 @@ def test_invalid_ir_and_unsafe_texture_are_rejected() -> None:
     assert any(entry["property"] == "texture" for entry in result["blocked"])
 
 
+def test_malformed_lifetime_is_reported_blocked_without_raising() -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][1]["life"] = {"min": "bad", "max": 12}
+    result = convert_effect_ir(ir)
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    assert any(entry["property"] == "life" and entry["status"] == "BLOCKED" for entry in result["blocked"])
+
+
 def test_cli_returns_nonzero_for_blocked_effect_and_writes_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     input_path = tmp_path / "ice.json"
     output = tmp_path / "out"
@@ -107,6 +116,18 @@ def test_cli_returns_nonzero_for_blocked_effect_and_writes_report(tmp_path: Path
     assert code == 1
     assert json.loads((output / "report.json").read_text(encoding="utf-8"))["status"] == "BLOCKED"
     assert json.loads(capsys.readouterr().out)["status"] == "BLOCKED"
+
+
+def test_cli_reports_malformed_lifetime_as_blocked_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][1]["life"] = {"min": "bad", "max": 12}
+    input_path = tmp_path / "malformed-life.json"
+    output = tmp_path / "out"
+    input_path.write_text(json.dumps(ir), encoding="utf-8")
+    assert main([str(input_path), str(output)]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "BLOCKED"
+    assert json.loads((output / "report.json").read_text(encoding="utf-8"))["blocked"]
 
 
 def test_source_frames_are_quantized_to_twenty_hz() -> None:
