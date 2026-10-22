@@ -68,6 +68,11 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | H4 test mở lại GLB → .blend/FBX trong Blender | ✅ Claude | 2 nhân vật + emote_floss + G2: 48 điểm xương khớp `scene.evaluate` (sai số < 0.005 mm); lệch FBX 1 frame bị bắt (19 cm) |
 | L1 build Studio EPERM trên Windows | ✅ không tái hiện | `pnpm --filter @topview/3d-studio build` thành công 2026-10-21 |
 | D1b khoá chân không nâng chân | ✅ PR #23 (thử nghiệm, mặc định tắt) | Samba: cổ chân trượt 3.26/3.05 → 0.000 m, cao 0 cm, giữ 100% khung chạm; điểm thấp nhất 2.23/2.40 → 1.14/1.18 m (nguồn tự trượt 2.12/2.41) |
+| D7 cổ tay (dịch chuyển cục bộ của cổ tay) | ✅ PR #47 | 6 mẫu thật GLB giống hệt từng byte so với trước (Samba giữ nguyên); chỉ tác động khi cổ tay nguồn có dịch chuyển — **độ lệch xoay cổ tay chưa được đo/sửa** |
+| D3 `--mode model` cho rig không phải Mixamo | ✅ PR #47 | Lux/Garen (LoL), SeaGiant (WoW), Female (CC), Sion: PASS, sai số rest ≤ 1e-6 m, ảnh Blender biến dạng đúng; WC3 không có skin → BLOCKED đúng |
+| J2/J4 App 1 giữ xương phụ, Minecraft20 báo bỏ | ✅ PR #44 | retarget 169/169; 10 đầu ra thật giống hệt từng byte; giữ validator J1 khi gộp |
+| J3b App 3 xương phụ | ✅ PR #45 | Chromium thật: hiện cây xương "· phụ", key qua broker, xuất/tải lại giữ; 434/434 id; đã nhúng bản build vào Studio |
+| I2 thư viện App 5 (lõi) | ✅ PR #46 | Nhập thật Samba/Michelle/Minecraft; sửa giữ `.minecraft20.bobj`; I3–I5 (UI, nối App 2/3, MCP) còn mở |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
