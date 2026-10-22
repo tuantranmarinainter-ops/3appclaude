@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
-import { importNormalizedPack, updateActionMetadata, type ImportPackOptions, type ImportPackResult } from './importPack.ts'
-import { initializeLibrary, readCharacters, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store.ts'
-import { LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types.ts'
+import { importNormalizedPack, updateActionMetadata, type ImportPackOptions, type ImportPackResult } from './importPack'
+import { initializeLibrary, readCharacters, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
+import { LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
 
 export interface SearchResult {
   total: number
