@@ -1,14 +1,14 @@
-# App 4 VFX — Ánh xạ Effekseer → particle BBS FS 2.4 (hướng 2)
+# App 4 VFX — Ánh xạ Effekseer → particle BBS FS 2.7 (hướng 2)
 Ngày: 2026-10-22. Trạng thái: DRAFT đặc tả, **chưa có converter, chưa kiểm trong game**.
 Quyết định (người dùng chốt, `docs/DECISIONS.md`): đưa VFX vào BBS FS bằng cách chuyển sang particle Snowstorm JSON của BBS,
-phát native; tính năng không hỗ trợ thì chặn hoặc cảnh báo khi xuất. Đích là **BBS FS 2.4** (người dùng xác nhận 2026-10-22, thay cho 2.7; khác biệt ở §8); hướng addon AAA chỉ khảo sát.
+phát native; tính năng không hỗ trợ thì chặn hoặc cảnh báo khi xuất. Đích là **BBS FS 2.7**; 2.4 chỉ để đối chiếu (§8). Người dùng chốt lại 2026-10-22: “Nếu 2.7 tốt hơn về efect thì chọn 2.7”, vì 2.4 vẽ particle không blend (`docs/DECISIONS.md`). Hướng addon AAA chỉ khảo sát.
 
 Blend Add (người dùng chốt 2026-10-22): xuất kèm cảnh báo, không chặn; fallback blend alpha + tăng sáng màu (§3).
 Viết code (converter và các bước sau): giao Codex. Session Windows chỉ chạy phần cần máy thật (DLL Effekseer, render, thử BBS FS) và review PR.
 
 ## 1. Nguồn đã đọc (chỉ đọc, không build)
 - BBS FS: `C:\Users\Administrator\Documents\ChatGPT\BBS MINECRAFT\.build-tools\bbs-fs-1.20.1`, đọc ban đầu ở commit `998c9d5`
-  (`mod_version=2.7`), đối chiếu lại với **`0085f77` (`mod_version=2.4`)** = đích; Minecraft 1.20.1, Fabric. File: `particles/ParticleParser.java`, `ParticleMaterial.java`,
+  (`mod_version=2.7`), đây là **đích**; đối chiếu thêm với `0085f77` (`mod_version=2.4`); Minecraft 1.20.1, Fabric. File: `particles/ParticleParser.java`, `ParticleMaterial.java`,
   `ParticleCurveType.java`, `particles/components/**`, `particles/emitter/ParticleEmitter.java`,
   `forms/forms/ParticleForm.java`, `TrailForm.java`, `forms/renderers/ParticleFormRenderer.java`, `BBSMod.java`,
   mẫu `assets/bbs/assets/particles/default_placeholder.json`.
@@ -35,7 +35,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 (mặc định từ chối cả hiệu ứng; người dùng có thể cho phép bỏ node kèm cảnh báo).
 
 ### Cấu trúc
-| Effekseer | BBS 2.4 | Mức |
+| Effekseer | BBS 2.7 | Mức |
 | --- | --- | --- |
 | Effect nhiều node | Mỗi node vẽ được → 1 scheme JSON + 1 `ParticleForm`; gom các form dưới một form cha (anchor) | OK |
 | Node `None` (nhóm) ở gốc, transform tĩnh | Cộng transform vào `offset` của các con | OK |
@@ -43,7 +43,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | Kế thừa vị trí/xoay/tỉ lệ từ cha theo thời gian | `emitter_local_space` chỉ theo form | XẤP XỈ |
 
 ### Kiểu vẽ (`DrawingValues/Type`)
-| Effekseer | BBS 2.4 | Mức |
+| Effekseer | BBS 2.7 | Mức |
 | --- | --- | --- |
 | Sprite | `particle_appearance_billboard` | OK |
 | Ribbon, Track | Không tương đương (TrailForm khác bản chất) | CHẶN |
@@ -52,7 +52,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | GPU particles | — | CHẶN |
 
 ### Sinh hạt (`CommonValues`)
-| Effekseer | BBS 2.4 | Mức |
+| Effekseer | BBS 2.7 | Mức |
 | --- | --- | --- |
 | `MaxGeneration`, `GenerationTime`, `GenerationTimeOffset` | `emitter_rate_steady` (`spawn_rate` = 60 / GenerationTime hạt/giây, `max_particles`) hoặc `emitter_rate_instant` khi sinh cùng lúc; `emitter_lifetime_once.active_time` = MaxGeneration × GenerationTime / 60; `GenerationTimeOffset` (trễ trước hạt đầu) qua `emitter_lifetime_expression.activation_expression` (`variable.emitter_age >= offset`) — chưa kiểm trong game | OK (offset: XẤP XỈ), lượng tử 1/20 s |
 | `MaxGeneration/Infinite` | `emitter_lifetime_looping` | OK |
@@ -61,7 +61,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | Sound | — | Bỏ + cảnh báo |
 
 ### Vị trí, xoay, tỉ lệ
-| Effekseer | BBS 2.4 | Mức |
+| Effekseer | BBS 2.7 | Mức |
 | --- | --- | --- |
 | Location Fixed | `emitter_shape_point.offset` | OK |
 | Location PVA (vị trí/vận tốc/gia tốc ± ngẫu nhiên) | shape `offset` + `direction` + `particle_initial_speed` + `particle_motion_dynamic.linear_acceleration` | OK |
@@ -78,12 +78,12 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | Scale Fixed/PVA/Easing/FCurve | `billboard.size` = biểu thức + `curves` | OK (FCurve: XẤP XỈ) |
 
 ### Hiển thị (`RendererCommonValues`, `DrawingValues/Sprite`)
-| Effekseer | BBS 2.4 | Mức |
+| Effekseer | BBS 2.7 | Mức |
 | --- | --- | --- |
 | Color texture (1 ảnh PNG) | `basic_render_parameters.texture` → chép vào `config/bbs/assets/textures/vfx/<effect>/`, link `assets:` | OK |
-| AlphaBlend = Blend | `particles_blend` — ở 2.4 **không blend**, chỉ cắt alpha | XẤP XỈ ở 2.4 (OK ở 2.7) |
+| AlphaBlend = Blend | `particles_blend` (blend alpha SRC_ALPHA, 1−SRC_ALPHA) | OK (2.4: chỉ cắt alpha, xem §8) |
 | AlphaBlend = Opacity | `particles_opaque` | OK |
-| AlphaBlend = **Add** (phổ biến nhất) | **Không chặn** (người dùng chốt 2026-10-22). Fallback đã chốt: `particles_blend` + **tăng sáng màu**, cảnh báo trong `warnings[]` (đường dẫn node, blend gốc, fallback). **Ở 2.4 fallback này không cho bán trong suốt**: pixel alpha thấp bị cắt, phần còn lại vẽ đặc → glow mềm thành mảng cứng. Cần người dùng chốt lại (§8). | XẤP XỈ mạnh + cảnh báo bắt buộc |
+| AlphaBlend = **Add** (phổ biến nhất) | **Không chặn** (người dùng chốt 2026-10-22). Fallback: `particles_blend` (blend alpha) + **tăng sáng màu**; mỗi node Add có một mục trong `warnings[]` của báo cáo xuất (đường dẫn node, blend gốc, fallback). Không cộng dồn, không loá khi chồng nhiều lớp. | XẤP XỈ + cảnh báo bắt buộc |
 | AlphaBlend = Sub, Mul | — | CHẶN |
 | Color Fixed/Random/Easing/FCurve | `particle_appearance_tinting` (solid / gradient + `interpolant`) | OK (FCurve: XẤP XỈ) |
 | UV Fixed | `billboard.uv` | OK |
@@ -97,14 +97,14 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 - Thời gian: Effekseer 60 frame/giây → giây = frame/60; BBS mô phỏng 20 tick/giây. Sự kiện ngắn hơn 1/20 s bị gộp → cảnh báo
   khi `GenerationTime` < 3 frame hoặc `Life` < 3 frame.
 - Độ dài: đề xuất 1 đơn vị Effekseer = 1 block nhân hệ số `scale` của profile; **phải hiệu chuẩn** bằng một mẫu đo
-  (vòng tròn bán kính 1) trong BBS 2.4 trước khi chốt. Trục: cả hai Y-up; dấu trục X/Z của Bedrock particle so với
+  (vòng tròn bán kính 1) trong BBS 2.7 trước khi chốt. Trục: cả hai Y-up; dấu trục X/Z của Bedrock particle so với
   Effekseer RH cần đo cùng mẫu đó.
 
 ## 5. Gate khi xuất (thiết kế)
-1. **Cấu trúc**: JSON chỉ dùng component có trong `ParticleParser` 2.4 (bảng §2; danh sách giống 2.7); không component lạ (BBS bỏ im lặng → phải chặn ở phía mình).
+1. **Cấu trúc**: JSON chỉ dùng component có trong `ParticleParser` 2.7 (bảng §2; danh sách giống 2.4); không component lạ (BBS bỏ im lặng → phải chặn ở phía mình).
 2. **Hỗ trợ**: quét toàn bộ node; một mục CHẶN → từ chối hiệu ứng (exit ≠ 0) và liệt kê đường dẫn node + thuộc tính; XẤP XỈ → ghi `warnings[]`.
 3. **Hình ảnh**: render Effekseer gốc (`tools/render_preview.py`) đặt cạnh ảnh của bản BBS — cần đường render BBS (chưa có, xem §6).
-4. **Chạy trong BBS FS 2.4** (gate MVP): nạp JSON trong game, đặt `ParticleForm` vào film, chụp ở các tick đã định; PASS chỉ khi có ảnh trong game. Không hiệu ứng nào vào gói BBS FS khi gate này chưa PASS.
+4. **Chạy trong BBS FS 2.7** (gate MVP): nạp JSON trong game, đặt `ParticleForm` vào film, chụp ở các tick đã định; PASS chỉ khi có ảnh trong game. Không hiệu ứng nào vào gói BBS FS khi gate này chưa PASS.
 
 ## 6. Việc còn mở
 - Không có renderer BBS ngoài game: preview tự động chỉ có phía Effekseer. Cách đối chiếu khả thi: (a) người dùng chụp trong game,
@@ -126,9 +126,9 @@ Minecraft **1.20.1**, có cả **Fabric** (fabric-loader 0.16.9, fabric-api 0.90
 | Phiên bản | Effekseer runtime 1.80.7 trong AAA vs editor 1.80.6 của App 4: cùng nhánh 1.80, cần kiểm file 1.80.6 nạp đúng. |
 
 Kết luận khảo sát: hướng addon khả thi về API (có seek + transform), giữ đủ tính năng Effekseer (additive, ribbon, model, distortion),
-nhưng cần mod AAA trong instance của người dùng và một addon Java cho BBS FS 2.4. Chưa viết Java (theo quyết định).
+nhưng cần mod AAA trong instance của người dùng và một addon Java cho BBS FS 2.7. Chưa viết Java (theo quyết định).
 
-## 8. Đối chiếu 2.4 (`0085f77`) với 2.7 (`998c9d5`) — 2026-10-22
+## 8. Đối chiếu 2.4 (`0085f77`) với 2.7 (`998c9d5`) — 2026-10-22 (2.4 chỉ để tham khảo)
 Lệnh: `git diff --stat 0085f77 998c9d585 -- <các file particle/form>` trong repo nguồn BBS FS.
 
 | Phần | 2.4 so với 2.7 | Ảnh hưởng tới ánh xạ |
@@ -146,12 +146,9 @@ Instance `S:\Minecraft\Minecraft Forge-1.20.1` (Forge 47.4.10 + Sinytra Connecto
 - `mods\bbs fs-2.4-1.20.1.jar.ok` (đang tắt): `fabric.mod.json` id `bbs`, version `2.4-1.20.1`,
   SHA-256 `68b25f60ce3a14daf6562eb3bb3fc13a07119ccee966133c48e45c05e173f526`, 56 entry dưới `particles/components/`.
   `ParticleEmitter.class` **không** chứa chuỗi `ParticleMaterial` → khớp mã `0085f77` (chưa có bản sửa blend).
-- `mods\bbs-1.6.2-1.20.1.jar` đang bật, cùng id `bbs` → hai bản không chạy cùng lúc; muốn kiểm gate 2.4 thì người dùng tự đổi jar.
+- `mods\bbs-1.6.2-1.20.1.jar` đang bật, cùng id `bbs` → hai bản không chạy cùng lúc; máy chưa có jar 2.7 để kiểm gate.
 - `config\bbs\assets\particles\` đang **trống**; có sẵn các thư mục `audio`, `models`, `particles`, `textures`.
 - Mod Fabric chạy qua Connector trên Forge: đường render particle chưa kiểm trong game.
 
-### Hệ quả và câu cần người dùng chốt lại
-Quyết định blend Add (“alpha + tăng sáng”) dựa trên 2.7. Trên 2.4 có ba cách, cần chọn:
-1. **Cắt alpha + tăng sáng**: giữ quyết định, chấp nhận glow thành mảng cứng; converter đặt alpha texture rõ ràng (gần nhị phân) để viền gọn.
-2. **Giả bán trong suốt bằng dither**: nướng alpha thành chấm xen kẽ trong texture (vẫn cắt alpha); nhìn gần thấy lưới chấm.
-3. **Đưa bản sửa blend `ca9ae5f` vào 2.4**: là sửa Java trong BBS FS, ngoài phạm vi App 4, cần người dùng cho phép riêng.
+### Hệ quả (đã chốt)
+Vì 2.4 không có particle bán trong suốt, người dùng chọn **đích 2.7** (2026-10-22). Fallback Add “blend alpha + tăng sáng” giữ nguyên trên 2.7. Ba phương án cho 2.4 (cắt alpha, dither, backport `ca9ae5f`) không còn cần.
