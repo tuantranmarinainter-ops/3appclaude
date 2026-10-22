@@ -215,19 +215,21 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         location_type = get("location.type", ("LocationValues/Type",), "Fixed")
         rotation_type = get("rotation.type", ("RotationValues/Type", "RotationValues/Rotation/Type"), "Fixed")
         scale_type = get("scale.type", ("ScalingValues/Type", "ScalingValues/Scale/Type"), "Fixed")
-        color_type = get("color.type", ("RendererCommonValues/AllColor/Type",), "Fixed")
+        # Effekseer 1.80.6 stores standard sprite/model tint at DrawingValues.ColorAll.
+        # The old hidden Sprite.ColorAll_* fields are not RendererCommonValues.
+        color_type = get("color.type", ("DrawingValues/ColorAll/Type", "DrawingValues/Sprite/ColorAll"), None)
         mode_values = {
             "location": capture_mode("location.values", "LocationValues", str(location_type)),
             "rotation": capture_mode("rotation.values", "RotationValues", str(rotation_type)),
             "scaling": capture_mode("scaling.values", "ScalingValues", str(scale_type)),
-            "color": capture_mode("color.values", "RendererCommonValues/AllColor", str(color_type)),
+            "color": capture_mode("color.values", "DrawingValues/ColorAll", str(color_type)),
         }
         position = discover("location.position", "LocationValues", ("location",), [0, 0, 0], 3, str(location_type))
         velocity = discover("location.velocity", "LocationValues", ("velocity",), [0, 0, 0], 3, str(location_type))
         acceleration = discover("location.acceleration", "LocationValues", ("acceleration",), [0, 0, 0], 3, str(location_type))
         rotation = discover("rotation", "RotationValues", ("rotation",), [0, 0, 0], 3, str(rotation_type))
         scale = discover("scale", "ScalingValues", ("scale",), [1, 1], 3, str(scale_type))
-        color = discover("color", "RendererCommonValues", ("allcolor",), [1, 1, 1, 1], 4, str(color_type))
+        color = discover("color", "DrawingValues", ("colorall",), [1, 1, 1, 1], 4, str(color_type))
         # 1.80.6 models vectors as X/Y/Z scalar Value objects and random values
         # as Center/Amplitude (or Min/Max) leaves; parent vectors stringify to
         # object names, so read each numeric leaf explicitly.
@@ -266,7 +268,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
                     rotation = target
                 elif spec == "scale":
                     scale = target
-        color_components = read_axes("color.components", "RendererCommonValues/AllColor", str(color_type), "", "RGBA")
+        color_components = read_axes("color.components", "DrawingValues/ColorAll", str(color_type), "", "RGBA")
         if color_components:
             mode_values.setdefault("numericLeaves", {})["color"] = color_components
             color_values = color_components.get("value", color_components.get("start", {}))

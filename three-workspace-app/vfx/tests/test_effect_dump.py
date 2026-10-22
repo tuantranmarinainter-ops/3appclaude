@@ -9,54 +9,56 @@ import pytest
 
 
 class FakeSession:
+    """Small fixture shaped from the public Effekseer 1.80.6 Core data classes."""
     path = Path("spark.efkefc")
+    node = "node/root/0"
+
+    def __init__(self):
+        self.values = {
+            f"{self.node}/DrawingValues/Type": "Sprite",
+            f"{self.node}/DrawingValues/ColorAll/Type": "Fixed",
+            f"{self.node}/DrawingValues/ColorAll/Fixed/R/Value": 26,
+            f"{self.node}/DrawingValues/ColorAll/Fixed/G/Value": 51,
+            f"{self.node}/DrawingValues/ColorAll/Fixed/B/Value": 77,
+            f"{self.node}/DrawingValues/ColorAll/Fixed/A/Value": 102,
+            f"{self.node}/RendererCommonValues/AlphaBlend": "Add",
+            f"{self.node}/RendererCommonValues/ColorTexture/RelativePath": "Texture/Particle01.png",
+            f"{self.node}/CommonValues/MaxGeneration/Value": 20,
+            f"{self.node}/CommonValues/Infinite/Value": True,
+            f"{self.node}/CommonValues/GenerationTime/Center": 3,
+            f"{self.node}/CommonValues/GenerationTime/Amplitude": 1,
+            f"{self.node}/CommonValues/Life/Min": 12,
+            f"{self.node}/CommonValues/Life/Max": 24,
+            f"{self.node}/LocationValues/Type": "PVA",
+            f"{self.node}/RotationValues/Type": "PVA",
+            f"{self.node}/ScalingValues/Type": "PVA",
+        }
+        for group, prop, centers in (
+            ("LocationValues/PVA", "Location", (2, 4, 6)),
+            ("LocationValues/PVA", "Velocity", (4, 5, 6)),
+            ("LocationValues/PVA", "Acceleration", (7, 8, 9)),
+            ("RotationValues/PVA", "Rotation", (20, 21, 22)),
+            ("ScalingValues/PVA", "Scale", (5, 6, 7)),
+        ):
+            for axis, center in zip("XYZ", centers):
+                self.values[f"{self.node}/{group}/{prop}/{axis}/Center"] = center
+                if prop == "Location":
+                    self.values[f"{self.node}/{group}/{prop}/{axis}/Amplitude"] = 1
+        self.leaves = [f"{parent}/IsValueChangedFromDefault" for parent in self.values
+                       if parent.startswith((f"{self.node}/LocationValues/", f"{self.node}/RotationValues/",
+                                             f"{self.node}/ScalingValues/", f"{self.node}/DrawingValues/ColorAll/"))
+                       and not parent.endswith("/Type")]
 
     def node_list(self):
-        return [{"path": "node/root/0", "id": "node/id/sprite-id", "name": "Spark", "children": 0}]
+        return [{"path": self.node, "id": "node/id/sprite-id", "name": "Spark", "children": 0}]
 
     def property_list(self, path):
-        return [f"{path}/LocationValues/Location/Fixed/Position/Center/IsValueChangedFromDefault",
-                f"{path}/LocationValues/Location/PVA/Position/Min/IsValueChangedFromDefault",
-                f"{path}/LocationValues/Location/PVA/Position/Max/IsValueChangedFromDefault",
-                f"{path}/LocationValues/Velocity/PVA/Center/IsValueChangedFromDefault",
-                f"{path}/LocationValues/Acceleration/PVA/Center/IsValueChangedFromDefault",
-                f"{path}/RotationValues/Rotation/Fixed/Center/IsValueChangedFromDefault",
-                f"{path}/RotationValues/Rotation/PVA/Center/IsValueChangedFromDefault",
-                f"{path}/ScalingValues/Scale/Fixed/Center/IsValueChangedFromDefault",
-                f"{path}/ScalingValues/Scale/PVA/Center/IsValueChangedFromDefault",
-                f"{path}/RendererCommonValues/AllColor/Fixed/Center/IsValueChangedFromDefault",
-                f"{path}/RendererCommonValues/AllColor/PVA/Center/IsValueChangedFromDefault"]
+        return self.leaves
 
     def property_get(self, path):
-        values = {
-            "node/root/0/DrawingValues/Type": "Sprite",
-            "node/root/0/RendererCommonValues/AlphaBlend": "Add",
-            "node/root/0/RendererCommonValues/ColorTexture/RelativePath": "Texture/Particle01.png",
-            "node/root/0/CommonValues/MaxGeneration/Value": 20,
-            "node/root/0/CommonValues/Infinite/Value": True,
-            "node/root/0/CommonValues/GenerationTime/Center": 3,
-            "node/root/0/CommonValues/GenerationTime/Amplitude": 1,
-            "node/root/0/CommonValues/Life/Min": 12,
-            "node/root/0/CommonValues/Life/Max": 24,
-            "node/root/0/LocationValues/Type": "PVA",
-            "node/root/0/LocationValues/Location/Fixed/Position/Center": "(90, 90, 90)",
-            "node/root/0/LocationValues/Location/PVA/Position/Min": "(2, 4, 6)",
-            "node/root/0/LocationValues/Location/PVA/Position/Max": "(4, 6, 8)",
-            "node/root/0/LocationValues/Velocity/PVA/Center": "(4, 5, 6)",
-            "node/root/0/LocationValues/Acceleration/PVA/Center": "(7, 8, 9)",
-            "node/root/0/RotationValues/Rotation/Fixed/Center": "(10, 11, 12)",
-            "node/root/0/RotationValues/Rotation/PVA/Center": "(20, 21, 22)",
-            "node/root/0/ScalingValues/Scale/Fixed/Center": "(2, 3, 4)",
-            "node/root/0/ScalingValues/Scale/PVA/Center": "(5, 6, 7)",
-            "node/root/0/RendererCommonValues/AllColor/Fixed/Center": "(0.1, 0.2, 0.3, 0.4)",
-            "node/root/0/RendererCommonValues/AllColor/PVA/Center": "(0.4, 0.3, 0.2, 0.1)",
-            "node/root/0/RotationValues/Type": "PVA",
-            "node/root/0/ScalingValues/Type": "PVA",
-            "node/root/0/RendererCommonValues/AllColor/Type": "PVA",
-        }
-        if path not in values:
+        if path not in self.values:
             raise ValueError(path)
-        return values[path]
+        return self.values[path]
 
 
 def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
@@ -67,12 +69,12 @@ def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
     assert first["texture"] == "Texture/Particle01.png"
     assert first["generation"] == {"maxGeneration": 20, "infinite": True, "generationTime": 3, "generationTimeAmplitude": 1}
     assert first["life"] == {"min": 12, "max": 24}
-    assert first["location"]["position"] == [3, 5, 7]
+    assert first["location"]["position"] == [2, 4, 6]
     assert first["location"]["velocity"] == [4, 5, 6]
     assert first["location"]["acceleration"] == [7, 8, 9]
     assert first["rotation"] == [20, 21, 22]
     assert first["size"] == [5, 6]
-    assert first["color"] == [0.4, 0.3, 0.2, 0.1]
+    assert first["color"] == [26 / 255, 51 / 255, 77 / 255, 102 / 255]
     assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
     assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
 
@@ -94,19 +96,20 @@ def test_dump_reads_1806_scalar_leaf_paths_not_vector_parent_strings():
         def property_list(self, path):
             roots = ("LocationValues/PVA/Location", "LocationValues/PVA/Velocity",
                      "LocationValues/PVA/Acceleration", "ScalingValues/Easing/Start",
-                     "ScalingValues/Easing/End", "RotationValues/Fixed/Rotation",
-                     "RendererCommonValues/AllColor/Fixed")
-            return [f"{path}/{root}/{axis}/{part}/IsValueChangedFromDefault"
-                    for root in roots
-                    for axis in ("X", "Y", "Z", "R", "G", "B", "A")
-                    for part in ("Center", "Amplitude")]
+                     "ScalingValues/Easing/End", "RotationValues/Fixed/Rotation")
+            vector_leaves = [f"{path}/{root}/{axis}/{part}/IsValueChangedFromDefault"
+                             for root in roots for axis in ("X", "Y", "Z")
+                             for part in ("Center", "Amplitude")]
+            color_leaves = [f"{path}/DrawingValues/ColorAll/Fixed/{channel}/Value/IsValueChangedFromDefault"
+                            for channel in "RGBA"]
+            return vector_leaves + color_leaves
 
         def property_get(self, path):
             exact = {
                 "node/root/0/LocationValues/Type": "PVA",
                 "node/root/0/ScalingValues/Type": "Easing",
                 "node/root/0/RotationValues/Type": "Fixed",
-                "node/root/0/RendererCommonValues/AllColor/Type": "Fixed",
+                "node/root/0/DrawingValues/ColorAll/Type": "Fixed",
             }
             if path in exact:
                 return exact[path]
@@ -116,6 +119,8 @@ def test_dump_reads_1806_scalar_leaf_paths_not_vector_parent_strings():
                 return 2.5
             if path.endswith("/Amplitude"):
                 return 0.5
+            if path.endswith("/Value") and "/DrawingValues/ColorAll/" in path:
+                return 128.0
             if path.endswith(("/X", "/Y", "/Z", "/R", "/G", "/B", "/A")):
                 return 3.0
             return super().property_get(path)
@@ -126,6 +131,41 @@ def test_dump_reads_1806_scalar_leaf_paths_not_vector_parent_strings():
     assert leaves["scale"]["start"]["X"] == {"center": 2.5, "amplitude": 0.5}
     assert any(path.endswith("ScalingValues/Easing/Start/X/Center")
                for path in node["sourcePaths"]["scale.components"])
+    assert node["color"] == [128 / 255] * 4
+    assert any(path.endswith("DrawingValues/ColorAll/Fixed/R/Value")
+               for path in node["sourcePaths"]["color.components"])
+
+
+@pytest.mark.parametrize("mode,paths", [
+    ("Fixed", ("Fixed/R/Value", "Fixed/G/Value", "Fixed/B/Value", "Fixed/A/Value")),
+    ("Random", ("Random/R/Center", "Random/R/Amplitude", "Random/G/Center", "Random/G/Amplitude",
+                 "Random/B/Center", "Random/B/Amplitude", "Random/A/Center", "Random/A/Amplitude")),
+    ("Easing", ("Easing/Start/R/Center", "Easing/Start/R/Amplitude", "Easing/End/R/Center",
+                 "Easing/End/R/Amplitude", "Easing/Start/G/Center", "Easing/Start/G/Amplitude",
+                 "Easing/End/G/Center", "Easing/End/G/Amplitude", "Easing/Start/B/Center",
+                 "Easing/Start/B/Amplitude", "Easing/End/B/Center", "Easing/End/B/Amplitude",
+                 "Easing/Start/A/Center", "Easing/Start/A/Amplitude", "Easing/End/A/Center",
+                 "Easing/End/A/Amplitude")),
+])
+def test_color_all_uses_1806_drawing_values_standard_color_tree(mode, paths):
+    class ColorMode(FakeSession):
+        def __init__(self):
+            super().__init__()
+            self.values[f"{self.node}/DrawingValues/ColorAll/Type"] = mode
+            for key in list(self.values):
+                if "/DrawingValues/ColorAll/Fixed/" in key:
+                    del self.values[key]
+            for index, relative in enumerate(paths):
+                parent = f"{self.node}/DrawingValues/ColorAll/{relative}"
+                self.values[parent] = 40 + index
+            self.leaves = [f"{parent}/IsValueChangedFromDefault" for parent in self.values
+                           if "/DrawingValues/ColorAll/" in parent and not parent.endswith("/Type")]
+
+    node = dump_effect_ir(ColorMode())['nodes'][0]
+    assert node['valueModes']['color']['type'] == mode.lower()
+    assert node['sourcePaths']['color.values']
+    assert node['sourcePaths']['color.components']
+    assert not any(path.startswith('missing-active-value:color') for path in node.get('unsupportedFeatures', []))
 
 
 def test_effect_dump_writes_versioned_json_atomically(tmp_path: Path):
