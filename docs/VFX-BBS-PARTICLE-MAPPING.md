@@ -3,6 +3,9 @@ Ngày: 2026-10-22. Trạng thái: DRAFT đặc tả, **chưa có converter, chư
 Quyết định (người dùng chốt, `docs/DECISIONS.md`): đưa VFX vào BBS FS bằng cách chuyển sang particle Snowstorm JSON của BBS,
 phát native; tính năng không hỗ trợ thì chặn hoặc cảnh báo khi xuất. Đích là **BBS FS 2.7**; hướng addon AAA chỉ khảo sát.
 
+Blend Add (người dùng chốt 2026-10-22): xuất kèm cảnh báo, không chặn; fallback blend alpha + tăng sáng màu (§3).
+Viết code (converter và các bước sau): giao Codex. Session Windows chỉ chạy phần cần máy thật (DLL Effekseer, render, thử BBS FS) và review PR.
+
 ## 1. Nguồn đã đọc (chỉ đọc, không build)
 - BBS FS: `C:\Users\Administrator\Documents\ChatGPT\BBS MINECRAFT\.build-tools\bbs-fs-1.20.1`, commit `998c9d5`
   (`mod_version=2.7`, Minecraft 1.20.1, Fabric). File: `particles/ParticleParser.java`, `ParticleMaterial.java`,
@@ -80,7 +83,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | Color texture (1 ảnh PNG) | `basic_render_parameters.texture` → chép vào `config/bbs/assets/textures/vfx/<effect>/`, link `assets:` | OK |
 | AlphaBlend = Blend | `particles_blend` | OK |
 | AlphaBlend = Opacity | `particles_opaque` | OK |
-| AlphaBlend = **Add** (phổ biến nhất) | `particles_blend` + texture nướng lại: alpha = độ sáng, màu chuẩn hoá. Đúng gần trên nền tối, sai khi chồng nhiều lớp (không cộng dồn, không loá) | XẤP XỈ + cảnh báo bắt buộc |
+| AlphaBlend = **Add** (phổ biến nhất) | **Không chặn** (người dùng chốt 2026-10-22). Fallback: `particles_blend` (blend alpha) và **tăng sáng màu** để bù. Không cộng dồn, không loá khi chồng nhiều lớp. Mỗi node Add phải có một mục trong `warnings[]` của báo cáo xuất (đường dẫn node, blend gốc, fallback đã dùng). | XẤP XỈ + cảnh báo bắt buộc |
 | AlphaBlend = Sub, Mul | — | CHẶN |
 | Color Fixed/Random/Easing/FCurve | `particle_appearance_tinting` (solid / gradient + `interpolant`) | OK (FCurve: XẤP XỈ) |
 | UV Fixed | `billboard.uv` | OK |
@@ -107,7 +110,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 - Không có renderer BBS ngoài game: preview tự động chỉ có phía Effekseer. Cách đối chiếu khả thi: (a) người dùng chụp trong game,
   (b) tự động qua công cụ chụp màn hình có sẵn trên máy (`MCP_SCREEN_CAPTURE`, chưa đọc), (c) viết trình xem Snowstorm riêng — tốn công, sai khác renderer.
 - Tính ngẫu nhiên không tái lập được trong BBS (`Math.random`) → so sánh hình theo số liệu tổng (số hạt, vùng phủ) chứ không theo hash.
-- Converter chưa viết. Bước đầu đề xuất: `tools/to_bbs_particle.py` cho tập OK (Sprite + PVA + màu + flipbook) và báo cáo CHẶN/XẤP XỈ,
+- Converter chưa viết (giao Codex). Bước đầu đề xuất: `tools/to_bbs_particle.py` cho tập OK (Sprite + PVA + màu + flipbook) và báo cáo CHẶN/XẤP XỈ,
   thử trên `Sample/00_Basic` (đa số dùng Add → sẽ có cảnh báo).
 
 ## 7. Khảo sát AAA Particles (hướng addon, chỉ đọc)

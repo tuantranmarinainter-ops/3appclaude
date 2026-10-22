@@ -101,7 +101,7 @@ kiểm, không commit, không đưa vào gói phân phối (license từng sampl
 ## Câu cần người dùng chốt
 1. ~~Đường phát VFX trong BBS FS~~ — đã chốt 2026-10-22: hướng 2 trước, khảo sát AAA song song (kết quả khảo sát ở `docs/VFX-BBS-PARTICLE-MAPPING.md` §7). BBS FS đang chơi: 2.7.
 2. Bản Effekseer đang dùng thật: 1.80.6 hay khác? Có cài AAA Particles không, bản nào? Thư mục instance Minecraft 1.20.1 Fabric chạy BBS FS 2.7?
-2b. Hiệu ứng dùng blend Add (đa số mẫu) chỉ xấp xỉ được trong BBS (không có additive): chấp nhận xuất kèm cảnh báo, hay chặn?
+2b. ~~Blend Add~~ — đã chốt 2026-10-22: xuất kèm cảnh báo, fallback blend alpha + tăng sáng màu. Code converter giao Codex.
 3. Xem preview bằng cách nào: ảnh PNG theo mốc thời gian (đang có), bảng ảnh ghép (Recorder có SpriteSheet), hay GIF/video (Recorder có Gif/AVI/H264, chưa thử)?
 4. License mặc định khi tìm asset: chỉ CC0 (đề xuất) hay cho cả CC-BY có ghi công?
 5. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được? (Codex cloud chạy Linux, không có Effekseer Windows: chỉ chạy được 4 test, không render.)
