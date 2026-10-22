@@ -16,11 +16,16 @@ class FakeSession:
 
     def property_list(self, path):
         return [f"{path}/LocationValues/Location/Fixed/Position/Center/IsValueChangedFromDefault",
+                f"{path}/LocationValues/Location/PVA/Position/Min/IsValueChangedFromDefault",
+                f"{path}/LocationValues/Location/PVA/Position/Max/IsValueChangedFromDefault",
                 f"{path}/LocationValues/Velocity/PVA/Center/IsValueChangedFromDefault",
                 f"{path}/LocationValues/Acceleration/PVA/Center/IsValueChangedFromDefault",
                 f"{path}/RotationValues/Rotation/Fixed/Center/IsValueChangedFromDefault",
+                f"{path}/RotationValues/Rotation/PVA/Center/IsValueChangedFromDefault",
                 f"{path}/ScalingValues/Scale/Fixed/Center/IsValueChangedFromDefault",
-                f"{path}/RendererCommonValues/AllColor/Fixed/Center/IsValueChangedFromDefault"]
+                f"{path}/ScalingValues/Scale/PVA/Center/IsValueChangedFromDefault",
+                f"{path}/RendererCommonValues/AllColor/Fixed/Center/IsValueChangedFromDefault",
+                f"{path}/RendererCommonValues/AllColor/PVA/Center/IsValueChangedFromDefault"]
 
     def property_get(self, path):
         values = {
@@ -34,12 +39,20 @@ class FakeSession:
             "node/root/0/CommonValues/Life/Min": 12,
             "node/root/0/CommonValues/Life/Max": 24,
             "node/root/0/LocationValues/Type": "PVA",
-            "node/root/0/LocationValues/Location/Fixed/Position/Center": "(1, 2, 3)",
+            "node/root/0/LocationValues/Location/Fixed/Position/Center": "(90, 90, 90)",
+            "node/root/0/LocationValues/Location/PVA/Position/Min": "(2, 4, 6)",
+            "node/root/0/LocationValues/Location/PVA/Position/Max": "(4, 6, 8)",
             "node/root/0/LocationValues/Velocity/PVA/Center": "(4, 5, 6)",
             "node/root/0/LocationValues/Acceleration/PVA/Center": "(7, 8, 9)",
             "node/root/0/RotationValues/Rotation/Fixed/Center": "(10, 11, 12)",
+            "node/root/0/RotationValues/Rotation/PVA/Center": "(20, 21, 22)",
             "node/root/0/ScalingValues/Scale/Fixed/Center": "(2, 3, 4)",
+            "node/root/0/ScalingValues/Scale/PVA/Center": "(5, 6, 7)",
             "node/root/0/RendererCommonValues/AllColor/Fixed/Center": "(0.1, 0.2, 0.3, 0.4)",
+            "node/root/0/RendererCommonValues/AllColor/PVA/Center": "(0.4, 0.3, 0.2, 0.1)",
+            "node/root/0/RotationValues/Type": "PVA",
+            "node/root/0/ScalingValues/Type": "PVA",
+            "node/root/0/RendererCommonValues/AllColor/Type": "PVA",
         }
         if path not in values:
             raise ValueError(path)
@@ -54,12 +67,12 @@ def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
     assert first["texture"] == "Texture/Particle01.png"
     assert first["generation"] == {"maxGeneration": 20, "infinite": True, "generationTime": 3, "generationTimeAmplitude": 1}
     assert first["life"] == {"min": 12, "max": 24}
-    assert first["location"]["position"] == [1, 2, 3]
+    assert first["location"]["position"] == [3, 5, 7]
     assert first["location"]["velocity"] == [4, 5, 6]
     assert first["location"]["acceleration"] == [7, 8, 9]
-    assert first["rotation"] == [10, 11, 12]
-    assert first["size"] == [2, 3]
-    assert first["color"] == [0.1, 0.2, 0.3, 0.4]
+    assert first["rotation"] == [20, 21, 22]
+    assert first["size"] == [5, 6]
+    assert first["color"] == [0.4, 0.3, 0.2, 0.1]
     assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
     assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
 

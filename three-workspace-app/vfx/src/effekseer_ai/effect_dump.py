@@ -20,7 +20,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         stable_id = str(item["id"]).removeprefix("node/id/")
         parent = path.rsplit("/", 1)[0]
         parent_id = next((str(n["id"]).removeprefix("node/id/") for n in nodes if str(n["path"]) == parent), None)
-        field_paths: dict[str, str] = {}
+        field_paths: dict[str, Any] = {}
         listed_paths: list[str] | None = None
 
         def get(field: str, candidates: tuple[str, ...], default: Any = None) -> Any:
@@ -34,7 +34,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
                 return value
             return default
 
-        def discover(field: str, root: str, terms: tuple[str, ...], default: Any, size: int) -> Any:
+        def discover(field: str, root: str, terms: tuple[str, ...], default: Any, size: int, active_mode: str | None = None) -> Any:
             """Read a Core value parent discovered from its public IsValueChanged leaf."""
             nonlocal listed_paths
             if listed_paths is None:
@@ -56,10 +56,19 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
                     value = session.property_get(parent_path)
                 except (AttributeError, KeyError, ValueError, TypeError):
                     continue
-                matches.append((priority, parent_path, value))
+                mode_priority = 0 if active_mode and f"/{active_mode.lower()}/" in normalized else (1 if active_mode else 0)
+                matches.append((mode_priority * 10 + priority, parent_path, value))
             if not matches:
                 return default
             matches.sort(key=lambda item: (item[0], item[1]))
+            if active_mode and active_mode.lower() == "pva":
+                endpoints = [item for item in matches if item[1].rsplit("/", 1)[-1].lower() in {"min", "max"}]
+                if len(endpoints) >= 2:
+                    low = _components(endpoints[0][2], size)
+                    high = _components(endpoints[1][2], size)
+                    if low is not None and high is not None:
+                        field_paths[field] = [endpoints[0][1], endpoints[1][1]]
+                        return [(a + b) / 2 for a, b in zip(low, high)]
             parsed = _components(matches[0][2], size)
             if parsed is None and len(matches) > 1:
                 second = _components(matches[1][2], size)
@@ -98,12 +107,15 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         if life_max is None and life_min is not None:
             life_max = life_min
         location_type = get("location.type", ("LocationValues/Type",), "Fixed")
-        position = discover("location.position", "LocationValues", ("position",), [0, 0, 0], 3)
-        velocity = discover("location.velocity", "LocationValues", ("velocity",), [0, 0, 0], 3)
-        acceleration = discover("location.acceleration", "LocationValues", ("acceleration",), [0, 0, 0], 3)
-        rotation = discover("rotation", "RotationValues", ("rotation",), [0, 0, 0], 3)
-        scale = discover("scale", "ScalingValues", ("scale",), [1, 1], 3)
-        color = discover("color", "RendererCommonValues", ("allcolor",), [1, 1, 1, 1], 4)
+        rotation_type = get("rotation.type", ("RotationValues/Type",), "Fixed")
+        scale_type = get("scale.type", ("ScalingValues/Type",), "Fixed")
+        color_type = get("color.type", ("RendererCommonValues/AllColor/Type",), "Fixed")
+        position = discover("location.position", "LocationValues", ("position",), [0, 0, 0], 3, str(location_type))
+        velocity = discover("location.velocity", "LocationValues", ("velocity",), [0, 0, 0], 3, str(location_type))
+        acceleration = discover("location.acceleration", "LocationValues", ("acceleration",), [0, 0, 0], 3, str(location_type))
+        rotation = discover("rotation", "RotationValues", ("rotation",), [0, 0, 0], 3, str(rotation_type))
+        scale = discover("scale", "ScalingValues", ("scale",), [1, 1], 3, str(scale_type))
+        color = discover("color", "RendererCommonValues", ("allcolor",), [1, 1, 1, 1], 4, str(color_type))
         node: dict[str, Any] = {
             "id": stable_id, "path": path, "name": str(item.get("name", stable_id)), "parentId": parent_id,
             "renderType": render_type or "unsupported", "blend": blend,
