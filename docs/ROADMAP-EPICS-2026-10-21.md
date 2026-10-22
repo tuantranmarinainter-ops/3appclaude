@@ -15,7 +15,7 @@ cập nhật `docs/MVP-PROGRESS.md`. Quy tắc chung: `docs/AI-TASKS-2026-10-21.
 | **F** | App 3: giao diện đợt 2 (Blocking → Tinh chỉnh → Xuất) | Sau MVP | A | `animation-studio/.../src/` | 4 việc |
 | **G** | App 2: AI xếp cảnh và camera qua MCP | Sau MVP | B | `editor/apps/studio/src`, `agent/unified_*` | 4 việc |
 | **H** | App 2: xuất toàn cảnh GLB / FBX / `.blend` / `.scene.bobj` | Sau MVP | B | `editor/apps/studio/src`, `agent/` (Blender) | 4 việc |
-| **I** | App 4: kho animation dùng chung | Sau MVP | D1 (batch đã có) | `editor/packages/library` (mới), `docs/LIBRARY-CONTRACT.md` | 5 việc |
+| **I** | App 5: kho animation dùng chung | Sau MVP | D1 (batch đã có) | `editor/packages/library` (mới), `docs/LIBRARY-CONTRACT.md` | 5 việc |
 | **J** | Rig mở rộng (Mixamo65 + xương phụ: miệng, cánh…) | Sau MVP | D | `editor/packages/retarget`, hợp đồng GLB | 4 việc |
 | **K** | Nghiệm thu BBS FS / game | Song song | A, C | không sửa code (người dùng chạy game) + `docs/` | 3 việc |
 | **L** | Hạ tầng: build, lint, test tự động | Song song | — | `editor/` cấu hình, `.github/workflows` | 4 việc |
@@ -77,7 +77,7 @@ C1 đưa App 3 mới vào Studio, nối nút mở/xuất gói với broker · C2
 | H3 | `.scene.bobj` (chờ người dùng chốt định dạng) |
 | H4 | Test mở lại file xuất trong three.js/Blender, so số khung và vị trí |
 
-## I — App 4: kho animation dùng chung (theo `docs/LIBRARY-CONTRACT.md`, cần người dùng chốt 4 điểm mở)
+## I — App 5: kho animation dùng chung (theo `docs/LIBRARY-CONTRACT.md`, cần người dùng chốt 4 điểm mở)
 | Việc | Nội dung |
 | --- | --- |
 | I1 | Chốt hợp đồng kho: thư mục ngoài repo, cấu trúc pack/Action/rig, `meta.json` |

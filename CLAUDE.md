@@ -5,6 +5,9 @@
 - App 2 (Scene, người dùng cho phép 2026-10-21): được sửa `packages/builder` và `apps/studio`.
   Session App 2 không sửa `packages/retarget`, session App 1 không sửa `packages/builder`.
   Animation Studio (App 3) chưa sửa trừ khi người dùng yêu cầu rõ.
+- App 4 VFX (Effekseer, người dùng chốt 2026-10-22): session App 4 chỉ sửa `three-workspace-app/vfx/` và
+  `docs/VFX-*`; muốn nối vào App 2 (phát VFX trong cảnh/film) thì đề xuất trước. Kế hoạch: `docs/VFX-APP4-PLAN.md`.
+  App 5 = thư viện dùng chung (trước gọi App 4). Xuất film BBS FS chỉ từ App 2.
 - Mọi quyết định đã chốt nằm trong `docs/DECISIONS.md`. Đọc file đó trước khi làm.
 - Trước khi sửa solver/mapping/calibration/chân/tay: đọc `docs/RETARGET-LESSONS.md` (lỗi đã gặp, cách đã bị loại,
   quy tắc đo). Report PASS không đủ: phải đo số trên GLB và giữ nguyên kết quả mẫu Mixamo (Samba).

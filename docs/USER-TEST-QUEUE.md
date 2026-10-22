@@ -34,7 +34,7 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 
 ## 4. Quyết định còn chờ
 - Chính sách vị trí khi sửa ở App 3 (đề xuất: `placementKeys`, giữ root Action).
-- 4 điểm hợp đồng kho animation App 4 (`docs/LIBRARY-CONTRACT.md`).
+- 4 điểm hợp đồng kho animation App 5 (`docs/LIBRARY-CONTRACT.md`).
 - Có merge nhánh ngón tay `claude/d2-fingers` không.
 
 ## Ghi chú kỹ thuật

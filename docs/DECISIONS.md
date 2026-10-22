@@ -12,6 +12,19 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 ```
 - Ba app tách riêng (cùng monorepo được), trao đổi chỉ qua GLB + manifest JSON.
 - App 1 là điểm đầu, không nhận dữ liệu quay lại. Hiện chỉ tập trung App 1.
+- Chốt lại 2026-10-22: **xuất film BBS FS chỉ từ App 2.** App 3 sửa xong gửi Action về App 2, không tự xuất.
+
+## Đánh số app (2026-10-22)
+| Số | App | Vùng code |
+| --- | --- | --- |
+| 1 | Chuẩn hoá rig/animation | `editor/packages/retarget`, phần normalization của `apps/studio` |
+| 2 | Scene: dựng cảnh, camera, ghép + xuất film BBS FS | `editor/packages/builder`, `editor/apps/studio` |
+| 3 | Animation Studio (blocking, sửa động tác) | `animation-studio/` |
+| **4** | **VFX: Effekseer qua MCP** (nền: effekseer-ai, MIT) | `three-workspace-app/vfx/` |
+| **5** | **Thư viện dùng chung** (trước đây gọi App 4) | `editor/packages/library`, `docs/LIBRARY-CONTRACT.md` |
+- App 4 VFX: mã `laodeng000/effekseer-ai` (MIT, commit `208922e`) được **chép vào repo chính** tại `three-workspace-app/vfx/`
+  (giữ LICENSE gốc + ghi nguồn) để Codex cloud làm được; DLL Effekseer/.NET không commit. Kế hoạch: `docs/VFX-APP4-PLAN.md`
+  (DRAFT, bắt đầu từ giai đoạn 0: xác minh runtime + render tự động trên máy Windows).
 
 ## Input/Output
 | App | Vào | Ra |

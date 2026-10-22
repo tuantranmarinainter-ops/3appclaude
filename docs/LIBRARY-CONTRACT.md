@@ -1,6 +1,6 @@
-# App 4 - Hợp đồng kho thư viện (v1.0.0, mặc định tạm 2026-10-22)
+# App 5 - Hợp đồng kho thư viện (v1.0.0, mặc định tạm 2026-10-22)
 
-Kho animation/nhân vật dùng chung cho App 1, 2, 3. App 4 = thư mục kho ngoài repo + `packages/library`
+Kho animation/nhân vật dùng chung cho App 1, 2, 3. App 5 (trước đây gọi App 4) = thư mục kho ngoài repo + `packages/library`
 (đọc/ghi/tìm) + giao diện duyệt kho + lệnh MCP. Các mục đánh dấu **[CẦN CHỐT]** chờ người dùng duyệt.
 
 ## 1. Vị trí
@@ -70,11 +70,11 @@ C:\w01-library\
 - Chỉ ghi qua `packages/library` (ghi vào thư mục tạm rồi rename, cập nhật `index.json` có khoá file).
 - App 1: ghi pack, character. App 2/App 3: đọc; App 3 ghi pack mới (Action đã sửa).
 - MCP: `library.search {rig, category, tags, text}`, `library.get {actionUuid}`, `library.characters`.
-- Giao diện App 4: lưới ảnh bìa, lọc rig/category/tag, xem trước Action trên nhân vật chọn, sửa tag/category
+- Giao diện App 5: lưới ảnh bìa, lọc rig/category/tag, xem trước Action trên nhân vật chọn, sửa tag/category
   (chỉ sửa meta.json, không đụng GLB).
 
 ## 7. Luồng nạp kho (người dùng nêu 2026-10-21)
-- Animation luôn đi qua App 1 (chuẩn hoá) trước, rồi mới vào App 4. Người dùng sẽ chuẩn hoá hàng loạt
+- Animation luôn đi qua App 1 (chuẩn hoá) trước, rồi mới vào App 5. Người dùng sẽ chuẩn hoá hàng loạt
   để nạp kho → cần lệnh batch: App 1 CLI chạy nhiều nguồn → `packages/library` ghi pack.
 
 ## 8. Chốt tạm (2026-10-22, người dùng giao EPIC-I; có thể đổi sau, khi đổi thì tăng `libraryVersion`)
