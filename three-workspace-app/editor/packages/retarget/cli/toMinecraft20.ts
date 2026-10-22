@@ -5,6 +5,7 @@ import { createReverseRetargeter, parseBobjArmature, type MixamoPoseBone, type R
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { canonical } from './autoMapping.ts'
 import { loadAsset } from './loadAsset.ts'
+import { decodeGlb } from './glb.ts'
 import type { PreviewFrame } from './previewPng.ts'
 
 const TICKS_PER_SECOND = 20
@@ -102,6 +103,12 @@ const formatNumber = (value: number) => (Math.abs(value) < 5e-7 ? 0 : value).toF
  * positions are compared with the solver output — the report states that error rather than trusting the writer.
  */
 export async function exportMinecraft20(glb: Uint8Array, armatureText: string, settings: Partial<ReverseRetargetSettings> = {}, previewAnimation = 0, untwist = true) {
+  // The reverse Minecraft20 rig has no representation for App 1's additive v1.1 bones.
+  // Read names from the GLB itself (rather than relying on an optional sidecar) so conversion
+  // always makes this loss explicit in its report.
+  const droppedExtraBones = [...new Set((decodeGlb(glb).json.nodes ?? [])
+    .map((node: { name?: string }) => node.name ?? '')
+    .filter((name: string) => /^X_[A-Za-z0-9_]+_[A-Za-z0-9_]+$/.test(name)))].sort()
   const armature = parseBobjArmature(armatureText)
   const solver = createReverseRetargeter(armature)
   const restLocalInverse = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restLocal]).invert()]))
@@ -212,5 +219,6 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
   }
   const status = parsed.size === actions.length && roundtripMaxErrorBlocks < 1e-3 ? 'PASS' as const : 'FAIL' as const
   return { bobj, previewFrames, previewParents, report: { status, format: 'bobj-v9.12 (BBSFix: 20 Hz integer ticks, Euler XYZ, LINEAR)', ticksPerSecond: TICKS_PER_SECOND,
+    droppedExtraBones,
     settings: { ...settings }, actions, roundtripMaxErrorBlocks, limbTwist: { untwist, maxBeforeDegrees, maxAfterDegrees, handsLocked: untwist, maxHandBeforeDegrees } } }
 }

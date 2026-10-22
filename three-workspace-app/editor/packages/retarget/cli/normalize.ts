@@ -10,7 +10,7 @@
  * Exit codes: 0 PASS, 1 FAIL/error, 2 BLOCKED (input cannot be normalized as given).
  */
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -50,6 +50,9 @@ mkdirSync(outDir, { recursive: true })
 try {
   const format = formatFromPath(srcPath)
   const srcBytes = readFileSync(srcPath), targetBytes = readFileSync(targetPath)
+  const sourceManifestPath = srcPath.replace(/\.[^.]+$/, '.manifest.json')
+  const sourceExtraManifest = format === 'glb' && existsSync(sourceManifestPath)
+    ? JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as { version?: unknown; rig?: unknown; extraBones?: unknown } : undefined
   const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
   const unitMeters = values['unit-meters'] ? Number(values['unit-meters']) : format === 'fbx' ? 0.01 : 1
   // Model mode: Draco/meshopt sources are refused before any work is done.
@@ -63,6 +66,7 @@ try {
   }
   let result: PipelineResult = early ?? await runNormalize({
     source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
+    ...(sourceExtraManifest ? { sourceExtraManifest, sourceExtraGlb: srcBytes } : {}),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
     actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
     upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
