@@ -1,6 +1,7 @@
 import { App3BridgeError } from './app3Bridge'
 import { executeApp3Artifacts } from './app3Artifacts'
 import { previewCameraFraming } from './cameraFraming'
+import { sampleBbsPreview } from './bbsPreview'
 import { previewCharacterLayout } from './sceneLayoutPlacement'
 import { validateSceneConversionArgs, type SceneConversionArgs } from './sceneConversion'
 import { startUnifiedSceneConversion } from './unifiedJobs'
@@ -1025,6 +1026,36 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const response = success(envelope.requestId, id, project.revision, await evaluateUnifiedScene(project, frame, cameraNodeId, checks))
     await saveRequest(envelope, hash, response)
     return response
+  }
+  if (envelope.command === 'scene.preview.bbs') {
+    const { sequenceId, frames, viewportAspect, characterIds, propIds } = envelope.args
+    const sequence = typeof sequenceId === 'string'
+      ? project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId)
+      : undefined
+    const validIds = (value: unknown, available: string[]) => value === undefined ||
+      Array.isArray(value) && new Set(value).size === value.length && value.every((id) => typeof id === 'string' && available.includes(id))
+    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frames', 'viewportAspect', 'characterIds', 'propIds'].includes(key)) ||
+      typeof sequenceId !== 'string' || !sequenceId.trim() || !sequence ||
+      !Array.isArray(frames) || !frames.length || frames.length > 60 ||
+      frames.some((frame) => !Number.isSafeInteger(frame)) || new Set(frames).size !== frames.length ||
+      typeof viewportAspect !== 'number' || !Number.isFinite(viewportAspect) || viewportAspect <= 0 ||
+      !validIds(characterIds, Object.keys(project.characters)) ||
+      !validIds(propIds, project.scene.content.nodes.filter((node) => node.type === 'prop').map((node) => node.id)) ||
+      frames.some((frame) => {
+        const sourceClips = sequence.clips.filter((clip) => Number.isSafeInteger(clip.sourceFrameStart) && Number.isSafeInteger(clip.sourceFrameEnd) && frame >= clip.sourceFrameStart && frame <= clip.sourceFrameEnd)
+        return sourceClips.length === 0 && sequence.clips.filter((clip) => Number.isSafeInteger(clip.sourceFrameEnd) && frame === clip.sourceFrameEnd + 1 &&
+          !sequence.clips.some((item) => item.sourceFrameStart === frame)).length !== 1
+      })) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.preview.bbs requires up to 60 unique source frames in the selected sequence, a positive viewport aspect, and existing Character/Prop IDs', 400)
+    }
+    try {
+      const result = await sampleBbsPreview(project, { sequenceId, frames: frames as number[], viewportAspect,
+        ...(characterIds === undefined ? {} : { characterIds: characterIds as string[] }),
+        ...(propIds === undefined ? {} : { propIds: propIds as string[] }) })
+      return success(envelope.requestId, id, project.revision, result)
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'BBS preview could not be sampled', 400)
+    }
   }
   if (envelope.command === 'scene.render') {
     const { frames, cameraNodeIds, width, height, outputDirectory, silhouette, bbsLook } = envelope.args
