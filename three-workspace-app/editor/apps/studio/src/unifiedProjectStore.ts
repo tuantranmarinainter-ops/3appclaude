@@ -25,9 +25,10 @@ import { findRootMotionConflict, isRecord, validateDirectorDocument, validateFCu
 import { FCurveSet, appendMotionClip, buildCharacterNode, buildPropNode, createFrameSnapshot, emptyEditorial, evaluateFrame, findEditClip, insertEditClip, patchNodeTransformInPlace, pruneMissingCameraClips, sceneBasisMatrix, updateEditClip, type EditSequenceClip } from '@topview/3d-builder/evaluate'
 import { duplicateDocumentNodes } from '@topview/3d-builder/evaluate'
 import { evaluateSceneChecks } from '@topview/3d-director-cli/scene-checks.mjs'
-import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
+import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedFilmSeriesExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
 import { inspectProjectFilm, preflightProjectFilm, turnFilmSkeletonsByRotationKeys } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
+import { planFilmSeries } from './filmSeries'
 import { fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect, type FilmFrameDimensions } from './filmFrame'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveProjectBlob, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
@@ -1297,6 +1298,39 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     } catch (error) {
       const native = error as { code?: unknown; status?: unknown; message?: unknown }
       if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Film export job could not start', native.status)
+      throw error
+    }
+  }
+  if (envelope.command === 'scene.export.bbsFilmSeries') {
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
+      throw new UnifiedStoreError('REVISION_CONFLICT', 'Film series snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
+    }
+    const { content, ...sceneArgs } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
+    }
+    if (content !== undefined && !['characters', 'backdrops', 'both'].includes(String(content))) throw new UnifiedStoreError('VALIDATION_FAILED', 'content must be characters, backdrops, or both', 400)
+    if (content !== undefined && content !== 'characters') throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Film series content mode "${String(content)}" is not available yet`, 422)
+    if (sceneArgs.frameStart !== undefined || sceneArgs.frameEnd !== undefined) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series exports the complete editorial sequence; frameStart and frameEnd are not accepted', 400)
+    let resolved: ReturnType<typeof resolveSceneBbsFilmArgs>, segments: ReturnType<typeof planFilmSeries>
+    try {
+      resolved = resolveSceneBbsFilmArgs(project, sceneArgs)
+      segments = planFilmSeries(project, { ...resolved.film, ...(content === undefined ? {} : { content }) })
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film series arguments are invalid', 400)
+    }
+    if (resolved.film.filmName.length > 56) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series name must be at most 56 safe ASCII characters so numbered segment names fit', 400)
+    const series = segments.map((segment) => ({ order: segment.order, film: `films/${resolved.film.filmName}-${String(segment.order).padStart(2, '0')}.dat`,
+      shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, content: content ?? 'characters', segmentCount: segments.length, series })
+    try {
+      const job = await startUnifiedFilmSeriesExport(project, { name: resolved.film.filmName, segments })
+      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, segmentCount: segments.length, series })
+      await saveRequest(envelope, hash, response)
+      return response
+    } catch (error) {
+      const native = error as { code?: unknown; status?: unknown; message?: unknown }
+      if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Film series job could not start', native.status)
       throw error
     }
   }

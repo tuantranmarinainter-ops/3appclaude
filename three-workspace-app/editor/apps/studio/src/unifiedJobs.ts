@@ -10,6 +10,7 @@ import { FILM_MODEL_FACING_OFFSET, buildFilmExportManifest, type ConvertedFilmMo
 import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
+import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -17,7 +18,7 @@ interface StoredFile { id: string; name: string; mimeType: string; sizeBytes: nu
 interface StoredJob {
   jobId: string
   projectId: string
-  type: 'scene.export.blend-fbx' | 'scene.export.glb' | 'shot.export' | 'app3.export' | 'scene.render' | 'film.export' | 'rig.normalization.run' | 'animation.assignment.run'
+  type: 'scene.export.blend-fbx' | 'scene.export.glb' | 'shot.export' | 'app3.export' | 'scene.render' | 'film.export' | 'film.series.export' | 'rig.normalization.run' | 'animation.assignment.run'
   state: UnifiedJobState
   sourceRevision: number
   sourceSha256: string
@@ -36,7 +37,7 @@ interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number;
 interface FilmExportArgs extends FilmSamplingArgs { filmName: string }
 /** Scene-level packaging on top of `film.export` (`scene.export.bbsFilm`): archive name and extra JSON files in the ZIP root. */
 export interface FilmPackageOptions { archiveName?: string; extraFiles?: Record<string, unknown> }
-interface Runtime { record: StoredJob; controller: AbortController; active: boolean; done?: Promise<void> }
+interface Runtime { record: StoredJob; controller: AbortController; active: boolean; internal?: boolean; done?: Promise<void> }
 type JobGlobal = typeof globalThis & { __bbsUnifiedJobs?: Map<string, Runtime> }
 const runtimes = (globalThis as JobGlobal).__bbsUnifiedJobs ??= new Map()
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -284,8 +285,90 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
       await persist(record)
     } finally {
       runtime.active = false
-      await pruneOldJobs(record.projectId)
+      if (!runtime.internal) await pruneOldJobs(record.projectId)
     }
+  }
+}
+
+interface FilmSeriesJobArgs {
+  name: string
+  segments: FilmSeriesSegment[]
+}
+
+export type FilmSeriesSegmentRunner = (project: UnifiedProject, args: FilmExportArgs, signal: AbortSignal) => Promise<Buffer>
+
+async function runFilmSeriesExport(runtime: Runtime, snapshot: UnifiedProject, args: FilmSeriesJobArgs, segmentRunner?: FilmSeriesSegmentRunner): Promise<void> {
+  const { record, controller } = runtime, signal = controller.signal
+  const base = jobRoot(record.projectId, record.jobId), work = path.join(base, 'film-series-work')
+  const files: StoredFile[] = []
+  try {
+    signal.throwIfAborted()
+    record.state = 'running'; record.progress = 0.02; record.updatedAt = new Date().toISOString(); await persist(record)
+    await mkdir(work, { recursive: false })
+    const agent = await agentRoot()
+    const python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
+    const specs: Array<{ zip: string; film: string }> = []
+    for (const [index, segment] of args.segments.entries()) {
+      signal.throwIfAborted()
+      const order = String(index + 1).padStart(2, '0')
+      const filmName = `${args.name}-${order}`
+      const stagedZip = path.join(work, `segment-${order}.zip`)
+      if (segmentRunner) {
+        const bytes = await segmentRunner(segment.project, { ...segment.exportArgs, filmName }, signal)
+        signal.throwIfAborted()
+        await writeFile(stagedZip, bytes, { flag: 'wx' })
+      } else {
+        const childId = randomUUID(), childRoot = jobRoot(record.projectId, childId)
+        await mkdir(childRoot, { recursive: false })
+        const childRecord: StoredJob = {
+          jobId: childId, projectId: record.projectId, type: 'film.export', state: 'queued', sourceRevision: record.sourceRevision,
+          sourceSha256: record.sourceSha256, progress: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        }
+        const child: Runtime = { record: childRecord, controller, active: true, internal: true }
+        try {
+          await persist(childRecord)
+          await runFilmExport(child, segment.project, { ...segment.exportArgs, filmName })
+          signal.throwIfAborted()
+          if (childRecord.state !== 'succeeded' || !childRecord.result?.files[0]) {
+            throw new Error(childRecord.error?.message ?? `Film segment ${index + 1} did not finish successfully`)
+          }
+          const file = childRecord.result.files[0]!
+          await writeFile(stagedZip, await readFile(path.join(childRoot, ...file.path.split('/'))), { flag: 'wx' })
+        } finally {
+          await rm(childRoot, { recursive: true, force: true })
+        }
+      }
+      specs.push({ zip: stagedZip, film: `${filmName}.dat` })
+      record.progress = 0.08 + 0.72 * ((index + 1) / args.segments.length)
+      record.updatedAt = new Date().toISOString(); await persist(record)
+    }
+    signal.throwIfAborted()
+    const readme = path.join(work, 'README.txt')
+    await writeFile(readme, 'BBS FS 2.7 episode package. Copy films/*.dat into the selected world at saves/<world>/bbs/films/. Copy assets/** into config/bbs/assets/ and keep the included directory layout. effects.json maps each film path to its cue array; cue ticks start at zero for that film. This package has not been installed into a game.\n', { flag: 'wx' })
+    const series = args.segments.map((segment, index) => ({ order: index + 1, film: `films/${args.name}-${String(index + 1).padStart(2, '0')}.dat`,
+      shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
+    const specPath = path.join(work, 'series-input.json')
+    await writeFile(specPath, JSON.stringify({ series, segments: specs }, null, 2), { flag: 'wx' })
+    const outputRoot = path.join(work, 'package'), archiveName = `${args.name}.bbs-film-series.zip`, archive = path.join(work, archiveName)
+    await runLocalCommand(python, ['-c', FILM_SERIES_ARCHIVE_SCRIPT, specPath, outputRoot, readme, archive], agent, signal)
+    signal.throwIfAborted()
+    await saveArtifact(record, archive, archiveName, files)
+    signal.throwIfAborted()
+    record.result = { files, provenance: { sourceRevision: record.sourceRevision, sourceSha256: record.sourceSha256,
+      targetVersion: '2.7', sequenceId: args.segments[0]?.exportArgs.sequenceId, segmentCount: args.segments.length,
+      sourceFrameRanges: args.segments.map(({ range }) => range) }, warnings: [], blockedRequests: [] }
+    record.state = 'succeeded'; record.progress = 1
+  } catch (error) {
+    if (signal.aborted || error instanceof DOMException && error.name === 'AbortError') record.state = 'cancelled'
+    else {
+      record.state = 'failed'
+      const cause = error instanceof Error ? error.message.split(/\r?\n/)[0]!.slice(0, 300) : ''
+      record.error = { code: 'FILM_SERIES_EXPORT_FAILED', message: cause || 'Film series export failed before publishing its package.' }
+    }
+    await rm(path.join(base, 'files'), { recursive: true, force: true })
+  } finally {
+    try { await rm(work, { recursive: true, force: true }); record.updatedAt = new Date().toISOString(); await persist(record) }
+    finally { runtime.active = false; await pruneOldJobs(record.projectId) }
   }
 }
 
@@ -449,6 +532,27 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
   return publicJob(record)
 }
 
+export async function startUnifiedFilmSeriesExport(project: UnifiedProject, args: FilmSeriesJobArgs, segmentRunner?: FilmSeriesSegmentRunner): Promise<UnifiedJobView> {
+  if ([...runtimes.values()].some((runtime) => runtime.active)) throw Object.assign(new Error('A local conversion job is already active'), { code: 'JOB_BUSY', status: 423 })
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,55}$/.test(args.name) || args.name.endsWith('.') || !args.segments.length) {
+    throw Object.assign(new TypeError('Film series name must use 1-56 safe ASCII characters and include at least one segment'), { code: 'VALIDATION_FAILED', status: 400 })
+  }
+  const snapshot = structuredClone(project), inputs = structuredClone(args), jobId = randomUUID()
+  const record: StoredJob = { jobId, projectId: project.projectId, type: 'film.series.export', state: 'queued', sourceRevision: project.revision,
+    sourceSha256: digest(Buffer.from(JSON.stringify(project))), progress: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const runtime: Runtime = { record, controller: new AbortController(), active: true }
+  runtimes.set(jobId, runtime)
+  try {
+    await pruneOldJobs(project.projectId)
+    await mkdir(path.dirname(jobRoot(project.projectId, jobId)), { recursive: true })
+    await mkdir(jobRoot(project.projectId, jobId), { recursive: false })
+    await persist(record)
+  } catch (error) { runtimes.delete(jobId); throw error }
+  runtime.done = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() => runFilmSeriesExport(runtime, snapshot, inputs, segmentRunner))
+  void runtime.done.catch(() => undefined)
+  return publicJob(record)
+}
+
 export async function startUnifiedNormalization(project: UnifiedProject, args: NormalizationPlanArgs, planSha256: string): Promise<UnifiedJobView> {
   if ([...runtimes.values()].some((runtime) => runtime.active)) throw Object.assign(new Error('A local job is already active'), { code: 'JOB_BUSY', status: 423 })
   const snapshot = structuredClone(project), inputs = structuredClone(args), jobId = randomUUID()
@@ -564,7 +668,7 @@ async function readRecord(projectId: string, jobId: string): Promise<StoredJob |
   if (runtime?.record.projectId === projectId) return runtime.record
   try {
     const parsed = JSON.parse(await readFile(recordPath(projectId, jobId), 'utf8')) as StoredJob
-    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'app3.export', 'scene.render', 'film.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
+    if (parsed.jobId !== jobId || parsed.projectId !== projectId || !['scene.export.blend-fbx', 'scene.export.glb', 'shot.export', 'app3.export', 'scene.render', 'film.export', 'film.series.export', 'rig.normalization.run', 'animation.assignment.run'].includes(parsed.type) || !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(parsed.state)) return null
     if (parsed.state === 'queued' || parsed.state === 'running') {
       parsed.state = 'failed'
       parsed.error = { code: 'HOST_RESTARTED', message: 'The local host restarted before the job completed.' }
