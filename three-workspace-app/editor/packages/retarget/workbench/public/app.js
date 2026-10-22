@@ -747,6 +747,19 @@ function renderDownloads() {
     const url = URL.createObjectURL(blob)
     list.append(h('a', { href: url, download: `${stem}.mapping.json` }, h('span', { text: `Preset mapping · ${stem}.mapping.json (dùng với CLI --mapping)` }), h('span', { text: fmtBytes(blob.size) })))
   }
+  if (state.result && !state.stale && state.result.status === 'PASS') {
+    const status = h('span', { class: 'note info', text: '' })
+    const send = h('button', { type: 'button', class: 'primary', text: 'Gửi sang App 2 (thư viện chung)' })
+    send.addEventListener('click', async () => {
+      send.disabled = true; status.textContent = 'Đang đưa vào thư viện…'
+      try {
+        const pack = await api(`/api/runs/${state.result.runId}/library`, { method: 'POST', json: {} })
+        status.textContent = `${pack.created ? 'Đã thêm' : 'Đã có sẵn'} gói ${pack.packId} (${pack.actions} Action, rig ${pack.rig}). Trong App 2 mở Thư viện để đặt lên nhân vật.`
+        toast('Đã gửi sang thư viện App 2', 'ok')
+      } catch (error) { status.textContent = `Không gửi được: ${error.message}`; send.disabled = false }
+    })
+    box.append(h('div', { class: 'send-app2' }, send, status))
+  }
   if (!list.children.length) box.append(h('div', { class: 'empty', text: 'Chưa có file. Chạy chuẩn hoá hoặc xác nhận mapping để có file tải về.' }))
   else box.append(list, h('p', { class: 'note info', text: 'File nằm trong thư mục tạm của phiên Workbench; tải về để giữ lại. File nguồn của bạn không bị sửa.' }))
 }

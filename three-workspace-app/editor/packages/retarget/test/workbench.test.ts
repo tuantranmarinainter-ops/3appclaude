@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test, { after, before } from 'node:test'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { request } from 'node:http'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -151,6 +152,27 @@ test('Xbot upload → inspect → run: PASS, files downloadable, GLB parses', { 
   assert.equal(state.json.result.report.status, 'PASS')
   assert.equal((await call(`/api/runs/${run.json.runId}/files/..%2f..%2fpackage.json`)).status, 404)
   assert.equal((await call(`/api/runs/${run.json.runId}/files/not-a-file`)).status, 404)
+
+  // "Gửi sang App 2": the PASS run becomes one App 5 library pack; sending again reuses it.
+  const library = mkdtempSync(join(tmpdir(), 'w01-library-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const sent = await post(`/api/runs/${run.json.runId}/library`, {})
+    assert.equal(sent.status, 200, sent.text)
+    assert.equal(sent.json.created, true)
+    assert.equal(sent.json.actions, 2)
+    assert.equal(sent.json.rig, 'mixamo65')
+    assert.ok(existsSync(join(library, 'packs', sent.json.packId, 'anim.glb')))
+    const again = await post(`/api/runs/${run.json.runId}/library`, {})
+    assert.equal(again.json.created, false)
+    assert.equal(again.json.packId, sent.json.packId)
+    assert.equal((await post('/api/runs/nope/library', {})).status, 404)
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true })
+  }
 })
 
 test('async run exposes progress and refuses a second run while one is active', { skip: haveXbot ? false : 'C:/w01-samples/Xbot.glb not present' }, async () => {

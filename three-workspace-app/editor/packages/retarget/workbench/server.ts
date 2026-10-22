@@ -20,6 +20,7 @@ import {
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
 import { previewClips, previewModel, steveFiles } from './steve.ts'
+import { importPack } from '../../library/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
@@ -247,6 +248,18 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const state = runs.get(match[1]!)
       if (!state) return fail(res, 404, 'Unknown runId')
       return json(res, 200, runView(state))
+    }
+    if (method === 'POST' && (match = path.match(/^\/api\/runs\/(\w+)\/library$/))) {
+      // "Gửi sang App 2": import the passing run into the shared App 5 library that App 2 places Actions from.
+      const state = runs.get(match[1]!)
+      if (!state || state.state !== 'done' || !state.result) return fail(res, 404, 'Unknown or unfinished runId')
+      if (state.result.status !== 'PASS') return fail(res, 409, `Only a PASS run can go to the library (this run is ${state.result.status})`)
+      const body = await readJson(req)
+      const pack = importPack({ sourceDirectory: state.dir, createdBy: 'app1',
+        ...(typeof body.category === 'string' ? { category: body.category } : {}),
+        ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}) })
+      return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions, created: pack.created,
+        actionUuids: pack.metadata.actions.map((action) => action.uuid) })
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/steve$/))) {
       const state = runs.get(match[1]!), file = state?.result?.files.find((item) => item.kind === 'bobj')
