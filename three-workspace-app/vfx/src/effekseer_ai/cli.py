@@ -11,6 +11,7 @@ from typing import Any
 from .session import EffectSession
 from .effect_dump import write_effect_ir
 from .preview import render_preview
+from .bbs_package import build_bbs_package
 
 
 def _emit(value: Any) -> None:
@@ -51,6 +52,12 @@ def _preview(args: argparse.Namespace) -> dict[str, Any]:
     effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
     timestamps = [float(part.strip()) for part in args.timestamps.split(",") if part.strip()]
     return render_preview(effect_ir, args.output_dir, timestamps, args.reference_dir, args.width, args.height)
+
+
+def _bbs_package(args: argparse.Namespace) -> dict[str, Any]:
+    effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
+    options = {"alphaScale": args.add_alpha_scale, "coreExponent": args.add_core_exponent, "haloSize": args.add_halo_size, "haloAlpha": args.add_halo_alpha, "haloColorBoost": args.add_halo_color_boost}
+    return build_bbs_package(effect_ir, args.output_zip, args.assets_root, args.allow_partial, options)
 
 
 def _node_list(args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -163,6 +170,17 @@ def build_parser() -> argparse.ArgumentParser:
     preview.add_argument("--width", type=int, default=256)
     preview.add_argument("--height", type=int, default=256)
 
+    package = command("bbs-package", _bbs_package)
+    package.add_argument("effect_ir", help="EffectIR JSON input")
+    package.add_argument("output_zip", help="Destination ZIP file")
+    package.add_argument("--assets-root", default=".")
+    package.add_argument("--allow-partial", action="store_true")
+    package.add_argument("--add-alpha-scale", type=float, default=1.0)
+    package.add_argument("--add-core-exponent", type=float, default=1.5)
+    package.add_argument("--add-halo-size", type=float, default=1.9)
+    package.add_argument("--add-halo-alpha", type=float, default=0.55)
+    package.add_argument("--add-halo-color-boost", type=float, default=0.25)
+
     node_list = command("node-list", _node_list)
     node_list.add_argument("effect")
     node_add = command("node-add", _node_add)
@@ -221,7 +239,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    _emit(args.handler(args))
+    try:
+        result = args.handler(args)
+        _emit(result)
+    except Exception as error:
+        if args.command != "bbs-package":
+            raise
+        _emit({"status": "ERROR", "error": str(error)})
+        return 2
+    if args.command == "bbs-package" and result.get("status") == "BLOCKED":
+        return 1
     return 0
 
 

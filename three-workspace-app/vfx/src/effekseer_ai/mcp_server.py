@@ -8,6 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .session import EffectSession
+from .bbs_package import build_bbs_package
 
 
 class DocumentService:
@@ -57,6 +58,17 @@ def create_server() -> FastMCP:
     def edit_undo() -> dict[str, str]:
         """Restore the last saved document backup, if one exists."""
         return {"path": str(documents.require().edit_undo())}
+
+    @server.tool()
+    def bbs_package(effect_ir_path: str, output_zip: str, assets_root: str = ".", allow_partial: bool = False) -> dict[str, Any]:
+        """Package an EffectIR JSON file as a BBS FS 2.7 resource ZIP."""
+        import json
+
+        try:
+            effect_ir = json.loads(Path(effect_ir_path).read_text(encoding="utf-8"))
+            return build_bbs_package(effect_ir, output_zip, assets_root, allow_partial)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
+            return {"status": "ERROR", "error": str(error)}
 
     @server.tool()
     def effect_export(path: str, magnification: float = 1.0) -> dict[str, str]:
