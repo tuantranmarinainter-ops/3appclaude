@@ -50,6 +50,15 @@ def test_looping_aura_has_steady_spawn_rate_and_looping_lifetime() -> None:
     assert result["timeConversion"]["quantumSeconds"] == 0.05
 
 
+def test_random_lifetime_range_is_preserved_and_quantized_to_twenty_hz() -> None:
+    result = convert_effect_ir(fixture("looping-aura"))
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    assert components["minecraft:particle_lifetime_expression"]["max_lifetime"] == "math.random(0.4, 0.6)"
+    life_report = next(entry for entry in result["warnings"] if entry["property"] == "life")
+    assert life_report["status"] == "APPROX"
+    assert "quantized to 1/20 second" in life_report["detail"]
+
+
 def test_blocked_nodes_prevent_all_output_without_allow_partial(tmp_path: Path) -> None:
     ice = fixture("ice-sword-trail")
     ice["nodes"].append({
@@ -136,4 +145,3 @@ def test_group_transform_is_applied_and_ok_entries_are_not_warnings() -> None:
     assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_shape_sphere"]["offset"] == [2, 0, 0]
     assert any(entry["property"] == "parent.transform" and entry["status"] == "OK" for entry in result["nodes"][1]["properties"])
     assert all(entry["status"] != "OK" for entry in result["warnings"])
-

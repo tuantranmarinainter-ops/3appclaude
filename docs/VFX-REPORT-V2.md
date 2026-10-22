@@ -11,15 +11,15 @@
 
 - Glow-ring explosion: 3 input nodes (one group, two drawable sprites), 2 Snowstorm schemes; 3 source frames at 60 fps become 0.05 s and 20 spawns/s. Add fallback output records `particles_blend`, brightness boost `2.0`, and the clamped output tint.
 - Ice sword trail: 2 input nodes (one group, one ribbon); default conversion status `BLOCKED`, 0 schemes, with a short-lived oriented-sprite suggestion.
-- Looping aura: 2 input nodes (one group, one drawable sprite), 1 scheme; continuous rate 20/s, looping lifetime, and Add fallback boost `2.0`.
+- Looping aura: 2 input nodes (one group, one drawable sprite), 1 scheme; continuous rate 20/s, looping emitter lifetime, particle lifetime range `math.random(0.4, 0.6)` after 20 Hz endpoint quantization (reported `APPROX`), and Add fallback boost `2.0`.
 - These are deterministic fixture outputs, not measured Effekseer/BBS runtime visual equivalence.
 
 ## Gates
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 25 passed, 1 skipped, 0 failed. The skip is the integration test below. |
-| GitHub Actions `test` workflow | NOT_RUN | Run [39713514640](https://github.com/tuantranmarinainter-ops/3appclaude/actions/runs/39713514640) was `IN_PROGRESS` at the report snapshot; CI is unverified until completion. |
+| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 26 passed, 1 skipped, 0 failed. The skip is the integration test below. |
+| GitHub Actions `test` workflow | NOT_RUN | CI status is unverified for this report update; check PR #50's current run before review. |
 | Integration using Effekseer Core DLL | NOT_RUN | `EFFEKSEER_AI_BIN_DIR` and an actual `.efkefc` sample are unavailable here. On Windows: `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'; python -m pytest -m integration -q`; then `effekseer-ai effect-dump .\\effect.efkefc .\\effect-ir.json`. |
 | BBS FS 2.7 runtime | NOT_RUN | Requires the real game/runtime. On the Windows review machine, install the generated schemes and exercise them in BBS FS 2.7; do not treat schema conversion as a runtime pass. |
 | Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |

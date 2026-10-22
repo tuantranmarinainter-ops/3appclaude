@@ -187,10 +187,31 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
         except ValueError as error:
             node_blockers.append(_entry(node_path, "life", "BLOCKED", str(error)))
             life_max = fps
+        life_min_seconds = _quantize(life_min / fps)
         life_seconds = _quantize(life_max / fps)
+        lifetime_expression: float | str = life_seconds
+        if life_min_seconds < life_seconds:
+            lifetime_expression = f"math.random({life_min_seconds:g}, {life_seconds:g})"
         life_valid = not any(entry["property"] == "life" for entry in node_blockers)
         if life_valid:
-            result["properties"].append(_entry(node_path, "life.max", "OK", f"Particle lifetime mapped to {life_seconds:g} seconds"))
+            if life_min < life_max:
+                detail = (
+                    f"Random lifetime range preserved as {lifetime_expression}; endpoints are quantized to 1/20 second"
+                    if life_min_seconds < life_seconds else
+                    f"Random lifetime range collapsed to {life_seconds:g} seconds after 1/20-second quantization"
+                )
+                node_warnings.append(_entry(
+                    node_path, "life", "APPROX", detail,
+                ))
+            else:
+                raw_life_seconds = life_max / fps
+                changed = abs(raw_life_seconds - life_seconds) > 1e-9
+                status = "APPROX" if changed else "OK"
+                entry = _entry(node_path, "life.max", status, f"Particle lifetime mapped to {life_seconds:g} seconds")
+                if changed:
+                    node_warnings.append(entry)
+                else:
+                    result["properties"].append(entry)
         if life_max < 3:
             node_warnings.append(_entry(node_path, "life", "WARNING", "Particle life is shorter than 3 source frames and is quantized to 20 Hz"))
 
@@ -283,7 +304,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
             continue
 
         components: dict[str, Any] = {
-            "minecraft:particle_lifetime_expression": {"max_lifetime": life_seconds},
+            "minecraft:particle_lifetime_expression": {"max_lifetime": lifetime_expression},
             "minecraft:particle_appearance_billboard": {
                 "size": node_size,
                 "facing_camera_mode": "lookat_xyz",
