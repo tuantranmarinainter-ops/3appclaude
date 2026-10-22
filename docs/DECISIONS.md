@@ -51,7 +51,7 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   Lý do: 2.4 vẽ particle với blend tắt (chỉ cắt alpha, glow thành mảng cứng); 2.7 có blend alpha cho `particles_blend`
   (commit `ca9ae5f`). VFX App 4 nhắm 2.7 (`998c9d5`). Film vẫn xuất định dạng 2.4: 2.7 tự chuyển khi mở (`FilmStableIds`,
   `readLegacy`) — cần thử trong game. Jar 2.7 chính thức: CurseForge `bbs-fs` file 8934314 (`bbs-2.7-1.20.1.jar`, SHA-1 `780a158c…`), trùng từng byte
-  với bản build từ `998c9d5`; bản sao ở `C:\w01-samples	est-queuebs-fs-2.7\`.
+  với bản build từ `998c9d5`; bản sao ở `C:\w01-samples\test-queue\bbs-fs-2.7\`.
 
 ## Hợp đồng GLB trao đổi v1.0.0
 File GLB:

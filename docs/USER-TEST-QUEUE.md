@@ -12,7 +12,7 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 
 Đã kiểm trên máy: `.dat` đọc lại bằng codec BBS (nativeReadback), BOBJ đọc lại đủ 20 xương. **Chưa** chạy trong game.
 **Thử trên BBS FS 2.7** (đích chốt 2026-10-22, `S:\Minecraft\Minecraft Forge-1.20.1`): chép
-`C:\w01-samples	est-queuebs-fs-2.7bs-2.7-1.20.1.jar` (CurseForge file 8934314, SHA-1 `780a158c05e75628555ea4346e9c40780a433562`,
+`C:\w01-samples\test-queue\bbs-fs-2.7\bbs-2.7-1.20.1.jar` (CurseForge file 8934314, SHA-1 `780a158c05e75628555ea4346e9c40780a433562`,
 trùng từng byte với bản build từ mã nguồn `998c9d5`) vào `mods`, tắt các jar `bbs` khác (cùng id). Cần fabric-api (đã có). Film viết định dạng 2.4, 2.7 tự chuyển khi mở. Sai gì thì ghi shot + ảnh; nếu chưa có 2.7 có thể thử
 tạm trên 2.4 (`bbs fs-2.4-1.20.1.jar.ok` → `.jar`).
 
