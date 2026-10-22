@@ -36,6 +36,7 @@ import { getAction } from '../../../packages/library/index'
 import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCommandResult } from './cameraMotionCommand'
 import { filmPreflight, filmSeriesPreflight, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
+import { makeVfxCue, readVfxCueExtension, updateVfxCue, type VfxCue } from './vfxCues'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -1479,7 +1480,48 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Scene review source revision is stale', 409)
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sequenceId, clipId, frames: planReviewFrames(project, sequenceId).find((item) => item.clipId === clipId)?.frames ?? [] })
   }
-  if (!['film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  let vfxCueChange: { type: 'add'; cue: VfxCue } | { type: 'update'; cue: VfxCue } | { type: 'remove'; id: string } | null = null
+  if (envelope.command === 'vfx.cue.list') {
+    const { frameStart, frameEnd } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['frameStart', 'frameEnd'].includes(key)) ||
+      (frameStart === undefined) !== (frameEnd === undefined) || frameStart !== undefined &&
+      (!Number.isSafeInteger(frameStart) || !Number.isSafeInteger(frameEnd) || (frameStart as number) > (frameEnd as number))) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'vfx.cue.list accepts an optional inclusive frame range', 400)
+    }
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'VFX cue list source revision is stale', 409)
+    const cues = readVfxCueExtension(project).cues.filter((cue) => frameStart === undefined || cue.frameStart <= (frameEnd as number) && cue.frameEnd >= (frameStart as number))
+    return success(envelope.requestId, id, project.revision, { cues })
+  }
+  if (envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove') {
+    let extension: ReturnType<typeof readVfxCueExtension>
+    try { extension = readVfxCueExtension(project) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'VFX cue extension is invalid', 400) }
+    if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', `${envelope.command} requires expectedRevision`, 400)
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'VFX cue source revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
+    try {
+      if (envelope.command === 'vfx.cue.add') {
+        if (Object.keys(envelope.args).length !== 1 || !Object.hasOwn(envelope.args, 'cue')) throw new TypeError('vfx.cue.add accepts only cue')
+        if (extension.cues.length >= 2048) throw new TypeError('A project can contain at most 2048 VFX cues')
+        const cue = makeVfxCue(project, envelope.args.cue, randomUUID())
+        if (extension.cues.some((item) => item.id === cue.id)) throw new TypeError('Generated VFX cue ID already exists')
+        vfxCueChange = { type: 'add', cue }
+      } else if (envelope.command === 'vfx.cue.update') {
+        const { id: cueId, patch } = envelope.args
+        if (Object.keys(envelope.args).some((key) => !['id', 'patch'].includes(key)) || typeof cueId !== 'string' || !cueId.trim()) throw new TypeError('vfx.cue.update requires a cue ID and patch')
+        const current = extension.cues.find((cue) => cue.id === cueId)
+        if (!current) throw new TypeError(`VFX cue not found: ${cueId}`)
+        vfxCueChange = { type: 'update', cue: updateVfxCue(project, current, patch) }
+      } else {
+        const cueId = envelope.args.id
+        if (Object.keys(envelope.args).length !== 1 || typeof cueId !== 'string' || !cueId.trim()) throw new TypeError('vfx.cue.remove requires a cue ID')
+        if (!extension.cues.some((cue) => cue.id === cueId)) throw new TypeError(`VFX cue not found: ${cueId}`)
+        vfxCueChange = { type: 'remove', id: cueId }
+      }
+    } catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid VFX cue command', 400) }
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true,
+      ...(vfxCueChange.type === 'remove' ? { cueId: vfxCueChange.id, removed: true } : { cue: vfxCueChange.cue }) })
+  }
+  if (!['film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'vfx.cue.add', 'vfx.cue.update', 'vfx.cue.remove', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -2035,7 +2077,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(cameraMotionChange?.type === 'add' ? { clipId: cameraMotionChange.clip.id } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -2052,7 +2094,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+    if (envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
       if (envelope.command === 'film.frame.set') {
         if (!filmFrameExtensions) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film frame extension was not validated', 400)
         next.extensions = filmFrameExtensions as UnifiedProject['extensions']
@@ -2128,6 +2170,17 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         next.extensions.sceneReview = review as unknown as Record<string, unknown>
         changedIds = [`scene-review:${clipId}`]
         result = { sequenceId, clipId, ...shot }
+      } else if (envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove') {
+        if (!vfxCueChange) throw new UnifiedStoreError('VALIDATION_FAILED', 'VFX cue command data is unavailable', 400)
+        const cueChange = vfxCueChange
+        const extension = readVfxCueExtension(next)
+        if (cueChange.type === 'add') extension.cues.push(cueChange.cue)
+        else if (cueChange.type === 'update') extension.cues = extension.cues.map((cue) => cue.id === cueChange.cue.id ? cueChange.cue : cue)
+        else extension.cues = extension.cues.filter((cue) => cue.id !== cueChange.id)
+        next.extensions.vfxCues = extension as unknown as Record<string, unknown>
+        const cueId = cueChange.type === 'remove' ? cueChange.id : cueChange.cue.id
+        changedIds = [`vfx-cue:${cueId}`]
+        result = cueChange.type === 'remove' ? { cueId, removed: true } : { cue: cueChange.cue }
       } else if (envelope.command === 'skeleton.mapping.set') {
         if (!mappingAddition) throw new UnifiedStoreError('VALIDATION_FAILED', 'Mapping data is unavailable', 400)
         const calibrationBytes = Buffer.from(canonicalJsonExact(mappingAddition.calibration), 'utf8')

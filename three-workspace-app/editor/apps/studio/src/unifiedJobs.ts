@@ -11,6 +11,7 @@ import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from '
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
 import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries'
+import { buildVfxEffectsForFilm } from './vfxCues'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -208,6 +209,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     record.state = 'running'; record.progress = 0.03; record.updatedAt = new Date().toISOString(); await persist(record)
     const input = await sampleProjectFilm(snapshot, args, signal)
+    const effects = await buildVfxEffectsForFilm(snapshot, args, signal)
     await mkdir(work, { recursive: false })
     const agent = await agentRoot(), python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
     const convertedRoot = path.join(work, 'converted'); await mkdir(convertedRoot)
@@ -277,6 +279,21 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     for (const [name, value] of Object.entries(options.extraFiles ?? {})) await writeFile(path.join(packagePath, name), `${JSON.stringify(value, null, 2)}
 `, { flag: 'wx' })
+    await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
+    await writeFile(path.join(packagePath, 'README.txt'), [
+      'BBS FS 2.7 Film package. Copy films/*.dat into saves/<world>/bbs/films/ and assets/** into config/bbs/assets/, keeping the included directory layout.',
+      'effects.json is a project-side schedule with one transform per cue interval; startTick and endTick are relative to this Film at 20 Hz.',
+      'Attached VFX cues follow evaluated scene nodes or Character bones in App 2. Export currently accepts only attachments whose world transform stays constant for the exported interval; moving attachments are rejected because the available sidecar consumer cannot be verified to replay transform keys.',
+      'Film structure was exported by the local worker. Playback in a BBS FS game was not tested by this package export.',
+      '',
+    ].join('\n'), { flag: 'w' })
+    await writeFile(path.join(packagePath, 'REPORT.txt'), [
+      'VFX export report',
+      `effects.json contains ${effects.length} cue interval(s).`,
+      'Moving node or bone attachments are evaluated in the project, but export rejects any interval whose transform changes. The sidecar stores one transform per interval and moving transform replay has not been established.',
+      'Static cues and stationary attachments can be represented. BBS in-game playback was not tested.',
+      '',
+    ].join('\n'), { flag: 'w' })
     const archiveName = options.archiveName ?? `${args.filmName}.zip`
     const archive = path.join(work, archiveName)
     await runLocalCommand(python, ['-c', ZIP_SCRIPT, packagePath, archive], agent, signal)
