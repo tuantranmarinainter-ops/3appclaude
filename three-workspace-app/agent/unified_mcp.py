@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 import sys
 import uuid
@@ -37,6 +39,55 @@ TOOL = {
         "additionalProperties": False,
     },
 }
+LIBRARY_TOOLS = [
+    {"name": "library.search", "description": "Search the local App 5 Action library by rig, category, tags or text.", "inputSchema": {"type": "object", "properties": {"rig": {"type": "string"}, "category": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "text": {"type": "string"}}, "additionalProperties": False}},
+    {"name": "library.get", "description": "Get an Action and its immutable pack metadata by UUID.", "inputSchema": {"type": "object", "properties": {"actionUuid": {"type": "string", "format": "uuid"}}, "required": ["actionUuid"], "additionalProperties": False}},
+    {"name": "library.characters", "description": "List registered App 5 characters.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
+]
+
+def _library_call(name: str, args: Any) -> dict[str, Any]:
+    if not isinstance(args, dict):
+        raise ValueError("Library tool arguments must be an object")
+    root = Path(os.environ.get("W01_LIBRARY", r"C:\w01-library" if os.name == "nt" else str(Path.home() / "w01-library"))).expanduser().resolve()
+    index_file = root / "index.json"
+    if not index_file.is_file():
+        if name == "library.search":
+            return {"items": [], "total": 0}
+        if name == "library.characters":
+            return {"characters": []}
+        raise ValueError("Action library index is missing")
+    index = json.loads(index_file.read_text(encoding="utf-8"))
+    if name == "library.characters":
+        return {"characters": index.get("characters", [])}
+    if name == "library.search":
+        rows = index.get("actions", [])
+        tags = [str(x).casefold() for x in args.get("tags", [])]
+        text = str(args.get("text", "")).casefold()
+        rows = [row for row in rows if
+                (not args.get("rig") or row.get("rig") == args["rig"])
+                and (not args.get("category") or row.get("category") == args["category"])
+                and all(tag in [str(x).casefold() for x in row.get("tags", [])] for tag in tags)
+                and (not text or any(text in str(value).casefold() for value in [row.get("name", ""), row.get("rig", ""), row.get("category", ""), *row.get("tags", [])]))]
+        return {"items": rows, "total": len(rows)}
+    if name == "library.get":
+        action_uuid = args.get("actionUuid")
+        if not isinstance(action_uuid, str):
+            raise ValueError("actionUuid is required")
+        action = next((row for row in index.get("actions", []) if str(row.get("uuid", "")).casefold() == action_uuid.casefold()), None)
+        if not action:
+            raise ValueError("Action not found")
+        pack_id = str(action.get("packId", ""))
+        if not re.fullmatch(r"[a-f0-9]{16}", pack_id):
+            raise ValueError("Invalid pack id in library index")
+        pack_dir = (root / "packs" / pack_id).resolve()
+        if root not in pack_dir.parents:
+            raise ValueError("Invalid pack path")
+        files = {name: (pack_dir / name).resolve() for name in ("meta.json", "anim.glb", "anim.manifest.json")}
+        if any(pack_dir not in path.parents or not path.is_file() for path in files.values()):
+            raise ValueError("Pack files must be regular files inside the pack directory")
+        metadata = json.loads(files["meta.json"].read_text(encoding="utf-8"))
+        return {"action": action, "pack": metadata, "glb": str(files["anim.glb"]), "manifest": str(files["anim.manifest.json"])}
+    raise ValueError("Unknown library tool")
 
 MCP_RENDER_DIRS: dict[str, tuple[str, Path, str]] = {}
 
@@ -189,12 +240,19 @@ def handle_message(message: Any, invoke: Callable[[dict[str, Any]], dict[str, An
     if method == "server/discover":
         return _result(request_id, {"resultType": "complete", "supportedVersions": [PROTOCOL_VERSION], "capabilities": {"tools": {}}, "instructions": "All project reads and writes go through the local Studio broker; mutations share its revision and undo history.", "ttlMs": 0, "cacheScope": "private"})
     if method == "tools/list":
-        return _result(request_id, {"resultType": "complete", "tools": [TOOL], "ttlMs": 0, "cacheScope": "private"})
+        return _result(request_id, {"resultType": "complete", "tools": [TOOL, *LIBRARY_TOOLS], "ttlMs": 0, "cacheScope": "private"})
     if method == "ping":
         return _result(request_id, {"resultType": "complete"})
     if method != "tools/call":
         return _error(request_id, -32601, f"Method not found: {method}")
-    if params.get("name") != TOOL["name"]:
+    tool_name = params.get("name")
+    if tool_name in {tool["name"] for tool in LIBRARY_TOOLS}:
+        try:
+            result = _library_call(tool_name, params.get("arguments", {}))
+            return _result(request_id, {"resultType": "complete", "structuredContent": result, "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}], "isError": False})
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            return _result(request_id, {"resultType": "complete", "content": [{"type": "text", "text": str(error)}], "isError": True})
+    if tool_name != TOOL["name"]:
         return _error(request_id, -32602, f"Unknown tool: {params.get('name')}")
     try:
         return _result(request_id, _tool_call(params.get("arguments"), invoke))

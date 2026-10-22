@@ -1,6 +1,6 @@
-import { getAction, listLibraryCharacters, searchLibrary, type SearchResult } from './library.ts'
-import type { CharacterMetadata, IndexedAction, LibraryOptions, SearchOptions } from './types.ts'
-import { ACTION_CATEGORIES } from './types.ts'
+import { getAction, listLibraryCharacters, searchLibrary, type SearchResult } from './library'
+import type { CharacterMetadata, IndexedAction, LibraryOptions, SearchOptions } from './types'
+import { ACTION_CATEGORIES } from './types'
 
 export const LIBRARY_MCP_TOOLS = [
   {
