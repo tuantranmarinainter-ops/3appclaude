@@ -22,6 +22,11 @@ tạm trên 2.4 (`bbs fs-2.4-1.20.1.jar.ok` → `.jar`).
 | `tap15-film/Tap15-seg1..10.bbs-film.zip` (10 đoạn, 73 s) | Như trên; mở lần lượt seg1 → seg10 | Nhân vật khối Minecraft (Herobrine, Đen, Gà, Người bí ẩn) và Gỗ Xưa đúng chỗ, đúng động tác; camera cắt đúng shot. Bị chia 10 đoạn vì worker giới hạn 255 tick + 3 camera + ngân sách xương mỗi film |
 | `tap15-previz-shorts.mp4` | Xem trên điện thoại | Đối chiếu storyboard; chưa có hiệu ứng |
 
+### VFX qua AAA Particles (thêm 2026-10-22)
+| File | Cách thử | Đạt khi |
+| --- | --- | --- |
+| `bbs-aaaddon-fs27/` (addon AAA port sang BBS FS 2.7 + jar phụ thuộc + 4 hiệu ứng mẫu CC0) | Theo `HUONG-DAN.md` trong thư mục | Laser/vệt kiếm/vòng phát trong film editor **và** khi phát scene; bật keyframe `paused`/`restart`/`speed` không làm đen màn hình |
+
 ## 2. File cảnh mở bằng Blender
 | File | Đạt khi |
 | --- | --- |
