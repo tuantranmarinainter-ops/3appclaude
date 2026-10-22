@@ -19,7 +19,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 30 passed, 2 skipped, 0 failed. Skips require the Core DLL and official sample directory. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install dev tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 30 passed, 2 skipped, 0 failed. Skips require the Core DLL and official sample directory. |
 | GitHub Actions `test` workflow | NOT_RUN | CI status is unverified for this report update; check PR #50's current run before review. |
 | Integration using Effekseer Core DLL and official samples | NOT_RUN | Neither input is available here. On Windows: `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'; $env:EFFEKSEER_AI_SAMPLE_DIR='C:\\path\\to\\Effekseer\\Sample\\00_Basic'; python -m pytest -m integration -q` from `three-workspace-app/vfx`. Integration checks that Simple_Sprite_BillBoard and Simple_SpawnMethod1 export schemes, while Simple_Ribbon_Sword, Simple_Ring_Shape1, and Simple_Distortion block. |
 | BBS FS 2.7 runtime | NOT_RUN | Requires the real game/runtime. On the Windows review machine, install the generated schemes and exercise them in BBS FS 2.7; do not treat schema conversion as a runtime pass. |
