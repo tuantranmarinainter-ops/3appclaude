@@ -72,12 +72,13 @@ effekseer-ai property-set .\effects\spark.efkefc '<property-path>' '0.5'
 ```
 
 CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
+`node-list` 会同时返回显示路径和稳定 `id`（`node/id/<uuid>`）；在同一会话中删除或移动节点后，优先用 ID 继续引用节点。`image-import` 按 SHA-256 保存资源，并将来源名称记录在 `resources/manifest.json`。覆盖保存已有特效时会保留一个 `.bak` 文件；`edit-undo <effect.efkefc>` 可一次性恢复到上次保存前的版本。
 
 ### CLI 命令
 
 | 分类 | 命令 |
 | --- | --- |
-| 特效文档 | `new`、`open`、`save`、`export` |
+| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo` |
 | 节点 | `node-list`、`node-add`、`node-rename`、`node-remove`、`node-move` |
 | 属性 | `property-list`、`property-get`、`property-set` |
 | 资源 | `image-import` |

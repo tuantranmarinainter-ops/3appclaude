@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import os
 from dataclasses import dataclass
+from tempfile import NamedTemporaryFile
 from pathlib import Path
 from shutil import copy2
 from typing import Any
+from uuid import uuid4
 
 from .runtime import export_binary, load_core
 from .settings import PANEL_LABELS, PANEL_ROOTS
@@ -19,6 +25,12 @@ class EffectSession:
 
     def __post_init__(self) -> None:
         self._nodes: dict[str, object] = {}
+        self._node_ids_by_path: dict[str, str] = {}
+        self._undo_path: Path | None = (
+            self.path.with_suffix(self.path.suffix + ".bak")
+            if self.path is not None and self.path.with_suffix(self.path.suffix + ".bak").is_file()
+            else None
+        )
         self._index_existing_nodes()
 
     @classmethod
@@ -42,9 +54,25 @@ class EffectSession:
         if effect_path.suffix.lower() != ".efkefc":
             raise ValueError("Effect files must use the .efkefc extension")
         effect_path.parent.mkdir(parents=True, exist_ok=True)
+        if effect_path.is_file():
+            backup = effect_path.with_suffix(effect_path.suffix + ".bak")
+            copy2(effect_path, backup)
+            self._undo_path = backup
         load_core().SaveTo(str(effect_path))
         self.path = effect_path
         return effect_path
+
+    def edit_undo(self) -> Path:
+        """Restore the most recent pre-save document backup exactly once."""
+        if self.path is None or self._undo_path is None or not self._undo_path.is_file():
+            raise ValueError("No saved edit is available to undo")
+        copy2(self._undo_path, self.path)
+        if not load_core().LoadFrom(str(self.path)):
+            raise ValueError(f"Effekseer cannot reopen the backup: {self.path}")
+        self._undo_path.unlink(missing_ok=True)
+        self._undo_path = None
+        self._index_existing_nodes()
+        return self.path
 
     def summary(self) -> dict[str, int | str | None]:
         root = load_core().Root
@@ -59,15 +87,15 @@ class EffectSession:
         node = parent.AddChild()
         if name is not None:
             node.Name.SetValue(name)
-        node_path = f"{parent_path}/{int(parent.Children.Count) - 1}"
-        self._nodes[node_path] = node
-        return node_path
+        self._index_existing_nodes()
+        return self._path_for_node(node)
 
     def node_list(self) -> list[dict[str, int | str]]:
         """List every non-root node currently known to the session."""
         return [
             {
                 "path": path,
+                "id": self._stable_node_ref(path),
                 "name": str(node.Name.Value),
                 "children": int(node.Children.Count),
             }
@@ -77,24 +105,25 @@ class EffectSession:
 
     def rename_node(self, node_path: str, name: str) -> None:
         """Rename a node through its Core string value."""
-        if node_path == "node/root":
+        node = self._node(node_path)
+        if self._path_for_node(node) == "node/root":
             raise ValueError("The root node cannot be renamed")
-        self._node(node_path).Name.SetValue(name)
+        node.Name.SetValue(name)
 
     def remove_node(self, node_path: str) -> None:
         """Remove a node and its descendants from the current document."""
-        if node_path == "node/root":
-            raise ValueError("The root node cannot be removed")
         node = self._node(node_path)
+        if self._path_for_node(node) == "node/root":
+            raise ValueError("The root node cannot be removed")
         if not node.Parent.RemoveChild(node):
             raise ValueError(f"Node is not attached: {node_path}")
         self._index_existing_nodes()
 
     def move_node(self, node_path: str, parent_path: str) -> str:
         """Move a node and return its new structural path."""
-        if node_path == "node/root":
-            raise ValueError("The root node cannot be moved")
         node = self._node(node_path)
+        if self._path_for_node(node) == "node/root":
+            raise ValueError("The root node cannot be moved")
         parent = self._node(parent_path)
         if node == parent or node.HasNode(parent, True):
             raise ValueError("A node cannot be moved into itself or its descendant")
@@ -102,7 +131,7 @@ class EffectSession:
             raise ValueError(f"Node is not attached: {node_path}")
         parent.AddChild(node)
         self._index_existing_nodes()
-        return f"{parent_path}/{int(parent.Children.Count) - 1}"
+        return self._path_for_node(node)
 
     def property_get(self, property_path: str) -> Any:
         """Read a public Core member without invoking arbitrary methods."""
@@ -173,10 +202,30 @@ class EffectSession:
             root = PANEL_ROOTS[panel]
         except KeyError as error:
             raise KeyError(f"Unknown settings panel: {panel}") from error
+        changes: list[tuple[str, Any, Any]] = []
+        seen: set[str] = set()
         for field, value in values.items():
             if field.startswith("/") or ".." in field.split("/"):
                 raise ValueError(f"Invalid setting field: {field}")
-            self.property_set(f"{node_path}/{root}/{field}", value)
+            property_path = f"{node_path}/{root}/{field}"
+            if property_path in seen:
+                raise ValueError(f"Duplicate setting field: {field}")
+            seen.add(property_path)
+            previous = self.property_get(property_path)
+            self._validate_json_value(value)
+            changes.append((property_path, previous, value))
+        applied: list[tuple[str, Any]] = []
+        try:
+            for property_path, previous, value in changes:
+                applied.append((property_path, previous))
+                self.property_set(property_path, value)
+        except Exception:
+            for property_path, previous in reversed(applied):
+                try:
+                    self.property_set(property_path, previous)
+                except Exception:
+                    pass
+            raise
 
     def curve_keys(self, curve_path: str) -> list[dict[str, float | int]]:
         """Read a scalar curve as JSON-friendly keyframe data."""
@@ -192,12 +241,22 @@ class EffectSession:
         ]
 
     def curve_set_keys(self, curve_path: str, keys: list[dict[str, Any]]) -> None:
-        """Replace scalar FCurve keys using Core's add/remove commands."""
+        """Validate a replacement curve completely before changing Core state."""
         curve = self._object_at_path(curve_path)
-        for key in list(curve.Keys):
-            curve.RemoveKey(key)
-        for data in sorted(keys, key=lambda item: int(item["frame"])):
-            curve.AddKey(self._new_curve_key(curve, data))
+        normalized = self._validate_curve_keys(keys)
+        replacements = [self._new_curve_key(curve, data) for data in normalized]
+        previous = [self._curve_key_data(key) for key in curve.Keys]
+        try:
+            for key in list(curve.Keys):
+                curve.RemoveKey(key)
+            for key in replacements:
+                curve.AddKey(key)
+        except Exception:
+            for key in list(curve.Keys):
+                curve.RemoveKey(key)
+            for data in previous:
+                curve.AddKey(self._new_curve_key(curve, data))
+            raise
 
     def _new_curve_key(self, curve: object, data: dict[str, float | int]) -> object:
         from System import Activator, Array, Enum, Int32, Object, Single
@@ -250,20 +309,36 @@ class EffectSession:
 
     def _index_existing_nodes(self) -> None:
         root = load_core().Root
+        previous = [
+            (node, self._node_ids_by_path.get(path))
+            for path, node in self._nodes.items()
+            if hasattr(self, "_node_ids_by_path")
+        ]
         self._nodes.clear()
-        self._nodes["node/root"] = root
+        self._node_ids_by_path = {}
+
+        def assign(path: str, node: object) -> None:
+            stable_id = next(
+                (known_id for known_node, known_id in previous
+                 if known_id is not None and self._same_node(known_node, node)),
+                None,
+            )
+            self._nodes[path] = node
+            self._node_ids_by_path[path] = stable_id or str(uuid4())
+
+        assign("node/root", root)
 
         def visit(parent: object, parent_path: str) -> None:
             for index in range(parent.Children.Count):
                 child = parent.Children[index]
                 child_path = f"{parent_path}/{index}"
-                self._nodes[child_path] = child
+                assign(child_path, child)
                 visit(child, child_path)
 
         visit(root, "node/root")
 
     def _copy_resource(self, source: str | Path, extensions: set[str]) -> str:
-        """Copy an approved asset to this effect's resource directory."""
+        """Store an approved asset by content hash and atomically update its manifest."""
         if self.path is None:
             raise ValueError("Save the effect before importing project resources")
         source_path = Path(source).resolve()
@@ -271,13 +346,48 @@ class EffectSession:
             raise FileNotFoundError(source_path)
         if source_path.suffix.lower() not in extensions:
             raise ValueError(f"Unsupported resource type: {source_path.suffix}")
+        digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
         resources = self.path.parent / "resources"
         resources.mkdir(exist_ok=True)
-        destination = resources / source_path.name
-        copy2(source_path, destination)
-        return destination.relative_to(self.path.parent).as_posix()
+        relative_asset = f"resources/{digest}{source_path.suffix.lower()}"
+        destination = self.path.parent / relative_asset
+        if not destination.exists():
+            copy2(source_path, destination)
+        manifest_path = resources / "manifest.json"
+        manifest: dict[str, Any] = {"schemaVersion": 1, "assets": []}
+        if manifest_path.is_file():
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict) or loaded.get("schemaVersion") != 1 or not isinstance(loaded.get("assets"), list):
+                raise ValueError(f"Invalid resource manifest: {manifest_path}")
+            manifest = loaded
+        asset = {"sha256": digest, "sourceName": source_path.name, "path": relative_asset}
+        if asset not in manifest["assets"]:
+            manifest["assets"].append(asset)
+            self._atomic_json(manifest_path, manifest)
+        return relative_asset
+
+    def _atomic_json(self, path: Path, value: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary: Path | None = None
+        try:
+            with NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as stream:
+                temporary = Path(stream.name)
+                json.dump(value, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     def _node(self, node_path: str) -> object:
+        if node_path.startswith("node/id/"):
+            stable_id = node_path.removeprefix("node/id/")
+            for path, known_id in self._node_ids_by_path.items():
+                if known_id == stable_id:
+                    return self._nodes[path]
+            raise KeyError(f"Unknown stable node id: {stable_id}")
         try:
             return self._nodes[node_path]
         except KeyError as error:
@@ -287,7 +397,7 @@ class EffectSession:
         if not property_path.startswith("node/"):
             raise ValueError(f"Invalid property path: {property_path}")
         node_path = next(
-            (path for path in sorted(self._nodes, key=len, reverse=True)
+            (path for path in sorted(self._node_reference_paths(), key=len, reverse=True)
              if property_path.startswith(f"{path}/")),
             None,
         )
@@ -301,6 +411,81 @@ class EffectSession:
         for member in members[:-1]:
             target = getattr(target, member)
         return target, members[-1]
+
+    def _node_reference_paths(self) -> set[str]:
+        return set(self._nodes) | {self._stable_node_ref(path) for path in self._nodes}
+
+    def _stable_node_ref(self, path: str) -> str:
+        return f"node/id/{self._node_ids_by_path[path]}"
+
+    def _path_for_node(self, node: object) -> str:
+        return next(path for path, known in self._nodes.items() if self._same_node(known, node))
+
+    @staticmethod
+    def _same_node(left: object, right: object) -> bool:
+        if left is right:
+            return True
+        try:
+            return bool(left.Equals(right))
+        except Exception:
+            return left == right
+
+    @staticmethod
+    def _validate_json_value(value: Any) -> None:
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("Setting values must be finite")
+        if isinstance(value, dict):
+            for child in value.values():
+                EffectSession._validate_json_value(child)
+        elif isinstance(value, list):
+            for child in value:
+                EffectSession._validate_json_value(child)
+        elif not isinstance(value, (str, int, float, bool, type(None))):
+            raise ValueError("Settings must contain JSON values")
+
+    @staticmethod
+    def _validate_curve_keys(keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not isinstance(keys, list):
+            raise ValueError("Curve keys must be a list")
+        normalized: list[dict[str, Any]] = []
+        frames: set[int] = set()
+        for data in keys:
+            if not isinstance(data, dict) or "frame" not in data or "value" not in data:
+                raise ValueError("Each curve key needs frame and value")
+            frame = data["frame"]
+            value = data["value"]
+            if isinstance(frame, bool) or not isinstance(frame, int) or frame < 0:
+                raise ValueError("Curve frames must be nonnegative integers")
+            if frame in frames:
+                raise ValueError(f"Duplicate curve frame: {frame}")
+            frames.add(frame)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError("Curve values must be finite numbers")
+            item: dict[str, Any] = {"frame": frame, "value": value}
+            for side in ("left", "right"):
+                if side in data:
+                    tangent = data[side]
+                    if (not isinstance(tangent, (list, tuple)) or len(tangent) != 2
+                            or any(isinstance(part, bool) or not isinstance(part, (int, float))
+                                   or not math.isfinite(float(part)) for part in tangent)):
+                        raise ValueError(f"Curve {side} tangent must contain two finite numbers")
+                    item[side] = list(tangent)
+            if "interpolation" in data:
+                interpolation = data["interpolation"]
+                if isinstance(interpolation, bool) or not isinstance(interpolation, int):
+                    raise ValueError("Curve interpolation must be an integer")
+                item["interpolation"] = interpolation
+            normalized.append(item)
+        return sorted(normalized, key=lambda item: item["frame"])
+
+    @staticmethod
+    def _curve_key_data(key: object) -> dict[str, Any]:
+        return {
+            "frame": int(key.Frame), "value": float(key.Value),
+            "left": [float(key.LeftX), float(key.LeftY)],
+            "right": [float(key.RightX), float(key.RightY)],
+            "interpolation": int(key.InterpolationType),
+        }
 
     def _object_at_path(self, property_path: str) -> object:
         target, member = self._property_parent(property_path)

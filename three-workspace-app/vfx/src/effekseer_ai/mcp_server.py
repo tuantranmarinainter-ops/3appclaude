@@ -54,6 +54,11 @@ def create_server() -> FastMCP:
         return session.summary()
 
     @server.tool()
+    def edit_undo() -> dict[str, str]:
+        """Restore the last saved document backup, if one exists."""
+        return {"path": str(documents.require().edit_undo())}
+
+    @server.tool()
     def effect_export(path: str, magnification: float = 1.0) -> dict[str, str]:
         """Export the current effect to the runtime .efk format."""
         return {"path": str(documents.require().export(path, magnification))}

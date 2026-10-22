@@ -16,6 +16,7 @@ build-check/
 !.env.example
 *.efk
 *.efkefc
+*.efkefc.bak
 resources/
 artifacts/
 generated/
