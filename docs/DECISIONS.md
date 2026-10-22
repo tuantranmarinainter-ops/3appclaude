@@ -26,7 +26,7 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   (giữ LICENSE gốc + ghi nguồn) để Codex cloud làm được; DLL Effekseer/.NET không commit. Kế hoạch: `docs/VFX-APP4-PLAN.md`
   (DRAFT, bắt đầu từ giai đoạn 0: xác minh runtime + render tự động trên máy Windows).
 - **MVP App 4 (người dùng chốt 2026-10-22): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật.**
-  BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS FS 2.4 (Snowstorm JSON) trước**
+  BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS FS 2.7 (Snowstorm JSON) trước**
   (chạy native, chặn tính năng không hỗ trợ khi xuất); song song khảo sát addon gọi AAA Particles. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
   bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 
@@ -47,6 +47,10 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   Instance của người dùng: `S:\Minecraft\Minecraft Forge-1.20.1` (Forge 47.4.10 + Sinytra Connector chạy mod Fabric),
   jar `bbs fs-2.4-1.20.1.jar`, thư mục `config/bbs/assets/particles`. Không có AAA Particles. Mã nguồn 2.4 = `0085f77`.
   (Nhắc "2.7" trước đó là nhầm; 2.7 có sẵn bộ đọc film 2.4 nếu sau này nâng cấp.)
+- **Chốt lại 2026-10-22: chuyển đích sang BBS FS 2.7** (người dùng: "Nếu 2.7 tốt hơn về efect thì chọn 2.7").
+  Lý do: 2.4 vẽ particle với blend tắt (chỉ cắt alpha, glow thành mảng cứng); 2.7 có blend alpha cho `particles_blend`
+  (commit `ca9ae5f`). VFX App 4 nhắm 2.7 (`998c9d5`). Film vẫn xuất định dạng 2.4: 2.7 tự chuyển khi mở (`FilmStableIds`,
+  `readLegacy`) — cần thử trong game. Máy chưa có jar BBS FS 2.7; người dùng cần cài 2.7 vào instance Forge 1.20.1.
 
 ## Hợp đồng GLB trao đổi v1.0.0
 File GLB:
