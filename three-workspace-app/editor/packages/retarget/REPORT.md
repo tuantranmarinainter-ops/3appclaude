@@ -13,6 +13,8 @@ From `three-workspace-app/editor`:
 ```sh
 node --import ./node_modules/.pnpm/node_modules/tsx/dist/loader.mjs --test packages/retarget/test/universal.test.ts
 node --import ./node_modules/.pnpm/node_modules/tsx/dist/loader.mjs --test packages/retarget/test/cliModelExport.test.ts
+pnpm --filter @topview/3d-builder build
+pnpm typecheck
 ```
 
 - D7 synthetic wrist delta: input wrist local translation delta was `0.25 m`; output mapped wrist displacement was `0.25 m` along target forearm-frame Z (absolute error `< 1e-6 m`). Finger-local translation was not transferred. Test result: PASS.
@@ -24,7 +26,7 @@ node --import ./node_modules/.pnpm/node_modules/tsx/dist/loader.mjs --test packa
 | Gate | Status | Evidence |
 |---|---|---|
 | D7 and D3 targeted tests | PASS | `universal.test.ts`: 18 passed; `cliModelExport.test.ts`: 4 passed, 4 skipped because external sample files are absent. Synthetic coverage passed in both files. |
-| Full workspace `pnpm typecheck` | BLOCKED | Re-ran with pnpm 9.15.9 after `pnpm install --frozen-lockfile --store-dir /workspace/.pnpm-store-v9`; install succeeded. `pnpm typecheck` passed `packages/retarget` and `packages/builder` (including builder tests), then failed in `packages/shared`: TypeScript cannot resolve `@topview/3d-builder` or `@topview/3d-builder/evaluate`, causing follow-on implicit-any/type errors. Resolving package build outputs requires changes outside this issue's allowed scope. |
+| Full workspace `pnpm typecheck` | PASS | With pnpm 9.15.9, ran `pnpm --filter @topview/3d-builder build` followed by `pnpm typecheck`. Builder package exports were generated first; typecheck then passed for builder, retarget, shared, and studio. |
 | Samba sample preservation (foot slide `2.23/2.40 m`) | NOT_RUN / BLOCKED | The Samba FBX/GLB sample is not present in this environment. The documented baseline is not asserted as measured. Run the project’s Samba evaluation on the original sample on Windows and compare against `2.23/2.40 m`. |
 | Real non-Mixamo game model measurements | NOT_RUN / BLOCKED | No game GLB samples are available here. The reported D3 measurements above are from the checked-in built-in GLB-derived synthetic fixture. |
 | Windows Blender / Java / BBS FS / Chromium checks | NOT_RUN | On Claude’s Windows machine, run the relevant project test/evaluation commands after installing dependencies; for the retarget tests use `pnpm exec tsx --test packages/retarget/test/universal.test.ts packages/retarget/test/cliModelExport.test.ts` from `three-workspace-app/editor`. Then run the Samba evaluation with the real sample. |
