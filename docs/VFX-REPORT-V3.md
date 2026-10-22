@@ -19,7 +19,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 36 passed, 2 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths and generated texture verification. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 36 passed, 2 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths and generated texture verification. |
 | Integration using Effekseer Core DLL and official samples | NOT_RUN | On Windows set `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'` and `$env:EFFEKSEER_AI_SAMPLE_DIR='C:\\path\\to\\Effekseer\\Sample\\00_Basic'`, then run `python -m pytest -m integration -q` from `three-workspace-app/vfx`. |
 | MCP tool inventory | PASS | Unit test checks all existing tools remain present and confirms the additive `bbs_package` tool. |
 | GitHub Actions `test` workflow | NOT_RUN | Run [39713527814](https://github.com/tuantranmarinainter-ops/3appclaude/actions/runs/39713527814) was `IN_PROGRESS` at the report snapshot; CI is unverified until completion. |

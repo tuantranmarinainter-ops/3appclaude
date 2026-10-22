@@ -47,7 +47,7 @@ def build_bbs_package(
     for scheme in converted["schemes"]:
         add = scheme.get("addBlend")
         if add:
-            source_ref = scheme["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"]
+            source_ref = str(add.get("sourceTexture", ""))
             source_relative = _safe_relative(source_ref.removeprefix("assets:"))
             metadata = manifest.get(source_relative)
             if metadata is None:
