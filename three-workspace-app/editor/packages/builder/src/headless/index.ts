@@ -33,6 +33,8 @@ export interface HeadlessRenderFrameOptions {
   chainCameraMotion?: boolean
   /** 剪影视图：角色实心暗色、布景浅灰、浅色背景，不改文档。 */
   silhouette?: boolean
+  /** 像 BBS FS 一样看：Minecraft 实体光照、天空、草地，不改文档。 */
+  bbsLook?: boolean
 }
 
 export interface HeadlessRenderer {
@@ -77,6 +79,7 @@ export function createHeadlessRenderer(options: HeadlessRendererOptions): Headle
       const cam = stage.getCameraForExport(cameraId)
       if (!cam) throw new Error(`Camera not found: ${cameraId}`)
       stage.setSilhouette(opts?.silhouette === true)
+      stage.setBbsLook(opts?.bbsLook === true)
       renderExportFrame(
         {
           stage,

@@ -139,6 +139,13 @@ export function StudioOverlay({
     window.dispatchEvent(new CustomEvent('bbs-view-silhouette', { detail: { enabled: silhouette } }))
     return subscribeLiveStudio(apply)
   }, [silhouette])
+  // BBS look is a view mode only (never saved): Minecraft lighting, sky and grass as BBS FS 2.7 shows the Film.
+  const [bbsLook, setBbsLook] = useState(false)
+  useEffect(() => {
+    const apply = () => getLiveStudio()?.stage.setBbsLook(bbsLook)
+    apply()
+    return subscribeLiveStudio(apply)
+  }, [bbsLook])
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const assetInputRef = useRef<HTMLInputElement>(null)
   const relinkInputRef = useRef<HTMLInputElement>(null)
@@ -365,6 +372,12 @@ export function StudioOverlay({
         setSilhouette((value) => !value)
         return
       }
+      if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        setBbsLook((value) => !value)
+        return
+      }
       if ((!event.ctrlKey && !event.metaKey) || event.altKey) return
       const key = event.key.toLowerCase()
       const command = key === 'z' ? (event.shiftKey ? 'history.redo' : 'history.undo') : key === 'y' ? 'history.redo' : null
@@ -432,6 +445,7 @@ export function StudioOverlay({
             <button type="button" className="wb-host-secondary" onClick={openFeatureSearch} title={vi ? 'Tìm chức năng (Ctrl+K)' : 'Find a feature (Ctrl+K)'}>{vi ? 'Tìm' : 'Find'} <kbd>Ctrl K</kbd></button>
             <button type="button" className="wb-host-secondary" onClick={() => setDrawer('assets')}>{vi ? 'Tài nguyên' : 'Assets'}</button>
             <button type="button" id="wb-silhouette-toggle" className={`wb-host-secondary${silhouette ? ' is-active' : ''}`} aria-pressed={silhouette} onClick={() => setSilhouette((value) => !value)} title={vi ? 'Xem silhouette: nhân vật tô đặc trên nền sáng (Shift+S)' : 'Silhouette view: solid characters on a light background (Shift+S)'}>{vi ? 'Silhouette' : 'Silhouette'} <kbd>Shift S</kbd></button>
+            <button type="button" id="wb-bbs-look-toggle" className={`wb-host-secondary${bbsLook ? ' is-active' : ''}`} aria-pressed={bbsLook} onClick={() => setBbsLook((value) => !value)} title={vi ? 'Xem như BBS FS: ánh sáng, trời và sàn cỏ Minecraft (Shift+B)' : 'BBS look: Minecraft lighting, sky and grass as in BBS FS (Shift+B)'}>{vi ? 'Xem như BBS' : 'BBS look'} <kbd>Shift B</kbd></button>
             {activeWorkspace === 'animation' && <button type="button" className="wb-host-secondary" onClick={() => setDrawer('animation')}>{vi ? 'Thêm animation' : 'Add animation'}</button>}
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Hoàn tác' : 'Undo'} title="Undo (Ctrl+Z)" disabled={historyBusy || !projectState?.history.canUndo} onClick={() => void runHistory('history.undo')}>↶</button>
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>

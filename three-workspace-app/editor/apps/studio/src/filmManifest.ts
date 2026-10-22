@@ -20,6 +20,12 @@ const FLOAT_MAX = 3.4028234663852886e38
 
 function fail(message: string): never { throw new TypeError(message) }
 
+/**
+ * Converted BOBJ models face the opposite way to App 2 nodes in BBS actors. Calibrated in BBS FS 2.7 with Minecraft20
+ * and Mixamo65 actors at yaw 0 (every unturned actor showed its back to a camera it should face) and with prop sets.
+ */
+export const FILM_MODEL_FACING_OFFSET = 180
+
 function actorTransform(matrixValues: number[], tick: number, priorYaw?: number) {
   if (!Array.isArray(matrixValues) || matrixValues.length !== 16 || matrixValues.some((value) => !Number.isFinite(value))) fail('Film actor matrix must contain 16 finite values')
   const matrix = new Matrix4().fromArray(matrixValues)
@@ -96,9 +102,7 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const name = model.name
     if (typeof name !== 'string' || !name.trim() || name.length > 64) fail(`Film actor name must contain 1-64 characters: ${model.characterId}`)
     let previousYaw: number | undefined
-    // Converted BOBJ models face the opposite way to App 2 characters in BBS actors. Calibrated in BBS FS 2.7 with
-    // Minecraft20 and Mixamo65 actors at yaw 0: every unturned actor showed its back to a camera it should face.
-    const facingOffset = 180
+    const facingOffset = FILM_MODEL_FACING_OFFSET
     const transformSamples = input.frames.map((frame) => {
       const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
       if (!sample) fail(`Film sample is missing Character ${model.characterId}`)

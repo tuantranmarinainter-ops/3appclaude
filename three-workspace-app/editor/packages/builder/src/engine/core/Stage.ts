@@ -97,6 +97,7 @@ import {
 } from '../objects/PathObject'
 import { clearCameraMotionGuide, syncCameraMotionGuide as applyCameraMotionGuide } from '../objects/CameraMotionGuide'
 import { SilhouetteView } from '../objects/silhouette'
+import { BbsLookView } from '../objects/bbsLook'
 
 export const FRAME_THROTTLE_MS = 100
 export type { EvalContext, NodeSnapshot } from '../DirectorEngine'
@@ -173,6 +174,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   private readonly joints = new JointHandleLayer()
   private readonly silhouetteView = new SilhouetteView()
   private silhouetteWanted = false
+  private readonly bbsLookView = new BbsLookView()
+  private bbsLookWanted = false
   private jointDrag: JointDrag | null = null
   private jointDragNodeId: string | null = null
   private poseEditingId: string | null = null
@@ -256,8 +259,24 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.invalidate()
   }
 
-  /** 每次绘制前调用（求值会重设天空色）：开启时套剪影材质与背景，新加载的网格也会被换掉；关闭时无操作。 */
+  /** 像 BBS FS 一样看（Minecraft 光照、天空、草地），只影响显示，不写文档；剪影优先。 */
+  get bbsLook(): boolean {
+    return this.bbsLookWanted
+  }
+
+  setBbsLook(enabled: boolean): void {
+    if (enabled === this.bbsLookWanted) return
+    this.bbsLookWanted = enabled
+    if (!enabled) this.bbsLookView.restore(this.scene)
+    this.invalidate()
+  }
+
+  /** 每次绘制前调用（求值会重设天空色）：开启时套剪影 / BBS 材质与背景，新加载的网格也会被换掉；关闭时无操作。 */
   syncSilhouette(): void {
+    if (this.bbsLookWanted && !this.silhouetteWanted) {
+      this.bbsLookView.apply(this.scene, [...[...this.characters.values()].map((ch) => ch.root), ...this.props.values(), ...this.primitives.values()],
+        this.doc?.content.environment.display?.groundHeight ?? 0)
+    } else if (this.bbsLookView.enabled) this.bbsLookView.restore(this.scene)
     if (!this.silhouetteWanted) return
     this.silhouetteView.apply(this.scene, [...this.characters.values()].map((ch) => ch.root), [...this.props.values(), ...this.primitives.values()])
   }
@@ -1280,6 +1299,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   dispose(): void {
     this.silhouetteView.restore(this.scene)
     this.silhouetteView.dispose()
+    this.bbsLookView.restore(this.scene)
+    this.bbsLookView.dispose()
     this.renderLoop.disposed = true
     this.renderLoop.stop()
     this.stopAmbient()
@@ -1363,7 +1384,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.previewDirty = false
     this.stats.renderFrames += 1
     const isolatePreview = this.ambient && !this.playing && !this.viewport.followMode && !this.programPreviewActive
-    const hideOverlays = this.silhouetteWanted || this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot
+    const hideOverlays = this.silhouetteWanted || this.bbsLookWanted || this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot
     const viewId = this.programCameraId ?? this.activeCameraId
     const mainAspect = this.viewport.mainAspect()
     const viewAspect = this.aspectForCamera(viewId ? this.cameras.get(viewId)?.node.camera : undefined, mainAspect)

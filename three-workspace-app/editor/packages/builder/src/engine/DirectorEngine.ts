@@ -111,6 +111,9 @@ export interface DirectorEngine {
   /** 剪影视图（只影响显示，不写文档）。 */
   readonly silhouette: boolean
   setSilhouette(enabled: boolean): void
+  /** 像 BBS FS 一样看（只影响显示，不写文档）。 */
+  readonly bbsLook: boolean
+  setBbsLook(enabled: boolean): void
 
   attachViewport(role: ViewportRole, canvas: HTMLCanvasElement): void
   detachViewport(role: ViewportRole): void

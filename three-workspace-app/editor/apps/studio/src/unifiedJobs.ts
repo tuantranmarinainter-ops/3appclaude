@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { renderFrames } from '@topview/3d-director-cli/render.mjs'
 import { resolveUnifiedAssetFile } from './unifiedAssetFiles'
-import { buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
+import { FILM_MODEL_FACING_OFFSET, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
 import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
@@ -32,7 +32,7 @@ export interface UnifiedJobView extends Omit<StoredJob, 'result'> {
   result?: Omit<NonNullable<StoredJob['result']>, 'files'> & { files: Omit<StoredFile, 'path'>[] }
 }
 
-interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number; silhouette?: boolean }
+interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number; silhouette?: boolean; bbsLook?: boolean }
 interface FilmExportArgs extends FilmSamplingArgs { filmName: string }
 /** Scene-level packaging on top of `film.export` (`scene.export.bbsFilm`): archive name and extra JSON files in the ZIP root. */
 export interface FilmPackageOptions { archiveName?: string; extraFiles?: Record<string, unknown> }
@@ -242,9 +242,9 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
             textureRequired: profile.textureRequired, files: conversion.files as ConvertedFilmModelProfile['files'] })
         }
       }
-      // App 2 yaw (degrees about +Y, forward +Z) is the negative of a BBS replay yaw.
+      // App 2 yaw (degrees about +Y, forward +Z) is the negative of a BBS replay yaw; converted models face the other way.
       const { position, rotation } = node.transform
-      const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: rotation.y ? -rotation.y : 0 })
+      const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - rotation.y })
       manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId,
         transformSamples: [pose(0), pose(input.durationTicks)], poseTracks: [] } as (typeof manifest.actors)[number])
     }
@@ -316,7 +316,7 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
       const result = await renderFrames({
         document: snapshot.scene, fcurves, frames: args.frames, width: args.width, height: args.height,
         cameraNodeId, sceneSequence: snapshot.scene.content.editorial?.sequences?.[0]?.id,
-        outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets, ...(args.silhouette ? { silhouette: true } : {}),
+        outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets, ...(args.silhouette ? { silhouette: true } : {}), ...(args.bbsLook ? { bbsLook: true } : {}),
       }, { signal, onProgress: async (completed, total) => {
         record.progress = 0.1 + 0.75 * ((cameraIndex + completed / total) / args.cameraNodeIds.length)
         record.updatedAt = new Date().toISOString()
