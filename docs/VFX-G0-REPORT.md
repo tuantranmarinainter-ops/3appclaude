@@ -1,18 +1,49 @@
 # App 4 VFX — Báo cáo giai đoạn 0 (xác minh)
 Ngày: 2026-10-22. Nhánh: `claude/vfx-app4-g0` (worktree `C:\w01-vfx`, chưa merge, chưa push).
 Kế hoạch: `docs/VFX-APP4-PLAN.md` (DRAFT). Máy: Windows 10 Pro 10.0.19045.
+Tải và cài theo đồng ý của người dùng ("Ok đồng ý", 2026-10-22), chỉ từ nguồn chính thức, cài ngoài repo.
 
 ## Tóm tắt gate
 | # | Gate | Trạng thái | Số đo / căn cứ |
 | --- | --- | --- | --- |
-| G0.1 | Chép mã effekseer-ai vào `three-workspace-app/vfx/` | PASS | Commit gốc `208922e`; 20 file, ~102 KB; 0 binary (không `.dll/.exe/.efk*/.png`); LICENSE MIT giữ nguyên; nguồn ghi ở `vfx/NOTICE.md` |
-| G0.2 | 4 test sẵn có (`tests/test_cli.py` ×2, `tests/test_runtime.py` ×2) | BLOCKED | Lệnh `pip install -e ".[dev]"` + `pytest` bị chế độ auto của Claude Code chặn (cài/chạy mã tải từ ngoài). Chưa chạy trên máy này. Audit trước đó báo 4 passed ở môi trường khác — không tính là kiểm chứng ở đây. |
-| G0.3 | Runtime: Python 3.11+ | PASS | `python --version` → 3.12.8 |
-| G0.3 | Runtime: .NET 9 | BLOCKED (thiếu) | `C:\Program Files\dotnet\shared\Microsoft.NETCore.App`: 2.0.9, 3.1.28, 5.0.17, 6.0.x, 7.0.3, 8.0.10, 8.0.14 — không có 9.x. `ea.runtimeconfig.json` yêu cầu `net9.0`, rollForward `LatestPatch` → 8.0 không dùng được. `dotnet` không có trong PATH của Git Bash. |
-| G0.3 | Runtime: Effekseer 1.80.6 (`EffekseerCore.dll`) | BLOCKED (thiếu) | Không tìm thấy `EffekseerCore.dll`/thư mục `*effekseer*` trong Downloads, Desktop, Program Files, Program Files (x86), `C:\Tools`, `D:` (độ sâu ≤5); `C:\w01-samples\effekseer\` chưa có. |
-| G0.4 | Mở → sửa → lưu → mở lại một hiệu ứng | NOT_RUN | Cần G0.2 + .NET 9 + Effekseer. |
-| G0.5 | Render preview thật tự động (ảnh theo mốc thời gian) | NOT_RUN | Repo gốc không có renderer; xem "Đường render đề xuất". Chưa có ảnh nào → không tuyên bố PASS. |
+| G0.1 | Chép mã effekseer-ai vào `three-workspace-app/vfx/` | PASS | Commit gốc `208922e`; 20 file, ~102 KB; 0 binary; LICENSE MIT giữ nguyên; nguồn ghi ở `vfx/NOTICE.md` |
+| G0.2 | 4 test sẵn có | PASS | `pytest -v`: **4 passed** in 0.03 s (mcp 2.3.0, pythonnet 3.2.1, pytest 9.1.1, Python 3.12.8). Lần chạy đầu 3 passed + 1 error do sandbox chặn `%TEMP%\pytest-of-Administrator`; chạy lại với `--basetemp` trong scratchpad → 4 passed. Test này chỉ kiểm CLI/cấu hình, không chạm Effekseer. |
+| G0.3 | Runtime: Python 3.11+ | PASS | 3.12.8 |
+| G0.3 | Runtime: .NET 9 | PASS | Máy chỉ có 2.0–8.0.14. Đã tải `dotnet-runtime-9.0.21-win-x64.zip` (SHA-512 khớp `releases.json` Microsoft), giải nén `C:\w01-samples\effekseer\dotnet-9.0.21` (76 MB), dùng qua `DOTNET_ROOT`. Thiếu `DOTNET_ROOT` → pythonnet báo "Failed to create a .NET runtime (coreclr)" (đã thử). Effekseer kèm runtime riêng 9.0.17 cho `Effekseer.exe`, nhưng pythonnet không dùng được bản đó. |
+| G0.3 | Runtime: Effekseer 1.80.6 | PASS | `Effekseer1.80.6Win.zip` 96 564 040 byte, SHA-256 `faf73b3e…a2092a8c02` khớp digest GitHub release 1806; giải nén `C:\w01-samples\effekseer\1.80.6\Effekseer1.80.6Win\` (169 MB). `Tool\bin\EffekseerCore.dll` nạp được: mở `Sample\00_Basic\Laser01.efkefc` → 5 node, 0.74 s. |
+| G0.4 | Mở → sửa → lưu → mở lại | PASS | `tools/g0_roundtrip.py`, mỗi bước một process mới. Bản sao của `Laser01.efkefc`: `node/root/4/CommonValues/MaxGeneration` 60 → 67, đổi tên `node/root/0` "Laser" → "G0Renamed"; mở lại: giá trị 67, tên mới, 5/5 node, các node khác không đổi, file nguồn giữ nguyên hash; `.efkefc` 5 993 byte, export `.efk` 4 360 byte. 4.1 s. |
+| G0.5 | Render preview thật tự động | PASS | `tools/render_preview.py` (mục "Đường render"). 5 ảnh PNG 512×512 tại frame 0/15/30/60/120 (60 fps), 2.5 s cho 5 ảnh. Ảnh đã được mở xem: có laser, hạt, glow đúng texture mẫu. Render 2 lần cho **cùng SHA-256** ở cả 5 frame (tất định). Bản sửa khác bản gốc đúng chỗ kỳ vọng (bảng dưới). |
 | G0.6 | **Chạy trong BBS FS** (gate MVP, tách khỏi cấu trúc/hình/hiệu năng) | BLOCKED | BBS FS 2.4 không có đường phát Effekseer trong mã nguồn (xem mục "BBS FS phát Effekseer bằng cách nào"). Cần người dùng chốt đường phát. |
+
+Phân biệt: G0.4/G0.5 là kiểm **cấu trúc** và **hình ảnh trong renderer của Effekseer**. Chưa có số đo hiệu năng
+trong game và chưa chạy trong Minecraft/BBS; các gate đó vẫn mở.
+
+## Đường render (G0.5)
+`.efkefc` → EffekseerCore (`Effekseer.Binary.Exporter`) xuất byte `.efk` trong bộ nhớ → `EffekseerCoreGUI.dll`
+(binding `Effekseer.swig`) → `Viewer.dll` native của editor 1.80.6: `IO.Initialize()`, `GraphicsDevice.Create`
+(DirectX 11 trên một cửa sổ Win32 **ẩn**, không hiện gì lên màn hình), `EffectSetting` + `SoundDevice`, `EffectFactory.LoadEffect`
+(đường dẫn gốc để tìm texture tương đối), camera `ViewPointController` (khoảng cách 15, góc X 20°, Y 30°, phối cảnh, RH)
+→ `EffectRecorder` chế độ **Sprite**, 1 ảnh mỗi lần ghi, `OffsetFrame` = frame cần chụp. Đây là cùng bộ ghi mà
+menu Recorder của GUI dùng, gọi trực tiếp không qua GUI.
+
+- `Effekseer.exe -cui` chỉ có `-in -o -f -e -m` (xuất), không render; đã đọc chuỗi trong `Effekseer.dll`.
+- Không cần EffekseerForWebGL; không tải.
+- Thiếu `IO.Initialize()` hoặc truyền `SoundDevice` null → `LoadEffect` crash (0xC0000005 / 0xC0000374). Đã ghi trong code.
+- Đầu ra: `<out>/tNNNN.png` + `preview.json` (frame, giây, byte, SHA-256, số pixel khác nền với ngưỡng 8/255).
+- Ảnh sinh ra để ngoài repo: `C:\w01-samples\effekseer\work\preview\` (không commit).
+
+### Số đo render `Laser01` gốc và bản sửa (nền 20,20,24)
+| Frame (s) | Gốc: pixel sáng | Gốc lặp lại cùng hash | Bản sửa: pixel sáng | Bản sửa lặp lại cùng hash | Bản sửa = gốc | Nền sáng 225,225,230 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 (0.00) | 5 333 | có | 5 333 | có | có | 5 333 |
+| 15 (0.25) | 51 704 | có | 51 704 | có | có | 51 688 |
+| 30 (0.50) | 84 761 | có | 84 761 | có | có | 84 723 |
+| 60 (1.00) | 15 015 | có | 16 021 | có | **không** | 16 016 |
+| 120 (2.00) | 0 | có | 0 | có | có | 0 |
+
+Đọc số: tăng `MaxGeneration` của node Particle (60 → 67) chỉ đổi hình khi các hạt sinh thêm xuất hiện, nên frame 60 khác
+(+1 006 pixel), các frame trước giống hệt. Frame 120 trống vì hiệu ứng mẫu đã kết thúc trước 2 s (không phải lỗi render;
+ảnh vẫn có nền). Trên nền sáng, glow cộng sáng (additive) bị loá trắng — đúng bản chất blend, cần nhớ khi đánh giá hình.
 
 ## BBS FS phát Effekseer bằng cách nào (MVP, người dùng chốt 2026-10-22)
 Tiêu chí MVP (`docs/DECISIONS.md`): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật. Không đưa vào gói
@@ -51,48 +82,25 @@ khảo sát API AAA cho hướng 1. Mọi hướng đều cần đề xuất v�
 - Cách xác nhận "chạy được": ảnh/video chụp trong game ở các tick cụ thể, do người dùng chụp hay cho phép tự động
   (có `MCP_SCREEN_CAPTURE` trên máy, chưa đọc).
 
-## Cần người dùng đồng ý tải (chưa tải gì)
-| File | Nguồn | Dung lượng | Dùng cho |
-| --- | --- | --- | --- |
-| `dotnet-runtime-9.0.21-win-x64.exe` (hoặc `.zip` 34.3 MB, không cần cài hệ thống) | https://builds.dotnet.microsoft.com/dotnet/Runtime/9.0.21/dotnet-runtime-9.0.21-win-x64.exe (Microsoft, bản 9.0.21 ngày 2026-10-13) | 28.6 MB | Python.NET nạp `EffekseerCore.dll` |
-| `Effekseer1.80.6Win.zip` | https://github.com/effekseer/Effekseer/releases/download/1806/Effekseer1.80.6Win.zip (phát hành 2026-07-12) | 92.1 MB | Effekseer Core + Editor; giải nén vào `C:\w01-samples\effekseer\1.80.6\` |
-| `EffekseerForWebGL1.80.7.zip` (tuỳ chọn, cho đường render B) | https://github.com/effekseer/Effekseer/releases/download/1807/EffekseerForWebGL1.80.7.zip | 2.8 MB | Runtime WebGL để render `.efk` không cần GUI. Release 1806 không có gói WebGL; dùng 1.80.7 hoặc 1.80.5 phải kiểm đọc `.efk` từ 1.80.6. |
-| Gói Python `mcp>=1.0`, `pythonnet>=3.0`, `pytest>=7.4` (PyPI) | PyPI, cài vào `three-workspace-app/vfx/.venv` (gitignored) | vài MB | Chạy 4 test và CLI |
-
-Lưu ý: bản Effekseer mới nhất là 1.80.7 (2026-08-07); effekseer-ai chỉ khai báo kiểm với 1.80.6 → đề xuất giữ 1.80.6.
-Cấu trúc `Tool/bin` sau khi giải nén chưa kiểm (sẽ ghi lại khi có file).
-
-## Đường render đề xuất (chưa chạy)
-Repo gốc chủ ý không điều khiển GUI Effekseer và không có lệnh render. Hai hướng, thử theo thứ tự:
-
-- **A. Recorder của Effekseer Editor** — có trong GUI; chưa biết có chạy được bằng dòng lệnh/không cửa sổ. Kiểm tra
-  `Effekseer.exe --help`/tham số CLI sau khi tải. Nếu chỉ chạy được qua GUI thì loại (không tự động hoá ổn định).
-- **B. EffekseerForWebGL + Chromium headless (đề xuất chính)** — `effect_export` → `.efk` → trang HTML cục bộ (three.js +
-  `effekseer.min.js`/`.wasm`) → bước runtime đúng số frame (60 fps) → chụp PNG tại các mốc, ví dụ 0 / 0.25 / 0.5 / 1.0 / 2.0 s,
-  nền tối và nền sáng. Chạy bằng Playwright/Chromium đã có trong workspace (test App 3). Đầu ra: `artifacts/preview/<effect>/t0250.png`
-  + `preview.json` (phiên bản runtime, frame, kích thước, hash ảnh, số pixel khác nền để phát hiện ảnh trống).
-  Rủi ro: renderer WebGL có thể khác Editor/AAA Particles (material, distortion) → ghi rõ là preview WebGL, không thay kiểm thử trong Minecraft.
-
-Hiệu ứng mẫu cho G0.4/G0.5: tạo mới bằng CLI (`effekseer-ai new`, `node-add`, đặt màu/lượng sinh), lưu `.efkefc`, mở lại,
-so `node-list` + giá trị thuộc tính trước/sau; không dùng asset bên thứ ba ở G0.
-
-## Lệnh chạy lại (sau khi được đồng ý và cài xong)
+## Lệnh chạy lại
 ```powershell
 cd C:\w01-vfx\three-workspace-app\vfx
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev]"
-.\.venv\Scripts\python -m pytest -v                      # G0.2: kỳ vọng 4 passed
-$env:EFFEKSEER_AI_BIN_DIR = 'C:\w01-samples\effekseer\1.80.6\Tool\bin'
-.\.venv\Scripts\effekseer-ai new C:\w01-samples\effekseer\work\g0.efkefc   # G0.4 bắt đầu
+.\.venv\Scripts\python -m pytest -v                                  # G0.2: 4 passed
+$env:EFFEKSEER_AI_BIN_DIR = 'C:\w01-samples\effekseer\1.80.6\Effekseer1.80.6Win\Tool\bin'
+$env:DOTNET_ROOT = 'C:\w01-samples\effekseer\dotnet-9.0.21'
+$W = 'C:\w01-samples\effekseer\work'                                  # bản sao Sample\00_Basic ở $W\00_Basic
+.\.venv\Scripts\python tools\g0_roundtrip.py "$W\00_Basic\Laser01.efkefc" "$W\00_Basic"         # G0.4
+.\.venv\Scripts\python tools\render_preview.py "$W\00_Basic\g0_edit.efkefc" "$W\preview\edit"   # G0.5
+.\.venv\Scripts\python tools\render_preview.py "$W\00_Basic\g0_edit.efkefc" "$W\preview\light" --background 225,225,230
 ```
+Ghi chú: thư mục làm việc phải nằm cạnh texture của hiệu ứng (đường dẫn tương đối). Sample của Effekseer chỉ dùng để
+kiểm, không commit, không đưa vào gói phân phối (license từng sample khác nhau).
 
 ## Câu cần người dùng chốt
-1. Cho phép tải .NET 9.0.21 runtime (28.6 MB), Effekseer 1.80.6 Win (92.1 MB), gói PyPI, và (tuỳ chọn) EffekseerForWebGL (2.8 MB)?
-   Cũng cần cho phép Claude Code chạy `pip install`/`pytest` (đang bị chế độ auto chặn).
-2. Bản Effekseer đang dùng thật: 1.80.6 hay khác? Bản AAA Particles và Minecraft/loader (kế hoạch giả định Java 1.20.1 Fabric, AAA 2.2.3)?
-   Bản BBS (mod) đang dùng?
-3. Xem preview bằng cách nào: ảnh PNG theo mốc thời gian (mặc định), bảng ảnh ghép, hay video MP4?
-4. Chấp nhận preview qua WebGL (đường B) làm preview tự động chính, biết rằng có thể khác Editor/AAA?
-5. License mặc định khi tìm asset: chỉ CC0 (đề xuất) hay cho cả CC-BY có ghi công?
-6. Đường phát VFX trong BBS FS: hướng 1 (addon BBS + AAA), 2 (chuyển sang particle BBS) hay cả hai? Xem mục BBS ở trên.
-7. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được?
+1. Đường phát VFX trong BBS FS: hướng 1 (addon BBS + AAA), 2 (chuyển sang particle BBS) hay cả hai? Xem mục BBS ở trên.
+2. Bản Effekseer đang dùng thật: 1.80.6 hay khác? Bản AAA Particles (nếu có) và bản BBS FS (2.4 hay 2.7) đang chơi?
+3. Xem preview bằng cách nào: ảnh PNG theo mốc thời gian (đang có), bảng ảnh ghép (Recorder có SpriteSheet), hay GIF/video (Recorder có Gif/AVI/H264, chưa thử)?
+4. License mặc định khi tìm asset: chỉ CC0 (đề xuất) hay cho cả CC-BY có ghi công?
+5. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được? (Codex cloud chạy Linux, không có Effekseer Windows: chỉ chạy được 4 test, không render.)
