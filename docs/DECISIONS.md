@@ -45,6 +45,10 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   của Action** (tránh cộng root hai lần; Action dùng lại được). G2b đã làm theo cách này.
 - Chốt 2026-10-22: người dùng chơi **BBS FS 2.7** (không phải 2.4). Film đang xuất theo worker 2.4 → kiểm khác biệt
   2.4 → 2.7 rồi chuyển đích nếu cần.
+  Kết quả đọc mã (2.4 `0085f77` → 2.7 `998c9d5`, 882 commit): 2.7 **cố ý đọc film cũ** — `Film.fromData` chạy
+  `FilmStableIds` khi `SaveVersion < 2` (chỉ số replay/xương → id ổn định), `FormProperties.readLegacy` đổi khoá
+  track cũ (kể cả `transform` → `pose_transform`), `FilmLegacy.migrateHotbar`. Vì vậy **giữ worker 2.4**, chưa đổi đích;
+  phải thử trong game 2.7 (chưa chạy được ngoài game: cần build 2.7 với Minecraft). Lỗi khi thử → chuyển đích 2.7.
 
 ## Hợp đồng GLB trao đổi v1.0.0
 File GLB:

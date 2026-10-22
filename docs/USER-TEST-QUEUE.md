@@ -11,6 +11,8 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 | `bobj/*.minecraft20.bobj` (App 1, code mới nhất có D4 thân trên) | Nạp vào model Steve/Minecraft20 trong BBS FS | Thân trên không xô lệch; cẳng tay không thành hình nêm; chân không đảo |
 
 Đã kiểm trên máy: `.dat` đọc lại bằng codec BBS (nativeReadback), BOBJ đọc lại đủ 20 xương. **Chưa** chạy trong game.
+**Thử trên BBS FS 2.7** (bản người dùng chơi). Film viết theo định dạng 2.4; 2.7 có sẵn bộ chuyển film cũ khi mở. Nếu
+mở được nhưng sai (mất pose, sai camera, sai actor), ghi lại shot + ảnh để Claude chuyển worker sang 2.7.
 
 ### Tập 15 (thêm 2026-10-22)
 | File | Cách thử | Đạt khi |
