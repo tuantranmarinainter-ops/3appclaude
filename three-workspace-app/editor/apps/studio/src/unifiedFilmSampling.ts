@@ -11,7 +11,7 @@ import { projectEvaluationScene, sampleProjectCameraSequence, sampleProjectSkele
 export interface FilmSamplingArgs {
   characterIds: string[]
   /** Film content to include. Omitted values preserve the historical Characters-only export. */
-  content?: 'characters' | 'backdrops' | 'both'
+  content?: string
   /** Static scene backdrops (prop nodes) to carry into the Film as unanimated model actors. */
   propIds?: string[]
   sequenceId: string
@@ -45,8 +45,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveContentSelection(project: UnifiedProject, args: FilmSamplingArgs) {
-  const content = args.content ?? (args.propIds?.length ? 'both' : 'characters')
-  if (!['characters', 'backdrops', 'both'].includes(content)) fail('content must be characters, backdrops, or both')
+  const requestedContent = args.content ?? (args.propIds?.length ? 'both' : 'characters')
+  if (!['characters', 'backdrops', 'both'].includes(requestedContent)) fail('content must be characters, backdrops, or both')
+  const content = requestedContent as 'characters' | 'backdrops' | 'both'
   if (content === 'backdrops' && args.characterIds.length) fail('Backdrop-only Film content cannot include Characters')
   const characterIds = content === 'backdrops' ? [] : args.characterIds
   if (!Array.isArray(characterIds) || (content !== 'backdrops' && !characterIds.length) || characterIds.length > 64 ||

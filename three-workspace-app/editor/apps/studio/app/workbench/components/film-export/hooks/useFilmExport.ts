@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
 import { chooseDirectory, saveJob } from '../../scene-render/utils'
@@ -34,40 +34,44 @@ export function useFilmExport(project: UnifiedProject) {
   const [checkingPreflight, setCheckingPreflight] = useState(false)
   const preflightGeneration = useRef(0)
 
-  const range = { startFrame, endFrame }
-  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, content, characterIds, propIds, sequenceId, range, viewportAspect })
+  const selectionArgs = useMemo(() => {
+    const range = { startFrame, endFrame }
+    if (exportMode === 'series') return { characterIds, sequenceId, range, viewportAspect }
+    if (content === 'characters') return { characterIds, sequenceId, range, viewportAspect }
+    return { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds, sequenceId, range, viewportAspect }
+  }, [exportMode, content, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
+  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
   const passedKey = useRef<string | null>(null)
   useEffect(() => {
     const revision = project.revision
     const generation = ++preflightGeneration.current
-    const args = exportMode === 'series'
-      ? { characterIds: [...characterIds], sequenceId, range: { ...range }, viewportAspect }
-      : { content, characterIds: content === 'backdrops' ? [] : [...characterIds], propIds: content === 'characters' ? [] : [...propIds], sequenceId, range: { ...range }, viewportAspect }
-    const requestKey = JSON.stringify({ projectId: project.projectId, revision, ...args })
+    let cancelled = false
+    const args = selectionArgs
+    const requestKey = currentKey
     setPreflight(null); setPreflightRevision(null); setPreflightKey(null); passedKey.current = null; setCheckingPreflight(true)
     const timer = setTimeout(() => {
       void sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: revision,
         command: 'film.preflight', args }).then((response) => {
-        if (generation !== preflightGeneration.current || response.revision !== revision || response.result.sourceRevision !== revision) return
+        if (cancelled || generation !== preflightGeneration.current || response.revision !== revision || response.result.sourceRevision !== revision) return
         setPreflight(response.result.preflight as FilmPreflightResult)
         setPreflightRevision(revision)
         setPreflightKey(requestKey)
         passedKey.current = requestKey
       }).catch((cause) => {
-        if (generation !== preflightGeneration.current) return
+        if (cancelled || generation !== preflightGeneration.current) return
         const message = cause instanceof Error ? cause.message : String(cause)
         const failure: FilmPreflightIssue = { code: 'PREFLIGHT_FAILED', message: { vi: message, en: message } }
         setPreflight({ errors: [failure], warnings: [] })
         setPreflightRevision(revision)
         setPreflightKey(requestKey)
       }).finally(() => {
-        if (generation === preflightGeneration.current) setCheckingPreflight(false)
+        if (!cancelled && generation === preflightGeneration.current) setCheckingPreflight(false)
       })
     }, 250)
-    return () => { clearTimeout(timer); preflightGeneration.current++ }
-  }, [project.projectId, project.revision, exportMode, content, characterIds.join('\0'), propIds.join('\0'), sequenceId, startFrame, endFrame, viewportAspect])
+    return () => { clearTimeout(timer); cancelled = true }
+  }, [project.projectId, project.revision, selectionArgs, currentKey])
 
   // The whole-range preflight enforces single-Film limits (ticks, cameras, bones) that a series splits around; the series job
   // validates every segment itself. TODO(B10/B11 follow-up): run the preflight per planned segment instead.
