@@ -3,11 +3,13 @@
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
+import { BbsInstallPanel } from './BbsInstallPanel'
 
 export function FilmExportPanel({ project }: { project: UnifiedProject }) {
   const vi = useStudioLocale() === 'vi'
   const state = useFilmExport(project)
   return (
+    <>
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
       <h2 id="wb-film-export-title">{vi ? 'Gói BBS FS 2.4' : 'BBS FS 2.4 package'}</h2>
       <div className="wb-film-export-controls">
@@ -35,5 +37,7 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
         {state.error && <p className="wb-scene-render-error" role="alert">{state.error}</p>}
       </div>
     </section>
+    <BbsInstallPanel />
+    </>
   )
 }
