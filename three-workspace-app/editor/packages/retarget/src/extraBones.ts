@@ -1,4 +1,4 @@
-import { MIXAMO65_BONE_PARENTS } from './mixamo65.ts'
+import { MIXAMO65_BONE_PARENTS } from './mixamo65'
 
 export interface ExtraBone { name: string; parent: string; rest: { position: number[]; rotation: number[]; scale: number[] } }
 
