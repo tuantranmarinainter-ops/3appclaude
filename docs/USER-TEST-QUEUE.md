@@ -11,8 +11,8 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 | `bobj/*.minecraft20.bobj` (App 1, code mới nhất có D4 thân trên) | Nạp vào model Steve/Minecraft20 trong BBS FS | Thân trên không xô lệch; cẳng tay không thành hình nêm; chân không đảo |
 
 Đã kiểm trên máy: `.dat` đọc lại bằng codec BBS (nativeReadback), BOBJ đọc lại đủ 20 xương. **Chưa** chạy trong game.
-**Thử trên BBS FS 2.7** (bản người dùng chơi). Film viết theo định dạng 2.4; 2.7 có sẵn bộ chuyển film cũ khi mở. Nếu
-mở được nhưng sai (mất pose, sai camera, sai actor), ghi lại shot + ảnh để Claude chuyển worker sang 2.7.
+**Thử trên BBS FS 2.4** (`S:\Minecraft\Minecraft Forge-1.20.1`): đổi `bbs fs-2.4-1.20.1.jar.ok` thành `.jar` để bật, tắt
+`bbs-1.6.2-1.20.1.jar` (hai mod cùng id `bbs`). Sai gì thì ghi shot + ảnh.
 
 ### Tập 15 (thêm 2026-10-22)
 | File | Cách thử | Đạt khi |
@@ -36,8 +36,7 @@ mở được nhưng sai (mất pose, sai camera, sai actor), ghi lại shot + �
 
 ## 4. Quyết định còn chờ
 - Đã chốt 2026-10-22: vị trí App 3 = `placementKeys` giữ root Action; duyệt 4 điểm thư viện App 5; giữ nhánh
-  `claude/d2-fingers` chưa merge; VFX → particle BBS trước; người dùng chơi BBS FS **2.7**.
-- Còn hỏi: thư mục Minecraft 1.20.1 Fabric đang chơi, có AAA Particles không.
+  `claude/d2-fingers` chưa merge; VFX → particle BBS trước; đích **BBS FS 2.4** (instance `S:\Minecraft\Minecraft Forge-1.20.1`, không có AAA).
 
 ## Ghi chú kỹ thuật
 - Film export lỗi `FileNotFoundError ... .film-m...` nếu thư mục project quá sâu (giới hạn 260 ký tự đường dẫn của Windows).

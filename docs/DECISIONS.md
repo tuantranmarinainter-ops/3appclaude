@@ -26,7 +26,7 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   (giữ LICENSE gốc + ghi nguồn) để Codex cloud làm được; DLL Effekseer/.NET không commit. Kế hoạch: `docs/VFX-APP4-PLAN.md`
   (DRAFT, bắt đầu từ giai đoạn 0: xác minh runtime + render tự động trên máy Windows).
 - **MVP App 4 (người dùng chốt 2026-10-22): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật.**
-  BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS (Snowstorm JSON) trước**
+  BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS FS 2.4 (Snowstorm JSON) trước**
   (chạy native, chặn tính năng không hỗ trợ khi xuất); song song khảo sát addon gọi AAA Particles. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
   bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 
@@ -43,12 +43,10 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 - App 2 nhận Action mới thì thay clip bằng UUID mới, giữ Action gốc.
 - Chốt 2026-10-22: vị trí sửa ở App 3 lưu thành key vị trí riêng trong cảnh (`placementKeys`), **giữ nguyên root
   của Action** (tránh cộng root hai lần; Action dùng lại được). G2b đã làm theo cách này.
-- Chốt 2026-10-22: người dùng chơi **BBS FS 2.7** (không phải 2.4). Film đang xuất theo worker 2.4 → kiểm khác biệt
-  2.4 → 2.7 rồi chuyển đích nếu cần.
-  Kết quả đọc mã (2.4 `0085f77` → 2.7 `998c9d5`, 882 commit): 2.7 **cố ý đọc film cũ** — `Film.fromData` chạy
-  `FilmStableIds` khi `SaveVersion < 2` (chỉ số replay/xương → id ổn định), `FormProperties.readLegacy` đổi khoá
-  track cũ (kể cả `transform` → `pose_transform`), `FilmLegacy.migrateHotbar`. Vì vậy **giữ worker 2.4**, chưa đổi đích;
-  phải thử trong game 2.7 (chưa chạy được ngoài game: cần build 2.7 với Minecraft). Lỗi khi thử → chuyển đích 2.7.
+- Chốt 2026-10-22 (người dùng xác nhận lại): đích là **BBS FS 2.4** ("chính là 2.4 bbs fs") — đúng worker film hiện tại.
+  Instance của người dùng: `S:\Minecraft\Minecraft Forge-1.20.1` (Forge 47.4.10 + Sinytra Connector chạy mod Fabric),
+  jar `bbs fs-2.4-1.20.1.jar`, thư mục `config/bbs/assets/particles`. Không có AAA Particles. Mã nguồn 2.4 = `0085f77`.
+  (Nhắc "2.7" trước đó là nhầm; 2.7 có sẵn bộ đọc film 2.4 nếu sau này nâng cấp.)
 
 ## Hợp đồng GLB trao đổi v1.0.0
 File GLB:
