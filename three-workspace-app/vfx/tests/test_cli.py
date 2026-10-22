@@ -10,7 +10,7 @@ def test_cli_exposes_only_the_portable_effect_bridge_commands() -> None:
     )
     commands = set(command_parser.choices)
 
-    assert {"new", "open", "save", "export", "node-list", "node-add", "edit-undo", "effect-dump"} <= commands
+    assert {"new", "open", "save", "export", "node-list", "node-add", "edit-undo", "effect-dump", "bbs-package"} <= commands
     assert not {
         "generate",
         "model-convert",
@@ -36,5 +36,5 @@ def test_mcp_preserves_existing_tools_and_adds_one_step_undo() -> None:
         "effect_new", "effect_open", "effect_save", "effect_export",
         "node_list", "node_add", "node_rename", "node_remove", "node_move",
         "property_list", "property_get", "property_set", "asset_import_image",
-        "settings_list", "settings_set", "curve_list", "curve_set", "edit_undo",
+        "settings_list", "settings_set", "curve_list", "curve_set", "edit_undo", "bbs_package",
     }

@@ -78,7 +78,7 @@ CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
 
 | 分类 | 命令 |
 | --- | --- |
-| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump` |
+| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump`、`bbs-package` |
 | 节点 | `node-list`、`node-add`、`node-rename`、`node-remove`、`node-move` |
 | 属性 | `property-list`、`property-get`、`property-set` |
 | 资源 | `image-import` |
@@ -98,6 +98,16 @@ effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
 ```
 
 默认情况下，只要有节点为 `BLOCKED`，就阻止输出所有 scheme。显式使用 `--allow-partial` 后，只输出受支持节点，并在报告中保留所有阻断项。报告会写明时间换算、20 Hz 量化、近似项和 Additive 到 Alpha 的亮度补偿。EffectIR 结构见 [VFX-IR-CONTRACT.md](../../docs/VFX-IR-CONTRACT.md)。此转换只验证结构近似；仍须单独在 BBS FS 2.7 游戏内验证。
+
+### 打包到 BBS FS
+
+在 EffectIR 的 `assets` 数组中为每张外部纹理填写 `path`、`license` 和 `credit`；`source` 可指定资源根目录下的相对路径。然后运行：
+
+```powershell
+effekseer-ai bbs-package .\effect-ir.json .\out\effect.zip --assets-root .
+```
+
+压缩包包含 `config/bbs/assets/particles/`、引用的纹理、转换报告、资源清单、`CREDITS.md`，以及包含 `ParticleForm` actor/bone 用法和暂停/重启提示的说明。默认遇到阻断节点时不生成 ZIP；仅在明确指定 `--allow-partial` 时打包部分结果。MCP 服务也提供 `bbs_package` 工具。
 
 ## MCP 服务
 

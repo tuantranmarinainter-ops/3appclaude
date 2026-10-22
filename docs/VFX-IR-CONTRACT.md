@@ -27,6 +27,8 @@ EffectIR is the JSON boundary between Effekseer Core extraction (`effect_dump`) 
 }
 ```
 
+Optional `assets` entries declare external texture files used by the nodes. Each entry must include a package-relative `path`, a `license`, and a `credit`; `source` optionally selects a source file relative to the `--assets-root` directory, and `url` may record provenance. The package command refuses to include an external texture without this metadata. Vanilla `assets:textures/particle/particles` does not need to be included.
+
 `schemaVersion` is an integer. `fps` is the source Effekseer frame rate; V2 currently emits a time conversion report for any finite positive value, with fixtures using 60 fps. `nodes` are in stable traversal order. `id` is stable for the live EffectSession; `path` is a stable node reference. Parent group nodes may use `renderType: "none"` and have no drawable scheme. Supported fields are `renderType`, `blend`, `texture`, `generation`, `life`, `location`, `size`, `color`, `lighting`, `flipbook`, and `unsupportedFeatures`. Raw Core properties may be included under `properties` for forward compatibility.
 
 The converter reports every unsupported or approximate property per node. `BLOCKED` nodes are omitted only with explicit `--allow-partial`; the report remains present in either mode. Time is converted as `seconds = sourceFrames / fps`, then rounded to the nearest 1/20 second. A `life.min < life.max` interval is kept as Snowstorm `math.random(minSeconds, maxSeconds)` using those quantized endpoints; the report marks it `APPROX`, including when quantization collapses the interval to one value. This is a structural conversion contract and does not certify visual similarity or BBS FS runtime behavior.
