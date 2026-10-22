@@ -8,7 +8,8 @@ import test from 'node:test'
 import { Matrix4 } from 'three'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { filmPreflight } from '../src/filmPreflight.ts'
+import { filmPreflight, filmSeriesPreflight } from '../src/filmPreflight.ts'
+import type { FilmSeriesSegment } from '../src/filmSeries.ts'
 import { executeUnifiedCommand, readUnifiedProject, UnifiedStoreError } from '../src/unifiedProjectStore.ts'
 import { stageAssetUpload } from '../src/unifiedAssetFiles.ts'
 import { inspectProjectFilm, preflightProjectFilm } from '../src/unifiedFilmSampling.ts'
@@ -162,4 +163,55 @@ test('film.preflight is read only, revision checked, and returns bilingual block
   assert.equal((await readUnifiedProject(projectId)).revision, before.revision)
   await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: before.revision + 1,
     command: 'film.preflight', args: {} }), (error: unknown) => error instanceof UnifiedStoreError && error.code === 'REVISION_CONFLICT')
+})
+
+test('single film preflight with an omitted range stays structured when selected actors have motion clips', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const character = clean.project.characters[clean.characterIds[0]!]!
+  const scene = structuredClone(clean.project.scene)
+  scene.content.timeline.animation.motionClips.push({ id: 'range-regression-motion', source: 'library', sourceDuration: 1,
+    frameStart: 0, frameEnd: 20, target: { type: 'character', nodeId: character.nodeId },
+    playback: { version: 1, speed: 1, loop: false, loopMode: 'none' },
+    motion: { assetId: 'range-regression-motion-asset', name: 'Walk', source: 'library', sourceRig: 'mixamorig', url: 'walk.fbx', inPlace: true, loop: false, speed: 1, time: 0 } } as never)
+  const saved = await executeUnifiedCommand({ requestId: randomUUID(), projectId: clean.project.projectId, expectedRevision: clean.revision,
+    command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: scene, fcurves: clean.project.extensions.topview?.fcurves ?? null }] } })
+  const response = await executeUnifiedCommand({ requestId: randomUUID(), projectId: clean.project.projectId, expectedRevision: saved.revision,
+    command: 'film.preflight', args: { characterIds: clean.characterIds, sequenceId: 'sequence-valid' } })
+  assert.equal(response.result.valid, false)
+  assert.ok((response.result.preflight as FilmPreflightResult).errors.some((entry) => entry.code === 'FILM_RANGE_INVALID'))
+})
+
+test('series preflight checks each planned segment and tags a single oversized shot with its segment', async () => {
+  const long = await validProject({ endFrame: 599, cameraCount: 1, characterCount: 1 })
+  const bad = await executeUnifiedCommand({ requestId: randomUUID(), projectId: long.project.projectId, expectedRevision: long.revision,
+    command: 'film.preflight', args: { mode: 'series', content: 'characters', characterIds: long.characterIds, propIds: [], sequenceId: 'sequence-valid' } })
+  const badResult = bad.result.preflight as FilmPreflightResult
+  assert.equal(bad.result.valid, false)
+  assert.ok(badResult.errors.some((entry) => entry.code === 'FILM_TICK_LIMIT' && entry.segment === 1 && entry.nodeId === undefined))
+  assert.ok(!badResult.errors.some((entry) => entry.code === 'FILM_SERIES_PLAN_INVALID'))
+
+  const split = await validProject({ endFrame: 599, cameraCount: 4, characterCount: 1 })
+  const good = await executeUnifiedCommand({ requestId: randomUUID(), projectId: split.project.projectId, expectedRevision: split.revision,
+    command: 'film.preflight', args: { mode: 'series', content: 'characters', characterIds: split.characterIds, propIds: [], sequenceId: 'sequence-valid' } })
+  const goodResult = good.result.preflight as FilmPreflightResult
+  assert.equal(good.result.valid, true, JSON.stringify(goodResult.errors))
+  assert.equal((good.result.segments as Array<{ segment: number }>).length, 2)
+  assert.ok(!goodResult.errors.some((entry) => entry.code === 'FILM_TICK_LIMIT'))
+  assert.equal(goodResult.warnings.every((entry) => entry.segment === 1 || entry.segment === 2), true)
+})
+
+test('series preflight keeps a middle planning failure and a later independent segment error', () => {
+  const project = projectFixture()
+  const segments: FilmSeriesSegment[] = [1, 2, 3].map((order) => ({
+    order,
+    range: { startFrame: 0, endFrame: 29 },
+    ticks: 20,
+    shots: [],
+    project,
+    exportArgs: { ...args, content: 'characters', propIds: [] },
+    planningIssues: order === 2 ? [{ code: 'CAMERA_EVALUATION_UNAVAILABLE', message: 'camera samples unavailable' }] : [],
+  }))
+  const report = filmSeriesPreflight(segments, new Map([[3, { assetAvailability: { 'sha256:asset': false } }]]))
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_SERIES_CAMERA_EVALUATION_UNAVAILABLE' && entry.segment === 2))
+  assert.ok(report.errors.some((entry) => entry.code === 'ASSET_FILE_MISSING' && entry.segment === 3))
 })

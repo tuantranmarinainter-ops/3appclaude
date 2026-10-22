@@ -3,6 +3,7 @@ import { inspectFilmActorTransform } from './filmManifest'
 import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { reviewStatusForSequence } from './sceneReview'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
+import type { FilmSeriesSegment } from './filmSeries'
 
 export interface FilmPreflightIssue {
   code: string
@@ -10,6 +11,7 @@ export interface FilmPreflightIssue {
   nodeId?: string
   clipId?: string
   frame?: number
+  segment?: number
 }
 
 export interface FilmPreflightArgs extends FilmSamplingArgs {
@@ -22,6 +24,26 @@ export interface FilmPreflightArgs extends FilmSamplingArgs {
 }
 
 export interface FilmPreflightResult { errors: FilmPreflightIssue[]; warnings: FilmPreflightIssue[] }
+
+/** Runs the same preflight independently for each planned series segment and annotates every issue. */
+export function filmSeriesPreflight(segments: readonly FilmSeriesSegment[], evidence: ReadonlyMap<number, Pick<FilmPreflightArgs, 'assetAvailability' | 'propBoneCounts' | 'footSamples'>> = new Map()): FilmPreflightResult {
+  const result: FilmPreflightResult = { errors: [], warnings: [] }
+  for (const segment of segments) {
+    const entry = filmPreflight(segment.project, { ...segment.exportArgs, ...evidence.get(segment.order) })
+    for (const planning of segment.planningIssues) {
+      entry.errors.push(issue(`FILM_SERIES_${planning.code}`, `Đoạn ${segment.order}: ${planning.message}`, `Segment ${segment.order}: ${planning.message}`))
+    }
+    const append = (target: FilmPreflightIssue[], values: FilmPreflightIssue[]) => {
+      for (const value of values) {
+        const tagged = { ...value, segment: segment.order }
+        if (!target.some((prior) => prior.segment === tagged.segment && prior.code === tagged.code && prior.nodeId === tagged.nodeId && prior.clipId === tagged.clipId && prior.frame === tagged.frame)) target.push(tagged)
+      }
+    }
+    append(result.errors, entry.errors)
+    append(result.warnings, entry.warnings)
+  }
+  return result
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
 const issue = (code: string, vi: string, en: string, details: Pick<FilmPreflightIssue, 'nodeId' | 'clipId' | 'frame'> = {}): FilmPreflightIssue => ({ code, message: { vi, en }, ...details })

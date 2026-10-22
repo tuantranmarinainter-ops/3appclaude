@@ -9,7 +9,7 @@ import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 import { stageAssetUpload } from '../src/unifiedAssetFiles'
-import { FILM_SERIES_ARCHIVE_SCRIPT, planFilmSeries } from '../src/filmSeries'
+import { FILM_SERIES_ARCHIVE_SCRIPT, planFilmSeries, planFilmSeriesWithCameraSamples } from '../src/filmSeries'
 import { cancelUnifiedJob, getUnifiedJob, startUnifiedFilmSeriesExport } from '../src/unifiedJobs'
 
 const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -72,12 +72,16 @@ test('film series groups 20 whole shots into seven worker-sized segments', async
   assert.equal(backdrops.result.segmentCount, 7)
 })
 
-test('film series rejects a shot that exceeds one worker segment without splitting it', async () => {
+test('film series retains an over-budget whole shot as a segment-level planning issue', async () => {
   const { projectId, characterId } = await twentyShotProject()
   const project = await readUnifiedProject(projectId)
   const sequence = project.scene.content.editorial!.sequences[0]!
   sequence.clips = [{ ...sequence.clips[0]!, sourceFrameStart: 0, sourceFrameEnd: 389 }]
-  assert.throws(() => planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9 }), /Shot shot-01 exceeds a single Film worker segment.*cut the shot shorter/)
+  assert.throws(() => planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], propIds: [], viewportAspect: 16 / 9 }), /Shot shot-01 exceeds a single Film worker segment.*cut the shot shorter/)
+  const plan = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], propIds: [], viewportAspect: 16 / 9 }, [], new Map(), { retainInvalidSingles: true })
+  assert.equal(plan.length, 1)
+  assert.equal(plan[0]!.shots[0]!.id, 'shot-01')
+  assert.ok(plan[0]!.planningIssues.some((item) => item.code === 'TICK_LIMIT'))
 })
 
 test('film series respects the exact 255-tick and bone-sample boundaries', async () => {
@@ -89,7 +93,7 @@ test('film series respects the exact 255-tick and bone-sample boundaries', async
     { ...sequence.clips[0]!, id: 'max-tick-shot', sourceFrameStart: 0, sourceFrameEnd: 254 },
     { ...sequence.clips[1]!, id: 'over-max-shot', sourceFrameStart: 255, sourceFrameEnd: 255 },
   ]
-  const tickBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9 })
+  const tickBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], propIds: [], viewportAspect: 16 / 9 })
   assert.deepEqual(tickBounded.map((segment) => segment.ticks), [255, 1])
 
   const original = project.characters[characterId]!
@@ -115,8 +119,116 @@ test('film series respects the exact 255-tick and bone-sample boundaries', async
     { ...boneSequence.clips[0]!, id: 'bone-budget-shot', sourceFrameStart: 0, sourceFrameEnd: maxBoneTicks - 1 },
     { ...boneSequence.clips[1]!, id: 'over-budget-shot', sourceFrameStart: maxBoneTicks, sourceFrameEnd: maxBoneTicks },
   ]
-  const boneBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds, viewportAspect: 16 / 9 })
+  const boneBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds, propIds: [], viewportAspect: 16 / 9 })
   assert.deepEqual(boneBounded.map((segment) => segment.ticks), [maxBoneTicks, 1])
+  const singleOverBudget = structuredClone(project)
+  singleOverBudget.scene.content.editorial!.sequences[0]!.clips = [{ ...boneSequence.clips[0]!, id: 'single-over-budget', sourceFrameStart: 0, sourceFrameEnd: maxBoneTicks }]
+  const invalidSingle = planFilmSeries(singleOverBudget, { sequenceId: 'episode', characterIds, propIds: [], viewportAspect: 16 / 9 }, [], new Map(), { retainInvalidSingles: true })
+  assert.ok(invalidSingle[0]!.planningIssues.some((item) => item.code === 'BONE_BUDGET'), JSON.stringify(invalidSingle[0]!.planningIssues))
+})
+
+test('auto selection resolves only actors with segment motion keys or camera targets and preserves explicit overrides', async () => {
+  const { projectId } = await twentyShotProject()
+  let project = await readUnifiedProject(projectId)
+  const actorIds = Object.keys(project.characters)
+  let revision = project.revision
+  for (let index = 1; index < 7; index++) {
+    const first = project.characters[actorIds[0]!]!
+    const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'character.add', args: {
+      assetId: first.assetId, skeletonId: first.skeletonId, name: `Scene actor ${index + 1}`,
+    } })
+    actorIds.push(String(added.result.characterId)); revision = added.revision; project = await readUnifiedProject(projectId)
+  }
+  project.scene.content.editorial!.sequences[0]!.clips = Array.from({ length: 6 }, (_, index) => ({
+    id: `scene-${index + 1}`, cameraNodeId: 'camera_1', sourceFrameStart: index * 30, sourceFrameEnd: index * 30 + 29,
+  }))
+  const camera = project.scene.content.nodes.find((node) => node.id === 'camera_1')!
+  camera.camera!.lookAtTarget = { nodeId: project.characters[actorIds[5]!]!.nodeId }
+  project.extensions.topview = { ...project.extensions.topview, fcurves: { version: 1, encoding: 'compact-v1', fcurves: [
+    ...actorIds.slice(0, 4).flatMap((id, index) => {
+      const nodeId = project.characters[id]!.nodeId
+      const frame = index * 30 + 12
+      return ['transform.position', 'transform.rotation'].map((property, component) => ({ id: `actor-${index}-${property}-${component}`, t: ['node', nodeId], p: property,
+        i: component, k: [[frame, component === 1 ? 45 : 0, 'linear', `key-${index}-${property}-${component}`]] }))
+    }),
+  ], userKeys: { [project.characters[actorIds[4]!]!.nodeId]: { rotation: [{ id: 'sidecar-rotation', frame: 132, value: [0, 25, 0], interpolation: 'linear' }] } } } }
+  const auto = planFilmSeries(project, { sequenceId: 'episode', characterIds: 'auto', propIds: [], viewportAspect: 16 / 9 })
+  assert.equal(auto.length, 2)
+  assert.deepEqual(auto.map((segment) => segment.exportArgs.characterIds), [
+    [...actorIds.slice(0, 3), actorIds[5]!], actorIds.slice(3, 6),
+  ])
+  const explicit = planFilmSeries(project, { sequenceId: 'episode', characterIds: [actorIds[0]!, actorIds[6]!], propIds: [], viewportAspect: 16 / 9 })
+  assert.deepEqual(explicit.map((segment) => segment.exportArgs.characterIds), Array.from({ length: auto.length }, () => [actorIds[0], actorIds[6]]))
+  const saved = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: project.revision, command: 'scene.apply', args: {
+    operations: [{ type: 'document.replace', document: project.scene, fcurves: project.extensions.topview?.fcurves ?? null }],
+  } })
+  const preflight = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: saved.revision, command: 'film.preflight', args: {
+    mode: 'series', content: 'characters', characterIds: 'auto', propIds: [], sequenceId: 'episode',
+  } })
+  assert.deepEqual((preflight.result.segments as Array<{ characterIds: string[] }>).map((segment) => segment.characterIds), [
+    [...actorIds.slice(0, 3), actorIds[5]!], actorIds.slice(3, 6),
+  ])
+  assert.equal(preflight.result.valid, true, JSON.stringify((preflight.result.preflight as { errors: unknown[] }).errors))
+  const defaultExport = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: saved.revision, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', name: 'auto-default',
+  } })
+  assert.equal(defaultExport.result.valid, true)
+  assert.deepEqual((defaultExport.result.segments as Array<{ characterIds: string[] }>).map((segment) => segment.characterIds),
+    (preflight.result.segments as Array<{ characterIds: string[] }>).map((segment) => segment.characterIds))
+  const withMotion = structuredClone(project)
+  withMotion.scene.content.timeline.animation.motionClips.push({ id: 'motion-only-auto-actor', source: 'library', sourceDuration: 1,
+    frameStart: 150, frameEnd: 160, target: { type: 'character', nodeId: withMotion.characters[actorIds[6]!]!.nodeId },
+    playback: { version: 1, speed: 1, loop: false, loopMode: 'none' },
+    motion: { assetId: 'motion-only-fixture', name: 'Walk', source: 'library', sourceRig: 'mixamorig', url: 'walk.fbx', inPlace: true, loop: false, speed: 1, time: 0 } } as never)
+  const motionAuto = planFilmSeries(withMotion, { sequenceId: 'episode', characterIds: 'auto', propIds: [], viewportAspect: 16 / 9 })
+  assert.ok(motionAuto[1]!.exportArgs.characterIds.includes(actorIds[6]!))
+})
+
+test('auto props use 20 Hz moving camera samples and include the exact 60 m boundary', async () => {
+  const { projectId, characterId, revision } = await twentyShotProject()
+  let currentRevision = revision
+  const propIds: string[] = []
+  for (const name of ['inside', 'boundary', 'outside']) {
+    const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: currentRevision, command: 'prop.add', args: {
+      assetId: (await readUnifiedProject(projectId)).characters[characterId]!.assetId, name,
+    } })
+    propIds.push(String(added.result.nodeId)); currentRevision = added.revision
+  }
+  const project = await readUnifiedProject(projectId)
+  const scene = structuredClone(project.scene)
+  const camera = scene.content.nodes.find((node) => node.id === 'camera_1')!
+  const props = scene.content.nodes.filter((node) => propIds.includes(node.id))
+  props[0]!.transform.position.x = 159.9
+  props[1]!.transform.position.x = 160
+  props[2]!.transform.position.x = 160.1
+  for (const prop of props) { prop.transform.position.y = 2; prop.transform.position.z = 4 }
+  const fcurves = [0, 1, 2].map((component) => ({ id: `camera-pos-${component}`, t: ['node', camera.id], p: 'transform.position', i: component,
+    k: [[0, component === 0 ? 1 : component === 1 ? 2 : 4, 'linear', `start-${component}`], [29, component === 0 ? 100 : component === 1 ? 2 : 4, 'linear', `end-${component}`]] }))
+  project.scene = scene
+  project.extensions.topview = { ...project.extensions.topview, fcurves: { version: 1, encoding: 'compact-v1', fcurves } }
+  const plan = await planFilmSeriesWithCameraSamples(project, { sequenceId: 'episode', characterIds: [characterId], propIds: 'auto', content: 'both', viewportAspect: 16 / 9 })
+  assert.deepEqual(plan[0]!.exportArgs.propIds, propIds.slice(0, 2), JSON.stringify(plan[0]!.planningIssues))
+  assert.ok(!plan[0]!.planningIssues.some((item) => item.code === 'CAMERA_EVALUATION_UNAVAILABLE'))
+  const explicit = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], propIds: [propIds[2]!], content: 'both', viewportAspect: 16 / 9 })
+  assert.deepEqual(explicit[0]!.exportArgs.propIds, [propIds[2]])
+  const all = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], propIds: 'all', content: 'both', viewportAspect: 16 / 9 })
+  assert.deepEqual(all[0]!.exportArgs.propIds, propIds)
+})
+
+test('series commands reject unknown and duplicate auto-selection values', async () => {
+  const { projectId, characterId } = await twentyShotProject()
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', characterIds: 'everything',
+  } }), /characterIds must be a unique ID array or "auto"/)
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', characterIds: [characterId, characterId],
+  } }), /characterIds must be a unique ID array or "auto"/)
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', characterIds: [characterId], propIds: 'nearby', content: 'both',
+  } }), /propIds must be a unique ID array, "all", or "auto"/)
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'film.preflight', args: {
+    mode: 'series', sequenceId: 'episode', characterIds: 'nearby',
+  } }), /film\.preflight accepts mode/)
 })
 
 test('middle segment failure keeps the parent reservation and leaves no partial series ZIP', async () => {

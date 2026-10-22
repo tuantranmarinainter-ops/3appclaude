@@ -26,12 +26,24 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
             <option value="both">{vi ? 'Cả nhân vật và hậu cảnh' : 'Characters and backdrops'}</option>
           </select>
         </label>
-        {(state.exportMode === 'series' || state.content !== 'backdrops') && <label>{vi ? 'Nhân vật' : 'Characters'}
+        {state.exportMode === 'series' && state.content !== 'backdrops' && <label>{vi ? 'Chọn nhân vật cho cả tập' : 'Episode character selection'}
+          <select value={state.seriesCharacterSelection} onChange={(event) => state.setSeriesCharacterSelection(event.target.value as 'auto' | 'selected')} disabled={state.busy}>
+            <option value="auto">{vi ? 'Tự chọn theo từng đoạn' : 'Auto per segment'}</option>
+            <option value="selected">{vi ? 'Dùng danh sách bên dưới' : 'Use the list below'}</option>
+          </select>
+        </label>}
+        {(state.content !== 'backdrops' && (state.exportMode === 'film' || state.seriesCharacterSelection === 'selected')) && <label>{vi ? 'Nhân vật' : 'Characters'}
           <select multiple value={state.characterIds} onChange={(event) => state.setCharacterIds(Array.from(event.target.selectedOptions, (option) => option.value))} disabled={state.busy} aria-label={vi ? 'Nhân vật cần xuất gói BBS FS' : 'Characters to export'}>
             {state.characters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
           </select>
         </label>}
-        {state.content !== 'characters' && <label>{vi ? 'Hậu cảnh' : 'Backdrops'}
+        {state.exportMode === 'series' && state.content !== 'characters' && <label>{vi ? 'Chọn hậu cảnh cho cả tập' : 'Episode backdrop selection'}
+          <select value={state.seriesPropSelection} onChange={(event) => state.setSeriesPropSelection(event.target.value as 'auto' | 'selected')} disabled={state.busy}>
+            <option value="auto">{vi ? 'Tự chọn trong phạm vi camera (≤ 60 m)' : 'Auto within camera range (≤ 60 m)'}</option>
+            <option value="selected">{vi ? 'Dùng danh sách bên dưới' : 'Use the list below'}</option>
+          </select>
+        </label>}
+        {state.content !== 'characters' && (state.exportMode === 'film' || state.seriesPropSelection === 'selected') && <label>{vi ? 'Hậu cảnh' : 'Backdrops'}
           <select multiple value={state.propIds} onChange={(event) => state.setPropIds(Array.from(event.target.selectedOptions, (option) => option.value))} disabled={state.busy} aria-label={vi ? 'Hậu cảnh cần xuất gói BBS FS' : 'Backdrops to export'}>
             {state.props.map((prop) => <option key={prop.id} value={prop.id}>{prop.name}</option>)}
           </select>
@@ -55,10 +67,10 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
         <div className="wb-film-preflight" aria-live="polite" aria-busy={state.checkingPreflight}>
           {state.checkingPreflight && <p>{vi ? 'Đang kiểm tra lựa chọn xuất…' : 'Checking the export selection…'}</p>}
           {state.preflight?.errors.map((item, index) => <p key={`error-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`} role="alert">
-            {vi ? 'Lỗi: ' : 'Error: '}{vi ? item.message.vi : item.message.en}
+            {vi ? 'Lỗi' : 'Error'}{item.segment === undefined ? '' : ` · ${vi ? 'Đoạn' : 'Segment'} ${item.segment}`}{vi ? ': ' : ': '}{vi ? item.message.vi : item.message.en}
           </p>)}
           {state.preflight?.warnings.map((item, index) => <p key={`warning-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`}>
-            {vi ? 'Cảnh báo: ' : 'Warning: '}{vi ? item.message.vi : item.message.en}
+            {vi ? 'Cảnh báo' : 'Warning'}{item.segment === undefined ? '' : ` · ${vi ? 'Đoạn' : 'Segment'} ${item.segment}`}{vi ? ': ' : ': '}{vi ? item.message.vi : item.message.en}
           </p>)}
           {state.preflight && !state.checkingPreflight && state.preflight.errors.length === 0 && state.preflight.warnings.length === 0 &&
             <p>{vi ? 'Kiểm tra trước khi xuất đạt.' : 'Preflight passed.'}</p>}

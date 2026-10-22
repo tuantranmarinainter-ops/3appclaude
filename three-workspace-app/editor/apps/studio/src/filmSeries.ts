@@ -1,9 +1,19 @@
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { preflightProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
+import { createFrameSnapshot, evaluateFrame } from '@topview/3d-builder/evaluate'
+import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
+import { projectEvaluationScene, sampleProjectCameraSequence } from './unifiedSkeletonEvaluation'
 
-export interface FilmSeriesContentArgs extends FilmSamplingArgs {
+export type FilmSeriesSelection = string[] | 'auto'
+export type FilmSeriesPropSelection = string[] | 'all' | 'auto'
+
+export interface FilmSeriesContentArgs extends Omit<FilmSamplingArgs, 'characterIds' | 'propIds'> {
+  characterIds: FilmSeriesSelection
+  propIds?: FilmSeriesPropSelection
   content?: string
 }
+
+export interface FilmSeriesPlanningIssue { code: string; message: string }
+export interface FilmSeriesCameraSample { shotId: string; sourceFrame: number; side: 'left' | 'right'; position: number[] }
 
 export interface FilmSeriesSegment {
   order: number
@@ -11,7 +21,8 @@ export interface FilmSeriesSegment {
   ticks: number
   shots: Array<{ id: string; cameraNodeId: string; startFrame: number; endFrame: number }>
   project: UnifiedProject
-  exportArgs: FilmSeriesContentArgs
+  exportArgs: FilmSamplingArgs & { content?: string }
+  planningIssues: FilmSeriesPlanningIssue[]
 }
 
 /** Python stdlib merger for native worker ZIPs; refuses traversal and differing asset collisions. */
@@ -70,34 +81,113 @@ with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:
 
 function fail(message: string): never { throw new TypeError(message) }
 
-/**
- * Groups complete editorial shots into Film-worker-sized sequences. The existing film preflight remains the
- * authority for source continuity, tick boundaries, camera count, and bone-sample budgets.
- */
-export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentArgs): FilmSeriesSegment[] {
+function selectedCharacterIds(project: UnifiedProject, clips: readonly { cameraNodeId: string; sourceFrameStart: number; sourceFrameEnd: number }[], selection: FilmSeriesSelection) {
+  if (Array.isArray(selection)) return [...selection]
+  const start = clips[0]!.sourceFrameStart, end = clips.at(-1)!.sourceFrameEnd
+  const nodeToCharacter = new Map(Object.values(project.characters).map((item) => [item.nodeId, item.id]))
+  const selected = new Set<string>()
+  for (const motion of project.scene.content.timeline.animation.motionClips) {
+    if (motion.frameEnd < start || motion.frameStart > end) continue
+    const id = nodeToCharacter.get(motion.target.nodeId)
+    if (id) selected.add(id)
+  }
+  const rawFcurves = project.extensions.topview?.fcurves as { fcurves?: Array<{ t?: unknown; p?: unknown; k?: unknown[] }> } | undefined
+  for (const curve of rawFcurves?.fcurves ?? []) {
+    if (curve.p !== 'transform.position' && curve.p !== 'transform.rotation') continue
+    const targetId = Array.isArray(curve.t) ? String(curve.t[1]) : String(curve.t ?? '')
+    const id = nodeToCharacter.get(targetId)
+    if (!id || !Array.isArray(curve.k)) continue
+    if (curve.k.some((key) => Array.isArray(key) && Number.isFinite(Number(key[0])) && Number(key[0]) >= start && Number(key[0]) <= end)) selected.add(id)
+  }
+  const userKeys = projectEvaluationScene(project).userKeys as Record<string, Record<string, Array<{ frame: number }>>>
+  for (const [nodeId, tracks] of Object.entries(userKeys)) {
+    const id = nodeToCharacter.get(nodeId)
+    if (!id) continue
+    for (const property of ['position', 'rotation'] as const) {
+      if (tracks[property]?.some((key) => key.frame >= start && key.frame <= end)) selected.add(id)
+    }
+  }
+  const cameraIds = new Set(clips.map((clip) => clip.cameraNodeId))
+  for (const camera of project.scene.content.nodes.filter((node) => cameraIds.has(node.id))) {
+    const targets = [camera.camera?.subject?.nodeId, camera.camera?.lookAtTarget?.nodeId]
+    for (const target of targets) {
+      const id = target ? nodeToCharacter.get(target) : undefined
+      if (id) selected.add(id)
+    }
+  }
+  return [...selected]
+}
+
+function selectedPropIds(project: UnifiedProject, clips: readonly { id: string; cameraNodeId: string; sourceFrameStart: number; sourceFrameEnd: number }[], selection: FilmSeriesPropSelection | undefined, sequenceCameraFrames: readonly FilmSeriesCameraSample[]) {
+  const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
+  if (Array.isArray(selection)) return [...selection]
+  if (selection === 'all') return props.map((node) => node.id)
+  const start = clips[0]!.sourceFrameStart, end = clips.at(-1)!.sourceFrameEnd
+  const shotIds = new Set(clips.map((clip) => clip.id))
+  const cameraPositions = sequenceCameraFrames.filter((sample) => shotIds.has(sample.shotId) && sample.sourceFrame >= start && sample.sourceFrame <= end + 1)
+  if (!cameraPositions.length) return []
+  const scene = projectEvaluationScene(project)
+  const snapshot = createFrameSnapshot()
+  const selected = new Set<string>()
+  for (const camera of cameraPositions) {
+    evaluateFrame({ ...scene, exportSampleBoundary: camera.side }, camera.sourceFrame, snapshot)
+    for (const prop of props) {
+      const transform = snapshot.transforms.get(prop.id)
+      if (!transform) continue
+      const dx = transform.position.x - camera.position[0]!, dy = transform.position.y - camera.position[1]!, dz = transform.position.z - camera.position[2]!
+      if (dx * dx + dy * dy + dz * dz <= 60 * 60) selected.add(prop.id)
+    }
+  }
+  return [...selected]
+}
+
+/** Groups whole editorial shots after resolving auto selections for each candidate segment. */
+export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentArgs, cameraSamples: readonly FilmSeriesCameraSample[] = [], cameraErrors: ReadonlyMap<string, string> = new Map(), options: { retainInvalidSingles?: boolean } = {}): FilmSeriesSegment[] {
+  const content = args.content ?? (Array.isArray(args.propIds) && args.propIds.length ? 'both' : 'characters')
+  args = { ...args, content }
   const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
   if (!sequence?.clips.length) fail(`Camera sequence ${String(args.sequenceId)} does not exist or has no clips`)
 
   const segments: FilmSeriesSegment[] = []
   let pending = [] as typeof sequence.clips
 
-  const check = (clips: typeof sequence.clips) => {
+  const check = (clips: typeof sequence.clips, keepInvalidSingle = false) => {
     const candidate = structuredClone(project)
     const target = candidate.scene.content.editorial?.sequences.find((item) => item.id === sequence.id)
     if (!target) fail(`Camera sequence ${sequence.id} disappeared from the project snapshot`)
     target.clips = structuredClone(clips)
     const range = { startFrame: clips[0]!.sourceFrameStart, endFrame: clips.at(-1)!.sourceFrameEnd }
-    const { durationTicks } = preflightProjectFilm(candidate, { ...args, sequenceId: sequence.id, range })
-    return { candidate, range, durationTicks }
+    const selectionClips = clips.map((clip) => ({ cameraNodeId: clip.cameraNodeId, sourceFrameStart: clip.sourceFrameStart, sourceFrameEnd: clip.sourceFrameEnd }))
+    const characterIds = args.content === 'backdrops' ? [] : selectedCharacterIds(project, selectionClips, args.characterIds)
+    const propIds = args.content === 'characters' ? [] : selectedPropIds(project, clips, args.propIds, cameraSamples)
+    const exportArgs = { ...args, characterIds, propIds, sequenceId: sequence.id, range }
+    const inspection = inspectProjectFilm(candidate, exportArgs)
+    const workerLimit = inspection.issues.find((item) => ['CAMERA_LIMIT', 'TICK_LIMIT', 'BONE_BUDGET'].includes(item.code))
+    if (workerLimit && !keepInvalidSingle) fail(workerLimit.message)
+    const ticks = (range.endFrame - range.startFrame + 1) / project.scene.content.timeline.fps * 20
+    const planningIssues: FilmSeriesPlanningIssue[] = []
+    for (const validation of inspection.issues.filter((item) => !['CAMERA_LIMIT', 'TICK_LIMIT', 'BONE_BUDGET'].includes(item.code))) {
+      planningIssues.push({ code: validation.code, message: validation.message })
+    }
+    for (const clip of clips) {
+      const cameraError = cameraErrors.get(clip.id)
+      if (cameraError && (args.propIds ?? 'auto') === 'auto') planningIssues.push({ code: 'CAMERA_EVALUATION_UNAVAILABLE', message: `Shot ${clip.id}: ${cameraError}` })
+      if ((args.propIds ?? 'auto') === 'auto' && content !== 'characters' && !cameraError && !cameraSamples.some((sample) => sample.shotId === clip.id)) {
+        planningIssues.push({ code: 'CAMERA_SAMPLES_REQUIRED', message: `Shot ${clip.id}: camera samples are required for automatic backdrop selection` })
+      }
+    }
+    return { candidate, range, durationTicks: inspection.durationTicks ?? (Number.isFinite(ticks) ? ticks : 0), exportArgs,
+      planningIssues: [...(workerLimit ? [{ code: workerLimit.code, message: workerLimit.message }] : []), ...planningIssues] }
   }
 
   const push = (clips: typeof sequence.clips) => {
-    const measured = check(clips)
+    const measured = check(clips, clips.length === 1 && options.retainInvalidSingles === true)
     const order = segments.length + 1
     segments.push({ order, range: measured.range, ticks: measured.durationTicks,
       shots: clips.map((clip) => ({ id: clip.id, cameraNodeId: clip.cameraNodeId, startFrame: clip.sourceFrameStart, endFrame: clip.sourceFrameEnd })),
       project: measured.candidate,
-      exportArgs: { ...args, sequenceId: sequence.id, range: measured.range },
+      exportArgs: measured.exportArgs,
+      planningIssues: measured.planningIssues,
     })
   }
 
@@ -114,10 +204,10 @@ export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentA
       const message = error instanceof Error ? error.message : String(error)
       if (!/Film currently supports 1-3 camera shots|Film range must end on the 20 Hz grid and contain 1-255 ticks|Film range exceeds the in-memory bone sample budget/.test(message)) throw error
       if (!pending.length) {
-        if (message.includes('20 Hz grid') || message.includes('bone sample budget')) {
-          fail(`Shot ${clip.id} exceeds a single Film worker segment (${message}); cut the shot shorter`)
-        }
-        throw error
+        if (!options.retainInvalidSingles) fail(`Shot ${clip.id} exceeds a single Film worker segment (${message}); cut the shot shorter`)
+        push([clip])
+        pending = []
+        continue
       }
       push(pending)
       pending = [clip]
@@ -125,7 +215,10 @@ export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentA
       catch (singleError) {
         const detail = singleError instanceof Error ? singleError.message : String(singleError)
         if (/Film range must end on the 20 Hz grid|Film range exceeds the in-memory bone sample budget/.test(detail)) {
-          fail(`Shot ${clip.id} exceeds a single Film worker segment (${detail}); cut the shot shorter`)
+          if (!options.retainInvalidSingles) fail(`Shot ${clip.id} exceeds a single Film worker segment (${detail}); cut the shot shorter`)
+          push([clip])
+          pending = []
+          continue
         }
         throw singleError
       }
@@ -133,4 +226,34 @@ export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentA
   }
   if (pending.length) push(pending)
   return segments
+}
+
+/** Samples each shot independently so an unsupported camera target is reported only on affected segments. */
+export async function planFilmSeriesWithCameraSamples(project: UnifiedProject, args: FilmSeriesContentArgs, options: { retainInvalidSingles?: boolean } = {}): Promise<FilmSeriesSegment[]> {
+  const content = args.content ?? (Array.isArray(args.propIds) && args.propIds.length ? 'both' : 'characters')
+  args = { ...args, content }
+  if (content === 'characters' || (args.propIds ?? 'auto') !== 'auto') return planFilmSeries(project, args, [], new Map(), options)
+  const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
+  if (!sequence?.clips.length) return planFilmSeries(project, args, [], new Map(), options)
+  const cameraSamples: FilmSeriesCameraSample[] = []
+  const cameraErrors = new Map<string, string>()
+  for (const clip of sequence.clips) {
+    const ticks = (clip.sourceFrameEnd - clip.sourceFrameStart + 1) / project.scene.content.timeline.fps * 20
+    if (!Number.isFinite(ticks) || ticks > 255) {
+      cameraErrors.set(clip.id, 'camera sampling was skipped because the single shot exceeds the 255-tick segment limit')
+      continue
+    }
+    const shotProject = structuredClone(project)
+    const target = shotProject.scene.content.editorial?.sequences.find((item) => item.id === sequence.id)
+    if (!target) continue
+    target.clips = [structuredClone(clip)]
+    try {
+      for await (const sample of sampleProjectCameraSequence(shotProject, sequence.id, 20, args.viewportAspect)) {
+        cameraSamples.push({ shotId: clip.id, sourceFrame: sample.sourceFrame, side: sample.side, position: sample.position })
+      }
+    } catch (error) {
+      cameraErrors.set(clip.id, error instanceof Error ? error.message : String(error))
+    }
+  }
+  return planFilmSeries(project, args, cameraSamples, cameraErrors, options)
 }

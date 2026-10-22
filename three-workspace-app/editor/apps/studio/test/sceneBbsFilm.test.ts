@@ -109,7 +109,7 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
   assert.equal(bothPlan.content, 'both')
   assert.deepEqual(bothPlan.characterIds, characterIds)
   assert.deepEqual(bothPlan.propIds, [propId])
-  const bothSeries = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: { content: 'both', sequenceId: 'seq', name: 'series-both' } })
+  const bothSeries = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: { content: 'both', characterIds, propIds: [propId], sequenceId: 'seq', name: 'series-both' } })
   assert.equal(bothSeries.result.valid, true)
   assert.equal(bothSeries.result.content, 'both')
   assert.deepEqual(bothSeries.result.characterIds, characterIds)

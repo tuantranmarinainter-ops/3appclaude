@@ -16,6 +16,8 @@ export function useFilmExport(project: UnifiedProject) {
   const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
   const [propIds, setPropIds] = useState<string[]>(props.map((node) => node.id))
+  const [seriesCharacterSelection, setSeriesCharacterSelection] = useState<'auto' | 'selected'>('auto')
+  const [seriesPropSelection, setSeriesPropSelection] = useState<'auto' | 'selected'>('auto')
   const [sequenceId, setSequenceId] = useState(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
   const [exportMode, setExportMode] = useState<'film' | 'series'>('film')
   const [startFrame, setStartFrame] = useState(project.scene.content.timeline.frameStart)
@@ -36,9 +38,11 @@ export function useFilmExport(project: UnifiedProject) {
 
   const selectionArgs = useMemo(() => {
     const range = { startFrame, endFrame }
-    return { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
+    return { content,
+      characterIds: content === 'backdrops' ? [] : exportMode === 'series' && seriesCharacterSelection === 'auto' ? 'auto' as const : characterIds,
+      propIds: content === 'characters' ? [] : exportMode === 'series' && seriesPropSelection === 'auto' ? 'auto' as const : propIds,
       sequenceId, range, viewportAspect }
-  }, [content, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
+  }, [content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
   const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, exportMode, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
@@ -47,7 +51,7 @@ export function useFilmExport(project: UnifiedProject) {
     const revision = project.revision
     const generation = ++preflightGeneration.current
     let cancelled = false
-    const args = selectionArgs
+    const args = { ...selectionArgs, ...(exportMode === 'series' ? { mode: 'series' } : { mode: 'film' }) }
     const requestKey = currentKey
     setPreflight(null); setPreflightRevision(null); setPreflightKey(null); passedKey.current = null; setCheckingPreflight(true)
     const timer = setTimeout(() => {
@@ -72,10 +76,7 @@ export function useFilmExport(project: UnifiedProject) {
     return () => { clearTimeout(timer); cancelled = true }
   }, [project.projectId, project.revision, exportMode, selectionArgs, currentKey])
 
-  // The whole-range preflight enforces single-Film limits (ticks, cameras, bones) that a series splits around; the series job
-  // validates every segment itself. TODO(B10/B11 follow-up): run the preflight per planned segment instead.
-  const hasActorSelection = content === 'backdrops' ? propIds.length > 0 : characterIds.length > 0
-  const canExport = exportMode === 'series' ? !busy && hasActorSelection : !busy && !checkingPreflight && preflightRevision === project.revision &&
+  const canExport = !busy && !checkingPreflight && preflightRevision === project.revision &&
     preflightKey === currentKey && passedKey.current === currentKey && !!preflight && preflight.errors.length === 0
 
   const saveAgain = async (job: UnifiedJobView) => {
@@ -94,10 +95,11 @@ export function useFilmExport(project: UnifiedProject) {
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
     const sourceRevision = project.revision
-    if (content !== 'backdrops') {
+    if (content !== 'backdrops' && !(exportMode === 'series' && seriesCharacterSelection === 'auto')) {
       if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
     }
-    if (content === 'backdrops' && !propIds.length || content !== 'characters' && (new Set(propIds).size !== propIds.length || propIds.some((id) => !props.some((node) => node.id === id)))) {
+    const usesAutoSeriesProps = exportMode === 'series' && seriesPropSelection === 'auto'
+    if (content === 'backdrops' && !propIds.length && !usesAutoSeriesProps || content !== 'characters' && !usesAutoSeriesProps && (new Set(propIds).size !== propIds.length || propIds.some((id) => !props.some((node) => node.id === id)))) {
       setError(vi ? 'Chọn ít nhất một hậu cảnh hợp lệ.' : 'Choose at least one valid backdrop.'); return
     }
     if (!sequences.some((sequence) => sequence.id === sequenceId)) { setError(vi ? 'Chọn chuỗi camera có trong dự án.' : 'Choose a camera sequence in the project.'); return }
@@ -107,13 +109,14 @@ export function useFilmExport(project: UnifiedProject) {
     setBusy(true); setError(''); setCompletedJob(null); setStatus(vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…')
     try {
       const directory = await chooseDirectory()
-      if (latestKey.current !== exportKey || (exportMode !== 'series' && passedKey.current !== exportKey) || project.revision !== sourceRevision) {
+      if (latestKey.current !== exportKey || passedKey.current !== exportKey || project.revision !== sourceRevision) {
         throw new Error(vi ? 'Lựa chọn đã thay đổi trong lúc chọn thư mục; hãy đợi kiểm tra lại.' : 'The selection changed while choosing a folder; wait for preflight to finish again.')
       }
       const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
         command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
         args: exportMode === 'series'
-          ? { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds, sequenceId, viewportAspect, name: filmName }
+          ? { content, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,
+              propIds: content === 'characters' ? [] : seriesPropSelection === 'auto' ? 'auto' : propIds, sequenceId, viewportAspect, name: filmName }
           : { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
               sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
       const jobId = String(started.result.jobId)
@@ -147,7 +150,8 @@ export function useFilmExport(project: UnifiedProject) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
-  return { characters, props, content, setContent, propIds, setPropIds, sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
+  return { characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
+    sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport }
 }

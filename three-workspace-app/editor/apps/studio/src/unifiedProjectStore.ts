@@ -28,17 +28,19 @@ import { evaluateSceneChecks } from '@topview/3d-director-cli/scene-checks.mjs'
 import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedFilmSeriesExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
 import { inspectProjectFilm, preflightProjectFilm, turnFilmSkeletonsByRotationKeys } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
-import { planFilmSeries } from './filmSeries'
+import { planFilmSeriesWithCameraSamples } from './filmSeries'
 import { fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect, type FilmFrameDimensions } from './filmFrame'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveProjectBlob, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
 import { getAction } from '../../../packages/library/index'
 import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCommandResult } from './cameraMotionCommand'
-import { filmPreflight, type FilmPreflightIssue } from './filmPreflight'
+import { filmPreflight, filmSeriesPreflight, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const isUniqueStringIdList = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 64 &&
+  value.every((item) => typeof item === 'string' && item.length > 0) && new Set(value).size === value.length
 const LIBRARY_ACTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MOTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -308,6 +310,71 @@ function hasAirborneMotionAt(project: UnifiedProject, nodeId: string, frame: num
     const name = project.assets[assetId as keyof typeof project.assets]?.displayName ?? ''
     return /jump|fall|leap|hop|nhay|roi/i.test(name)
   })
+}
+
+async function collectFilmPreflightEvidence(project: UnifiedProject, args: FilmPreflightArgs) {
+  const assetIds = new Set<string>()
+  for (const characterId of Array.isArray(args.characterIds) ? args.characterIds : []) {
+    const character = project.characters[characterId]
+    if (!character) continue
+    assetIds.add(character.assetId)
+    for (const clip of project.scene.content.timeline.animation.motionClips) {
+      if (clip.target.nodeId !== character.nodeId || !args.range || clip.frameEnd < args.range.startFrame || clip.frameStart > args.range.endFrame) continue
+      const motion = project.motions[clip.motion.assetId]
+      if (motion) assetIds.add(motion.assetId)
+    }
+  }
+  for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
+    const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+    if (typeof node?.metadata?.assetId === 'string') assetIds.add(node.metadata.assetId)
+  }
+  const assetAvailability: Record<string, boolean> = {}
+  await Promise.all([...assetIds].map(async (assetId) => {
+    try {
+      const motion = Object.values(project.motions).find((item) => item.assetId === assetId && item.evaluator === 'animation-1.31.8')
+      if (motion) await resolveProjectBlob(project.projectId, motion.sourceClip)
+      else await resolveUnifiedAssetFile(project, assetId, 'source')
+      assetAvailability[assetId] = true
+    } catch { assetAvailability[assetId] = false }
+  }))
+  const propBoneCounts: Record<string, number> = {}
+  for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
+    const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+    const assetId = typeof node?.metadata?.assetId === 'string' ? node.metadata.assetId : undefined
+    const asset = assetId ? project.assets[assetId as keyof typeof project.assets] : undefined
+    if (!asset) continue
+    const profiles = Object.values(project.skeletons).filter((profile) => profile.provenance.sourceHash === asset.source.sha256)
+    const fingerprints = new Set(profiles.map((profile) => profile.fingerprint))
+    if (profiles.length && fingerprints.size === 1) propBoneCounts[asset.id] = profiles[0]!.bones.length
+  }
+  const footSamples: NonNullable<FilmPreflightArgs['footSamples']> = {}
+  const sampling = inspectProjectFilm(project, args, { propBoneCounts })
+  const canSample = sampling.durationTicks !== undefined && sampling.durationTicks <= 255 &&
+    sampling.models.length === (Array.isArray(args.characterIds) ? args.characterIds.length : -1) && Object.values(assetAvailability).every(Boolean)
+  if (canSample && Array.isArray(args.characterIds) && args.characterIds.length) {
+    try {
+      const evaluationScene = projectEvaluationScene(project)
+      for await (const sample of sampleProjectSkeletonRange(project, { ...args.range, sampleFps: 20 }, args.characterIds)) {
+        turnFilmSkeletonsByRotationKeys(evaluationScene, sample)
+        for (const skeleton of sample.skeletonSamples) {
+          const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
+          if (!character) continue
+          const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+          const sideFor = (name: string) => {
+            const value = canonical(name)
+            if (['leftfoot', 'footleft', 'lfoot', 'footl'].includes(value)) return 'left'
+            if (['rightfoot', 'footright', 'rfoot', 'footr'].includes(value)) return 'right'
+            return undefined
+          }
+          const feet = skeleton.bones.flatMap((bone) => { const side = sideFor(bone.name); return side ? [{ side, y: bone.worldMatrix[13]! }] : [] })
+          const values = footSamples[character.id] ?? (footSamples[character.id] = [])
+          values.push({ frame: sample.frame, leftY: feet.find((foot) => foot.side === 'left')?.y, rightY: feet.find((foot) => foot.side === 'right')?.y,
+            airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
+        }
+      }
+    } catch { /* filmPreflight reports unavailable transform evidence for this selection. */ }
+  }
+  return { assetAvailability, propBoneCounts, footSamples }
 }
 
 function applyCameraShot(document: UnifiedProject['scene'], sequenceId: string, clip: EditSequenceClip): { document: UnifiedProject['scene']; shotId: string } {
@@ -1207,10 +1274,16 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'film.preflight') {
-    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
+        envelope.args.mode !== undefined && envelope.args.mode !== 'film' && envelope.args.mode !== 'series' ||
         envelope.args.content !== undefined && (typeof envelope.args.content !== 'string' || !['characters', 'backdrops', 'both'].includes(envelope.args.content)) ||
-        envelope.args.propIds !== undefined && !Array.isArray(envelope.args.propIds)) {
-      throw new UnifiedStoreError('VALIDATION_FAILED', 'film.preflight accepts only characterIds, sequenceId, range, viewportAspect, propIds and content', 400)
+        envelope.args.mode === 'series' && envelope.args.characterIds !== undefined && envelope.args.characterIds !== 'auto' && !isUniqueStringIdList(envelope.args.characterIds) ||
+        envelope.args.mode === 'series' && envelope.args.propIds !== undefined && envelope.args.propIds !== 'auto' && envelope.args.propIds !== 'all' && !isUniqueStringIdList(envelope.args.propIds) ||
+        envelope.args.mode !== 'series' && envelope.args.characterIds !== undefined && !Array.isArray(envelope.args.characterIds) ||
+        envelope.args.mode !== 'series' && envelope.args.propIds !== undefined && !Array.isArray(envelope.args.propIds) ||
+        Array.isArray(envelope.args.characterIds) && !isUniqueStringIdList(envelope.args.characterIds) ||
+        Array.isArray(envelope.args.propIds) && !isUniqueStringIdList(envelope.args.propIds)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'film.preflight accepts mode, characterIds, sequenceId, range, viewportAspect, propIds and content', 400)
     }
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film preflight source revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
@@ -1221,6 +1294,39 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       const message = error instanceof Error ? error.message : 'Film aspect is invalid'
       const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: message, en: message } }], warnings: [] as FilmPreflightIssue[] }
       return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, preflight })
+    }
+    if (envelope.args.mode === 'series') {
+      const content = (envelope.args.content ?? (Array.isArray(envelope.args.propIds) && envelope.args.propIds.length ? 'both' : 'characters')) as 'characters' | 'backdrops' | 'both'
+      const rawCharacters = envelope.args.characterIds ?? 'auto'
+      const rawProps = envelope.args.propIds ?? (content === 'characters' ? [] : 'auto')
+      if (content === 'backdrops' && Array.isArray(rawCharacters) && rawCharacters.length) {
+        const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: 'Chế độ chỉ hậu cảnh không nhận nhân vật.', en: 'Backdrop-only mode cannot include Characters.' } }], warnings: [] as FilmPreflightIssue[] }
+        return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
+      }
+      let plan: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>>
+      try {
+        const resolved = resolveSceneBbsFilmArgs(project, {
+          content: 'characters', sequenceId: envelope.args.sequenceId, characterIds: [], propIds: [],
+          viewportAspect: effectiveAspect,
+          name: 'preflight-series',
+        })
+        plan = await planFilmSeriesWithCameraSamples(project, { ...resolved.film, content,
+          characterIds: content === 'backdrops' ? [] : rawCharacters as string[] | 'auto',
+          propIds: content === 'characters' ? [] : rawProps as string[] | 'all' | 'auto',
+        }, { retainInvalidSingles: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Film series preflight arguments are invalid'
+        const preflight = { errors: [{ code: 'FILM_SERIES_PLAN_INVALID', message: { vi: message, en: message } }], warnings: [] as FilmPreflightIssue[] }
+        return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
+      }
+      const evidence = new Map<number, { assetAvailability: Record<string, boolean>; propBoneCounts: Record<string, number>; footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>> }>()
+      for (const segment of plan) {
+        const segmentEvidence = await collectFilmPreflightEvidence(segment.project, segment.exportArgs)
+        evidence.set(segment.order, segmentEvidence)
+      }
+      const preflight = filmSeriesPreflight(plan, evidence)
+      return success(envelope.requestId, id, project.revision, { valid: preflight.errors.length === 0, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight,
+        segments: plan.map((segment) => ({ segment: segment.order, range: segment.range, characterIds: segment.exportArgs.characterIds, propIds: segment.exportArgs.propIds })) })
     }
     const rawContent = envelope.args.content as string | undefined
     const content = rawContent ?? (Array.isArray(envelope.args.propIds) && envelope.args.propIds.length ? 'both' : 'characters')
@@ -1241,74 +1347,8 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: 'Cần chọn nhân vật hợp lệ.', en: 'Valid Character selection is required.' } }], warnings: [] as FilmPreflightIssue[] }
       return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
     }
-    const assetIds = new Set<string>()
-    for (const characterId of Array.isArray(args.characterIds) ? args.characterIds : []) {
-      const character = project.characters[characterId]
-      if (!character) continue
-      assetIds.add(character.assetId)
-      for (const clip of project.scene.content.timeline.animation.motionClips) {
-        if (clip.target.nodeId !== character.nodeId || !args.range || clip.frameEnd < args.range.startFrame || clip.frameStart > args.range.endFrame) continue
-        const motion = project.motions[clip.motion.assetId]
-        if (motion) assetIds.add(motion.assetId)
-      }
-    }
-    for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
-      const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
-      if (typeof node?.metadata?.assetId === 'string') assetIds.add(node.metadata.assetId)
-    }
-    const assetAvailability: Record<string, boolean> = {}
-    const propBoneCounts: Record<string, number> = {}
-    for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
-      const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
-      const assetId = typeof node?.metadata?.assetId === 'string' ? node.metadata.assetId : undefined
-      const asset = assetId ? project.assets[assetId as keyof typeof project.assets] : undefined
-      if (!asset) continue
-      const sourceProfiles = Object.values(project.skeletons).filter((profile) => profile.provenance.sourceHash === asset.source.sha256)
-      const profileFingerprints = new Set(sourceProfiles.map((profile) => profile.fingerprint))
-      if (sourceProfiles.length && profileFingerprints.size === 1) propBoneCounts[asset.id] = sourceProfiles[0]!.bones.length
-    }
-    await Promise.all([...assetIds].map(async (assetId) => {
-      try {
-        const motion = Object.values(project.motions).find((item) => item.assetId === assetId && item.evaluator === 'animation-1.31.8')
-        if (motion) await resolveProjectBlob(project.projectId, motion.sourceClip)
-        else await resolveUnifiedAssetFile(project, assetId, 'source')
-        assetAvailability[assetId] = true
-      }
-      catch { assetAvailability[assetId] = false }
-    }))
-    const footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>> = {}
-    let canSample = false
-    const samplingInspection = inspectProjectFilm(project, args, { propBoneCounts })
-    canSample = samplingInspection.durationTicks !== undefined && samplingInspection.durationTicks <= 255 &&
-      samplingInspection.models.length === (Array.isArray(args.characterIds) ? args.characterIds.length : -1) && Object.values(assetAvailability).every(Boolean)
-    if (canSample && Array.isArray(args.characterIds) && args.range && Number.isSafeInteger(args.range.startFrame) && Number.isSafeInteger(args.range.endFrame)) {
-      try {
-        const evaluationScene = projectEvaluationScene(project)
-        for await (const sample of sampleProjectSkeletonRange(project, { ...args.range, sampleFps: 20 }, args.characterIds)) {
-          turnFilmSkeletonsByRotationKeys(evaluationScene, sample)
-          for (const skeleton of sample.skeletonSamples) {
-            const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
-            if (!character) continue
-            const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-            const boneName = (name: string) => {
-              const value = canonical(name)
-              if (['leftfoot', 'footleft', 'lfoot', 'footl'].includes(value)) return 'left'
-              if (['rightfoot', 'footright', 'rfoot', 'footr'].includes(value)) return 'right'
-              return undefined
-            }
-            const feet = skeleton.bones.flatMap((bone) => {
-              const side = boneName(bone.name)
-              return side ? [{ side, y: bone.worldMatrix[13]! }] : []
-            })
-            const leftY = feet.find((foot) => foot.side === 'left')?.y
-            const rightY = feet.find((foot) => foot.side === 'right')?.y
-            const values = footSamples[character.id] ?? (footSamples[character.id] = [])
-            values.push({ frame: sample.frame, leftY, rightY, airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
-          }
-        }
-      } catch { /* Missing/unsupported CPU evaluation is surfaced as an explicit warning. */ }
-    }
-    const preflight = filmPreflight(project, { ...args, assetAvailability, footSamples, propBoneCounts })
+    const evidence = await collectFilmPreflightEvidence(project, args)
+    const preflight = filmPreflight(project, { ...args, ...evidence })
     return success(envelope.requestId, id, project.revision, { valid: preflight.errors.length === 0, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
   }
   if (envelope.command === 'scene.export.bbsFilm') {
@@ -1343,20 +1383,35 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
     }
+    if (sceneArgs.characterIds !== undefined && sceneArgs.characterIds !== 'auto' && !isUniqueStringIdList(sceneArgs.characterIds) ||
+        sceneArgs.propIds !== undefined && sceneArgs.propIds !== 'auto' && sceneArgs.propIds !== 'all' && !isUniqueStringIdList(sceneArgs.propIds)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series characterIds must be a unique ID array or "auto"; propIds must be a unique ID array, "all", or "auto"', 400)
+    }
     if (content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content))) throw new UnifiedStoreError('VALIDATION_FAILED', 'content must be characters, backdrops, or both', 400)
     if (sceneArgs.frameStart !== undefined || sceneArgs.frameEnd !== undefined) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series exports the complete editorial sequence; frameStart and frameEnd are not accepted', 400)
-    let resolved: ReturnType<typeof resolveSceneBbsFilmArgs>, segments: ReturnType<typeof planFilmSeries>
+    let resolved: ReturnType<typeof resolveSceneBbsFilmArgs>, segments: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>>
     try {
-      resolved = resolveSceneBbsFilmArgs(project, { ...sceneArgs, ...(content === undefined ? {} : { content }) })
-      segments = planFilmSeries(project, resolved.film)
+      const resolvedContent = (content ?? (Array.isArray(sceneArgs.propIds) && sceneArgs.propIds.length ? 'both' : 'characters')) as 'characters' | 'backdrops' | 'both'
+      const rawCharacters = sceneArgs.characterIds ?? 'auto'
+      const rawProps = sceneArgs.propIds ?? (resolvedContent === 'characters' ? [] : 'auto')
+      resolved = resolveSceneBbsFilmArgs(project, { ...sceneArgs, content: 'characters', characterIds: [], propIds: [] })
+      segments = await planFilmSeriesWithCameraSamples(project, { ...resolved.film, content: resolvedContent,
+        characterIds: resolvedContent === 'backdrops' ? [] : rawCharacters as string[] | 'auto',
+        propIds: resolvedContent === 'characters' ? [] : rawProps as string[] | 'all' | 'auto',
+      })
     } catch (error) {
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film series arguments are invalid', 400)
     }
+    const blocked = segments.flatMap((segment) => segment.planningIssues.map((item) => `Segment ${segment.order}: ${item.message}`))
+    if (blocked.length) throw new UnifiedStoreError('VALIDATION_FAILED', blocked.join('\n'), 422)
     if (resolved.film.filmName.length > 56) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series name must be at most 56 safe ASCII characters so numbered segment names fit', 400)
     const series = segments.map((segment) => ({ order: segment.order, film: `films/${resolved.film.filmName}-${String(segment.order).padStart(2, '0')}.dat`,
       shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
-    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, content: resolved.film.content,
-      characterIds: resolved.film.characterIds, propIds: resolved.film.propIds, segmentCount: segments.length, series })
+    const characterIds = [...new Set(segments.flatMap((segment) => segment.exportArgs.characterIds))]
+    const propIds = [...new Set(segments.flatMap((segment) => segment.exportArgs.propIds ?? []))]
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, content: content ?? 'characters',
+      characterIds, propIds, segmentCount: segments.length, series,
+      segments: segments.map((segment) => ({ segment: segment.order, range: segment.range, characterIds: segment.exportArgs.characterIds, propIds: segment.exportArgs.propIds ?? [] })) })
     try {
       const job = await startUnifiedFilmSeriesExport(project, { name: resolved.film.filmName, segments })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, segmentCount: segments.length, series })
