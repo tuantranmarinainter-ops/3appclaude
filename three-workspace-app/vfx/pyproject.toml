@@ -29,6 +29,7 @@ dev = ["pytest>=7.4"]
 [project.scripts]
 effekseer-ai = "effekseer_ai.cli:main"
 effekseer-ai-mcp = "effekseer_ai.mcp_server:main"
+effekseer-ai-ir-to-bbs = "effekseer_ai.ir_to_bbs:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

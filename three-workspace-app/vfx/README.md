@@ -86,6 +86,17 @@ All CLI results are JSON printed to standard output, which makes the commands su
 
 Run `effekseer-ai --help` or `effekseer-ai <command> --help` for arguments and JSON input formats.
 
+### Convert EffectIR to BBS FS 2.7 Snowstorm
+
+V2 accepts a versioned EffectIR JSON file and writes one scheme per drawable node plus `report.json`:
+
+```powershell
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
+```
+
+By default, any `BLOCKED` node blocks all scheme output. `--allow-partial` writes only supported nodes and retains every blocker in the report. Time conversion, 20 Hz quantization, approximations, and the additive-to-alpha brightness fallback are recorded explicitly. See [`docs/VFX-IR-CONTRACT.md`](../../docs/VFX-IR-CONTRACT.md) for the IR shape. The converter is a structural approximation; BBS FS 2.7 in-game playback remains a separate gate.
+
 ## MCP server
 
 After installation and environment configuration, start the stdio server:

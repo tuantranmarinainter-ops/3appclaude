@@ -86,6 +86,17 @@ CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
 
 使用 `effekseer-ai --help` 或 `effekseer-ai <命令> --help` 查看参数和 JSON 输入格式。
 
+### 转换 EffectIR 到 BBS FS 2.7 Snowstorm
+
+V2 接受带版本号的 EffectIR JSON，并为每个可绘制节点输出一个 scheme 和 `report.json`：
+
+```powershell
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
+```
+
+默认情况下，只要有节点为 `BLOCKED`，就阻止输出所有 scheme。显式使用 `--allow-partial` 后，只输出受支持节点，并在报告中保留所有阻断项。报告会写明时间换算、20 Hz 量化、近似项和 Additive 到 Alpha 的亮度补偿。EffectIR 结构见 [VFX-IR-CONTRACT.md](../../docs/VFX-IR-CONTRACT.md)。此转换只验证结构近似；仍须单独在 BBS FS 2.7 游戏内验证。
+
 ## MCP 服务
 
 完成安装与环境变量配置后，启动 stdio MCP 服务：
