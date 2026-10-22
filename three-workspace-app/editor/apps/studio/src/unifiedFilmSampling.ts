@@ -21,6 +21,17 @@ const TICK_RATE = 20
 const MAX_TICKS = 255 // The pinned worker accepts at most 256 keys, including the endpoint.
 const MAX_BONE_SAMPLES = 32768
 
+export interface FilmSamplingIssue { code: string; message: string; characterId?: string; propId?: string }
+export interface FilmSamplingInspection {
+  issues: FilmSamplingIssue[]
+  durationTicks?: number
+  models: ReturnType<typeof filmSourceBones> extends never ? never[] : Array<{
+    characterId: string; nodeId: string; name: string; assetId: string; skeletonId: string
+    source: UnifiedProject['assets'][keyof UnifiedProject['assets']]['source']; metersPerUnit: number; basisToScene: number[]; skeletonFingerprint: string
+    sourceBones: ReturnType<typeof filmSourceBones>
+  }>
+}
+
 function fail(message: string): never { throw new TypeError(message) }
 
 type ProfileBone = UnifiedProject['skeletons'][string]['bones'][number]
@@ -52,49 +63,83 @@ export function filmSourceBones(bones: readonly ProfileBone[]) {
   return kept
 }
 
-/** Metadata preflight only; decoding and hash verification still happen before sampling. */
-export function preflightProjectFilm(project: UnifiedProject, args: FilmSamplingArgs) {
-  if (!validateProject(project)) fail('Film sampling requires a valid shared project')
+/** Structured metadata validation shared by the preflight UI and the throwing export API. */
+export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingArgs, options: { includePropBudget?: boolean; propBoneCounts?: Record<string, number> } = {}): FilmSamplingInspection {
+  const issues: FilmSamplingIssue[] = []
+  const add = (code: string, message: string, characterId?: string, propId?: string) => { if (!issues.some((item) => item.code === code && item.characterId === characterId && item.propId === propId)) issues.push({ code, message, ...(characterId ? { characterId } : {}), ...(propId ? { propId } : {}) }) }
+  if (!args || typeof args !== 'object') return { issues: [{ code: 'ARGUMENTS_INVALID', message: 'Film sampling arguments are invalid' }], models: [] }
+  if (!validateProject(project)) return { issues: [{ code: 'PROJECT_INVALID', message: 'Film sampling requires a valid shared project' }], models: [] }
   const { characterIds, sequenceId, range, viewportAspect } = args
-  if (!Array.isArray(characterIds) || !characterIds.length || characterIds.length > 64 || new Set(characterIds).size !== characterIds.length ||
-      characterIds.some((id) => typeof id !== 'string' || !Object.hasOwn(project.characters, id))) fail('Select 1-64 unique existing Characters')
+  const validCharacters = Array.isArray(characterIds) && characterIds.length > 0 && characterIds.length <= 64 && new Set(characterIds).size === characterIds.length &&
+    characterIds.every((id) => typeof id === 'string' && Object.hasOwn(project.characters, id))
+  if (!validCharacters) add('CHARACTER_SELECTION_INVALID', 'Select 1-64 unique existing Characters')
   const timeline = project.scene.content.timeline
-  if (!range || !Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame) ||
-      range.startFrame < timeline.frameStart || range.endFrame > timeline.frameEnd || range.endFrame < range.startFrame ||
-      !Number.isFinite(viewportAspect) || viewportAspect <= 0) fail('Invalid Film range or viewport aspect')
-  const ticks = (range.endFrame - range.startFrame + 1) / timeline.fps * TICK_RATE
-  if (!Number.isFinite(ticks) || Math.abs(ticks - Math.round(ticks)) > 1e-7 || ticks < 1 || ticks > MAX_TICKS) fail('Film range must end on the 20 Hz grid and contain 1-255 ticks')
-  if (typeof sequenceId !== 'string' || validateEditorial(project.scene, { sequenceId, requireClips: true }).length) fail('Film requires a valid camera sequence')
-  const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId)
-  if (!sequence || sequence.clips.length > 3) fail('Film currently supports 1-3 camera shots')
-  let nextFrame = range.startFrame
-  for (const shot of sequence.clips) {
-    // Replay channels have one value per tick, so discontinuous editorial source cuts need a separate bake.
-    if (shot.sourceFrameStart !== nextFrame) fail('Film shots must cover the selected source range contiguously in order')
-    nextFrame = shot.sourceFrameEnd + 1
-    const cutTick = (nextFrame - range.startFrame) / timeline.fps * TICK_RATE
-    if (Math.abs(cutTick - Math.round(cutTick)) > 1e-7) fail('Film camera cuts must lie on the 20 Hz grid')
-    const camera = project.scene.content.nodes.find((node) => node.id === shot.cameraNodeId)?.camera
-    if (camera?.projection !== 'perspective') fail('Film requires perspective cameras')
+  const validRange = !!range && Number.isSafeInteger(range.startFrame) && Number.isSafeInteger(range.endFrame) &&
+    range.startFrame >= timeline.frameStart && range.endFrame <= timeline.frameEnd && range.endFrame >= range.startFrame &&
+    Number.isFinite(viewportAspect) && viewportAspect > 0
+  if (!validRange) add('RANGE_INVALID', 'Invalid Film range or viewport aspect')
+  const ticks = validRange ? (range.endFrame - range.startFrame + 1) / timeline.fps * TICK_RATE : NaN
+  const gridValid = Number.isFinite(ticks) && Math.abs(ticks - Math.round(ticks)) <= 1e-7 && ticks >= 1
+  if (!gridValid || ticks > MAX_TICKS) add('TICK_LIMIT', 'Film range must end on the 20 Hz grid and contain 1-255 ticks')
+  const durationTicks = gridValid ? Math.round(ticks) : undefined
+  const sequenceValid = typeof sequenceId === 'string' && validateEditorial(project.scene, { sequenceId, requireClips: true }).length === 0
+  if (!sequenceValid) add('SEQUENCE_INVALID', 'Film requires a valid camera sequence')
+  const sequence = sequenceValid ? project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId) : undefined
+  if (!sequence || sequence.clips.length > 3) add('CAMERA_LIMIT', 'Film currently supports 1-3 camera shots')
+  if (sequence && validRange) {
+    let nextFrame = range.startFrame
+    for (const shot of sequence.clips) {
+      if (shot.sourceFrameStart !== nextFrame) add('SEQUENCE_GAP', 'Film shots must cover the selected source range contiguously in order')
+      nextFrame = shot.sourceFrameEnd + 1
+      const cutTick = (nextFrame - range.startFrame) / timeline.fps * TICK_RATE
+      if (Math.abs(cutTick - Math.round(cutTick)) > 1e-7) add('CAMERA_CUT_GRID', 'Film camera cuts must lie on the 20 Hz grid')
+      const camera = project.scene.content.nodes.find((node) => node.id === shot.cameraNodeId)?.camera
+      if (camera?.projection !== 'perspective') add('CAMERA_PROJECTION', 'Film requires perspective cameras')
+    }
+    if (nextFrame !== range.endFrame + 1) add('SEQUENCE_COVERAGE', 'Film shots must cover the selected source range exactly')
   }
-  if (nextFrame !== range.endFrame + 1) fail('Film shots must cover the selected source range exactly')
+  const models: FilmSamplingInspection['models'] = []
   let boneCount = 0
-  const models = characterIds.map((id) => {
+  if (validCharacters) for (const id of characterIds) {
     const character = project.characters[id]!
     const profile = project.skeletons[character.skeletonId]!
-    const node = project.scene.content.nodes.find((node) => node.id === character.nodeId)!
+    const node = project.scene.content.nodes.find((item) => item.id === character.nodeId)!
     const asset = project.assets[character.assetId]!
-    if (node.metadata?.rig !== 'direct' || node.character?.animation?.posePresetId) fail('Film sampling requires an imported direct rig without an unresolved library pose')
-    if (!['application/vnd.autodesk.fbx', 'model/gltf-binary'].includes(asset.source.mediaType)) fail('Film model conversion currently requires FBX or GLB source bytes')
-    if (profile.bones.length > 512 || filmSourceBones(profile.bones).some((bone) => !/^[A-Za-z0-9_.-]{1,128}$/.test(bone.name))) fail('Film model bone names or count exceed the BOBJ worker profile')
-    if (profile.metersPerUnit !== node.metadata?.modelUnitMeters) fail('Film Character units disagree with its Skeleton Profile')
+    let modelValid = true
+    if (node.metadata?.rig !== 'direct' || node.character?.animation?.posePresetId) { add('RIG_UNSUPPORTED', 'Film sampling requires an imported direct rig without an unresolved library pose', id); modelValid = false }
+    if (!['application/vnd.autodesk.fbx', 'model/gltf-binary'].includes(asset.source.mediaType)) { add('MODEL_FORMAT_UNSUPPORTED', 'Film model conversion currently requires FBX or GLB source bytes', id); modelValid = false }
+    let sourceBones: ReturnType<typeof filmSourceBones> = []
+    if (profile.bones.length > 512) { add('BONE_PROFILE_INVALID', 'Film model bone names or count exceed the BOBJ worker profile', id); modelValid = false }
+    else {
+      try {
+        sourceBones = filmSourceBones(profile.bones)
+        if (sourceBones.some((bone) => !/^[A-Za-z0-9_.-]{1,128}$/.test(bone.name))) { add('BONE_PROFILE_INVALID', 'Film model bone names or count exceed the BOBJ worker profile', id); modelValid = false }
+      } catch (error) { add('BONE_PROFILE_INVALID', error instanceof Error ? error.message : 'Film bone names collide after normalization', id); modelValid = false }
+    }
+    if (profile.metersPerUnit !== node.metadata?.modelUnitMeters) { add('MODEL_UNITS_INVALID', 'Film Character units disagree with its Skeleton Profile', id); modelValid = false }
     boneCount += profile.bones.length
-    return { characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
-      source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint,
-      sourceBones: filmSourceBones(profile.bones) }
-  })
-  if (boneCount * (Math.round(ticks) + 1) > MAX_BONE_SAMPLES) fail('Film range exceeds the in-memory bone sample budget; shorten the range or select fewer Characters')
-  return { durationTicks: Math.round(ticks), models }
+    if (modelValid) models.push({ characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
+      source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint, sourceBones })
+  }
+  if (options.includePropBudget && Array.isArray(args.propIds)) {
+    for (const propId of args.propIds) {
+      const prop = project.scene.content.nodes.find((node) => node.id === propId && node.type === 'prop' && typeof node.metadata?.assetId === 'string')
+      const assetId = typeof prop?.metadata?.assetId === 'string' ? prop.metadata.assetId : undefined
+      const count = assetId ? options.propBoneCounts?.[assetId] : undefined
+      if (!prop || !assetId) continue
+      if (!Number.isSafeInteger(count) || count! < 1) add('PROP_BONE_COUNT_UNAVAILABLE', 'Could not determine a selected backdrop model bone count from its source profile', undefined, propId)
+      else boneCount += count!
+    }
+  }
+  if (durationTicks !== undefined && boneCount * (durationTicks + 1) > MAX_BONE_SAMPLES) add('BONE_BUDGET', 'Film range exceeds the in-memory bone sample budget; shorten the range or select fewer Characters')
+  return { issues, durationTicks, models }
+}
+
+/** Metadata preflight only; decoding and hash verification still happen before sampling. */
+export function preflightProjectFilm(project: UnifiedProject, args: FilmSamplingArgs) {
+  const inspection = inspectProjectFilm(project, args)
+  if (inspection.issues.length || inspection.durationTicks === undefined || inspection.models.length !== args.characterIds.length) fail(inspection.issues[0]?.message ?? 'Film sampling metadata is incomplete')
+  return { durationTicks: inspection.durationTicks, models: inspection.models }
 }
 
 export interface FilmActorSample {

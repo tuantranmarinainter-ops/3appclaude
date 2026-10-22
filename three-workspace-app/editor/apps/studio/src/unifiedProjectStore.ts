@@ -26,7 +26,7 @@ import { FCurveSet, appendMotionClip, buildCharacterNode, buildPropNode, createF
 import { duplicateDocumentNodes } from '@topview/3d-builder/evaluate'
 import { evaluateSceneChecks } from '@topview/3d-director-cli/scene-checks.mjs'
 import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
-import { preflightProjectFilm } from './unifiedFilmSampling'
+import { inspectProjectFilm, preflightProjectFilm, turnFilmSkeletonsByRotationKeys } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import { fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect, type FilmFrameDimensions } from './filmFrame'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
@@ -1222,6 +1222,16 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (typeof node?.metadata?.assetId === 'string') assetIds.add(node.metadata.assetId)
     }
     const assetAvailability: Record<string, boolean> = {}
+    const propBoneCounts: Record<string, number> = {}
+    for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
+      const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+      const assetId = typeof node?.metadata?.assetId === 'string' ? node.metadata.assetId : undefined
+      const asset = assetId ? project.assets[assetId as keyof typeof project.assets] : undefined
+      if (!asset) continue
+      const sourceProfiles = Object.values(project.skeletons).filter((profile) => profile.provenance.sourceHash === asset.source.sha256)
+      const profileFingerprints = new Set(sourceProfiles.map((profile) => profile.fingerprint))
+      if (sourceProfiles.length && profileFingerprints.size === 1) propBoneCounts[asset.id] = sourceProfiles[0]!.bones.length
+    }
     await Promise.all([...assetIds].map(async (assetId) => {
       try {
         const motion = Object.values(project.motions).find((item) => item.assetId === assetId && item.evaluator === 'animation-1.31.8')
@@ -1231,15 +1241,16 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       }
       catch { assetAvailability[assetId] = false }
     }))
-    const footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean }>> = {}
+    const footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>> = {}
     let canSample = false
-    try {
-      preflightProjectFilm(project, args)
-      canSample = Object.values(assetAvailability).every(Boolean)
-    } catch { /* The pure preflight below reports the exact sampling failure. */ }
+    const samplingInspection = inspectProjectFilm(project, args, { propBoneCounts })
+    canSample = samplingInspection.durationTicks !== undefined && samplingInspection.durationTicks <= 255 &&
+      samplingInspection.models.length === (Array.isArray(args.characterIds) ? args.characterIds.length : -1) && Object.values(assetAvailability).every(Boolean)
     if (canSample && Array.isArray(args.characterIds) && args.range && Number.isSafeInteger(args.range.startFrame) && Number.isSafeInteger(args.range.endFrame)) {
       try {
+        const evaluationScene = projectEvaluationScene(project)
         for await (const sample of sampleProjectSkeletonRange(project, { ...args.range, sampleFps: 20 }, args.characterIds)) {
+          turnFilmSkeletonsByRotationKeys(evaluationScene, sample)
           for (const skeleton of sample.skeletonSamples) {
             const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
             if (!character) continue
@@ -1257,12 +1268,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
             const leftY = feet.find((foot) => foot.side === 'left')?.y
             const rightY = feet.find((foot) => foot.side === 'right')?.y
             const values = footSamples[character.id] ?? (footSamples[character.id] = [])
-            values.push({ frame: sample.frame, leftY, rightY, airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame) })
+            values.push({ frame: sample.frame, leftY, rightY, airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
           }
         }
       } catch { /* Missing/unsupported CPU evaluation is surfaced as an explicit warning. */ }
     }
-    const preflight = filmPreflight(project, { ...args, assetAvailability, footSamples })
+    const preflight = filmPreflight(project, { ...args, assetAvailability, footSamples, propBoneCounts })
     return success(envelope.requestId, id, project.revision, { valid: preflight.errors.length === 0, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
   }
   if (envelope.command === 'scene.export.bbsFilm') {

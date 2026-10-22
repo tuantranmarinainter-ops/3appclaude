@@ -1,18 +1,24 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { Matrix4 } from 'three'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmPreflight } from '../src/filmPreflight.ts'
 import { executeUnifiedCommand, readUnifiedProject, UnifiedStoreError } from '../src/unifiedProjectStore.ts'
+import { stageAssetUpload } from '../src/unifiedAssetFiles.ts'
+import { preflightProjectFilm } from '../src/unifiedFilmSampling.ts'
 import { makeSceneReviewShot } from '../src/sceneReview.ts'
 
 const projectsDir = mkdtempSync(path.join(tmpdir(), 'bbs-film-preflight-'))
 process.env.BBS_UNIFIED_PROJECTS_DIR = projectsDir
 test.after(() => rmSync(projectsDir, { recursive: true, force: true }))
+const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
+const builtin = path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
 
 function projectFixture(): UnifiedProject {
   const scene = makeEmptyDraft('Film preflight', 30, 29)
@@ -32,7 +38,7 @@ function projectFixture(): UnifiedProject {
 
 const args = { characterIds: ['actor'], sequenceId: 'sequence-1', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
 
-test('pure preflight warns for unapproved shots, unavailable transform validator, VFX, and missing character files', () => {
+test('pure preflight reports unapproved shots, missing files, selected backdrop transforms, and overlapping VFX', () => {
   const project = projectFixture()
   project.extensions.sceneReview = { version: 1, sequenceId: 'sequence-1', shots: {
     'shot-1': makeSceneReviewShot(project, 'sequence-1', 'shot-1', 'ok', ''),
@@ -41,11 +47,11 @@ test('pure preflight warns for unapproved shots, unavailable transform validator
   stale.scene.content.nodes.find((node) => node.id === 'actor-node')!.transform.position.x = 2
   stale.extensions.vfxCues = { version: 1, cues: [{ id: 'cue-1', effect: 'aura01', frameStart: 1, frameEnd: 8 }] }
   const result = filmPreflight(stale, { ...args, assetAvailability: { 'sha256:asset': false } })
-  assert.ok(result.errors.some((entry) => entry.code === 'PREFLIGHT_INCOMPLETE_TRANSFORMS'))
+  assert.ok(result.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
   assert.ok(result.errors.some((entry) => entry.code === 'ASSET_FILE_MISSING'))
   assert.ok(result.warnings.some((entry) => entry.code === 'SHOT_NOT_APPROVED' && entry.clipId === 'shot-1'))
   assert.ok(result.warnings.some((entry) => entry.code === 'VFX_BBS_MISSING' && entry.clipId === 'cue-1'))
-  const approved = filmPreflight(project, args)
+  const approved = filmPreflight(project, { ...args, footSamples: { actor: [{ frame: 0, leftY: 0, rightY: 0, actorWorldMatrix: new Matrix4().toArray() }] } })
   assert.ok(!approved.warnings.some((entry) => entry.code === 'SHOT_NOT_APPROVED'))
   const badBackdrop = filmPreflight(project, { ...args, propIds: ['backdrop-node'] })
   assert.ok(badBackdrop.errors.some((entry) => entry.code === 'PROP_TRANSFORM_INVALID'))
@@ -59,6 +65,70 @@ test('foot warnings use supplied measured foot positions and skip airborne frame
   assert.ok(!airborne.warnings.some((entry) => entry.code === 'CHARACTER_FLOATING'))
   const below = filmPreflight(project, { ...args, footSamples: { actor: [{ frame: 6, leftY: -0.06, rightY: 0 }] } })
   assert.ok(below.warnings.some((entry) => entry.code === 'CHARACTER_BELOW_FLOOR' && entry.frame === 6))
+})
+
+test('transform preflight reports shear and scale separately for one actor', () => {
+  const project = projectFixture()
+  const matrix = new Matrix4().makeScale(2, 1, 1); matrix.elements[4] = 0.25
+  const report = filmPreflight(project, { ...args, footSamples: { actor: [{ frame: 2, actorWorldMatrix: matrix.toArray() }] } })
+  assert.ok(report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_SHEAR' && entry.frame === 2))
+  assert.ok(report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_SCALE' && entry.frame === 2))
+})
+
+async function validProject(options: { endFrame: number; cameraCount: number; characterCount: number }) {
+  const scene = makeEmptyDraft('Film preflight valid', 30, options.endFrame, { fov: 50, position: { x: 1, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 } })
+  const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Film preflight valid', scene } })
+  const projectId = String(created.projectId)
+  const staged = await stageAssetUpload('preflight.glb', new ReadableStream({ start(controller) { controller.enqueue(readFileSync(builtin)); controller.close() } }))
+  const imported = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, command: 'asset.import', args: { files: [staged.id], format: 'glb' } })
+  const assetId = (imported.result.assetIds as string[])[0]!, skeletonId = (imported.result.skeletonIds as string[])[0]!
+  let revision = imported.revision
+  const characterIds: string[] = []
+  for (let index = 0; index < options.characterCount; index++) {
+    const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'character.add', args: { assetId, skeletonId, name: `Actor ${index + 1}` } })
+    characterIds.push(String(added.result.characterId)); revision = added.revision
+  }
+  const current = await readUnifiedProject(projectId)
+  const updatedScene = structuredClone(current.scene)
+  const clips = []
+  const segmentLength = (options.endFrame + 1) / options.cameraCount
+  for (let index = 0; index < options.cameraCount; index++) {
+    let camera = structuredClone(updatedScene.content.nodes.find((node) => node.id === 'camera_1')!)
+    if (index > 0) { camera.id = `camera_${index + 1}`; camera.name = `Camera ${index + 1}`; camera.camera!.isPrimary = false; updatedScene.content.nodes.push(camera) }
+    clips.push({ id: `shot-${index + 1}`, cameraNodeId: camera.id, sourceFrameStart: index * segmentLength, sourceFrameEnd: (index + 1) * segmentLength - 1 })
+  }
+  updatedScene.content.editorial = { version: 1, activeSequenceId: 'sequence-valid', sequences: [{ id: 'sequence-valid', clips }] }
+  const applied = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'scene.apply', args: {
+    operations: [{ type: 'document.replace', document: updatedScene, fcurves: current.extensions.topview?.fcurves ?? null }] } })
+  return { project: await readUnifiedProject(projectId), characterIds, revision: applied.revision }
+}
+
+test('clean valid project has no blocking preflight issues and limits aggregate together', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const actor = clean.project.characters[clean.characterIds[0]!]!
+  const good = filmPreflight(clean.project, { characterIds: clean.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9,
+    assetAvailability: { [actor.assetId]: true }, footSamples: { [actor.id]: [{ frame: 0, leftY: 0, rightY: 0, actorWorldMatrix: new Matrix4().toArray() }] } })
+  assert.deepEqual(good.errors, [])
+
+  const overloaded = await validProject({ endFrame: 599, cameraCount: 4, characterCount: 2 })
+  const report = filmPreflight(overloaded.project, { characterIds: overloaded.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 599 }, viewportAspect: 16 / 9 })
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_TICK_LIMIT'))
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_CAMERA_LIMIT'))
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_BONE_BUDGET'))
+})
+
+test('selected prop bone budget uses supplied source-profile evidence and blocks unknown counts', async () => {
+  const clean = await validProject({ endFrame: 362, cameraCount: 1, characterCount: 1 })
+  const project = structuredClone(clean.project)
+  const character = project.characters[clean.characterIds[0]!]!
+  project.scene.content.nodes.push({ id: 'prop-budget', type: 'prop', name: 'Backdrop', visible: true, locked: false,
+    metadata: { assetId: character.assetId }, prop: { category: 'user' }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } } as never)
+  const args = { characterIds: clean.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 362 }, viewportAspect: 16 / 9,
+    propIds: ['prop-budget'], assetAvailability: { [character.assetId]: true }, footSamples: { [character.id]: [{ frame: 0, leftY: 0, rightY: 0, actorWorldMatrix: new Matrix4().toArray() }] } }
+  assert.equal(preflightProjectFilm(project, args).models.length, 1)
+  assert.ok(filmPreflight(project, args).errors.some((entry) => entry.code === 'FILM_PROP_BONE_COUNT_UNAVAILABLE'))
+  const withKnownCount = filmPreflight(project, { ...args, propBoneCounts: { [character.assetId]: 500 } })
+  assert.ok(withKnownCount.errors.some((entry) => entry.code === 'FILM_BONE_BUDGET'), JSON.stringify(withKnownCount.errors))
 })
 
 test('film.preflight is read only, revision checked, and returns bilingual blocking issues', async () => {

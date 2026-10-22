@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Matrix4, Quaternion } from 'three'
-import { buildFilmExportManifest, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
+import { buildFilmExportManifest, inspectFilmActorTransform, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
 
 const identity = new Matrix4().toArray()
 const input = {
@@ -55,4 +55,11 @@ test('rejects a profile from a different source and actor transforms the worker 
   const scaled = structuredClone(input) as typeof input
   scaled.frames[0]!.skeletons[0]!.actorWorldMatrix = new Matrix4().makeScale(2, 2, 2).toArray()
   assert.throws(() => buildFilmExportManifest(scaled as never, new Map([['asset', profile]]), 'take'), /unit actor scale/)
+})
+
+test('shared actor transform inspector detects shear and non-unit scale without changing export errors', () => {
+  const shear = new Matrix4(); shear.elements[4] = 0.25
+  assert.ok(inspectFilmActorTransform(shear.toArray(), 0).issues.some((entry) => entry.code === 'TRANSFORM_SHEAR'))
+  assert.ok(inspectFilmActorTransform(new Matrix4().makeScale(1, 2, 1).toArray(), 0).issues.some((entry) => entry.code === 'TRANSFORM_SCALE'))
+  assert.deepEqual(inspectFilmActorTransform(identity, 0).issues, [])
 })

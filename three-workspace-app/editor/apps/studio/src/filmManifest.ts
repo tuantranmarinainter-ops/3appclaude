@@ -26,24 +26,36 @@ function fail(message: string): never { throw new TypeError(message) }
  */
 export const FILM_MODEL_FACING_OFFSET = 180
 
-function actorTransform(matrixValues: number[], tick: number, priorYaw?: number) {
-  if (!Array.isArray(matrixValues) || matrixValues.length !== 16 || matrixValues.some((value) => !Number.isFinite(value))) fail('Film actor matrix must contain 16 finite values')
+export interface FilmActorTransformIssue { code: string; message: string }
+export function inspectFilmActorTransform(matrixValues: number[], tick: number, priorYaw?: number): { issues: FilmActorTransformIssue[]; transform?: { tick: number; x: number; y: number; z: number; pitch: number; yaw: number } } {
+  const issues: FilmActorTransformIssue[] = []
+  const add = (code: string, message: string) => issues.push({ code, message })
+  if (!Array.isArray(matrixValues) || matrixValues.length !== 16 || matrixValues.some((value) => !Number.isFinite(value))) {
+    add('MATRIX_INVALID', 'Film actor matrix must contain 16 finite values')
+    return { issues }
+  }
   const matrix = new Matrix4().fromArray(matrixValues)
   const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3()
   matrix.decompose(position, rotation, scale)
   const rebuilt = new Matrix4().compose(position, rotation, scale)
-  if (!rebuilt.elements.every((value, index) => Math.abs(value - matrix.elements[index]!) <= 1e-6 * Math.max(1, Math.abs(value), Math.abs(matrix.elements[index]!)))) fail('Film actor transform contains shear')
-  if (scale.toArray().some((value) => value <= 0 || Math.abs(value - 1) > 1e-6)) fail('Film export requires unit actor scale; bake actor scale into the converted model first')
+  if (!rebuilt.elements.every((value, index) => Math.abs(value - matrix.elements[index]!) <= 1e-6 * Math.max(1, Math.abs(value), Math.abs(matrix.elements[index]!)))) add('TRANSFORM_SHEAR', 'Film actor transform contains shear')
+  if (scale.toArray().some((value) => value <= 0 || Math.abs(value - 1) > 1e-6)) add('TRANSFORM_SCALE', 'Film export requires unit actor scale; bake actor scale into the converted model first')
   const forward = new Vector3(0, 0, 1).applyQuaternion(rotation)
   const horizontal = Math.hypot(forward.x, forward.z)
   const yaw = horizontal < 1e-10 ? priorYaw ?? 0 : Math.atan2(-forward.x, forward.z) * 180 / Math.PI
   const pitch = -Math.atan2(forward.y, horizontal) * 180 / Math.PI
   const continuousYaw = priorYaw === undefined ? yaw : yaw + 360 * Math.round((priorYaw - yaw) / 360)
   const expected = new Quaternion().setFromEuler(new Euler(pitch * Math.PI / 180, -continuousYaw * Math.PI / 180, 0, 'YXZ')).normalize()
-  if (1 - Math.abs(expected.dot(rotation.normalize())) > 1e-6) fail('Film actor roll is not supported by the BBS replay transform schema')
+  if (1 - Math.abs(expected.dot(rotation.normalize())) > 1e-6) add('TRANSFORM_ROLL', 'Film actor roll is not supported by the BBS replay transform schema')
   const values = [position.x, position.y, position.z, pitch, continuousYaw].map((value) => Object.is(value, -0) ? 0 : value)
-  if (values.some((value) => !Number.isFinite(value) || Math.abs(value) > FLOAT_MAX)) fail('Film actor transform exceeds the BBS numeric range')
-  return { tick, x: values[0]!, y: values[1]!, z: values[2]!, pitch: values[3]!, yaw: values[4]! }
+  if (values.some((value) => !Number.isFinite(value) || Math.abs(value) > FLOAT_MAX)) add('TRANSFORM_NUMERIC_RANGE', 'Film actor transform exceeds the BBS numeric range')
+  return { issues, ...(issues.length ? {} : { transform: { tick, x: values[0]!, y: values[1]!, z: values[2]!, pitch: values[3]!, yaw: values[4]! } }) }
+}
+
+function actorTransform(matrixValues: number[], tick: number, priorYaw?: number) {
+  const result = inspectFilmActorTransform(matrixValues, tick, priorYaw)
+  if (result.issues.length || !result.transform) fail(result.issues[0]?.message ?? 'Film actor matrix is invalid')
+  return result.transform
 }
 
 function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][number], profile: ConvertedFilmModelProfile): void {
