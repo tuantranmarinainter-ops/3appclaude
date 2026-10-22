@@ -34,9 +34,17 @@ test('builds a worker manifest with per-tick actor transforms and editable BOBJ 
   assert.deepEqual(manifest.models[0]!.bones, ['root'])
   const transforms = manifest.actors[0]!.transformSamples
   assert.deepEqual(transforms.map(({ x, y, z }) => [x, y, z]), [[0, 1, 3], [2, 1, 3]])
-  assert.ok(Math.abs(transforms[0]!.yaw) < 1e-12 && Math.abs(transforms[1]!.yaw + 90) < 1e-12)
+  // App 2 yaw 0 / -90 become BBS actor yaw 180 / 90 (converted models face away from BBS actors, calibrated in game).
+  assert.ok(Math.abs(transforms[0]!.yaw - 180) < 1e-12 && Math.abs(transforms[1]!.yaw - 90) < 1e-12)
   assert.equal(manifest.actors[0]!.poseTracks[0]!.keyframes.length, 2)
   assert.equal(manifest.cameras[0]!.id, 'shot')
+})
+
+test('turns Minecraft20 (low_body rig) actors 180 degrees like every other model', () => {
+  const rename = <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll('"root"', '"low_body"'))
+  const manifest = buildFilmExportManifest(rename(input) as never, new Map([['asset', rename(profile)]]), 'take-mc20')
+  const yaws = manifest.actors[0]!.transformSamples.map((sample) => sample.yaw)
+  assert.ok(Math.abs(yaws[0]! - 180) < 1e-9 && Math.abs(yaws[1]! - 90) < 1e-9, JSON.stringify(yaws))
 })
 
 test('rejects a profile from a different source and actor transforms the worker cannot express', () => {

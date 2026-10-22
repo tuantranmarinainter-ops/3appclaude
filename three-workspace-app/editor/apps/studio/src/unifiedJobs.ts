@@ -213,6 +213,41 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     signal.throwIfAborted()
     const manifest = buildFilmExportManifest(input, profiles, args.filmName)
+    // Static backdrops: each prop becomes a one-bone BOBJ model and an unanimated actor at its scene placement.
+    const propModels = new Map<string, string>()
+    for (const [index, propId] of (args.propIds ?? []).entries()) {
+      signal.throwIfAborted()
+      const node = snapshot.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+      const assetId = node?.metadata?.assetId
+      if (!node || typeof assetId !== 'string') throw new TypeError(`Prop ${propId} is missing from the Film snapshot`)
+      let modelId = propModels.get(assetId)
+      if (!modelId) {
+        const resolved = await resolveUnifiedAssetFile(snapshot, assetId, 'source')
+        const extension = resolved.mediaType === 'application/vnd.autodesk.fbx' ? '.fbx' : '.glb'
+        const sourcePath = path.join(work, `prop-${index}${extension}`)
+        await writeFile(sourcePath, resolved.bytes, { flag: 'wx' })
+        const output = path.join(convertedRoot, `prop-${index}`); await mkdir(output)
+        const unit = typeof node.metadata?.modelUnitMeters === 'number' ? node.metadata.modelUnitMeters : 1
+        const basis = Array.isArray(node.metadata?.modelBasisToScene) ? node.metadata.modelBasisToScene as number[] : [1, 0, 0, 0, 1, 0, 0, 0, 1]
+        const conversion = JSON.parse(await runLocalCommand(python, ['-m', 'agent.unified_cli', 'film', 'convert-model', sourcePath, '--output-dir', output,
+          '--unit-meters', String(unit), '--basis', ...basis.map(String)], agent, signal)) as { profilePath?: unknown; files?: unknown }
+        if (typeof conversion.profilePath !== 'string' || !Array.isArray(conversion.files)) throw new TypeError('Film converter returned an invalid prop profile reference')
+        const convertedPath = await realpath(conversion.profilePath), rootPath = await realpath(output)
+        if (!convertedPath.startsWith(`${rootPath}${path.sep}`)) throw new TypeError('Film converter profile escaped its staging folder')
+        const profile = JSON.parse(await readFile(convertedPath, 'utf8')) as Omit<ConvertedFilmModelProfile, 'files'>
+        modelId = profile.modelId
+        propModels.set(assetId, modelId)
+        if (!manifest.models.some((model) => model.id === modelId)) {
+          manifest.models.push({ id: modelId, bones: profile.bones.map((bone) => bone.name), actions: profile.actions,
+            textureRequired: profile.textureRequired, files: conversion.files as ConvertedFilmModelProfile['files'] })
+        }
+      }
+      // App 2 yaw (degrees about +Y, forward +Z) is the negative of a BBS replay yaw.
+      const { position, rotation } = node.transform
+      const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: rotation.y ? -rotation.y : 0 })
+      manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId,
+        transformSamples: [pose(0), pose(input.durationTicks)], poseTracks: [] } as (typeof manifest.actors)[number])
+    }
     const manifestPath = path.join(work, 'manifest.json')
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
     const outputRoot = path.join(work, 'package'); await mkdir(outputRoot)

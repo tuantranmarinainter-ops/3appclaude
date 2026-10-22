@@ -7,6 +7,8 @@ export interface SceneBbsFilmArgs {
   frameStart?: number
   frameEnd?: number
   characterIds?: string[]
+  /** Prop node IDs to include as static backdrop actors, or 'all' for every prop node in the scene. */
+  propIds?: string[] | 'all'
   viewportAspect?: number
   name?: string
   mode?: 'editable'
@@ -25,13 +27,14 @@ export interface ResolvedSceneBbsFilm {
     sequenceId: string
     range: { startFrame: number; endFrame: number }
     characterIds: string[]
+    propIds: string[]
     cameraNodeIds: string[]
     rootMotion: { actorPath: 'replay-transform'; actionRoot: 'pose-track' }
     defaulted: string[]
   }
 }
 
-const KEYS = ['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'viewportAspect', 'name', 'mode']
+const KEYS = ['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 function fail(message: string): never { throw new TypeError(message) }
@@ -71,6 +74,16 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
     if (!characterIds.length) fail('Scene has no Characters to export')
     defaulted.push('characterIds')
   }
+  const propNodes = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
+  const propIds = args.propIds === undefined ? [] : args.propIds === 'all' ? propNodes.map((node) => node.id) : args.propIds
+  if (!Array.isArray(propIds) || propIds.length > 64 || new Set(propIds).size !== propIds.length) fail('propIds must be "all" or up to 64 unique prop node IDs')
+  for (const propId of propIds) {
+    const node = propNodes.find((item) => item.id === propId)
+    if (!node) fail(`Prop ${String(propId)} is not a model prop in this scene`)
+    const { rotation, scale } = node.transform
+    if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6)) fail(`Prop ${node.name} must use unit scale; bake its size into the model first`)
+    if (Math.abs(rotation.x) > 1e-6 || Math.abs(rotation.z) > 1e-6) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
+  }
   const viewportAspect = args.viewportAspect ?? 16 / 9
   if (args.viewportAspect === undefined) defaulted.push('viewportAspect')
   const filmName = args.name ?? safeFilmName(project.name)
@@ -78,9 +91,9 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   if (typeof filmName !== 'string' || !SAFE_NAME.test(filmName) || filmName.endsWith('.')) fail('name must use 1-64 safe ASCII characters')
   const range = { startFrame, endFrame }
   return {
-    film: { characterIds, sequenceId, range, viewportAspect, filmName },
+    film: { characterIds, propIds, sequenceId, range, viewportAspect, filmName },
     archiveName: `${filmName}.bbs-film.zip`,
     sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', sequenceId, range,
-      characterIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },
+      characterIds, propIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },
   }
 }

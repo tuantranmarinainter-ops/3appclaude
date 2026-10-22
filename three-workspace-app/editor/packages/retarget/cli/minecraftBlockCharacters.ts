@@ -51,6 +51,11 @@ export const ROLES: Role[] = [
   // Herobrine: grey skin, white glowing eyes with pink glow under them, black hair, bare grey torso, dark grey trousers.
   { name: 'herobrine', boxes: [...humanoid({ head: '#C9C9C9', hair: '#1F1F1F', eyes: '#FFFFFF', shirt: '#BEBEBE', sleeve: '#BEBEBE', hand: '#C9C9C9', pants: '#4A4A4A', shoes: '#333333' }),
     box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8')] },
+  // Herobrine with the rainbow staff of Tập 15: seven 1x1 px segments held in the right hand, pointing forward.
+  { name: 'herobrine_staff', boxes: [...humanoid({ head: '#C9C9C9', hair: '#1F1F1F', eyes: '#FFFFFF', shirt: '#BEBEBE', sleeve: '#BEBEBE', hand: '#C9C9C9', pants: '#4A4A4A', shoes: '#333333' }),
+    box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8'),
+    ...['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7FF', '#3A5BFF', '#AF52DE'].map((color, i) =>
+      box('low_right_arm', [-6.5, 12, -3 + i * 3], [-5.5, 13, i * 3], color))] },
   { name: 'steve', boxes: humanoid({ head: '#B98A68', hair: '#3B2A1E', eyes: '#4B3A8A', eyeWhite: '#F4F4F4', shirt: '#2C9AA0', sleeve: '#2C9AA0', hand: '#B98A68', pants: '#3542A0', shoes: '#4A4A4A' }) },
   { name: 'enderman', boxes: humanoid({ head: '#151515', eyes: '#C04BFF', shirt: '#151515', sleeve: '#151515', hand: '#151515', pants: '#151515', shoes: '#151515' }, 2, 8) },
   // Đen: charcoal body, blue eyes, black coat with a red scarf, red front trim and gold studs.

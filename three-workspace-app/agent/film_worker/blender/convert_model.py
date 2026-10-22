@@ -33,10 +33,34 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def static_prop_armature(meshes):
+    """Armature with a single "root" bone at the origin; every mesh keeps its world placement and is fully weighted to it."""
+    data = bpy.data.armatures.new("PropArmature")
+    armature = bpy.data.objects.new("PropArmature", data)
+    bpy.context.scene.collection.objects.link(armature)
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode="EDIT")
+    bone = data.edit_bones.new("root")
+    bone.head, bone.tail = (0, 0, 0), (0, 0.1, 0)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for mesh in meshes:
+        world = mesh.matrix_world.copy()
+        mesh.parent = armature
+        mesh.matrix_world = world
+        group = mesh.vertex_groups.get("root") or mesh.vertex_groups.new(name="root")
+        group.add(range(len(mesh.data.vertices)), 1.0, "REPLACE")
+        modifier = mesh.modifiers.new("PropArmature", "ARMATURE")
+        modifier.object = armature
+    return armature
+
+
 def imported_armature():
     armatures = [item for item in bpy.context.scene.objects if item.type == "ARMATURE"]
     # shortcut: Blender's glTF helper collection name is importer-defined; update this filter if Blender renames it.
     meshes = [item for item in bpy.context.scene.objects if item.type == "MESH" and not any(collection.name == "glTF_not_exported" for collection in item.users_collection)]
+    if not armatures and meshes:
+        # A static prop (scene backdrop): give it one "root" bone so it travels as a BOBJ model like a Character.
+        armatures = [static_prop_armature(meshes)]
     if len(armatures) != 1 or not meshes or not armatures[0].data.bones:
         raise ValueError("The source must contain one armature and at least one mesh")
     armature = armatures[0]

@@ -1,15 +1,17 @@
 import { createHash } from 'node:crypto'
-import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
+import { Euler, Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { validateProject } from '@bbs/animation-workspace-shared'
 import { validateEditorial } from '@topview/3d-builder/evaluate'
 import type { CameraSequenceSample, SkeletonFrameSample } from '@topview/3d-builder/skeleton'
 import { cameraSamplesToFilm } from './filmCamera'
 import { bakeFilmPoseTracks } from './filmPoseBake'
-import { sampleProjectCameraSequence, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
+import { projectEvaluationScene, sampleProjectCameraSequence, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
 
 export interface FilmSamplingArgs {
   characterIds: string[]
+  /** Static scene backdrops (prop nodes) to carry into the Film as unanimated model actors. */
+  propIds?: string[]
   sequenceId: string
   range: { startFrame: number; endFrame: number }
   viewportAspect: number
@@ -102,6 +104,46 @@ export interface FilmActorSample {
   skeletons: SkeletonFrameSample[]
 }
 
+const D2R = Math.PI / 180
+
+/**
+ * App 2 (Topview) ignores a Character's rotation keys while a motion clip plays; its golden frames pin that. The Film
+ * export turns the actor by those keys anyway, so a Character can turn during an Action in BBS FS. The turn is the
+ * change from the evaluated (static) root rotation to the keyed one, applied in world space to the placement, actor and
+ * every bone, which keeps the pose relative to the actor intact. Derived paths that face along the path own the yaw.
+ */
+export function turnFilmSkeletonsByRotationKeys(scene: ReturnType<typeof projectEvaluationScene>,
+  sample: { frame: number; side: 'left' | 'right'; skeletonSamples: SkeletonFrameSample[] }) {
+  const fcurves = scene.fcurves
+  if (!fcurves) return
+  const { motionClips, pathMotionClips } = scene.timeline.animation
+  const { frame, side } = sample
+  const owns = (start: number, end: number) => side === 'left' ? frame > start && frame <= end + 1 : frame >= start && frame < end + 1
+  for (const skeleton of sample.skeletonSamples) {
+    const nodeId = skeleton.nodeId
+    if (!motionClips.some((clip) => clip.target.nodeId === nodeId && owns(clip.frameStart, clip.frameEnd))) continue
+    if (pathMotionClips.some((clip) => clip.target?.nodeId === nodeId && clip.facing === 'path-tangent')) continue
+    const node = scene.nodes.find((item) => item.id === nodeId)
+    if (!node) continue
+    const { x, y, z } = node.transform.rotation
+    const keyed = [x, y, z]
+    let turned = false
+    for (let axis = 0; axis < 3; axis++) {
+      const value = fcurves.evalScalar(nodeId, 'transform.rotation', axis, frame)
+      if (value !== null && value !== keyed[axis]) { keyed[axis] = value; turned = true }
+    }
+    if (!turned) continue
+    const from = new Quaternion().setFromEuler(new Euler(x * D2R, y * D2R, z * D2R))
+    const to = new Quaternion().setFromEuler(new Euler(keyed[0]! * D2R, keyed[1]! * D2R, keyed[2]! * D2R))
+    const placement = new Matrix4().fromArray(skeleton.placementMatrix)
+    const delta = placement.clone().multiply(new Matrix4().makeRotationFromQuaternion(from.invert().multiply(to))).multiply(placement.clone().invert())
+    const turn = (matrix: number[]) => new Matrix4().fromArray(matrix).premultiply(delta).toArray()
+    skeleton.placementMatrix = turn(skeleton.placementMatrix)
+    skeleton.actorWorldMatrix = turn(skeleton.actorWorldMatrix)
+    for (const bone of skeleton.bones) bone.worldMatrix = turn(bone.worldMatrix)
+  }
+}
+
 /** Converter input, not a native Film manifest: bone matrices retain their source conventions. */
 export async function sampleProjectFilm(project: UnifiedProject, args: FilmSamplingArgs, signal?: AbortSignal) {
   signal?.throwIfAborted()
@@ -137,12 +179,14 @@ export async function sampleProjectFilm(project: UnifiedProject, args: FilmSampl
   const camera = cameraSamplesToFilm(cameraSamples)
   if (camera.durationTicks !== preflight.durationTicks) fail('Camera and Character durations disagree')
   const frames: FilmActorSample[] = []
+  const scene = projectEvaluationScene(snapshot)
   for await (const sample of sampleProjectSkeletonRange(snapshot, { ...options.range, sampleFps: TICK_RATE }, options.characterIds)) {
     signal?.throwIfAborted()
     const tick = sample.timeSeconds * TICK_RATE
     if (Math.abs(tick - frames.length) > 1e-7 || sample.skeletonSamples.length !== preflight.models.length ||
         new Set(sample.skeletonSamples.map((item) => item.nodeId)).size !== preflight.models.length ||
         sample.skeletonSamples.some((item) => !selectedNodes.has(item.nodeId))) fail('Film skeleton sampler returned an incomplete grid')
+    turnFilmSkeletonsByRotationKeys(scene, sample)
     frames.push({ tick: frames.length, sourceFrame: sample.frame, side: sample.side, skeletons: sample.skeletonSamples })
   }
   signal?.throwIfAborted()

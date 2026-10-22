@@ -96,12 +96,15 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const name = model.name
     if (typeof name !== 'string' || !name.trim() || name.length > 64) fail(`Film actor name must contain 1-64 characters: ${model.characterId}`)
     let previousYaw: number | undefined
+    // Converted BOBJ models face the opposite way to App 2 characters in BBS actors. Calibrated in BBS FS 2.7 with
+    // Minecraft20 and Mixamo65 actors at yaw 0: every unturned actor showed its back to a camera it should face.
+    const facingOffset = 180
     const transformSamples = input.frames.map((frame) => {
       const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
       if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
       const transform = actorTransform(sample.actorWorldMatrix, frame.tick, previousYaw)
       previousYaw = transform.yaw
-      return transform
+      return { ...transform, yaw: transform.yaw + facingOffset }
     })
     return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples,
       poseTracks: baked[modelIndex]!.poseTracks }
