@@ -28,11 +28,11 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 - **MVP App 4 (người dùng chốt 2026-10-22): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật.**
   BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS FS 2.7 (Snowstorm JSON) trước**
   (chạy native, chặn tính năng không hỗ trợ khi xuất); song song khảo sát addon gọi AAA Particles. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
-  bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất.
+  bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 - **Blend Add trên BBS FS 2.7 (người dùng chốt 2026-10-22: "phương án 2")**: không chặn, cảnh báo; bộ chuyển làm
   (a) texture mới alpha = độ sáng (texture Add của Effekseer là nền đen, alpha = 1), (b) **lõi trắng**: pha màu về trắng
   theo độ sáng texture, (c) **lớp quầng**: thêm 1 emitter cùng nhịp, kích thước ~1.9×, alpha ~0.55×, màu sáng hơn, vẽ sau.
-  Ghi mọi hệ số vào report. Ảnh mô phỏng: `C:\w01-samples\vfx-review\blend-options-27.png`. Không sửa mod BBS (bỏ PA 4). Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
+  Ghi mọi hệ số vào report. Ảnh mô phỏng: `C:\w01-samples\vfx-review\blend-options-27.png`. Không sửa mod BBS (bỏ PA 4).
 
 ## Input/Output
 | App | Vào | Ra |
