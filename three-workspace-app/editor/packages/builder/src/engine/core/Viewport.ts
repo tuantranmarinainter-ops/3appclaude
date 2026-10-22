@@ -217,13 +217,11 @@ export class DualViewport {
       throw new RangeError('Film aspect must be a positive finite number or null')
     }
     this.filmAspect = aspect
-    this.host.onInvalidateMain()
   }
 
   /** Host hook: keep film framing restricted to BBS look camera views. */
   setFilmFramePreviewEnabled(enabled: boolean): void {
     this.filmFramePreviewEnabled = enabled
-    this.host.onInvalidateMain()
   }
 
   attachMain(canvas: HTMLCanvasElement): void {
