@@ -2,8 +2,9 @@ import { randomUUID, createHash } from 'node:crypto'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 // Process generation is part of every lease/ticket: a restarted broker never replays a dispatched command.
-export const APP3_EXPORT_TOOLS = ['export_animation', 'shotOpen', 'shotExport'] as const
+export const APP3_EXPORT_TOOLS = ['export_animation', 'shotOpen', 'shotExport', 'libraryActionOpen'] as const
 export interface App3ShotProof { shotId: string; baseShotSha256: string; characterId: string; actionUuid: string; glbSha256: string; zipSha256: string; frameRange: [number, number]; fps: number; sourceRevision: number; jobId: string; fileId: string }
+export interface App3LibraryActionProof { actionUuid: string; characterId: string; characterAssetId: string; characterSha256: string; packId: string; glbSha256: string; glbAnimationIndex: number; name: string }
 export const APP3_READ_TOOLS = ['read_keyframes', 'analyze_motion', 'get_scene_context', 'get_animation_context'] as const
 export const LOCAL_EDIT_TOOLS=['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
 export function validateApp3Edit(tool: unknown,value: unknown): asserts value is Record<string, unknown> {
@@ -95,7 +96,7 @@ export function app3BindingCandidates(project: UnifiedProject, sourceSha256: str
   }
   return found
 }
-type Ticket = { completion?: string; proof?: App3ShotProof; nextLease?: Record<string, unknown>; commandId: string; requestId: string; fingerprint: string; tool: string; args: Record<string, unknown>; projectRevision?: number; expectedAnimationRevision?: string; status: 'queued' | 'dispatched' | 'done' | 'expired'; created: number; expiredError?: string; result?: Record<string, unknown> }
+type Ticket = { completion?: string; proof?: App3ShotProof | App3LibraryActionProof; nextLease?: Record<string, unknown>; commandId: string; requestId: string; fingerprint: string; tool: string; args: Record<string, unknown>; projectRevision?: number; expectedAnimationRevision?: string; status: 'queued' | 'dispatched' | 'done' | 'expired'; created: number; expiredError?: string; result?: Record<string, unknown> }
 type Session = { closedAt?: number; opening?: string; shot?: App3ShotProof; projectId: string; sessionId: string; epoch: string; characterId: string; sourceSha256: string; sourceMotionId?: string; receiverToken: string; heartbeat: number; ready: boolean; active: boolean; context: Record<string, unknown>; tickets: Map<string, Ticket> }
 type State = { instance: string; sessions: Map<string, Session> }
 const globalState = globalThis as typeof globalThis & { __bbsApp3Bridge?: State }
@@ -118,10 +119,10 @@ function ticket(s: Session, id: unknown) {
   identifier(id)
   const t = s.tickets.get(id)
   if (!t) fail('COMMAND_NOT_FOUND', 404)
-  if (t.status !== 'done' && t.status !== 'expired' && Date.now() - t.created > (APP3_EXPORT_TOOLS.includes(t.tool as any)?EXPORT_TTL:COMMAND_TTL)) { t.expiredError = t.status === 'queued' ? 'APP3_OFFLINE' : 'COMMAND_OUTCOME_UNKNOWN'; t.status = 'expired';if(t.tool==='shotOpen'){s.opening=undefined;if(t.expiredError==='COMMAND_OUTCOME_UNKNOWN'){s.closedAt=Date.now();s.ready=false}} }
+  if (t.status !== 'done' && t.status !== 'expired' && Date.now() - t.created > (APP3_EXPORT_TOOLS.includes(t.tool as any)?EXPORT_TTL:COMMAND_TTL)) { t.expiredError = t.status === 'queued' ? 'APP3_OFFLINE' : 'COMMAND_OUTCOME_UNKNOWN'; t.status = 'expired';if(t.tool==='shotOpen'||t.tool==='libraryActionOpen'){s.opening=undefined;if(t.expiredError==='COMMAND_OUTCOME_UNKNOWN'){s.closedAt=Date.now();s.ready=false}} }
   return t
 }
-export function executeApp3Bridge(project: UnifiedProject, command: string, a: Record<string, unknown>, requestId: string, dryRun = false, expectedProjectRevision?: number, preparedShot?: App3ShotProof, validatedArtifact = false): Record<string, unknown> {
+export function executeApp3Bridge(project: UnifiedProject, command: string, a: Record<string, unknown>, requestId: string, dryRun = false, expectedProjectRevision?: number, preparedShot?: App3ShotProof | App3LibraryActionProof, validatedArtifact = false): Record<string, unknown> {
   bounded(a)
   if (command === 'app3.session.list') {
     fields(a, [])
@@ -175,7 +176,8 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     if (s.tickets.size >= 256) fail('QUEUE_FULL', 429)
     if (dryRun) return { valid: true }
     const t: Ticket = { commandId: randomUUID(), requestId, fingerprint, tool: a.tool as string, args: a.parameters as Record<string,unknown>, ...(editing?{projectRevision:expectedProjectRevision,expectedAnimationRevision:a.expectedAnimationRevision as string}:{}), status: 'queued', created: Date.now() }
-    if(a.tool==='shotOpen'){if(!preparedShot)fail('SHOT_PACKAGE_REQUIRED');if(preparedShot.characterId!==s.characterId||preparedShot.sourceRevision!==project.revision)fail('IDENTITY_MISMATCH');t.proof=preparedShot;s.opening=t.commandId}
+    if(a.tool==='shotOpen'){if(!preparedShot||!('zipSha256' in preparedShot))fail('SHOT_PACKAGE_REQUIRED');if(preparedShot.characterId!==s.characterId||preparedShot.sourceRevision!==project.revision)fail('IDENTITY_MISMATCH');t.proof=preparedShot;s.opening=t.commandId}
+    if(a.tool==='libraryActionOpen'){if(!preparedShot||!('packId' in preparedShot))fail('VALIDATION_FAILED');if(preparedShot.characterId!==s.characterId||preparedShot.actionUuid!==a.parameters.actionUuid||preparedShot.characterSha256!==s.sourceSha256||preparedShot.characterAssetId!==project.characters[s.characterId]?.assetId)fail('IDENTITY_MISMATCH');t.proof=preparedShot;s.opening=t.commandId}
     if(a.tool==='shotExport'){if(!s.shot)fail('SHOT_PACKAGE_REQUIRED');t.proof=s.shot}
     s.tickets.set(t.commandId, t)
     return { ...identity(s), commandId: t.commandId, status: t.status }
@@ -190,16 +192,16 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
     for (const [id, t] of s.tickets) { ticket(s, id); if (Date.now() - t.created > TTL * 5) s.tickets.delete(id) }
     const next = [...s.tickets.values()].find(t => t.status === 'dispatched') ?? [...s.tickets.values()].find(t => t.status === 'queued')
     if(next?.projectRevision!==undefined&&next.status==='queued'&&(next.projectRevision!==project.revision||!s.active)){
-      if(next.tool==='shotOpen')s.opening=undefined;next.status='done';next.result={ok:false,error:next.projectRevision!==project.revision?'REVISION_CONFLICT':'APP3_INACTIVE'};return {...identity(s),commands:[]}
+      if(next.tool==='shotOpen'||next.tool==='libraryActionOpen')s.opening=undefined;next.status='done';next.result={ok:false,error:next.projectRevision!==project.revision?'REVISION_CONFLICT':'APP3_INACTIVE'};return {...identity(s),commands:[]}
     }
-    if (next && s.ready) { next.status = 'dispatched'; return { ...identity(s), commands: [{ commandId: next.commandId, tool: next.tool, args: next.args, ...(next.proof ? {shot:next.proof}:{}), ...(next.expectedAnimationRevision?{expectedAnimationRevision:next.expectedAnimationRevision,projectRevision:next.projectRevision}:{}) }] } }
+    if (next && s.ready) { next.status = 'dispatched'; return { ...identity(s), commands: [{ commandId: next.commandId, tool: next.tool, args: next.args, ...(next.proof ? ('packId' in next.proof ? {action:next.proof} : {shot:next.proof}):{}), ...(next.expectedAnimationRevision?{expectedAnimationRevision:next.expectedAnimationRevision,projectRevision:next.projectRevision}:{}) }] } }
     return { ...identity(s), commands: [] }
   }
   const t = ticket(s, a.commandId)
   if(command==='app3.session.claim'){
     if(t.status!=='dispatched')fail('COMMAND_OUTCOME_UNKNOWN')
     if(t.projectRevision!==undefined){if(t.projectRevision!==project.revision)fail('REVISION_CONFLICT');if(!s.active)fail('APP3_INACTIVE')}
-    return {valid:true,tool:t.tool,...(t.proof?{shot:t.proof}:{}),expectedAnimationRevision:t.expectedAnimationRevision}
+    return {valid:true,tool:t.tool,...(t.proof ? ('packId' in t.proof ? {action:t.proof} : {shot:t.proof}) : {}),expectedAnimationRevision:t.expectedAnimationRevision}
   }
   if (!record(a.result) || typeof a.result.ok !== 'boolean' || !record(a.context)) fail('VALIDATION_FAILED', 400)
   if (t.status === 'done') {
@@ -210,18 +212,24 @@ export function executeApp3Bridge(project: UnifiedProject, command: string, a: R
   let completedResult=a.result
   if(['export_animation','shotExport'].includes(t.tool)&&a.result.ok===true&&!validatedArtifact)fail('ARTIFACT_VALIDATION_REQUIRED')
   t.completion=JSON.stringify(a.result)
-  if(t.tool==='shotOpen' && a.result.ok===true){
+  if(t.tool==='libraryActionOpen' && a.result.ok===true){
     const value=a.result.value
-    if(!t.proof||!record(value)||value.sourceSha256!==t.proof.glbSha256||value.baseShotSha256!==t.proof.baseShotSha256||value.shotId!==t.proof.shotId||value.actionUuid!==t.proof.actionUuid||value.characterId!==t.proof.characterId||JSON.stringify(value.frameRange)!==JSON.stringify(t.proof.frameRange)||value.fps!==t.proof.fps)fail('IDENTITY_MISMATCH')
+    if(!t.proof||!('packId' in t.proof)||!record(value)||value.actionUuid!==t.proof.actionUuid||value.characterId!==t.proof.characterId||value.characterAssetId!==t.proof.characterAssetId||value.glbAnimationIndex!==t.proof.glbAnimationIndex||value.glbSha256!==t.proof.glbSha256)fail('IDENTITY_MISMATCH')
+    fields(value,['actionUuid','characterId','characterAssetId','glbAnimationIndex','glbSha256'])
+    if(a.context.ready!==true||typeof a.context.revision!=='string')fail('VALIDATION_FAILED')
+  }
+  if(t.tool==='shotOpen' && a.result.ok===true){
+    const value=a.result.value,proof=t.proof
+    if(!proof||!('zipSha256' in proof)||!record(value)||value.sourceSha256!==proof.glbSha256||value.baseShotSha256!==proof.baseShotSha256||value.shotId!==proof.shotId||value.actionUuid!==proof.actionUuid||value.characterId!==proof.characterId||JSON.stringify(value.frameRange)!==JSON.stringify(proof.frameRange)||value.fps!==proof.fps)fail('IDENTITY_MISMATCH')
     fields(value,['shotId','baseShotSha256','characterId','actionUuid','sourceSha256','frameRange','fps'])
     if(a.context.ready!==true||typeof a.context.revision!=='string')fail('VALIDATION_FAILED')
     if(t.projectRevision!==project.revision)fail('REVISION_CONFLICT')
-    const next:Session={projectId:s.projectId,sessionId:randomUUID(),epoch:randomUUID(),characterId:s.characterId,sourceSha256:t.proof.glbSha256,sourceMotionId:t.proof.actionUuid,receiverToken:randomUUID(),heartbeat:Date.now(),ready:true,active:s.active,context:a.context,tickets:new Map(),shot:t.proof}
+    const next:Session={projectId:s.projectId,sessionId:randomUUID(),epoch:randomUUID(),characterId:s.characterId,sourceSha256:proof.glbSha256,sourceMotionId:proof.actionUuid,receiverToken:randomUUID(),heartbeat:Date.now(),ready:true,active:s.active,context:a.context,tickets:new Map(),shot:proof}
     state.sessions.set(next.sessionId,next);s.closedAt=Date.now();s.ready=false;s.opening=undefined
     t.nextLease={...identity(next),receiverToken:next.receiverToken}
     completedResult={ok:true,value:{...value,...identity(next)}}
   }
-  if(t.tool==='shotOpen')s.opening=undefined
+  if(t.tool==='shotOpen'||t.tool==='libraryActionOpen')s.opening=undefined
   t.result = completedResult as Record<string,unknown>; t.status = 'done'; s.context = a.context; s.heartbeat = Date.now()
   return { acknowledged: true, commandId: t.commandId,...(t.nextLease?{nextLease:t.nextLease}:{}) }
 }
@@ -238,6 +246,7 @@ export function validateApp3Export(tool: unknown, value: unknown): asserts value
  if(tool==='export_animation'){fields(value,['format']);if(!['bobj','fbx'].includes(String(value.format)))fail('VALIDATION_FAILED',400)}
  else if(tool==='shotOpen'){fields(value,['jobId','fileId']);identifier(value.jobId);if(typeof value.fileId!=='string'||!/^\d{1,2}$/.test(value.fileId))fail('VALIDATION_FAILED',400)}
  else if(tool==='shotExport'){fields(value,['includeMinecraft20']);if(value.includeMinecraft20!==undefined&&typeof value.includeMinecraft20!=='boolean')fail('VALIDATION_FAILED',400)}
+ else if(tool==='libraryActionOpen'){fields(value,['actionUuid']);if(typeof value.actionUuid!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.actionUuid))fail('VALIDATION_FAILED',400)}
  else fail('UNSUPPORTED_CAPABILITY',422)
 }
 

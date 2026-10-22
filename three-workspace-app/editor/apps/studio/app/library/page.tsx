@@ -6,6 +6,7 @@ import { ActionPreview } from './ActionPreview'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 
 type Action = { uuid: string; name: string; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number }
+type Character = { charId: string; name: string; rig: string; previewUrl: string }
 type Page = { items: Action[]; total: number }
 
 export default function LibraryPage() {
@@ -15,11 +16,16 @@ export default function LibraryPage() {
   const [tag, setTag] = useState('')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Action | null>(null)
+  const [characters, setCharacters] = useState<Character[]>([])
+  const [characterId, setCharacterId] = useState('')
   const [editTags, setEditTags] = useState('')
   const [editCategory, setEditCategory] = useState('')
   const [message, setMessage] = useState('')
   const params = useMemo(() => new URLSearchParams({ ...(rig ? { rig } : {}), ...(category ? { category } : {}), ...(tag ? { tag } : {}), ...(query ? { q: query } : {}) }), [rig, category, tag, query])
   useEffect(() => { let live = true; fetch(`/api/library?${params}`, { cache: 'no-store' }).then(r => r.json()).then(data => { if (live) setPage(data) }).catch(error => setMessage(String(error))); return () => { live = false } }, [params])
+  const selectedRig = selected?.rig
+  useEffect(() => { let live = true; fetch('/api/library?characters=1', { cache: 'no-store' }).then(r => r.json()).then(data => { if (live) { const rows = (data.characters as Character[]).filter(c => c.rig === selectedRig || !selectedRig); setCharacters(rows); setCharacterId(current => rows.some(c => c.charId === current) ? current : rows[0]?.charId ?? '') } }).catch(error => setMessage(String(error))); return () => { live = false } }, [selectedRig])
+  const previewCharacter = characters.find(character => character.charId === characterId)
   async function choose(action: Action) {
     setSelected(action); setEditTags(action.tags.join(', ')); setEditCategory(action.category)
     try { const response = await fetch(`/api/library?actionUuid=${encodeURIComponent(action.uuid)}`); const body = await response.json(); if (!response.ok) throw Error(body.error); setSelected({ ...action, ...body.action }) } catch (error) { setMessage(String(error)) }
@@ -48,9 +54,13 @@ export default function LibraryPage() {
         {!page.items.length && <p>No actions in this library yet.</p>}
       </section>
       <aside aria-label="Action preview and metadata" style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>
-        {selected ? <><h2>{selected.name}</h2><ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} /><p>Action preview · {selected.durationSeconds.toFixed(2)} s · {selected.fps} fps</p><p>Rig: {selected.rig} · Pack: {selected.packId}</p>
+        {selected ? <><h2>{selected.name}</h2>
+          <label>Preview character <select aria-label="Preview character" value={characterId} onChange={event => setCharacterId(event.target.value)}>{characters.filter(character => character.rig === selected.rig).map(character => <option key={character.charId} value={character.charId}>{character.name}</option>)}</select></label>
+          {previewCharacter ? <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={previewCharacter.previewUrl} /> : <p>No preview character is available for rig {selected.rig}.</p>}
+          <p>Action preview · {selected.durationSeconds.toFixed(2)} s · {selected.fps} fps</p><p>Rig: {selected.rig} · Pack: {selected.packId}</p>
           <label>Category <select value={editCategory} onChange={e => setEditCategory(e.target.value)}>{ACTION_CATEGORIES.map(v => <option key={v}>{v}</option>)}</select></label><p><label>Tags (comma separated)<br /><input value={editTags} onChange={e => setEditTags(e.target.value)} /></label></p><button onClick={() => void save()}>Save metadata</button>
-          <p>Action UUID · {selected.uuid}</p><p>App 2 placement and App 3 editing are unavailable until their host bridges accept a library Action.</p>
+          <p>Action UUID · {selected.uuid}</p>
+          {typeof window !== 'undefined' && window.opener ? <><button onClick={() => window.opener?.postMessage({ type: 'bbs-library-place-action', actionUuid: selected.uuid }, window.location.origin)}>Place on selected App 2 character</button><button onClick={() => window.opener?.postMessage({ type: 'bbs-library-open-app3', actionUuid: selected.uuid }, window.location.origin)}>Open in Animation Studio</button></> : null}
         </> : <p>Select an Action to preview its details and edit metadata.</p>}{message && <p role="status">{message}</p>}
       </aside>
     </div>

@@ -9,8 +9,8 @@ export function attachApp1Manifest(imported: ImportedAsset, bytes: Buffer, value
       value.glbSha256 !== createHash('sha256').update(bytes).digest('hex') || !Array.isArray(value.actions) || !value.actions.length) {
     throw new TypeError('APP1_MANIFEST_INVALID: version, GLB SHA-256 or actions are invalid')
   }
-  if (imported.skeleton?.family !== 'mixamo65' || value.actions.length !== imported.motions.length || imported.issues?.length) {
-    throw new TypeError('APP1_ACTION_MISSING: every manifest Action must resolve to a Mixamo65 GLB clip')
+  if (!['mixamo65', 'minecraft20'].includes(imported.skeleton?.family ?? '') || value.actions.length !== imported.motions.length || imported.issues?.length) {
+    throw new TypeError('APP1_ACTION_MISSING: every manifest Action must resolve to a supported rig GLB clip')
   }
   const used = new Set<string>(), indices = new Set<number>()
   for (const entry of value.actions) {
@@ -21,8 +21,10 @@ export function attachApp1Manifest(imported: ImportedAsset, bytes: Buffer, value
     }
     const item = imported.motions.find((motion) => motion.clipIndex === entry.glbAnimationIndex)
     if (!item || Math.abs(item.motion.durationSeconds - entry.durationSeconds) > 1e-4) throw new TypeError('APP1_ACTION_MISSING: manifest clip index or duration does not match GLB')
-    const jointNames = new Set(MIXAMO65_BONE_PARENTS.map(([name]) => name))
-    item.boneNames = item.boneNames?.filter(name => jointNames.has(name))
+    if (imported.skeleton?.family === 'mixamo65' && !Array.isArray(value.extraBones)) {
+      const jointNames = new Set(MIXAMO65_BONE_PARENTS.map(([name]) => name))
+      item.boneNames = item.boneNames?.filter(name => jointNames.has(name))
+    }
     item.motion.id = entry.uuid
     item.motion.sourceFps = 30
     item.name = entry.name
