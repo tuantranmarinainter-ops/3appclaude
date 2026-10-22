@@ -14,6 +14,14 @@ class FakeSession:
     def node_list(self):
         return [{"path": "node/root/0", "id": "node/id/sprite-id", "name": "Spark", "children": 0}]
 
+    def property_list(self, path):
+        return [f"{path}/LocationValues/Location/Fixed/Position/Center/IsValueChangedFromDefault",
+                f"{path}/LocationValues/Velocity/PVA/Center/IsValueChangedFromDefault",
+                f"{path}/LocationValues/Acceleration/PVA/Center/IsValueChangedFromDefault",
+                f"{path}/RotationValues/Rotation/Fixed/Center/IsValueChangedFromDefault",
+                f"{path}/ScalingValues/Scale/Fixed/Center/IsValueChangedFromDefault",
+                f"{path}/RendererCommonValues/AllColor/Fixed/Center/IsValueChangedFromDefault"]
+
     def property_get(self, path):
         values = {
             "node/root/0/DrawingValues/Type": "Sprite",
@@ -26,6 +34,12 @@ class FakeSession:
             "node/root/0/CommonValues/Life/Min": 12,
             "node/root/0/CommonValues/Life/Max": 24,
             "node/root/0/LocationValues/Type": "PVA",
+            "node/root/0/LocationValues/Location/Fixed/Position/Center": "(1, 2, 3)",
+            "node/root/0/LocationValues/Velocity/PVA/Center": "(4, 5, 6)",
+            "node/root/0/LocationValues/Acceleration/PVA/Center": "(7, 8, 9)",
+            "node/root/0/RotationValues/Rotation/Fixed/Center": "(10, 11, 12)",
+            "node/root/0/ScalingValues/Scale/Fixed/Center": "(2, 3, 4)",
+            "node/root/0/RendererCommonValues/AllColor/Fixed/Center": "(0.1, 0.2, 0.3, 0.4)",
         }
         if path not in values:
             raise ValueError(path)
@@ -40,6 +54,12 @@ def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
     assert first["texture"] == "Texture/Particle01.png"
     assert first["generation"] == {"maxGeneration": 20, "infinite": True, "generationTime": 3, "generationTimeAmplitude": 1}
     assert first["life"] == {"min": 12, "max": 24}
+    assert first["location"]["position"] == [1, 2, 3]
+    assert first["location"]["velocity"] == [4, 5, 6]
+    assert first["location"]["acceleration"] == [7, 8, 9]
+    assert first["rotation"] == [10, 11, 12]
+    assert first["size"] == [2, 3]
+    assert first["color"] == [0.1, 0.2, 0.3, 0.4]
     assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
     assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
 
@@ -91,4 +111,8 @@ def test_official_core_samples_map_or_block_expected_renderers():
             assert converted["schemes"], stem
         else:
             assert converted["status"] == "BLOCKED", stem
-            assert any(expectation in str(entry.get("detail", "")).lower() or expectation in str(entry.get("property", "")).lower() for entry in converted["blocked"]), stem
+            render_blockers = [entry for entry in converted["blocked"] if entry.get("property") == "renderType"]
+            assert render_blockers, stem
+            assert any(expectation in str(entry.get("detail", "")).lower() for entry in render_blockers), stem
+            node = next(node for node in effect_ir["nodes"] if node.get("renderType") == expectation)
+            assert node["renderType"] == expectation and node["renderType"] != "unknown"

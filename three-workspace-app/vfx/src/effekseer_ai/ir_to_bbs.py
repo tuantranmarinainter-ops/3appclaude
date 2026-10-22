@@ -362,10 +362,12 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         }
         if blend in {"add", "additive"}:
             scheme["addBlend"] = {"sourceTexture": texture, "options": add_options, "layer": "core", "derivedTexture": f"textures/vfx/add/{_slug(node_id)}_core.png"}
+            scheme["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{scheme['addBlend']['derivedTexture']}"
             halo = json.loads(json.dumps(scheme))
             halo["id"] = f"{node_id}-halo"
             halo["addBlend"]["layer"] = "halo"
             halo["addBlend"]["derivedTexture"] = f"textures/vfx/add/{_slug(node_id)}_halo.png"
+            halo["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{halo['addBlend']['derivedTexture']}"
             halo_components = halo["json"]["particle_effect"]["components"]
             halo_components["minecraft:particle_appearance_billboard"]["size"] = [value * add_options["haloSize"] for value in node_size]
             halo_components["minecraft:particle_appearance_tinting"]["color"] = _hex_color([min(1, c + add_options["haloColorBoost"]) for c in color[:3]] + [color[3] * add_options["haloAlpha"]])

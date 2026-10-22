@@ -22,7 +22,7 @@ def test_glow_ring_explosion_emits_snowstorm_billboards_and_add_warnings() -> No
     assert [s["addBlend"]["layer"] for s in result["schemes"][:2]] == ["halo", "core"]
     ring = next(scheme["json"]["particle_effect"] for scheme in result["schemes"] if scheme["id"] == "ring")
     assert ring["description"]["basic_render_parameters"]["material"] == "particles_blend"
-    assert ring["description"]["basic_render_parameters"]["texture"] == "assets:textures/vfx/glow-ring.png"
+    assert ring["description"]["basic_render_parameters"]["texture"] == "assets:textures/vfx/add/ring_core.png"
     assert ring["components"]["minecraft:emitter_shape_disc"]["offset"] == [0, 0, 0]
     assert ring["components"]["minecraft:emitter_rate_steady"]["spawn_rate"] == 20
     assert ring["components"]["minecraft:emitter_lifetime_once"]["active_time"] == 3
