@@ -39,6 +39,12 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   server và replay actor; keyframe paused/restart/speed đúng; không đen màn hình. Chưa kiểm film editor bằng tay và Forge+Connector.
   Nếu người dùng xác nhận trong game: App 4 thêm lệnh xuất gói AAA (`.efkefc` + texture vào `config/bbs/assets/effeks/`)
   cho hiệu ứng mà đường particle BBS phải chặn; gửi PR cho tác giả.
+- **Duyệt trong App 2 (người dùng chốt 2026-10-22):** mục tiêu là xem và duyệt **toàn bộ** phim trong App 2, hình
+  tương tự BBS FS/Minecraft (khung hình, camera, chuyển động camera, hướng/động tác nhân vật, hậu cảnh, hiệu ứng).
+  **Không vào Minecraft để duyệt cho đến khi người dùng yêu cầu.** App 2 xem timeline; cần chỉnh keyframe động tác thì
+  sang App 3 rồi trả Action về App 2. Được phép nối App 4 vào App 2 để xem hiệu ứng (bảng sprite nướng từ Effekseer) và
+  thêm làn VFX vào project. Xuất film có 3 chế độ: chỉ nhân vật / chỉ hậu cảnh / cả hai. Việc giao: `docs/BBS-PREVIEW-TASKS-2026-10-22.md`
+  (Codex B1–B9 code có test, không runtime; Claude C1–C6 phần chạy thật).
 
 ## Input/Output
 | App | Vào | Ra |

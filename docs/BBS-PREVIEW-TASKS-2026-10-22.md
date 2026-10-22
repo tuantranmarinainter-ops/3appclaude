@@ -1,101 +1,171 @@
-# Xem như BBS trong App 2 — giao việc (2026-10-22)
+# Duyệt toàn bộ trong App 2 như trong Minecraft — giao việc (2026-10-22)
 
-Mục tiêu: duyệt cảnh ngay trong App 2, không phải xuất film vào BBS FS rồi chụp. Khung nhìn camera trong app phải ra
-cùng khung hình, góc nhìn, hướng nhân vật và gần cùng diện mạo với BBS FS 2.7. Bảng duyệt cảnh chụp sẵn 3 khoảnh khắc
-mỗi cảnh, người dùng bấm Đạt hoặc ghi chú ngay trong app; chỉ vào game một lần cuối để quay video.
+**Mục tiêu (người dùng chốt 2026-10-22):** xem và duyệt **toàn bộ** phim trong App 2, hình ảnh tương tự BBS FS 2.7
+(Minecraft): khung hình, góc camera, chuyển động camera, hướng và động tác nhân vật, hậu cảnh, hiệu ứng. **Không vào
+Minecraft để duyệt cho đến khi người dùng yêu cầu.** Phim chỉ xuất sang BBS FS ở bước cuối.
 
-Chia việc (người dùng chốt 2026-10-22): **Codex** làm phần code thuần có test tự động, không cần chạy game hay trình
-duyệt. **Claude** làm phần phải chạy thật (BBS FS, Chromium, so ảnh) và kiểm, merge PR của Codex.
+Chia việc: **Codex** làm phần code có test tự động, không cần chạy game hay trình duyệt (B1–B9). **Claude** làm phần
+phải chạy thật (Chromium, Effekseer, so ảnh, BBS FS khi được yêu cầu), kiểm và merge PR của Codex (C1–C6).
 
-Repo `tuantranmarinainter-ops/3appclaude`, nhánh `main`. Quy tắc chung như `docs/AI-TASKS-2026-10-21.md`, cách nộp
-như `docs/AI-TASKS-ROUND3-2026-10-21.md`: mỗi việc một nhánh `ai1/<mã>-<tên>` từ `main` mới nhất, mở PR vào `main`,
-mô tả PR = file đã sửa, lệnh test, kết quả thật (PASS/FAIL/NOT_RUN). **Không tự merge.** Phải chạy
-`pnpm --filter @topview/3d-builder build` rồi `pnpm typecheck` (từ `three-workspace-app/editor`) trước khi mở PR.
-Không sửa `packages/retarget`, không sửa golden của builder (`src/evaluate/__tests__/golden*`), không thêm dependency.
+## Cách nộp (Codex)
+Repo `tuantranmarinainter-ops/3appclaude`, nhánh `main`. Quy tắc chung như `docs/AI-TASKS-2026-10-21.md`:
+- Mỗi việc một nhánh `ai1/<mã>-<tên>` tạo từ `main` mới nhất, một PR vào `main`. **Không tự merge.**
+- Mô tả PR: file đã sửa, lệnh test đã chạy, kết quả thật (PASS/FAIL/NOT_RUN), chỗ làm khác đặc tả.
+- Trước khi mở PR (từ `three-workspace-app/editor`): `pnpm --filter @topview/3d-builder build`, `pnpm typecheck`,
+  `npx vitest run` trong `packages/builder` (hiện 567 PASS), test Studio liên quan bằng
+  `pnpm --filter @topview/3d-builder exec tsx --test <đường dẫn tuyệt đối>`.
+- Không sửa `packages/retarget`, không sửa/tạo lại golden của builder (`src/evaluate/__tests__/golden*`), không đổi
+  luật evaluate của App 2 (`evaluateSteps.ts`), không thêm dependency, không commit binary.
+- Chỉ sửa đúng vùng file ghi trong bảng; cần sửa file khác thì ghi lý do trong PR.
+- Chuỗi giao diện có cả tiếng Việt và tiếng Anh theo `useStudioLocale` như `components/scene-render`.
 
 ## Sự thật đã đo trong BBS FS 2.7 (không được làm sai)
-- Camera: `apps/studio/src/filmCamera.ts` đổi mẫu camera App 2 sang keyframe BBS: yaw Minecraft (0 nhìn theo +Z) cộng
-  180, pitch, roll, `verticalFovDegrees`. Tỉ lệ khung (`aspect`) lấy từ `viewportAspect` của lệnh xuất
-  (`sceneBbsFilm.ts`, mặc định 16/9). Bản quay thử Tập 15 dùng khung vuông 960x960.
-- Nhân vật: mọi model BOBJ được cộng 180° yaw khi xuất (`filmManifest.ts`, `facingOffset`), sau đó trong game quay
-  đúng như App 2. Gốc toạ độ, độ cao chân khớp (ảnh `C:\w01-samples\calib\bbs-calib-fixed.png`).
-- Keyframe xoay của nhân vật **đang có động tác** bị App 2 bỏ qua (golden Topview khoá, không đổi), nhưng bộ xuất film
-  vẫn xoay theo keyframe (`turnFilmSkeletonsByRotationKeys` trong `unifiedFilmSampling.ts`). Chế độ xem như BBS phải
-  hiển thị giống **film**, tức là có xoay này.
-- Sàn game: mặt khối cỏ ở y = 0 (khối cỏ chiếm y −1..0). Prop hậu cảnh xuất thành actor tĩnh (`unifiedJobs.ts`).
+- **Camera:** `apps/studio/src/filmCamera.ts` đổi mẫu camera App 2 sang keyframe BBS: yaw Minecraft (0 nhìn theo +Z)
+  cộng 180, pitch, roll, `verticalFovDegrees`. Tỉ lệ khung lấy từ `viewportAspect` (`sceneBbsFilm.ts`, mặc định 16/9).
+- **Model:** mọi model BOBJ (nhân vật và hậu cảnh) được cộng `FILM_MODEL_FACING_OFFSET` = 180° yaw khi xuất
+  (`filmManifest.ts`, `unifiedJobs.ts`). Gốc toạ độ và độ cao chân khớp game (`C:\w01-samples\calib`).
+- **Xoay khi có động tác:** App 2 bỏ qua keyframe xoay của nhân vật đang có động tác (golden Topview khoá, không đổi).
+  Film vẫn xoay theo keyframe (`turnFilmSkeletonsByRotationKeys`, `unifiedFilmSampling.ts`). Xem trong App 2 phải giống
+  **film**.
+- **Diện mạo:** chế độ "Xem như BBS" đã có (`packages/builder/src/engine/objects/bbsLook.ts`, nút Shift+B,
+  `Stage.setBbsLook`, `scene.render` có `bbsLook`): ánh sáng thực thể Minecraft, trời, sàn cỏ, texture Nearest.
+- **Sàn game:** mặt khối cỏ ở y = 0.
+- **Hiệu ứng:** hiện là lịch ngoài repo (`C:\w01-samples\tap15v2\effects.json`: effect, x, y, z, yaw, scale,
+  startTick, endTick) do bộ quay thử AAA đọc; chưa nằm trong project App 2.
 
+## Bảng việc
 | Mã | Ai | Việc | Vùng file |
 | --- | --- | --- | --- |
-| B1 | Codex | Mô hình camera/actor BBS thuần (toán + test) | `apps/studio/src/bbsPreview.ts` (mới), `apps/studio/test/bbsPreview.test.ts` (mới); được thêm `export` cho hàm có sẵn trong `filmCamera.ts`/`filmManifest.ts`, không đổi logic |
-| B2 | Codex | Lệnh xem trước: lấy mẫu khung hình như film | `apps/studio/src/unifiedProjectStore.ts` (chỉ thêm nhánh lệnh), `apps/studio/src/bbsPreview.ts`, test mới |
-| B3 | Codex | Bảng duyệt cảnh: dữ liệu + lệnh + giao diện | `apps/studio/src/sceneReview.ts` (mới), `apps/studio/app/workbench/components/scene-review/` (mới), nối vào `unifiedProjectStore.ts`, locale, test mới |
-| C1 | Claude | Chế độ "Xem như BBS" trong khung nhìn App 2 (khung film, camera B1) | `packages/builder/src/components/viewport/`, `packages/builder/src/engine/core/` |
-| C2 | Claude | Diện mạo Minecraft (trời, sàn cỏ, đổ bóng mặt khối, texture không lọc) | như C1 |
-| C3 | Claude | Đo lệch so với ảnh game (hiệu chuẩn + 3 cảnh Tập 15), báo số pixel | script ngoài repo + `docs/` |
-| C4 | Claude | Nối B3 với renderer thật, chạy trên Tập 15 | sau khi B2, B3, C1 merge |
+| B1 | Codex | Toán camera/actor BBS (thuần + test) | `apps/studio/src/bbsPreview.ts` (mới), `apps/studio/test/bbsPreview.test.ts` (mới); được thêm `export` cho hàm có sẵn trong `filmCamera.ts`/`filmManifest.ts`, không đổi logic |
+| B2 | Codex | Lệnh `scene.preview.bbs`: lấy mẫu khung hình như film | `unifiedProjectStore.ts` (một nhánh lệnh), `bbsPreview.ts`, test mới |
+| B3 | Codex | Bảng duyệt cảnh: dữ liệu + lệnh + giao diện | `apps/studio/src/sceneReview.ts` (mới), `apps/studio/app/workbench/components/scene-review/` (mới), nối `unifiedProjectStore.ts`, `StudioOverlay.tsx`, test mới |
+| B4 | Codex | Xuất film 3 chế độ: chỉ nhân vật / chỉ hậu cảnh / cả hai | `sceneBbsFilm.ts`, `unifiedFilmSampling.ts`, `unifiedJobs.ts`, `components/film-export/`, test |
+| B5 | Codex | Khung film: tỉ lệ lưu trong project, viền khung trong khung nhìn | `apps/studio/src/filmFrame.ts` (mới), `packages/builder/src/components/viewport/`, `packages/builder/src/engine/core/Viewport.ts`, test |
+| B6 | Codex | Khung nhìn giống film: xoay theo keyframe khi có động tác (chỉ khi "Xem như BBS") | `packages/builder/src/engine/core/Stage.ts`, `packages/builder/src/engine/objects/filmPoseView.ts` (mới), test |
+| B7 | Codex | Lệnh `camera.motion.add`: áp chuyển động camera từ thư viện bằng lệnh | `unifiedProjectStore.ts`, `apps/studio/src/cameraMotionCommand.ts` (mới), `agent/unified_*` nếu cần cho CLI, test |
+| B8 | Codex | Làn hiệu ứng (VFX cue) trong project App 2 + xuất kèm film | `apps/studio/src/vfxCues.ts` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, `components/vfx-cues/` (mới), test |
+| B9 | Codex | Phát hiệu ứng trong khung nhìn App 2 bằng bảng sprite (sprite sheet) | `packages/builder/src/engine/objects/vfxSprites.ts` (mới), `Stage.ts`, test |
+| C1 | Claude | Chạy B5+B6 trong Chromium, đo lệch so với ảnh game có sẵn (không vào game) | — |
+| C2 | Claude | "Xem như BBS" (đã xong, commit `9197b6f`) | — |
+| C3 | Claude | Nướng bảng sprite cho hiệu ứng bằng Effekseer thật (App 4) cho B9 | `three-workspace-app/vfx/` |
+| C4 | Claude | Nối bảng duyệt (B3) với renderer, chạy Tập 15 | sau B2, B3 |
+| C5 | Claude | Áp chuyển động camera cho Tập 15 bằng B7, duyệt trong App 2 | sau B7 |
+| C6 | Claude | Kiểm trong BBS FS **chỉ khi người dùng yêu cầu** (hướng hậu cảnh, B4, B8) | — |
 
-Thứ tự Codex: B1 → B2 → B3. Hiệu ứng Effekseer trong App 2 (nối App 4 vào App 2) **chưa giao**: chờ người dùng duyệt
-riêng.
+Thứ tự Codex: **B1 → B2 → B6 → B5 → B3 → B7 → B4 → B8 → B9**. B1–B2 là nền cho B3, B5, B6.
 
 ---
 
-## B1 — Mô hình camera/actor BBS (thuần)
-Viết `apps/studio/src/bbsPreview.ts`, chỉ dùng `three` (đã có), không DOM:
+## B1 — Toán camera/actor BBS (thuần)
+`apps/studio/src/bbsPreview.ts`, chỉ dùng `three`, không DOM:
 - `bbsCameraToThree(key: { x, y, z, yaw, pitch, roll, verticalFovDegrees }, aspect)` → `{ position, quaternion, fov,
-  aspect, near }`: camera three.js nhìn đúng như BBS hiển thị keyframe đó. Phải là phép ngược chính xác của
-  `cameraSamplesToFilm` (`filmCamera.ts`): trừ lại 180 ở yaw, cùng quy ước pitch/roll. `near` = 0.05 (Minecraft).
-- `bbsActorToThree(sample: { x, y, z, yaw, pitch? })` → ma trận world của actor như BBS đặt model, đã trừ
-  `facingOffset` 180 để khớp hướng App 2.
-- `filmFrameRect(viewW, viewH, aspect)` → hình chữ nhật khung film lớn nhất nằm giữa khung nhìn (letterbox/pillarbox).
+  aspect, near }`: camera three.js nhìn đúng như BBS hiển thị keyframe đó; phép ngược chính xác của
+  `cameraSamplesToFilm`. `near` = 0.05.
+- `bbsActorToThree(sample: { x, y, z, yaw, pitch? })` → ma trận world như BBS đặt model, đã trừ
+  `FILM_MODEL_FACING_OFFSET` để khớp hướng App 2.
+- `filmFrameRect(viewW, viewH, aspect)` → khung film lớn nhất nằm giữa khung nhìn.
+**Đạt khi:** (1) khứ hồi ≥ 50 tư thế camera ngẫu nhiên có seed (pitch ±80°, roll ≠ 0, yaw quanh ±180): vị trí ≤ 1e-6 m,
+hướng nhìn/hướng lên ≤ 1e-6 rad; (2) `buildFilmExportManifest` → `bbsActorToThree` cho lại ma trận gốc App 2;
+(3) `filmFrameRect`: khung vuông trong 1920x1080 = 1080x1080 ở giữa, 16/9 trong 1000x1000 = 1000x562.5 ở giữa;
+(4) test film cũ (`filmCamera`, `filmManifest`, `filmRotationKeys`) PASS.
 
-**Đạt khi** `bbsPreview.test.ts`:
-1. Khứ hồi: camera App 2 bất kỳ (≥ 50 tư thế ngẫu nhiên có seed, gồm pitch ±80°, roll ≠ 0, yaw quanh ±180) →
-   `cameraSamplesToFilm` → `bbsCameraToThree` cho lại vị trí (sai số ≤ 1e-6 m) và hướng nhìn/hướng lên (≤ 1e-6 rad).
-2. Actor: `buildFilmExportManifest` (yaw đã +180; được export thêm `actorTransform` nội bộ nếu cần test) → `bbsActorToThree` cho lại ma trận gốc của App 2.
-3. `filmFrameRect` cho khung vuông trong 1920x1080 = 1080x1080 ở giữa; 16/9 trong 1000x1000 = 1000x562.5 ở giữa.
-4. Test film cũ (`filmCamera`, `filmManifest`, `filmRotationKeys`) vẫn PASS.
-
-## B2 — Lệnh `scene.preview.bbs`: lấy mẫu khung hình như film
-Thêm lệnh vào `unifiedProjectStore.ts` (chỉ một nhánh `if (envelope.command === 'scene.preview.bbs')`, theo mẫu
-`scene.evaluate`): args `{ sequenceId, frames: number[] (≤ 60), viewportAspect, characterIds?, propIds? }`. Không ghi
-file, không chạy Java/Blender. Trả cho mỗi frame:
-- `camera`: kết quả `bbsCameraToThree` của keyframe film tại frame đó (dùng chính đường lấy mẫu của film:
-  `sampleProjectCameraSequence` + `cameraSamplesToFilm`, khung 20 Hz, cùng cách làm tròn tick);
-- `actors[]`: `{ characterId | propId, worldMatrix, bones: [{ name, worldMatrix }] }` lấy từ cùng đường lấy mẫu của film
-  (`sampleProjectSkeletonRange` + `turnFilmSkeletonsByRotationKeys`), tức là **có** xoay theo keyframe khi đang có động
-  tác; prop là ma trận tĩnh như `unifiedJobs.ts` đang xuất;
-- `shot`: id clip của editorial chứa frame.
-Kiểm đầu vào như `scene.render` (frame trong timeline, sequence tồn tại, ≤ 60 frame).
-
-**Đạt khi** test mới: (1) dự án tổng hợp 1 nhân vật có clip + keyframe xoay 0→90: ma trận actor ở frame cuối quay 90°
-còn `scene.evaluate` thì không (đúng luật App 2); (2) camera trả về khớp `bbsCameraToThree(cameraSamplesToFilm(...))`
-từng frame; (3) frame nằm giữa 2 tick 20 Hz lấy đúng tick gần nhất như film; (4) đầu vào sai → `VALIDATION_FAILED`;
-(5) `test/unifiedProjectStore*` cũ PASS.
+## B2 — Lệnh `scene.preview.bbs`
+Một nhánh `if (envelope.command === 'scene.preview.bbs')` trong `unifiedProjectStore.ts` (mẫu `scene.evaluate`). Args
+`{ sequenceId, frames: number[] (≤ 60), viewportAspect, characterIds?, propIds? }`. Không ghi file, không chạy
+Java/Blender. Mỗi frame trả: `camera` (= `bbsCameraToThree` của keyframe film, cùng đường `sampleProjectCameraSequence`
++ `cameraSamplesToFilm`, khung 20 Hz, cùng cách làm tròn tick); `actors[]` `{ characterId | propId, worldMatrix,
+bones: [{ name, worldMatrix }] }` từ `sampleProjectSkeletonRange` + `turnFilmSkeletonsByRotationKeys`; prop là ma trận
+tĩnh như `unifiedJobs.ts`; `shot` = id clip editorial chứa frame. Kiểm đầu vào như `scene.render`.
+**Đạt khi:** (1) dự án tổng hợp 1 nhân vật có clip + keyframe xoay 0→90: actor ở frame cuối quay 90°, `scene.evaluate`
+thì không; (2) camera khớp `bbsCameraToThree(cameraSamplesToFilm(...))` từng frame; (3) frame giữa 2 tick lấy đúng tick
+như film; (4) đầu vào sai → `VALIDATION_FAILED`; (5) test `unifiedProjectStore*` cũ PASS.
 
 ## B3 — Bảng duyệt cảnh
-**Dữ liệu** (`sceneReview.ts`): lưu trong `project.extensions.sceneReview` =
-`{ version: 1, sequenceId, shots: { [clipId]: { status: 'pending' | 'ok' | 'note', note: string, sourceRevision: number,
-updatedAt } } }`. Khi dự án đổi revision mà cảnh đó có thay đổi (node/clip/fcurve liên quan tới khoảng frame của
-clip), trạng thái `ok` tự về `pending` khi đọc (hàm thuần `reviewStatusFor(project, clipId)`).
-- `planReviewFrames(project, sequenceId)` → mỗi clip 3 frame ở 15%, 50%, 85% độ dài (làm tròn, nằm trong clip).
-- Lệnh `scene.review.get` (đọc) và `scene.review.set` `{ sequenceId, clipId, status, note }` (ghi, có
-  `expectedRevision`, ghi chú ≤ 2000 ký tự).
-**Giao diện** `components/scene-review/`: danh sách cảnh theo editorial; mỗi cảnh 3 ô ảnh (nhận ảnh qua prop
-`images: Record<clipId, string[]>` dạng URL; chưa có ảnh thì ô trống ghi "Chưa chụp"), nút **Đạt**, ô **Ghi chú**,
-bộ lọc Chưa duyệt / Có ghi chú / Đạt, đếm tiến độ "x/y cảnh đạt". Nút **Chụp lại cảnh này** gọi callback prop
-`onCapture(clipId, frames)` (Claude nối renderer ở C4). Chuỗi giao diện có cả tiếng Việt và tiếng Anh theo
-`useStudioLocale` như `scene-render`.
-**Đạt khi** test thuần cho `planReviewFrames`, `reviewStatusFor` (đổi keyframe trong clip → về `pending`; đổi ngoài
-clip → giữ `ok`), lệnh get/set (revision cũ → `REVISION_CONFLICT`); test locale của Studio
-(`pnpm --filter @topview/3d-studio test:locales`) PASS; typecheck PASS.
+- Dữ liệu `sceneReview.ts` trong `project.extensions.sceneReview` = `{ version: 1, sequenceId, shots: { [clipId]:
+  { status: 'pending' | 'ok' | 'note', note, sourceRevision, updatedAt } } }`. Hàm thuần `reviewStatusFor(project,
+  clipId)`: cảnh `ok` tự về `pending` nếu sau đó có thay đổi node/clip/fcurve/VFX cue chạm khoảng frame của clip.
+- `planReviewFrames(project, sequenceId)` → mỗi clip 3 frame ở 15%, 50%, 85%.
+- Lệnh `scene.review.get` và `scene.review.set { sequenceId, clipId, status, note }` (có `expectedRevision`, ghi chú
+  ≤ 2000 ký tự).
+- Giao diện `components/scene-review/` mở từ nút **Duyệt cảnh** cạnh "BBS look" trong `StudioOverlay.tsx`: danh sách cảnh
+  theo editorial; mỗi cảnh 3 ô ảnh (prop `images: Record<clipId, string[]>`, chưa có thì "Chưa chụp"), nút **Đạt**, ô
+  **Ghi chú**, nút **Phát cảnh này** (callback `onPlay(clipId)`: nhảy timeline tới cảnh và phát), nút **Chụp lại**
+  (callback `onCapture(clipId, frames)`), lọc Chưa duyệt / Có ghi chú / Đạt, tiến độ "x/y cảnh đạt".
+**Đạt khi:** test `planReviewFrames`, `reviewStatusFor` (đổi trong clip → `pending`, ngoài clip → giữ `ok`), get/set
+(revision cũ → `REVISION_CONFLICT`); `pnpm --filter @topview/3d-studio test:locales` không thêm lỗi mới (hiện có 6 lỗi
+cũ); typecheck PASS.
+
+## B4 — Xuất film 3 chế độ
+`scene.export.bbsFilm` và `film.export` nhận `content: 'characters' | 'backdrops' | 'both'` (mặc định `'characters'`
+để không đổi hành vi cũ):
+- `'backdrops'`: không cần nhân vật (bỏ điều kiện "ít nhất một nhân vật" chỉ ở chế độ này); film có camera + mỗi hậu
+  cảnh là một actor tĩnh riêng, tên = tên node, để người dùng chỉnh trong BBS FS. Ngân sách xương chỉ tính hậu cảnh.
+- `'both'`: như hiện nay với `propIds` (mặc định tất cả hậu cảnh khi không truyền).
+- Giao diện `components/film-export/`: chọn chế độ, danh sách tích chọn nhân vật và hậu cảnh (ẩn phần không dùng),
+  báo lỗi rõ nếu hậu cảnh có scale ≠ 1 hoặc xoay ngoài trục dọc (đã có kiểm trong `sceneBbsFilm.ts`).
+**Đạt khi:** test cho cả 3 chế độ (manifest đúng số actor, hậu cảnh có yaw = `FILM_MODEL_FACING_OFFSET - rotation.y`,
+`'backdrops'` không có nhân vật vẫn xuất được manifest); test `sceneBbsFilm`, `filmExportJob.integration` PASS.
+
+## B5 — Khung film trong project và trong khung nhìn
+- `filmFrame.ts`: `project.extensions.filmFrame = { aspect: '16:9' | '9:16' | '1:1' | number }`; hàm đọc mặc định 16:9.
+  `scene.export.bbsFilm`, `film.export` và `scene.render` dùng giá trị này khi không truyền `viewportAspect`. Lệnh
+  `film.frame.set { aspect }` có `expectedRevision`.
+- Khung nhìn App 2 (builder): khi "Xem như BBS" bật và đang nhìn qua camera, vẽ viền khung film (vùng ngoài khung tối
+  70%) theo `filmFrameRect`, camera dùng đúng `aspect` của khung film (không theo tỉ lệ cửa sổ). Builder không biết
+  project Studio: nhận aspect qua `Stage.setFilmFrameAspect(aspect | null)`; Studio gọi khi đọc project.
+**Đạt khi:** test thuần cho đọc/ghi `filmFrame` và cho phép tính viền (vitest trong builder với kích thước khung nhìn
+giả); typecheck PASS. Claude kiểm hình trong Chromium (C1).
+
+## B6 — Khung nhìn giống film: xoay theo keyframe khi có động tác
+Chỉ khi "Xem như BBS" bật (`Stage.bbsLook`), sau mỗi lần evaluate, xoay gốc nhân vật đang có động tác theo keyframe
+`transform.rotation` giống hệt `turnFilmSkeletonsByRotationKeys` (cùng điều kiện: có motion clip phủ frame, không có
+path `path-tangent`; chỉ thêm phần chênh từ xoay tĩnh sang xoay keyframe). Viết hàm thuần trong
+`engine/objects/filmPoseView.ts` dùng chung công thức; **không** sửa `evaluateSteps.ts` hay golden. Tắt "Xem như BBS"
+thì trả về đúng hành vi App 2 hiện tại.
+**Đạt khi:** vitest: cùng dữ liệu, ma trận gốc nhân vật từ `filmPoseView` khớp ma trận actor của
+`turnFilmSkeletonsByRotationKeys` (sai số ≤ 1e-9); khi tắt, snapshot khung nhìn không đổi; golden builder PASS nguyên.
+
+## B7 — Lệnh `camera.motion.add`
+Áp một chuyển động trong thư viện (`CAMERA_MOTIONS`, 30 mục) cho camera bằng lệnh, để script/MCP dùng được:
+`camera.motion.add { cameraNodeId, presetId, frameStart, durationFrames?, targetNodeId?, config?: { strength?, angleDeg?,
+distance?, fovDelta?, height? } }`. Dùng `bakeCameraMotionClip` (thuần) như `applyCameraMotion` trong
+`sync/libraryActions.ts`, thêm clip vào `timeline.animation.cameraMotionClips`, kiểm chồng lấn bằng luật có sẵn
+(`cameraMotionExclusive`, `cameraMotionRange`). Thêm `camera.motion.remove { clipId }`. Nếu `agent/unified_cli.py`
+liệt kê lệnh hợp lệ thì thêm vào đó.
+**Đạt khi:** test: dolly_in trên camera tổng hợp làm vị trí camera tiến dọc hướng nhìn ở frame cuối; preset sai, camera
+sai, chồng lấn → `VALIDATION_FAILED`; mẫu camera film (`sampleProjectCameraSequence`) đổi theo clip (tức là xuất film
+giữ chuyển động); Python `agent.test_unified_cli` PASS nếu có sửa.
+
+## B8 — Làn hiệu ứng (VFX cue) trong project App 2
+- `vfxCues.ts`: `project.extensions.vfxCues = { version: 1, cues: [{ id, effect, frameStart, frameEnd, position: {x,y,z},
+  yaw, scale, attachNodeId?, attachBone? }] }`. `effect` là tên hiệu ứng trong kho App 4 (chuỗi, ví dụ `aura01`).
+  `attachNodeId` thì vị trí tính tương đối gốc node đó (theo frame).
+- Lệnh `vfx.cue.add | update | remove | list` có `expectedRevision`.
+- Xuất film: thêm `effects.json` vào gói film (cùng định dạng đang dùng: `[{ effect, x, y, z, yaw, scale, startTick,
+  endTick }]`, tick 20 Hz tính từ đầu đoạn xuất), chỉ các cue giao với khoảng xuất; ghi trong `README.txt` của gói.
+- Giao diện `components/vfx-cues/`: danh sách cue của cảnh đang chọn, thêm/sửa/xoá, nhập frame, vị trí, cỡ.
+**Đạt khi:** test: cue gắn node theo node khi node di chuyển; đổi frame sang tick đúng như
+`C:\w01-samples\tap15v2\export_v2.mts` (`/1.5` cho 30 fps); cue ngoài khoảng bị bỏ; lệnh sai → `VALIDATION_FAILED`.
+
+## B9 — Phát hiệu ứng trong khung nhìn bằng bảng sprite
+Mỗi hiệu ứng có một **bảng sprite** do Claude nướng sẵn bằng Effekseer thật (C3):
+`<kho>/vfx-previews/<effect>/sheet.png` + `sheet.json` `{ frames, columns, rows, fps, sizeMeters, pivot: [u, v],
+blend: 'add' | 'alpha', loop }`. Builder (`vfxSprites.ts`): với mỗi cue đang hoạt động ở frame hiện tại, vẽ một
+billboard quay về camera, chọn ô theo `(frame - frameStart) / 30 * fps`, blend theo `sheet.json`, cỡ `sizeMeters × scale`.
+Studio truyền danh sách cue + URL bảng sprite qua `Stage.setVfxCues(...)`. Không có bảng sprite thì vẽ ô vuông viền
+màu kèm tên hiệu ứng (để vẫn duyệt được vị trí/thời gian).
+**Đạt khi:** vitest thuần cho chọn ô (frame đầu, giữa, cuối, loop/không loop), cỡ, cue ngoài khoảng không vẽ,
+không có sheet → placeholder; typecheck PASS. Claude kiểm hình (C3).
 
 ---
 
 ## Phần Claude (có runtime)
-- **C1**: nút "Xem như BBS" trong khung nhìn camera của App 2: khung film theo `filmFrameRect`, camera theo B1/B2,
-  nhân vật theo ma trận film. Kiểm trong Chromium.
-- **C2**: trời màu Minecraft, mặt cỏ ở y = 0, đổ bóng theo mặt (trên 1.0, Bắc/Nam 0.8, Đông/Tây 0.6, dưới 0.5),
-  texture lọc `Nearest`. Chỉnh theo ảnh game.
-- **C3**: chụp cùng frame trong app và trong BBS FS (6 nhân vật hiệu chuẩn, cảnh 04, 09, 17 Tập 15), so viền nhân vật,
-  báo lệch tâm (px) và lệch cỡ (%) ở khung 960x960. Mục tiêu: lệch tâm ≤ 4 px, lệch cỡ ≤ 2%.
-- **C4**: nối bảng duyệt với renderer, chạy Tập 15, gửi người dùng duyệt thử.
+- **C1:** chạy B5 + B6 trong Chromium; so với ảnh game **đã có** (hiệu chuẩn, cảnh 04/09/13 Tập 15): lệch tâm nhân
+  vật ≤ 4 px, lệch cỡ ≤ 2% ở khung 960x960.
+- **C2:** "Xem như BBS" — xong (`9197b6f`).
+- **C3:** nướng bảng sprite từ Effekseer thật cho 9 hiệu ứng đang dùng (aura01, barrior01, forcefieldtornado, toonhit,
+  light, simple_turbulence_fireworks, simple_ring_shape1, simple_ribbon_sword, laser01); so với ảnh game đã có.
+- **C4:** nối bảng duyệt (B3) với `scene.render` + `bbsLook`, chạy Tập 15, gửi người dùng duyệt trong app.
+- **C5:** áp chuyển động camera cho 20 cảnh Tập 15 bằng B7 theo bảng người dùng duyệt; chuyển lịch hiệu ứng ngoài repo
+  vào làn VFX (B8); duyệt trong App 2.
+- **C6:** chỉ khi người dùng yêu cầu: quay trong BBS FS để kiểm hướng hậu cảnh, B4, B8.
