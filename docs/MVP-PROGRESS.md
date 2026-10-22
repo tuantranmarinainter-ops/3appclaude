@@ -75,7 +75,8 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | I2 thư viện App 5 (lõi) | ✅ PR #46 | Nhập thật Samba/Michelle/Minecraft; sửa giữ `.minecraft20.bobj`; I3–I5 (UI, nối App 2/3, MCP) còn mở |
 | I3+I5 thư viện App 5: giao diện Studio `/library` + MCP | ✅ PR #53 | Chromium thật: lọc, lưu category/tag (GLB không đổi hash), MCP search/get/characters trên dữ liệu thật; test:all 11/11 PASS. Còn: xem trước Action **trên nhân vật** (hiện báo không có mesh), I4 kéo vào App 2/App 3 (cần sửa broker/builder) |
 | V1 App 4 lõi tin cậy | ✅ PR #49 | 33/33 + tích hợp DLL thật |
-| V2–V4 App 4 chuyển Effekseer → BBS 2.7 | ↩️ PR #50–#52 trả lại | Đọc đúng loại/blend (Laser01 → 10 scheme, ribbon/ring chặn đúng); Claude thêm chặn material distortion. **Hình sai**: size/màu/vị trí easing chưa đọc → bản BBS gần như trống so với render Effekseer |
+| V2–V4 App 4 chuyển Effekseer → BBS 2.7 | ✅ PR #50–#52 + Claude sửa | Dump đọc đúng đường dẫn Core 1.80.6 thật (fixture từ 4 mẫu chính thức); BillBoard/SpawnMethod1 chuyển, Laser01 4/5 node (tia laser quad lệch tâm bị chặn), Turbulence (material tuỳ biến), ribbon/ring/distortion bị chặn đúng; gate hình: khung bao 86–117%, sắc độ ≤ 0.054; gói BBS có texture alpha theo độ sáng (không ô vuông đen); size chia 2.25 theo BBS. **Chưa chạy trong game** |
+| I4 thư viện: đặt Action vào App 2 / mở App 3 | ✅ PR #54 + Claude sửa | Chromium thật (Playwright): popup thư viện → Place → Motion giữ UUID gốc, clip frame 0; xem trước Action trên nhân vật chạy (sửa thiếu Draco); nút thư viện đưa sang tab Characters (tab Motion không có trong thanh bên); test:all 11/11 PASS |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
