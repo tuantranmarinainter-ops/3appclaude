@@ -212,7 +212,9 @@ test('series ZIP includes ordered films and series metadata, deduplicates identi
   assert.equal(existsSync(failedZip), false)
 
   for (const [index, unsafeName] of [
-    ['single-backslash', 'assets/models\\sneaky/model.bobj'],
+    // Python's zipfile rewrites os.sep to '/' in member names on Windows, so the fixture cannot store a backslash there
+    // (and the merger reading such a ZIP sees a plain nested path instead).
+    ...(process.platform === 'win32' ? [] : [['single-backslash', 'assets/models\\sneaky/model.bobj'] as const]),
     ['nested-ntfs-stream', 'assets/models/foo:stream.bobj'],
     ['windows-device-name', 'assets/models/CON.bobj'],
   ] as const) {
