@@ -19,10 +19,11 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 34 passed, 2 skipped, 0 failed. Skips require the Windows Core DLL and official sample directory. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 42 passed, 3 skipped, 0 failed. Skips require the Windows Core DLL and official sample directory. |
 | Offline preview for MVP fixtures | PASS | Covered by `test_all_three_mvp_fixtures_render_timestamp_pngs_and_label_simulation`; no network service is used by the preview implementation. |
 | GitHub Actions `test` workflow | NOT_RUN | No check is currently reported for the latest head; verify PR #52's status before review. |
-| Effekseer reference comparison | NOT_RUN | No Effekseer PNGs were available. On Windows, open each `.efkefc` fixture in Effekseer and save reference frames as `<effect>_<seconds>s.png` at the desired times; then run `effekseer-ai preview <effect-ir.json> <out-dir> --timestamps 0,0.25,0.5 --reference-dir <reference-dir>`. |
+| Review 2 Effekseer image gate | NOT_RUN | The inherited integration test renders Simple_Sprite_BillBoard, Simple_SpawnMethod1, Simple_Turbulence_Particles, and Laser01 at 0.25/0.5/1s and records bright pixels, bbox, and mean RGB. On Windows set both required environment variables and run `python -m pytest -m integration -q`; it asserts bbox width/height >=50% and RGB mean distance <=40/255. Camera matches fixed Viewer distance/angles, uses an explicitly approximate 45-degree FOV, and never auto-fits. No cloud measurements are claimed; see `VFX-REPORT-V2.md`. |
+| Effekseer reference comparison | NOT_RUN | No standalone reference PNGs were available. On Windows, optional caller references can be compared with `effekseer-ai preview <effect-ir.json> <out-dir> --timestamps 0,0.25,0.5 --reference-dir <reference-dir>`. |
 | BBS FS 2.7 actual runtime | NOT_RUN | Install generated resources in BBS FS 2.7 on Windows and capture actual game frames. The simulator does not certify game playback. |
 | Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |
 
