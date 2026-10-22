@@ -73,6 +73,9 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 | J2/J4 App 1 giữ xương phụ, Minecraft20 báo bỏ | ✅ PR #44 | retarget 169/169; 10 đầu ra thật giống hệt từng byte; giữ validator J1 khi gộp |
 | J3b App 3 xương phụ | ✅ PR #45 | Chromium thật: hiện cây xương "· phụ", key qua broker, xuất/tải lại giữ; 434/434 id; đã nhúng bản build vào Studio |
 | I2 thư viện App 5 (lõi) | ✅ PR #46 | Nhập thật Samba/Michelle/Minecraft; sửa giữ `.minecraft20.bobj`; I3–I5 (UI, nối App 2/3, MCP) còn mở |
+| I3+I5 thư viện App 5: giao diện Studio `/library` + MCP | ✅ PR #53 | Chromium thật: lọc, lưu category/tag (GLB không đổi hash), MCP search/get/characters trên dữ liệu thật; test:all 11/11 PASS. Còn: xem trước Action **trên nhân vật** (hiện báo không có mesh), I4 kéo vào App 2/App 3 (cần sửa broker/builder) |
+| V1 App 4 lõi tin cậy | ✅ PR #49 | 33/33 + tích hợp DLL thật |
+| V2–V4 App 4 chuyển Effekseer → BBS 2.7 | ↩️ PR #50–#52 trả lại | Đọc đúng loại/blend (Laser01 → 10 scheme, ribbon/ring chặn đúng); Claude thêm chặn material distortion. **Hình sai**: size/màu/vị trí easing chưa đọc → bản BBS gần như trống so với render Effekseer |
 
 ## Đang giao (2026-10-21)
 | Ai | Việc | Issue |
