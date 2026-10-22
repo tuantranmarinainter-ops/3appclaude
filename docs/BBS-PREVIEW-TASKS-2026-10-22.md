@@ -61,7 +61,7 @@ Repo `tuantranmarinainter-ops/3appclaude`, nhánh `main`. Quy tắc chung như `
 | C7 | Claude | Khảo sát cách addon AAA lưu hiệu ứng trong film BBS, viết đặc tả B15 | fork `BBS-AAAddon` |
 | C8 | Claude | Khảo sát nâng giới hạn 255 tick / 3 camera của bộ xuất film | `agent/film_worker/` |
 
-Thứ tự Codex: **B1 → B2 → B6 → B5 → B3 → B7 → B10 → B11 → B12 → B4 → B8 → B9 → B13 → B14 → B16**, B15 khi C7 xong.
+Thứ tự Codex: **B1 → B2 → B6 → B5 → B3 → B7 → B10 → B11 → B12 → B11b → B4 → B8 → B9 → B13 → B14 → B16**, B15 khi C7 xong.
 B1–B2 là nền cho B3, B5, B6. Lệnh ghi mới phải được thêm vào danh sách lệnh hỗ trợ trong `unifiedProjectStore.ts`
 (chỗ kiểm `UNSUPPORTED_CAPABILITY`).
 
@@ -187,6 +187,19 @@ chạy lần lượt từng đoạn bằng job hiện có, rồi đóng **một 
 (sửa chữ "BBS FS 2.4" thành 2.7, ghi cách cài). Khung xuất có lựa chọn "Cả tập".
 **Đạt khi:** test chia đoạn (biên đúng, không cắt clip, ra 7 đoạn như Tập 15 khi đưa cùng thông số), zip đủ file và
 `series.json` đúng thứ tự; job lỗi giữa chừng → không để lại zip dở.
+
+## B11b — Bổ sung cho B10/B11 (Claude kiểm thấy khi merge, 2026-10-23)
+- **Nhân vật theo từng đoạn:** `scene.export.bbsFilmSeries` đang đưa cùng `characterIds` vào mọi đoạn. Tập 15 (29 nhân
+  vật, mỗi cảnh 1–2 nhân vật riêng ở vùng riêng) bị chặn ngay cảnh 01 vì vượt ngân sách xương. Thêm
+  `characterIds: 'auto'` (mặc định cho chế độ cả tập): mỗi đoạn chỉ lấy nhân vật có motion clip hoặc keyframe
+  vị trí/xoay giao khoảng frame của đoạn, hoặc là chủ thể/lookAt của camera trong đoạn. Tương tự `propIds: 'auto'`:
+  hậu cảnh nằm trong tầm nhìn camera của đoạn (theo khoảng cách ≤ 60 m tới camera) — và nhận `propIds` như
+  `scene.export.bbsFilm`.
+- **Kiểm trước khi xuất theo đoạn:** ở chế độ cả tập, `film.preflight` đang kiểm cả dải như một film nên luôn báo vượt
+  255 tick. Claude tạm bỏ khoá kiểm ở chế độ cả tập (`useFilmExport.ts`, TODO). Thêm `film.preflight { mode: 'series' }`
+  chạy kiểm cho từng đoạn theo `planFilmSeries` và gộp kết quả (có `segment` trong mỗi Issue); khung xuất dùng lại khoá.
+**Đạt khi:** test dự án tổng hợp 6 cảnh, mỗi cảnh nhân vật riêng: cả tập xuất được, mỗi đoạn chỉ chứa nhân vật của nó;
+preflight theo đoạn báo đúng đoạn lỗi; khung xuất khoá lại khi có lỗi ở bất kỳ đoạn nào.
 
 ## B12 — Cài vào BBS FS
 `bbsInstall.ts` (host Studio, Node): `planInstall(packageZip, gameDir, worldName)` → danh sách file sẽ chép
