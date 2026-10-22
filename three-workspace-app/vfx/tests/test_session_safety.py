@@ -211,8 +211,8 @@ def test_save_backup_supports_exactly_one_undo(monkeypatch: pytest.MonkeyPatch, 
 
 @pytest.mark.integration
 def test_effekseer_core_document_roundtrip_when_configured(tmp_path: Path) -> None:
-    if not os.environ.get("EFFEKSEER_AI_BIN_DIR"):
-        pytest.skip("Set EFFEKSEER_AI_BIN_DIR to run the Effekseer Core integration gate")
+    if not os.environ.get("EFFEKSEER_AI_BIN_DIR") or not os.environ.get("EFFEKSEER_AI_SAMPLE_DIR"):
+        pytest.skip("Set both EFFEKSEER_AI_BIN_DIR and EFFEKSEER_AI_SAMPLE_DIR to run the Effekseer Core integration gate")
     from effekseer_ai.session import EffectSession
 
     path = tmp_path / "core-roundtrip.efkefc"

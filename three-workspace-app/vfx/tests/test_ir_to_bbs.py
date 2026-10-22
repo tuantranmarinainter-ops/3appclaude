@@ -1,0 +1,265 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from effekseer_ai.ir_to_bbs import convert_effect_ir, convert_to_directory, main
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "ir"
+
+
+def fixture(name: str) -> dict:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def test_glow_ring_explosion_emits_snowstorm_billboards_and_add_warnings() -> None:
+    result = convert_effect_ir(fixture("glow-ring-explosion"))
+    assert result["status"] == "PASS"
+    assert len(result["schemes"]) == 3
+    assert [s["addBlend"]["layer"] for s in result["schemes"][:2]] == ["halo", "core"]
+    ring = next(scheme["json"]["particle_effect"] for scheme in result["schemes"] if scheme["id"] == "ring")
+    assert ring["description"]["basic_render_parameters"]["material"] == "particles_blend"
+    assert ring["description"]["basic_render_parameters"]["texture"] == "assets:textures/vfx/add/ring_core.png"
+    assert ring["components"]["minecraft:emitter_shape_disc"]["offset"] == [0, 0, 0]
+    assert ring["components"]["minecraft:emitter_rate_steady"]["spawn_rate"] == 20
+    assert ring["components"]["minecraft:emitter_lifetime_once"]["active_time"] == 3
+    warning = next(w for w in result["warnings"] if w.get("code") == "ADD_BLEND_APPROXIMATED")
+    assert warning["status"] == "WARNING"
+    assert warning["fallback"]["coreExponent"] == 1.5
+    assert warning["fallback"]["haloSize"] == 1.9
+    assert warning["fallback"]["haloAlpha"] == 0.55
+
+
+def test_add_blend_coefficients_are_cli_configurable():
+    result = convert_effect_ir(fixture("glow-ring-explosion"), add_options={"haloSize": 2.1, "haloAlpha": 0.4})
+    warning = next(w for w in result["warnings"] if w.get("code") == "ADD_BLEND_APPROXIMATED")
+    assert warning["fallback"]["haloSize"] == 2.1
+    assert warning["fallback"]["haloAlpha"] == 0.4
+
+
+def test_ice_sword_ribbon_is_blocked_with_sprite_replacement_suggestion() -> None:
+    result = convert_effect_ir(fixture("ice-sword-trail"))
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    blocker = next(entry for entry in result["blocked"] if entry["property"] == "renderType")
+    assert blocker["status"] == "BLOCKED"
+    assert "short-lived oriented sprite" in blocker["suggestedAlternative"]
+
+
+def test_looping_aura_has_steady_spawn_rate_and_looping_lifetime() -> None:
+    result = convert_effect_ir(fixture("looping-aura"))
+    assert result["status"] == "PASS"
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    assert components["minecraft:emitter_rate_steady"] == {"spawn_rate": 20, "max_particles": 60}
+    assert components["minecraft:emitter_lifetime_looping"] == {"active_time": 0, "sleep_time": 0}
+    assert "minecraft:emitter_lifetime_once" not in components
+    assert result["timeConversion"]["quantumSeconds"] == 0.05
+
+
+def test_sprite_with_distortion_material_is_blocked_not_exported_as_plain_sprite() -> None:
+    effect_ir = fixture("looping-aura")
+    sprite = next(node for node in effect_ir["nodes"] if node["renderType"] == "sprite")
+    sprite["material"] = "backdistortion"
+    result = convert_effect_ir(effect_ir)
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    assert any(entry["property"] == "material" and "distortion" in entry["detail"] for entry in result["blocked"])
+
+
+def test_random_lifetime_range_is_preserved_and_quantized_to_twenty_hz() -> None:
+    result = convert_effect_ir(fixture("looping-aura"))
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    assert components["minecraft:particle_lifetime_expression"]["max_lifetime"] == "math.random(0.4, 0.6)"
+    life_report = next(entry for entry in result["warnings"] if entry["property"] == "life")
+    assert life_report["status"] == "APPROX"
+    assert "quantized to 1/20 second" in life_report["detail"]
+
+
+def test_blocked_nodes_prevent_all_output_without_allow_partial(tmp_path: Path) -> None:
+    ice = fixture("ice-sword-trail")
+    ice["nodes"].append({
+        "id": "spark", "parentId": "root", "name": "spark", "renderType": "sprite",
+        "blend": "blend", "generation": {"maxGeneration": 1, "generationTime": 3},
+        "life": {"max": 12}, "location": {"type": "fixed", "shape": "point"},
+    })
+    result = convert_to_directory(ice, tmp_path)
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    assert not list(tmp_path.glob("*.json")) or [path.name for path in tmp_path.glob("*.json")] == ["report.json"]
+
+
+def test_allow_partial_exports_supported_nodes_and_keeps_blockers(tmp_path: Path) -> None:
+    ice = fixture("ice-sword-trail")
+    ice["nodes"].append({
+        "id": "spark", "parentId": "root", "name": "spark", "renderType": "sprite",
+        "blend": "blend", "generation": {"maxGeneration": 1, "generationTime": 3},
+        "life": {"max": 12}, "location": {"type": "fixed", "shape": "point"},
+    })
+    result = convert_to_directory(ice, tmp_path, allow_partial=True)
+    assert result["status"] == "PARTIAL"
+    assert [scheme["id"] for scheme in result["schemes"]] == ["spark"]
+    assert result["blocked"]
+    assert (tmp_path / "spark.json").is_file()
+    assert json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))["status"] == "PARTIAL"
+
+
+def test_invalid_ir_and_unsafe_texture_are_rejected() -> None:
+    with pytest.raises(ValueError, match="schemaVersion"):
+        convert_effect_ir({"schemaVersion": 2, "nodes": []})
+    with pytest.raises(ValueError, match="schemaVersion"):
+        convert_effect_ir({"schemaVersion": True, "nodes": []})
+    invalid = fixture("looping-aura")
+    invalid["nodes"][1]["texture"] = "../../outside.png"
+    result = convert_effect_ir(invalid)
+    assert result["status"] == "BLOCKED"
+    assert any(entry["property"] == "texture" for entry in result["blocked"])
+
+
+def test_malformed_lifetime_is_reported_blocked_without_raising() -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][1]["life"] = {"min": "bad", "max": 12}
+    result = convert_effect_ir(ir)
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    assert any(entry["property"] == "life" and entry["status"] == "BLOCKED" for entry in result["blocked"])
+
+
+def test_cli_returns_nonzero_for_blocked_effect_and_writes_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    input_path = tmp_path / "ice.json"
+    output = tmp_path / "out"
+    input_path.write_text(json.dumps(fixture("ice-sword-trail")), encoding="utf-8")
+    code = main([str(input_path), str(output)])
+    assert code == 1
+    assert json.loads((output / "report.json").read_text(encoding="utf-8"))["status"] == "BLOCKED"
+    assert json.loads(capsys.readouterr().out)["status"] == "BLOCKED"
+
+
+def test_cli_reports_malformed_lifetime_as_blocked_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][1]["life"] = {"min": "bad", "max": 12}
+    input_path = tmp_path / "malformed-life.json"
+    output = tmp_path / "out"
+    input_path.write_text(json.dumps(ir), encoding="utf-8")
+    assert main([str(input_path), str(output)]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "BLOCKED"
+    assert json.loads((output / "report.json").read_text(encoding="utf-8"))["blocked"]
+
+
+def test_source_frames_are_quantized_to_twenty_hz() -> None:
+    ir = fixture("glow-ring-explosion")
+    ir["nodes"][1]["generation"]["generationTime"] = 6
+    result = convert_effect_ir(ir)
+    assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_rate_steady"]["spawn_rate"] == pytest.approx(10)
+    assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_lifetime_once"]["active_time"] == 6
+
+
+def test_subtick_burst_uses_instant_rate_and_preserves_particle_count() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["generation"].update({"maxGeneration": 100, "generationTime": 0.01, "infinite": False})
+    result = convert_effect_ir(ir)
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    assert components["minecraft:emitter_rate_instant"] == {"num_particles": 100}
+    assert "minecraft:emitter_rate_steady" not in components
+    assert components["minecraft:emitter_lifetime_once"]["active_time"] == pytest.approx(100 * .01 / 60)
+
+
+def test_easing_and_pva_emit_stable_per_particle_molang() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["location"]["type"] = "easing"
+    node["valueModes"] = {
+        "location": {"type": "easing"}, "rotation": {"type": "fixed"},
+        "scaling": {"type": "easing"}, "color": {"type": "fixed"},
+        "numericLeaves": {
+            "locationPosition": {"start": {axis: {"center": value, "amplitude": .5} for axis, value in zip("XYZ", (0, 1, 2))},
+                                  "end": {axis: {"center": value, "amplitude": 1} for axis, value in zip("XYZ", (2, 3, 4))}},
+            "scale": {"start": {axis: {"center": 1} for axis in "XYZ"},
+                      "end": {axis: {"center": 3} for axis in "XYZ"}},
+            "rotation": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+            "color": {"value": {axis: {"value": 1} for axis in "RGBA"}},
+        },
+    }
+    result = convert_effect_ir(ir)
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    position = components["minecraft:particle_motion_parametric"]["relative_position"]["x"]
+    size = components["minecraft:particle_appearance_billboard"]["size"][0]
+    assert "variable.particle_age / variable.particle_lifetime" in position
+    assert "variable.particle_random_1" in position
+    assert "variable.particle_age / variable.particle_lifetime" in size
+
+
+def test_color_easing_random_endpoints_use_per_channel_molang_ranges() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["location"]["type"] = "fixed"
+    node["valueModes"] = {
+        "location": {"type": "fixed"}, "rotation": {"type": "fixed"},
+        "scaling": {"type": "fixed"}, "color": {"type": "easing"},
+            "numericLeaves": {
+                "locationPosition": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+                "scale": {"value": {axis: {"value": 1} for axis in "XYZ"}},
+                "rotation": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+                "color": {
+                    "start": {axis: {"center": 100 + index * 10, "amplitude": 20} for index, axis in enumerate("RGBA")},
+                    "end": {axis: {"center": 180 + index * 10, "amplitude": 10} for index, axis in enumerate("RGBA")},
+                },
+            },
+    }
+    result = convert_effect_ir(ir)
+    core = next(s for s in result["schemes"] if s["addBlend"]["layer"] == "core")
+    halo = next(s for s in result["schemes"] if s["addBlend"]["layer"] == "halo")
+    color = core["json"]["particle_effect"]["components"]["minecraft:particle_appearance_tinting"]["color"]
+    halo_color = halo["json"]["particle_effect"]["components"]["minecraft:particle_appearance_tinting"]["color"]
+    assert isinstance(color, list) and len(color) == 4
+    assert all(f"variable.particle_random_{index}" in channel for index, channel in enumerate(color, 1))
+    assert all("variable.particle_age / variable.particle_lifetime" in channel for channel in color)
+    assert all(f"variable.particle_random_{index}" in channel for index, channel in enumerate(halo_color, 1))
+    assert "0.55" in halo_color[3]
+    assert not result["blocked"]
+
+
+def test_unsupported_billboard_orientation_is_blocked_and_generation_amplitude_is_reported() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["orientation"] = "DirectionalBillboard"
+    node["generation"]["generationTimeAmplitude"] = 0.25
+    result = convert_effect_ir(ir)
+    assert result["status"] == "BLOCKED"
+    assert any(row["property"] == "orientation" and row["status"] == "BLOCKED" for row in result["blocked"])
+    assert any(row["property"] == "generation.generationTimeAmplitude" and row["status"] == "APPROX"
+               for row in result["warnings"])
+
+
+def test_invalid_shape_and_flipbook_are_reported_as_blocked_not_exceptions() -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][1]["location"]["radius"] = "wide"
+    ir["nodes"][1]["flipbook"] = {"maxFrame": -3}
+    result = convert_effect_ir(ir)
+    assert result["status"] == "BLOCKED"
+    assert {entry["property"] for entry in result["blocked"]} >= {"location.radius", "flipbook"}
+
+
+def test_rerun_removes_only_previous_generated_schemes(tmp_path: Path) -> None:
+    convert_to_directory(fixture("looping-aura"), tmp_path)
+    assert (tmp_path / "aura.json").is_file()
+    (tmp_path / "user-notes.json").write_text("{}", encoding="utf-8")
+
+    convert_to_directory(fixture("ice-sword-trail"), tmp_path)
+
+    assert not (tmp_path / "aura.json").exists()
+    assert (tmp_path / "user-notes.json").is_file()
+    assert json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))["status"] == "BLOCKED"
+
+
+def test_group_transform_is_applied_and_ok_entries_are_not_warnings() -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][0]["transform"] = {"position": [2, 0, 0], "scale": [2, 2, 2]}
+    result = convert_effect_ir(ir)
+    assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_shape_sphere"]["offset"] == [2, 0, 0]
+    assert any(entry["property"] == "parent.transform" and entry["status"] == "OK" for entry in result["nodes"][1]["properties"])
+    assert all(entry["status"] != "OK" for entry in result["warnings"])

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "ice-sword-trail",
+  "fps": 60,
+  "nodes": [
+    {"id": "root", "path": "node/id/root", "parentId": null, "name": "Root", "renderType": "none"},
+    {
+      "id": "trail",
+      "path": "node/id/trail",
+      "parentId": "root",
+      "name": "IceRibbon",
+      "renderType": "ribbon",
+      "blend": "add",
+      "texture": "textures/vfx/ice-trail.png",
+      "generation": {"maxGeneration": 60, "generationTime": 2, "generationTimeOffset": 0, "infinite": false},
+      "life": {"min": 30, "max": 45},
+      "location": {"type": "pva", "shape": "line", "position": [0, 0, 0], "direction": [0, 1, 0], "velocity": [0, 0.5, 0], "acceleration": [0, 0, 0]},
+      "size": [0.15, 1.5],
+      "color": [0.45, 0.85, 1, 0.9],
+      "unsupportedFeatures": []
+    }
+  ]
+}

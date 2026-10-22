@@ -1,0 +1,32 @@
+# App 4 V4 report: offline particle preview
+
+## Changes
+
+- Added `effekseer-ai preview` and `effekseer-ai-preview`, a local, deterministic PNG renderer for the Snowstorm subset produced by V2b. It performs no network access and writes a `preview-report.json` next to its images.
+- Every result states `SIMULATION_ONLY`, marks actual BBS runtime `NOT_RUN`, and labels each PNG as not an Effekseer or BBS FS render. Unsupported/blocked conversions still produce timestamped blank status frames rather than suggesting the blocked feature rendered.
+- Optional caller-supplied PNG references can be placed side by side with the simulation. Reports label provenance as unverified; the preview tool does not claim a reference is an Effekseer render or claim pixel equivalence.
+- Random particle lifetime expressions are simulated using the quantized maximum endpoint; the preview report states that random sampling is not reproduced.
+- Add effects simulate both converted layers in draw order: halo behind core, applying the configured halo size/alpha/color and core exponent. Since the simulator does not sample source texture pixels, it uses a representative 0.5 luminance for the core and states this limitation in the report.
+- Uses only Python's standard library. Test-generated PNGs are temporary; no PNG assets are committed.
+
+## Synthetic measurements
+
+- The test exercised all three MVP fixtures (`glow-ring-explosion`, `ice-sword-trail`, `looping-aura`) at 0, 0.25, and 0.5 seconds: 9 timestamp PNGs total. Six frames used converted supported schemes; the three ice-ribbon frames are explicitly marked `BLOCKED`.
+- Synthetic reference montage test: 80x80 simulation plus a 64x64 caller-supplied PNG yields a 144x80 side-by-side image. The reference is labeled synthetic/unverified.
+- These are simulator measurements only. No actual Effekseer render or BBS FS game comparison was available.
+
+## Gates
+
+| Gate | Status | Result / rerun command |
+| --- | --- | --- |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 48 passed, 3 skipped, 0 failed. Skips require the Windows Core DLL and official sample directory. |
+| Offline preview for MVP fixtures | PASS | Covered by `test_all_three_mvp_fixtures_render_timestamp_pngs_and_label_simulation`; no network service is used by the preview implementation. |
+| GitHub Actions `test` workflow | NOT_RUN | No check is currently reported for the latest head; verify PR #52's status before review. |
+| Review 2 Effekseer image gate | NOT_RUN | The inherited integration test renders Simple_Sprite_BillBoard, Simple_SpawnMethod1, Simple_Turbulence_Particles, and Laser01 at 0.25/0.5/1s and records bright pixels, bbox, and mean RGB. On Windows set both required environment variables and run `python -m pytest -m integration -q`; it asserts bbox width/height >=50% and RGB mean distance <=40/255. Camera matches fixed Viewer distance/angles, uses an explicitly approximate 45-degree FOV, and never auto-fits. No cloud measurements are claimed; see `VFX-REPORT-V2.md`. |
+| Effekseer reference comparison | NOT_RUN | No standalone reference PNGs were available. On Windows, optional caller references can be compared with `effekseer-ai preview <effect-ir.json> <out-dir> --timestamps 0,0.25,0.5 --reference-dir <reference-dir>`. |
+| BBS FS 2.7 actual runtime | NOT_RUN | Install generated resources in BBS FS 2.7 on Windows and capture actual game frames. The simulator does not certify game playback. BBS source review at commit `998c9d5` verifies list-form RGB/RGBA tint arrays, `math.lerp`/`math.clamp`, and particle age/lifetime/random bindings; actual game playback remains untested (see V2 report citations). |
+| Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |
+
+## Dependency
+
+This PR is based on PR #50 (`ai1/v2-convert`), which is now based on main after V1 PR #49 merged. It consumes V2b's EffectIR-to-Snowstorm conversion output, including the Add core and halo schemes. It does not depend on V3 packaging. It is rebased on final V2 head `ae31301`. No merge was performed.

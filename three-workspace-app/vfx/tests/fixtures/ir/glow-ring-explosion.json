@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "name": "glow-ring-explosion",
+  "fps": 60,
+  "nodes": [
+    {"id": "root", "path": "node/id/root", "parentId": null, "name": "Root", "renderType": "none"},
+    {
+      "id": "ring",
+      "path": "node/id/ring",
+      "parentId": "root",
+      "name": "GlowRing",
+      "renderType": "sprite",
+      "blend": "add",
+      "texture": "textures/vfx/glow-ring.png",
+      "generation": {"maxGeneration": 60, "generationTime": 3, "generationTimeOffset": 0, "infinite": false},
+      "life": {"min": 30, "max": 60},
+      "location": {"type": "fixed", "shape": "circle", "position": [0, 0, 0], "direction": [0, 1, 0]},
+      "size": [2, 2],
+      "color": [0.25, 0.45, 1, 0.9],
+      "unsupportedFeatures": []
+    },
+    {
+      "id": "burst",
+      "path": "node/id/burst",
+      "parentId": "root",
+      "name": "BurstSprite",
+      "renderType": "sprite",
+      "blend": "blend",
+      "texture": "textures/vfx/glow-burst.png",
+      "generation": {"maxGeneration": 12, "generationTime": 1, "generationTimeOffset": 0, "infinite": false},
+      "life": {"min": 12, "max": 24},
+      "location": {"type": "pva", "shape": "sphere", "position": [0, 0, 0], "direction": [0, 1, 0], "velocity": [0, 0.7, 0], "acceleration": [0, -0.2, 0]},
+      "size": [0.5, 0.5],
+      "color": [0.6, 0.85, 1, 1],
+      "unsupportedFeatures": []
+    }
+  ]
+}

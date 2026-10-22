@@ -78,13 +78,47 @@ All CLI results are JSON printed to standard output, which makes the commands su
 
 | Group | Commands |
 | --- | --- |
-| Document | `new`, `open`, `save`, `export`, `edit-undo` |
+| Document | `new`, `open`, `save`, `export`, `edit-undo`, `effect-dump`, `bbs-package`, `preview` |
 | Nodes | `node-list`, `node-add`, `node-rename`, `node-remove`, `node-move` |
 | Properties | `property-list`, `property-get`, `property-set` |
 | Resources | `image-import` |
 | Editor data | `settings-list`, `settings-set`, `curve-list`, `curve-set` |
 
 Run `effekseer-ai --help` or `effekseer-ai <command> --help` for arguments and JSON input formats.
+
+Use `effekseer-ai effect-dump .\effect.efkefc .\effect-ir.json` to extract an EffectIR v1 snapshot through Effekseer Core. Unknown Core renderer properties are preserved under `properties` and marked unsupported so they cannot be silently exported.
+
+`effekseer-ai preview .\effect-ir.json .\preview --timestamps 0.25,0.5,1 --width 512 --height 512` renders a deterministic Snowstorm-subset simulation for the image integration gate. It is not an Effekseer or in-game render. Expressions use fixed per-particle random variables; its perspective camera matches the Viewer distance and angles, with a documented 45-degree vertical-FOV approximation and no per-image auto-fit.
+
+### Convert EffectIR to BBS FS 2.7 Snowstorm
+
+V2 accepts a versioned EffectIR JSON file and writes one scheme per drawable node plus `report.json`:
+
+```powershell
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out
+effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
+```
+
+By default, any `BLOCKED` node blocks all scheme output. `--allow-partial` writes only supported nodes and retains every blocker in the report. Generation times remain in source frames at the declared FPS; sub-tick bursts use `emitter_rate_instant` so particle counts are retained. Approximations and unsupported features are reported explicitly. See [`docs/VFX-IR-CONTRACT.md`](../../docs/VFX-IR-CONTRACT.md) for the IR shape. The converter is a structural approximation; BBS FS 2.7 in-game playback remains a separate gate.
+
+### Package for BBS FS
+
+Add an `assets` array to EffectIR for each external texture, with `path`, `license`, and `credit`; `source` may name a relative file under the assets root. Then run:
+
+```powershell
+effekseer-ai bbs-package .\effect-ir.json .\out\effect.zip --assets-root .
+```
+
+The package contains `config/bbs/assets/particles/`, referenced textures, a conversion report, a manifest, `CREDITS.md`, and actor/bone `ParticleForm` usage notes including pause/restart guidance. A blocked conversion produces no ZIP unless `--allow-partial` is explicit. The MCP server exposes the same operation as `bbs_package`.
+### Offline preview
+
+Render a local simulation at selected timestamps without network access:
+
+```powershell
+effekseer-ai preview .\effect-ir.json .\preview --timestamps 0,0.25,0.5
+```
+
+The output PNGs and `preview-report.json` are explicitly labeled as simulation only, not Effekseer or BBS FS renders. Optionally place Effekseer reference PNGs named `<effect>_<seconds>s.png` in a directory and pass `--reference-dir`; the command writes a side-by-side comparison and labels its left and right panels. The simulator uses only the exported Snowstorm subset and is not a substitute for the Windows game/runtime gate.
 
 ## MCP server
 

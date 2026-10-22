@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "looping-aura",
+  "fps": 60,
+  "nodes": [
+    {"id": "root", "path": "node/id/root", "parentId": null, "name": "Root", "renderType": "none"},
+    {
+      "id": "aura",
+      "path": "node/id/aura",
+      "parentId": "root",
+      "name": "AuraSprite",
+      "renderType": "sprite",
+      "blend": "add",
+      "texture": "textures/vfx/aura.png",
+      "generation": {"maxGeneration": 60, "generationTime": 3, "generationTimeOffset": 0, "infinite": true},
+      "life": {"min": 24, "max": 36},
+      "location": {"type": "pva", "shape": "sphere", "position": [0, 0, 0], "direction": [0, 1, 0], "velocity": [0, 0.2, 0], "acceleration": [0, -0.1, 0]},
+      "size": [0.4, 0.4],
+      "color": [0.4, 0.7, 1, 1],
+      "unsupportedFeatures": []
+    }
+  ]
+}
