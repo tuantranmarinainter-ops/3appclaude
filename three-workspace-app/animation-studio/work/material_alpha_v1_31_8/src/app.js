@@ -17,6 +17,7 @@ let sourcePreview=null,sourcePreviewLocks=null,quickClipRig=null;
 import * as Tex from './texture_assets.js';
 import * as AnimationExport from './animation_export.js';
 import * as CompareSpace from './compare_space.js';
+import * as ExtraBones from './extra_bones.js';
 import * as T from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {TransformControls} from 'three/addons/controls/TransformControls.js';
@@ -340,7 +341,7 @@ function renderBones(){
   const branch=document.createElement('details');branch.className='bone-branch';branch.open=query?true:treeOpen.get(rec.id)??depth<2;
   const row=document.createElement(children.length?'summary':'div');if(!children.length)row.className='bone-leaf';
   if(children.length){const fold=document.createElement('span');fold.className='bone-fold';fold.textContent='›';fold.setAttribute('aria-hidden','true');row.append(fold);branch.addEventListener('toggle',()=>treeOpen.set(rec.id,branch.open));}
-  const button=document.createElement('button');button.className='bone-row';button.dataset.id=rec.id;button.dataset.bone=rec.id;button.textContent=C.short(rec.name);button.title=rec.name;button.setAttribute('role','treeitem');button.setAttribute('aria-level',depth+1);button.setAttribute('aria-selected',String(rec.id===selected));button.classList.toggle('selected',rec.id===selected);button.onclick=e=>{e.preventDefault();selectUser(rec.id);};
+  const extra=ExtraBones.isExtraBoneName(rec.name);const button=document.createElement('button');button.className='bone-row';button.dataset.id=rec.id;button.dataset.bone=rec.id;button.textContent=C.short(rec.name)+(extra?($('uiLanguage').value==='en'?' · extra':' · phụ'):'');button.title=extra?rec.name+' · '+($('uiLanguage').value==='en'?'extra bone':'xương phụ'):rec.name;button.setAttribute('role','treeitem');button.setAttribute('aria-level',depth+1);button.setAttribute('aria-selected',String(rec.id===selected));button.classList.toggle('selected',rec.id===selected);button.classList.toggle('extra-bone',extra);button.onclick=e=>{e.preventDefault();selectUser(rec.id);};
   row.append(button);if(children.length){branch.append(row);const subtree=document.createElement('div');subtree.className='bone-children';subtree.role='group';children.forEach(r=>add(r,subtree,depth+1));branch.append(subtree);container.append(branch);}else container.append(row);
  };
  if(query){for(const rec of records.filter(r=>r.name.toLowerCase().includes(query))){const button=document.createElement('button');button.className='bone-row';button.dataset.id=rec.id;button.dataset.bone=rec.id;button.textContent=C.short(rec.name);button.onclick=()=>selectUser(rec.id);list.append(button);}}
@@ -511,7 +512,8 @@ function finalizeGLB(buffer,r,skin){
  const view=new DataView(buffer),len=view.getUint32(12,true),json=JSON.parse(new TextDecoder().decode(new Uint8Array(buffer,20,len)));
  const joints=r.records.map(rec=>json.nodes.findIndex(n=>n.name===rec.name));if(joints.some(x=>x<0)||new Set(joints).size!==r.records.length)throw Error('Không xác định duy nhất tất cả joints. Kiểm tra tên trùng.');
  if(!skin)json.skins=[{name:r.profile+' skeleton',joints,skeleton:joints[0]}];
- json.extras={app:'Animation Studio 1.20.0',profile:r.profile,rigFingerprint:r.fingerprint,bakeFps:project.fps,sourceUnits:/\.fbx$/i.test(r.name)?'cm (assumed)':'m (glTF)'};
+ const extraBones=ExtraBones.forExtendedRig(r.records,r.profile);
+ json.extras={app:'Animation Studio 1.20.0',profile:r.profile,rigFingerprint:r.fingerprint,bakeFps:project.fps,sourceUnits:/\.fbx$/i.test(r.name)?'cm (assumed)':'m (glTF)',...(extraBones.length?{rig:'mixamo65+extras',extraBones}: {})};
  const text=new TextEncoder().encode(JSON.stringify(json)),size=Math.ceil(text.length/4)*4,rest=new Uint8Array(buffer,20+len),out=new Uint8Array(20+size+rest.length),dv=new DataView(out.buffer);dv.setUint32(0,0x46546c67,true);dv.setUint32(4,2,true);dv.setUint32(8,out.length,true);dv.setUint32(12,size,true);dv.setUint32(16,0x4e4f534a,true);out.fill(32,20,20+size);out.set(text,20);out.set(rest,20+size);return out.buffer;
 }
 async function chosenTarget(){const choice=$('exportProfile').value;if(choice==='same')return null;if(choice==='Mixamo'){if(rig.profile==='Mixamo'&&C.activeRecords(rig).length===65)return null;if(!targetRig||targetRig.profile!=='Mixamo'){targetRig=await parseAsset(sampleBytes(),'Mixamo T-Pose.fbx');mapping=C.suggestMapping(rig,targetRig);}}else{if(!targetRig||targetRig.profile!=='Metarig')throw Error('Cần nhập file Metarig đích đúng mẫu (FBX / GLB).');}
@@ -1416,7 +1418,7 @@ window.__studio={
  graph:()=>graphEditor,graphAction,previewSourceClip,endSourcePreview,useQuickClip,
  dual:{enable:setDualEnabled,activate:activateEditorSlot,mode:setDualTimeline,slots:()=>({active:activeEditorSlot,enabled:dualEnabled,timeline:dualTimelineMode,A:editorSlots.A?.project.name,B:editorSlots.B?.project.name})},
  get state(){return{sourceClip:sourcePreview?{index:sourcePreview.index,time:sourcePreview.time,duration:sourcePreview.duration}:null,project:C.clone(project),time,selected,draft,dirty,mode,studioMode,errors:[...errors],bones:rig?.records.length,profile:rig?.profile,onionRevision,ik:rig?.chains.map(c=>({id:c.id,mode:c.mode,outOfReach:c.outOfReach})),historyIndex};},
- select,selectUser,seek,installAsset:loadModel,loadProject,switchStudioMode,project:()=>C.clone(project),pose:()=>C.capture(rig),controls:()=>Object.fromEntries(Object.entries(rig.controls).map(([id,c])=>[id,C.snap(c.object)])),recordNames:()=>rig.records.map(r=>({id:r.id,name:r.name,parent:r.parent})),buildGLB,
+ select,selectUser,seek,installAsset:loadModel,loadProject,switchStudioMode,project:()=>C.clone(project),pose:()=>C.capture(rig),controls:()=>Object.fromEntries(Object.entries(rig.controls).map(([id,c])=>[id,C.snap(c.object)])),recordNames:()=>rig.records.map(r=>({id:r.id,name:r.name,parent:r.parent,extraBone:ExtraBones.isExtraBoneName(r.name)})),extraBones:()=>ExtraBones.forExtendedRig(rig.records,rig.profile),buildGLB,
  onion:()=>onion,onionCore:O,report,loadCompare,retarget:C.retarget,core:C,rig:()=>rig,get view(){return editView;},editorViews:()=>editViews,widgetPick:W.pick,views:{get edit(){return editView;},A:compareA,B:compareB},
  compareDebug:{tick:tickCompare,sample:compareSamplePose,state:side=>({clip:comparison[side].clip,time:comparison[side].time,playing:comparison[side].playing})},
  async exportCapture(){const r=await buildGLB();return{...r,data:base64(r.data)};},
