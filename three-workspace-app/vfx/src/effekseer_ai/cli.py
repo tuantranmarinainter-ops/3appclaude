@@ -242,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = args.handler(args)
         _emit(result)
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
+    except Exception as error:
         if args.command != "bbs-package":
             raise
         _emit({"status": "ERROR", "error": str(error)})

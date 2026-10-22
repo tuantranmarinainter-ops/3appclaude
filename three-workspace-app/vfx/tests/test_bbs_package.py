@@ -96,3 +96,25 @@ def test_cli_bbs_package_errors_are_json_with_nonzero_exit(tmp_path: Path, capsy
     assert code == 2
     assert result["status"] == "ERROR"
     assert "error" in result
+
+
+def test_cli_bbs_package_corrupt_png_is_json_without_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from effekseer_ai.cli import main
+
+    effect = with_asset_manifest(tmp_path)
+    source = tmp_path / effect["assets"][0]["source"]
+    corrupt = bytearray(_encode(1, 1, bytes((0, 0, 0, 255))))
+    corrupt[corrupt.index(b"IDAT") + 4] = 0xFF  # invalid zlib stream inside a structurally valid PNG
+    source.write_bytes(corrupt)
+    input_path = tmp_path / "effect-ir.json"
+    input_path.write_text(json.dumps(effect), encoding="utf-8")
+    output = tmp_path / "corrupt.zip"
+
+    code = main(["bbs-package", str(input_path), str(output), "--assets-root", str(tmp_path)])
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert code == 2
+    assert result["status"] == "ERROR"
+    assert "error" in result
+    assert captured.err == ""
+    assert not output.exists()

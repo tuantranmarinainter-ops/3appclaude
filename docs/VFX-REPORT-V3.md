@@ -7,6 +7,7 @@
 - External textures require `license` and `credit` entries in EffectIR `assets`; optional `source` paths must stay within `--assets-root`. The ZIP includes a generated `CREDITS.md` and usage notes for `ParticleForm` actor/bone attachments and pause/restart behavior.
 - Blocked conversion creates no ZIP unless `--allow-partial` is explicit. ZIP creation is atomic. Existing MCP tools remain registered; V2's `effect-dump` and V1's `edit_undo` are preserved.
 - Invalid package inputs return one JSON error object and exit code 2 from the CLI; they do not produce a traceback. Unit tests use transient synthetic PNGs in pytest temp directories; no binary asset is committed.
+- Packaging catches failures while decoding malformed PNG textures at the `bbs-package` command boundary; a corrupt zlib payload returns JSON plus exit code 2 without stderr traceback. Other CLI commands retain their existing exception behavior.
 
 ## Synthetic measurements
 
@@ -19,7 +20,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 36 passed, 2 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths and generated texture verification. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 37 passed, 2 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths, corrupt PNG error handling, and generated texture verification. |
 | Integration using Effekseer Core DLL and official samples | NOT_RUN | On Windows set `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'` and `$env:EFFEKSEER_AI_SAMPLE_DIR='C:\\path\\to\\Effekseer\\Sample\\00_Basic'`, then run `python -m pytest -m integration -q` from `three-workspace-app/vfx`. |
 | MCP tool inventory | PASS | Unit test checks all existing tools remain present and confirms the additive `bbs_package` tool. |
 | GitHub Actions `test` workflow | NOT_RUN | No check is currently reported for the latest head; verify PR #51's status before review. |

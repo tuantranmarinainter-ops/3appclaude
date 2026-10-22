@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         effect_ir = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
         result = build_bbs_package(effect_ir, args.output_zip, args.assets_root, args.allow_partial)
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as error:
+    except Exception as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, ensure_ascii=False))
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
