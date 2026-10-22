@@ -19,7 +19,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 30 passed, 1 skipped, 0 failed. The skip is the Core integration test. Includes an end-to-end CLI package invocation. |
+| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 33 passed, 1 skipped, 0 failed. The skip is the Core integration test. Includes an end-to-end CLI package invocation. |
 | Integration using Effekseer Core DLL | NOT_RUN | Requires `EFFEKSEER_AI_BIN_DIR` and an actual Windows Effekseer installation. Run `python -m pytest -m integration -q` on the Windows review machine after configuring it. |
 | MCP tool inventory | PASS | Unit test checks all existing tools remain present and confirms the additive `bbs_package` tool. |
 | GitHub Actions `test` workflow | NOT_RUN | Run [39713527814](https://github.com/tuantranmarinainter-ops/3appclaude/actions/runs/39713527814) was `IN_PROGRESS` at the report snapshot; CI is unverified until completion. |
