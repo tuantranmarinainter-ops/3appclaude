@@ -136,7 +136,7 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
                 continue
             randoms = _random_values(index)
             particle_color = _tint_color(tint, age, life, randoms)
-            if add_layer == "halo":
+            if add_layer == "halo" and not isinstance(tint, list):
                 particle_color = (*particle_color[:3], round(particle_color[3] * float(scheme["addBlend"]["options"]["haloAlpha"])))
             elif add_layer == "core":
                 exponent = float(scheme["addBlend"]["options"]["coreExponent"])
@@ -388,6 +388,13 @@ def _attribute_name(node: ast.AST) -> str:
 
 
 def _tint_color(value: Any, age: float, life: float, randoms: dict[str, float]) -> tuple[int, int, int, int]:
+    if isinstance(value, list) and len(value) in {3, 4}:
+        channels = [_eval_molang(channel, age, life, randoms) for channel in value]
+        if max(channels, default=0) <= 1:
+            channels = [channel * 255 for channel in channels]
+        if len(channels) == 3:
+            channels.append(255)
+        return tuple(max(0, min(255, round(channel))) for channel in channels)  # type: ignore[return-value]
     if isinstance(value, dict) and isinstance(value.get("gradient"), dict):
         gradient = value["gradient"]
         points = sorted((float(key), _parse_color(color)) for key, color in gradient.items())

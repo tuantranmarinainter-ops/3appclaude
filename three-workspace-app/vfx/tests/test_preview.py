@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from effekseer_ai.cli import build_parser, main
-from effekseer_ai.preview import _blank, _ellipse, _eval_molang, _random_values, _read_png, _render_schemes, _spawn_times, _write_png, project_camera, render_preview
+from effekseer_ai.preview import _blank, _ellipse, _eval_molang, _random_values, _read_png, _render_schemes, _spawn_times, _tint_color, _write_png, project_camera, render_preview
 from effekseer_ai.ir_to_bbs import convert_effect_ir
 
 
@@ -122,3 +122,15 @@ def test_billboard_preserves_anisotropic_size_as_rotatable_ellipse() -> None:
     width = max(x for x, _ in bright) - min(x for x, _ in bright) + 1
     height = max(y for _, y in bright) - min(y for _, y in bright) + 1
     assert height > width * 4
+
+
+def test_preview_evaluates_per_channel_color_molang_with_stable_randoms() -> None:
+    randoms = _random_values(11)
+    color = ["math.lerp(0.2, 0.8, variable.particle_random_1)",
+             "math.lerp(0.1, 0.7, variable.particle_random_2)",
+             "math.lerp(0.3, 0.9, variable.particle_random_3)",
+             "math.lerp(0.5, 1, variable.particle_random_4)"]
+    evaluated = _tint_color(color, 0.5, 1, randoms)
+    expected = tuple(round(_eval_molang(channel, 0.5, 1, randoms) * 255) for channel in color)
+    assert evaluated == expected
+    assert _tint_color(color, 0.5, 1, randoms) == evaluated

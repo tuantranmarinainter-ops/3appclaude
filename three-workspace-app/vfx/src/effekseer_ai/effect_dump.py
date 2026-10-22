@@ -24,6 +24,26 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         listed_paths: list[str] | None = None
         missing_core_fields: list[str] = []
 
+        def get_listed_paths(root: str = "", mode: str = "") -> list[str]:
+            # Keep traversal bounded to the active Core value subtree. Core's
+            # default whole-node listing can already contain thousands of leaves;
+            # never request a deeper whole-node walk just to find scalar values.
+            target = f"{path}/{root}/{mode}" if root and mode else path
+            try:
+                if root and mode:
+                    return list(session.property_list(target, max_depth=8))
+                return list(session.property_list(path, max_depth=6))
+            except TypeError:
+                # Older adapters expose only the default depth-6 whole-node
+                # listing; active values below that depth are queried explicitly
+                # by mode-specific property_get in the Core adapter.
+                try:
+                    return list(session.property_list(path))
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    return []
+            except (AttributeError, KeyError, ValueError):
+                return []
+
         def get(field: str, candidates: tuple[str, ...], default: Any = None) -> Any:
             for suffix in candidates:
                 property_path = f"{path}/{suffix}"
@@ -41,10 +61,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
             """Read a Core value parent discovered from its public IsValueChanged leaf."""
             nonlocal listed_paths
             if listed_paths is None:
-                try:
-                    listed_paths = list(session.property_list(path))
-                except (AttributeError, KeyError, ValueError, TypeError):
-                    listed_paths = []
+                listed_paths = get_listed_paths()
             matches: list[tuple[int, str, Any]] = []
             for leaf in listed_paths:
                 normalized = leaf.lower().replace("\\", "/")
@@ -90,17 +107,12 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
             Keeping the full relative path preserves endpoints and random ranges
             even when this converter does not yet understand a particular curve.
             """
-            nonlocal listed_paths
-            if listed_paths is None:
-                try:
-                    listed_paths = list(session.property_list(path))
-                except (AttributeError, KeyError, ValueError, TypeError):
-                    listed_paths = []
+            mode_paths = get_listed_paths(root, mode)
             prefix = f"{path}/{root}/".lower()
             wanted = f"/{mode.lower()}/"
             values: dict[str, Any] = {}
             absolute: list[str] = []
-            for leaf in listed_paths:
+            for leaf in mode_paths:
                 normalized = leaf.replace("\\", "/")
                 low = normalized.lower()
                 if not low.startswith(prefix) or wanted not in low:
@@ -119,26 +131,21 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
 
         def read_axes(field: str, root: str, mode: str, prop: str, axes: str = "XYZ") -> dict[str, Any]:
             """Read concrete scalar leaves used by Vector/Color and random value types."""
-            nonlocal listed_paths
-            if listed_paths is None:
-                try:
-                    listed_paths = list(session.property_list(path))
-                except (AttributeError, KeyError, ValueError, TypeError):
-                    listed_paths = []
+            mode_paths = get_listed_paths(root, mode)
             out: dict[str, Any] = {}
             sources: list[str] = []
-            for leaf in listed_paths:
+            for leaf in mode_paths:
                 normalized = leaf.replace("\\", "/")
                 low = normalized.lower()
                 if not low.startswith(f"{path}/{root}/".lower()) or f"/{mode.lower()}/" not in low:
                     continue
                 parts = low.split("/")
-                if (prop and prop.lower() not in parts) or not low.endswith("/isvaluechangedfromdefault"):
+                if prop and prop.lower() not in parts:
                     continue
                 axis = next((a for a in axes.lower() if a in parts), None)
                 if axis is None:
                     continue
-                parent_path = normalized.rsplit("/", 1)[0]
+                parent_path = normalized.rsplit("/", 1)[0] if low.endswith("/isvaluechangedfromdefault") else normalized
                 try:
                     value = float(session.property_get(parent_path))
                 except (AttributeError, KeyError, ValueError, TypeError):
@@ -155,12 +162,10 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
             return out
 
         def read_scalar(field: str, root: str, mode: str, prop: str) -> dict[str, float]:
-            nonlocal listed_paths
-            if listed_paths is None:
-                listed_paths = list(session.property_list(path))
+            mode_paths = get_listed_paths(root, mode)
             out: dict[str, float] = {}
             sources: list[str] = []
-            for leaf in listed_paths:
+            for leaf in mode_paths:
                 low = leaf.lower().replace("\\", "/")
                 if not low.startswith(f"{path}/{root}/".lower()) or f"/{mode.lower()}/" not in low or not low.endswith("/isvaluechangedfromdefault"):
                     continue
@@ -184,6 +189,9 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         normalized_render = _key(raw_render)
         render_type = _RENDER_TYPES.get(normalized_render)
         unsupported = [] if render_type else [f"unmapped-core-render-type:{raw_render!s}"]
+        orientation = get("orientation", ("DrawingValues/Sprite/Billboard",), None)
+        if render_type == "sprite" and orientation is None:
+            unsupported.append("missing-core-property:orientation")
         raw_blend = get("blend", ("RendererCommonValues/AlphaBlend",), "Blend")
         blend = _BLENDS.get(_key(raw_blend))
         if blend is None:
@@ -282,7 +290,8 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
                 mode_values.setdefault("numericLeaves", {})[field] = read_scalar(f"scaling.{field}", "ScalingValues", "SingleEasing", endpoint)
         node: dict[str, Any] = {
             "id": stable_id, "path": path, "name": str(item.get("name", stable_id)), "parentId": parent_id,
-            "renderType": render_type or "unsupported", "blend": blend, "material": material,
+            "renderType": render_type or "unsupported", "orientation": str(orientation) if orientation is not None else None,
+            "blend": blend, "material": material,
             "generation": {"maxGeneration": _int(max_generation, 1), "infinite": bool(infinite), "generationTime": _num(generation_time, 1)},
             "life": {"min": _num(life_min, 60), "max": _num(life_max, 60)},
             "location": {"type": str(location_type).lower(), "position": position, "direction": [0, 1, 0], "velocity": velocity, "acceleration": acceleration},

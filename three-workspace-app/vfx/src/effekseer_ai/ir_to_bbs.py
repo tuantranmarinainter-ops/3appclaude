@@ -64,6 +64,13 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             if render_type in {"ribbon", "track"}:
                 entry["suggestedAlternative"] = "Replace with short-lived oriented sprite billboards; BBS TrailForm is an actor trail, not an Effekseer per-particle ribbon."
             node_blockers.append(entry)
+        orientation = _normal(node.get("orientation", "billboard"))
+        facing_modes = {"billboard": "lookat_xyz", "rotatedbillboard": "rotate_xyz", "yaxisfixed": "lookat_y"}
+        facing_camera_mode = facing_modes.get(orientation)
+        if facing_camera_mode is None:
+            node_blockers.append(_entry(node_path, "orientation", "BLOCKED", f"Effekseer billboard orientation {orientation or 'missing'} is not mapped to a verified Snowstorm facing mode"))
+        elif orientation != "billboard":
+            node_warnings.append(_entry(node_path, "orientation", "APPROX", f"Effekseer {orientation} maps to Snowstorm facing_camera_mode={facing_camera_mode}"))
 
         location = node.get("location", {})
         if not isinstance(location, dict):
@@ -194,13 +201,19 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         if color_mode == "fixed" and mode_leaves and not _has_rgba(mode_leaves.get("color", {}).get("value", {})):
             node_blockers.append(_entry(node_path, "color.fixed", "BLOCKED", "Core Fixed color scalar leaves are missing; refusing white fallback"))
         color_easing: dict[str, str] | None = None
+        color_molang: list[str] | None = None
         color_interpolant = "math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1)"
         if color_mode == "easing" and mode_leaves:
             endpoints = mode_leaves.get("color", {})
             if _has_rgba(endpoints.get("start", {})) and _has_rgba(endpoints.get("end", {})):
                 try:
-                    color_easing = {"0.0": _hex_from_axes(endpoints["start"]), "1.0": _hex_from_axes(endpoints["end"])}
-                    result["properties"].append(_entry(node_path, "color.easing", "APPROX", "AllColor Easing maps to a Snowstorm age interpolant; Effekseer easing curve shape is approximated linearly"))
+                    if any(_has_random_color_axis(endpoints[endpoint][axis]) for endpoint in ("start", "end")
+                           for axis in "RGBA"):
+                        color_molang = _color_easing_molang(endpoints["start"], endpoints["end"])
+                        result["properties"].append(_entry(node_path, "color.easing", "APPROX", "Per-channel Snowstorm Molang color arrays preserve per-channel stable particle_random_1..4 ranges; each channel reuses its random value at both endpoints and Effekseer easing curve shape is approximated linearly"))
+                    else:
+                        color_easing = {"0.0": _hex_from_axes(endpoints["start"]), "1.0": _hex_from_axes(endpoints["end"])}
+                        result["properties"].append(_entry(node_path, "color.easing", "APPROX", "AllColor Easing maps to a Snowstorm age interpolant; Effekseer easing curve shape is approximated linearly"))
                 except ValueError as error:
                     node_blockers.append(_entry(node_path, "color.easing", "BLOCKED", str(error)))
             else:
@@ -272,6 +285,9 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         generation_seconds = gen_frames / fps
         emitter_lifetime = max_generation * generation_seconds
         instant_emission = emitter_lifetime < TIME_QUANTUM
+        generation_amplitude = generation.get("generationTimeAmplitude", 0)
+        if isinstance(generation_amplitude, (int, float)) and not isinstance(generation_amplitude, bool) and generation_amplitude != 0:
+            node_warnings.append(_entry(node_path, "generation.generationTimeAmplitude", "APPROX", "Random generation-time amplitude is captured but Snowstorm spawn_rate uses the center interval"))
         generation_valid = not any(entry["property"] == "generation" for entry in node_blockers)
         if generation_valid:
             result["properties"].append(_entry(node_path, "generation.maxGeneration", "OK", f"Maximum particle count is {max_generation}"))
@@ -423,10 +439,10 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             "minecraft:particle_lifetime_expression": {"max_lifetime": lifetime_expression},
             "minecraft:particle_appearance_billboard": {
                 "size": node_size,
-                "facing_camera_mode": "lookat_xyz",
+                "facing_camera_mode": facing_camera_mode or "lookat_xyz",
                 "uv": {"texture_width": 1, "texture_height": 1, "uv": [0, 0], "uv_size": [1, 1]},
             },
-            "minecraft:particle_appearance_tinting": {"color": ({"gradient": color_easing, "interpolant": color_interpolant} if color_easing else _hex_color(color))},
+            "minecraft:particle_appearance_tinting": {"color": (color_molang if color_molang is not None else {"gradient": color_easing, "interpolant": color_interpolant} if color_easing else _hex_color(color))},
         }
         if rotation_mode in {"fixed", "pva", "easing"} and mode_leaves:
             spin_value: Any = None
@@ -445,6 +461,10 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             if spin_value is not None:
                 components["minecraft:particle_initial_spin"] = {"rotation": spin_value, "rotation_rate": spin_rate}
                 node_warnings.append(_entry(node_path, "rotation", "APPROX", "Effekseer Z Euler rotation maps to billboard spin; X/Y axis orientation is not represented"))
+            rotation_acceleration = mode_leaves.get("rotationAcceleration", {}).get("value", {}) if isinstance(mode_leaves, dict) else {}
+            if any(_axis_expression(rotation_acceleration.get(axis, {}), index + 1) not in {0, 0.0, "0", "0.0"}
+                   for index, axis in enumerate("XYZ") if rotation_acceleration.get(axis)):
+                node_warnings.append(_entry(node_path, "rotation.acceleration", "APPROX", "Effekseer rotation acceleration is captured, but Snowstorm initial_spin has no verified angular-acceleration field; acceleration is omitted"))
         components[shape_component] = {
             "offset": location_position,
             "direction": location_direction,
@@ -508,7 +528,14 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             halo["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{halo['addBlend']['derivedTexture']}"
             halo_components = halo["json"]["particle_effect"]["components"]
             halo_components["minecraft:particle_appearance_billboard"]["size"] = [_mul_expression(value, add_options["haloSize"]) for value in node_size]
-            halo_components["minecraft:particle_appearance_tinting"]["color"] = _hex_color([min(1, c + add_options["haloColorBoost"]) for c in color[:3]] + [color[3] * add_options["haloAlpha"]])
+            dynamic_color = color_molang or (_gradient_to_molang(color_easing, color_interpolant) if color_easing else None)
+            if dynamic_color is not None:
+                halo_components["minecraft:particle_appearance_tinting"]["color"] = [
+                    *(f"math.clamp(({channel}) + {add_options['haloColorBoost']:g}, 0, 1)" for channel in dynamic_color[:3]),
+                    f"({dynamic_color[3]}) * {add_options['haloAlpha']:g}",
+                ]
+            else:
+                halo_components["minecraft:particle_appearance_tinting"]["color"] = _hex_color([min(1, c + add_options["haloColorBoost"]) for c in color[:3]] + [color[3] * add_options["haloAlpha"]])
             halo["json"]["particle_effect"]["description"]["identifier"] += "_halo"
             schemes.append(halo)
         schemes.append(scheme)
@@ -734,6 +761,52 @@ def _hex_from_axes(axes: dict[str, Any], endpoint: str = "center") -> str:
         channel = float(value) / 255 if value > 1 else float(value)
         channels.append(max(0, min(255, round(channel * 255))))
     return "#" + "".join(f"{channel:02x}" for channel in channels[:3])
+
+
+def _has_random_color_axis(data: dict[str, Any]) -> bool:
+    return ("center" in data and "amplitude" in data) or ("min" in data and "max" in data)
+
+
+def _color_easing_molang(start: dict[str, Any], end: dict[str, Any]) -> list[str]:
+    """Return RGBA channel expressions for Bedrock's Molang color-array form."""
+    result: list[str] = []
+    age = "math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1)"
+    for index, channel in enumerate("RGBA", 1):
+        endpoints = []
+        for data in (start[channel], end[channel]):
+            if "center" in data and "amplitude" in data:
+                center, amplitude = float(data["center"]), abs(float(data["amplitude"]))
+                low, high = center - amplitude, center + amplitude
+            elif "min" in data and "max" in data:
+                low, high = float(data["min"]), float(data["max"])
+            elif "value" in data:
+                low = high = float(data["value"])
+            elif "center" in data:
+                low = high = float(data["center"])
+            else:
+                raise ValueError(f"Color Easing {channel} endpoint lacks a numeric value or random range")
+            divisor = 255.0 if max(abs(low), abs(high)) > 1 else 1.0
+            low, high = low / divisor, high / divisor
+            if abs(high - low) < 1e-12:
+                endpoints.append(f"{low:g}")
+            else:
+                endpoints.append(f"math.lerp({low:g}, {high:g}, variable.particle_random_{index})")
+        result.append(f"math.lerp({endpoints[0]}, {endpoints[1]}, {age})")
+    return result
+
+
+def _gradient_to_molang(gradient: dict[str, str], interpolant: str) -> list[str]:
+    stops = sorted((float(position), value) for position, value in gradient.items())
+    if len(stops) < 2:
+        raise ValueError("A Snowstorm color gradient needs at least two stops")
+    first, last = stops[0][1], stops[-1][1]
+    channels: list[str] = []
+    for channel in range(3):
+        a = int(first.lstrip("#")[channel * 2:channel * 2 + 2], 16) / 255
+        b = int(last.lstrip("#")[channel * 2:channel * 2 + 2], 16) / 255
+        channels.append(f"math.lerp({a:g}, {b:g}, {interpolant})")
+    channels.append("1")
+    return channels
 
 
 def _easing_axes(start: dict[str, Any], end: dict[str, Any]) -> list[str]:

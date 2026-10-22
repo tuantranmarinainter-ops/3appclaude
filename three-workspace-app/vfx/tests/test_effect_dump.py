@@ -16,6 +16,7 @@ class FakeSession:
     def __init__(self):
         self.values = {
             f"{self.node}/DrawingValues/Type": "Sprite",
+            f"{self.node}/DrawingValues/Sprite/Billboard": "Billboard",
             f"{self.node}/DrawingValues/ColorAll/Type": "Fixed",
             f"{self.node}/DrawingValues/ColorAll/Fixed/R/Value": 26,
             f"{self.node}/DrawingValues/ColorAll/Fixed/G/Value": 51,
@@ -76,6 +77,8 @@ def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
     assert first["size"] == [5, 6]
     assert first["color"] == [26 / 255, 51 / 255, 77 / 255, 102 / 255]
     assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
+    assert first["orientation"] == "Billboard"
+    assert first["sourcePaths"]["orientation"].endswith("DrawingValues/Sprite/Billboard")
     assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
 
 
@@ -160,6 +163,11 @@ def test_color_all_uses_1806_drawing_values_standard_color_tree(mode, paths):
                 self.values[parent] = 40 + index
             self.leaves = [f"{parent}/IsValueChangedFromDefault" for parent in self.values
                            if "/DrawingValues/ColorAll/" in parent and not parent.endswith("/Type")]
+
+        def property_list(self, path, max_depth=6):
+            # Model Core's walk returning a scalar parent when deeper than its
+            # requested depth rather than a synthetic IsValueChanged leaf.
+            return [leaf.rsplit("/IsValueChangedFromDefault", 1)[0] for leaf in self.leaves]
 
     node = dump_effect_ir(ColorMode())['nodes'][0]
     assert node['valueModes']['color']['type'] == mode.lower()

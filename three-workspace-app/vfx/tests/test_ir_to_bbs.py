@@ -193,6 +193,48 @@ def test_easing_and_pva_emit_stable_per_particle_molang() -> None:
     assert "variable.particle_age / variable.particle_lifetime" in size
 
 
+def test_color_easing_random_endpoints_use_per_channel_molang_ranges() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["location"]["type"] = "fixed"
+    node["valueModes"] = {
+        "location": {"type": "fixed"}, "rotation": {"type": "fixed"},
+        "scaling": {"type": "fixed"}, "color": {"type": "easing"},
+            "numericLeaves": {
+                "locationPosition": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+                "scale": {"value": {axis: {"value": 1} for axis in "XYZ"}},
+                "rotation": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+                "color": {
+                    "start": {axis: {"center": 100 + index * 10, "amplitude": 20} for index, axis in enumerate("RGBA")},
+                    "end": {axis: {"center": 180 + index * 10, "amplitude": 10} for index, axis in enumerate("RGBA")},
+                },
+            },
+    }
+    result = convert_effect_ir(ir)
+    core = next(s for s in result["schemes"] if s["addBlend"]["layer"] == "core")
+    halo = next(s for s in result["schemes"] if s["addBlend"]["layer"] == "halo")
+    color = core["json"]["particle_effect"]["components"]["minecraft:particle_appearance_tinting"]["color"]
+    halo_color = halo["json"]["particle_effect"]["components"]["minecraft:particle_appearance_tinting"]["color"]
+    assert isinstance(color, list) and len(color) == 4
+    assert all(f"variable.particle_random_{index}" in channel for index, channel in enumerate(color, 1))
+    assert all("variable.particle_age / variable.particle_lifetime" in channel for channel in color)
+    assert all(f"variable.particle_random_{index}" in channel for index, channel in enumerate(halo_color, 1))
+    assert "0.55" in halo_color[3]
+    assert not result["blocked"]
+
+
+def test_unsupported_billboard_orientation_is_blocked_and_generation_amplitude_is_reported() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["orientation"] = "DirectionalBillboard"
+    node["generation"]["generationTimeAmplitude"] = 0.25
+    result = convert_effect_ir(ir)
+    assert result["status"] == "BLOCKED"
+    assert any(row["property"] == "orientation" and row["status"] == "BLOCKED" for row in result["blocked"])
+    assert any(row["property"] == "generation.generationTimeAmplitude" and row["status"] == "APPROX"
+               for row in result["warnings"])
+
+
 def test_invalid_shape_and_flipbook_are_reported_as_blocked_not_exceptions() -> None:
     ir = fixture("looping-aura")
     ir["nodes"][1]["location"]["radius"] = "wide"
