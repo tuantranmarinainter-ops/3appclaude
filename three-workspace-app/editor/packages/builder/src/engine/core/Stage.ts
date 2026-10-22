@@ -98,6 +98,7 @@ import {
 import { clearCameraMotionGuide, syncCameraMotionGuide as applyCameraMotionGuide } from '../objects/CameraMotionGuide'
 import { SilhouetteView } from '../objects/silhouette'
 import { BbsLookView } from '../objects/bbsLook'
+import { filmPoseViewDelta, filmPoseViewLocalTurn } from '../objects/filmPoseView'
 
 export const FRAME_THROTTLE_MS = 100
 export type { EvalContext, NodeSnapshot } from '../DirectorEngine'
@@ -176,6 +177,7 @@ export class Stage implements DirectorEngine, PathViewHost {
   private silhouetteWanted = false
   private readonly bbsLookView = new BbsLookView()
   private bbsLookWanted = false
+  private readonly filmPoseViewRestore = new Map<string, { motionRoot?: THREE.Matrix4; rootMatrix?: THREE.Matrix4; matrixAutoUpdate?: boolean }>()
   private jointDrag: JointDrag | null = null
   private jointDragNodeId: string | null = null
   private poseEditingId: string | null = null
@@ -267,7 +269,10 @@ export class Stage implements DirectorEngine, PathViewHost {
   setBbsLook(enabled: boolean): void {
     if (enabled === this.bbsLookWanted) return
     this.bbsLookWanted = enabled
-    if (!enabled) this.bbsLookView.restore(this.scene)
+    if (!enabled) {
+      this.restoreFilmPoseView()
+      this.bbsLookView.restore(this.scene)
+    } else this.applyFilmPoseView(this.frameOut)
     this.invalidate()
   }
 
@@ -959,7 +964,53 @@ export class Stage implements DirectorEngine, PathViewHost {
   }
 
   applySnapshot(snapshot: FrameSnapshot): void {
+    this.restoreFilmPoseView()
     applyFrameSnapshot(this, snapshot)
+    if (this.bbsLookWanted) this.applyFilmPoseView(snapshot)
+  }
+
+  private restoreFilmPoseView(): void {
+    for (const [id, saved] of this.filmPoseViewRestore) {
+      const character = this.characters.get(id)
+      if (!character) continue
+      if (character.motionRoot && saved.motionRoot) {
+        character.motionRoot.matrix.copy(saved.motionRoot)
+        character.motionRoot.matrixWorldNeedsUpdate = true
+      }
+      if (saved.matrixAutoUpdate !== undefined && saved.rootMatrix) {
+        character.root.matrixAutoUpdate = saved.matrixAutoUpdate
+        character.root.matrix.copy(saved.rootMatrix)
+        if (saved.matrixAutoUpdate) character.root.updateMatrix()
+        character.root.matrixWorldNeedsUpdate = true
+      }
+    }
+    this.filmPoseViewRestore.clear()
+  }
+
+  private applyFilmPoseView(snapshot: FrameSnapshot): void {
+    const doc = this.doc
+    if (!doc || snapshot.frame === undefined || !this.fcurves) return
+    const scene = sceneFromDocument(doc, { fcurves: this.fcurves })
+    this.scene.updateMatrixWorld(true)
+    for (const [id, character] of this.characters) {
+      if (this.gizmoNodeId === id || this.gizmoNodeIds?.includes(id) || this.poseEditingId === id || this.jointDragNodeId === id) continue
+      const delta = filmPoseViewDelta(scene, id, snapshot.frame, snapshot.sampleBoundary, character.root.matrixWorld)
+      if (!delta) continue
+      if (character.motionRoot) {
+        const localTurn = filmPoseViewLocalTurn(delta, character.root.matrixWorld)
+        this.filmPoseViewRestore.set(id, { motionRoot: character.motionRoot.matrix.clone() })
+        character.motionRoot.matrix.premultiply(localTurn)
+        character.motionRoot.matrixWorldNeedsUpdate = true
+      } else {
+        const parentWorld = character.root.parent?.matrixWorld ?? new THREE.Matrix4()
+        const localDelta = parentWorld.clone().invert().multiply(delta).multiply(parentWorld)
+        this.filmPoseViewRestore.set(id, { matrixAutoUpdate: character.root.matrixAutoUpdate, rootMatrix: character.root.matrix.clone() })
+        character.root.matrix.premultiply(localDelta)
+        character.root.matrixAutoUpdate = false
+        character.root.matrixWorldNeedsUpdate = true
+      }
+    }
+    this.scene.updateMatrixWorld(true)
   }
 
   getCameraForExport(id: string): THREE.PerspectiveCamera | undefined {
