@@ -88,7 +88,7 @@ Run `effekseer-ai --help` or `effekseer-ai <command> --help` for arguments and J
 
 Use `effekseer-ai effect-dump .\effect.efkefc .\effect-ir.json` to extract an EffectIR v1 snapshot through Effekseer Core. Unknown Core renderer properties are preserved under `properties` and marked unsupported so they cannot be silently exported.
 
-`effekseer-ai preview .\effect-ir.json .\preview --timestamps 0.25,0.5,1 --width 512 --height 512` renders a deterministic Snowstorm-subset simulation for the image integration gate. It is not an Effekseer or in-game render. Expressions use fixed per-particle random variables; the simulator camera is a fixed orthographic 8-world-unit view.
+`effekseer-ai preview .\effect-ir.json .\preview --timestamps 0.25,0.5,1 --width 512 --height 512` renders a deterministic Snowstorm-subset simulation for the image integration gate. It is not an Effekseer or in-game render. Expressions use fixed per-particle random variables; its perspective camera matches the Viewer distance and angles, with a documented 45-degree vertical-FOV approximation and no per-image auto-fit.
 
 ### Convert EffectIR to BBS FS 2.7 Snowstorm
 
@@ -99,7 +99,7 @@ effekseer-ai-ir-to-bbs .\effect-ir.json .\out
 effekseer-ai-ir-to-bbs .\effect-ir.json .\out --allow-partial
 ```
 
-By default, any `BLOCKED` node blocks all scheme output. `--allow-partial` writes only supported nodes and retains every blocker in the report. Time conversion, 20 Hz quantization, approximations, and the additive-to-alpha brightness fallback are recorded explicitly. See [`docs/VFX-IR-CONTRACT.md`](../../docs/VFX-IR-CONTRACT.md) for the IR shape. The converter is a structural approximation; BBS FS 2.7 in-game playback remains a separate gate.
+By default, any `BLOCKED` node blocks all scheme output. `--allow-partial` writes only supported nodes and retains every blocker in the report. Generation times remain in source frames at the declared FPS; sub-tick bursts use `emitter_rate_instant` so particle counts are retained. Approximations and unsupported features are reported explicitly. See [`docs/VFX-IR-CONTRACT.md`](../../docs/VFX-IR-CONTRACT.md) for the IR shape. The converter is a structural approximation; BBS FS 2.7 in-game playback remains a separate gate.
 
 ## MCP server
 
