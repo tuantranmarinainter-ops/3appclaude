@@ -26,13 +26,14 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("io.modelcontextprotocol/serverInfo", discovered["result"]["_meta"])
         self.assertEqual((discovered["result"]["ttlMs"], discovered["result"]["cacheScope"]), (0, "private"))
         listed = unified_mcp.handle_message(request("tools/list"))
-        self.assertEqual([tool["name"] for tool in listed["result"]["tools"]], ["bbs_unified_command", "library.search", "library.get", "library.characters"])
+        self.assertEqual([tool["name"] for tool in listed["result"]["tools"]], ["bbs_unified_command", "library.search", "library.get", "library.characters", "library.place"])
         self.assertEqual((listed["result"]["ttlMs"], listed["result"]["cacheScope"]), (0, "private"))
         commands = listed["result"]["tools"][0]["inputSchema"]["properties"]["command"]["enum"]
         self.assertIn("scene.apply", commands)
         self.assertIn("prop.add", commands)
         self.assertIn("retarget.session.set", commands)
         self.assertIn("motion.place", commands)
+        self.assertIn("library.place", commands)
         self.assertIn("motion.binding.set", commands)
         self.assertIn("scene.render", commands)
         self.assertIn("film.export", commands)
@@ -254,6 +255,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertIs(invoke.call_args.args[0]["args"]["loop"], True)
         self.assertEqual(invoke.call_args.args[0]["args"]["sourceStartSeconds"], 0.25)
         self.assertIs(invoke.call_args.args[0]["args"]["reverse"], True)
+
+    def test_library_place_tool_is_forwarded_to_atomic_project_command(self):
+        action_uuid, project_id, character_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        invoke = Mock(return_value={"ok": True, "revision": 4, "result": {"libraryPlacement": {"actionUuid": action_uuid}}})
+        response = unified_mcp.handle_message(request("tools/call", {
+            "name": "library.place", "arguments": {"actionUuid": action_uuid, "projectId": project_id, "characterId": character_id, "expectedRevision": 3},
+        }), invoke)
+        self.assertFalse(response["result"]["isError"])
+        command = invoke.call_args.args[0]
+        self.assertEqual(command["command"], "library.place")
+        self.assertEqual(command["args"], {"actionUuid": action_uuid, "characterId": character_id})
+        self.assertEqual(command["projectId"], project_id)
+        self.assertEqual(command["expectedRevision"], 3)
 
     def test_normalization_commands_forward_and_run_requires_explicit_revision(self):
         project_id = str(uuid.uuid4())

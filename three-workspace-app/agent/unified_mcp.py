@@ -18,7 +18,7 @@ SERVER_META = {"io.modelcontextprotocol/serverInfo": SERVER_INFO}
 # shortcut: expose commands only after their shared broker implementation exists; add file handles and legacy protocols with their adapters.
 SUPPORTED_COMMANDS = (
     "project.create", "project.inspect", "project.save", "scene.apply", "scene.layout.read", "scene.layout.preview", "scene.layout.apply", "camera.framing.preview", "camera.framing.apply", "scene.evaluate", "scene.render", "film.export", "shot.export", "shot.result.import", "job.get", "job.cancel",
-    "character.add", "prop.add", "camera.shot.set", "motion.edit", "motion.place", "motion.binding.set", "history.undo", "history.redo", "retarget.session.set",
+    "character.add", "prop.add", "camera.shot.set", "motion.edit", "motion.place", "library.place", "motion.binding.set", "history.undo", "history.redo", "retarget.session.set",
     "rig.inspect", "rig.normalization.plan", "rig.normalization.run", "animation.assignment.plan", "animation.assignment.run", "animation.assignment.commit",
 )
 TOOL = {
@@ -43,6 +43,7 @@ LIBRARY_TOOLS = [
     {"name": "library.search", "description": "Search the local App 5 Action library by rig, category, tags or text.", "inputSchema": {"type": "object", "properties": {"rig": {"type": "string"}, "category": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "text": {"type": "string"}}, "additionalProperties": False}},
     {"name": "library.get", "description": "Get an Action and its immutable pack metadata by UUID.", "inputSchema": {"type": "object", "properties": {"actionUuid": {"type": "string", "format": "uuid"}}, "required": ["actionUuid"], "additionalProperties": False}},
     {"name": "library.characters", "description": "List registered App 5 characters.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
+    {"name": "library.place", "description": "Import one library Action into an App 2 project and place it on a Character in one undoable command.", "inputSchema": {"type": "object", "properties": {"actionUuid": {"type": "string", "format": "uuid"}, "projectId": {"type": "string", "format": "uuid"}, "characterId": {"type": "string", "format": "uuid"}, "expectedRevision": {"type": "integer", "minimum": 0}}, "required": ["actionUuid", "projectId", "characterId", "expectedRevision"], "additionalProperties": False}},
 ]
 
 def _library_call(name: str, args: Any) -> dict[str, Any]:
@@ -248,7 +249,13 @@ def handle_message(message: Any, invoke: Callable[[dict[str, Any]], dict[str, An
     tool_name = params.get("name")
     if tool_name in {tool["name"] for tool in LIBRARY_TOOLS}:
         try:
-            result = _library_call(tool_name, params.get("arguments", {}))
+            arguments = params.get("arguments", {})
+            if tool_name == "library.place":
+                if not isinstance(arguments, dict):
+                    raise ValueError("Library tool arguments must be an object")
+                result = _tool_call({"command": "library.place", "args": {"actionUuid": arguments.get("actionUuid"), "characterId": arguments.get("characterId")}, "projectId": arguments.get("projectId"), "expectedRevision": arguments.get("expectedRevision")}, invoke)
+                return _result(request_id, result)
+            result = _library_call(tool_name, arguments)
             return _result(request_id, {"resultType": "complete", "structuredContent": result, "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}], "isError": False})
         except (OSError, ValueError, json.JSONDecodeError) as error:
             return _result(request_id, {"resultType": "complete", "content": [{"type": "text", "text": str(error)}], "isError": True})

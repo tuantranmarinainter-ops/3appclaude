@@ -3,11 +3,14 @@ import { mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { executeApp3Bridge, app3ArtifactClaim, app3ArtifactReplay, validateApp3Export, App3BridgeError, type App3ShotProof } from './app3Bridge'
+import { executeApp3Bridge, app3ArtifactClaim, app3ArtifactReplay, validateApp3Export, App3BridgeError, type App3ShotProof, type App3LibraryActionProof } from './app3Bridge'
 import { readUnifiedJobFile, storeApp3Artifact, discardApp3Artifact } from './unifiedJobs'
-import { readStagedAssetUpload, removeStagedAssetUploads } from './unifiedAssetFiles'
+import { readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile } from './unifiedAssetFiles'
 import { loadShotExport } from './shotExchange'
 import { unzipPackage, validateShot, validateResult, readPackageJson, sha256, type PackageFiles, type Shot } from './shotPackage'
+import { getAction } from '../../../packages/library/index'
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 
 function fail(code: string): never { throw new App3BridgeError(code) }
 function packageFiles(bytes:Uint8Array):PackageFiles { try{return unzipPackage(bytes)}catch{return fail('VALIDATION_FAILED')} }
@@ -58,6 +61,21 @@ async function validateApp3PackagePython(files:PackageFiles,base?:PackageFiles) 
 }
 
 export async function executeApp3Artifacts(project:UnifiedProject,command:string,args:Record<string,unknown>,requestId:string,dryRun=false,expectedRevision?:number,fresh:()=>Promise<UnifiedProject>=async()=>project):Promise<Record<string,unknown>> {
+ if(command==='app3.command.submit'&&args.tool==='libraryActionOpen'){
+  executeApp3Bridge(project,command,args,requestId,true,expectedRevision)
+  validateApp3Export('libraryActionOpen',args.parameters)
+  const actionUuid=(args.parameters as Record<string,unknown>).actionUuid as string
+  const character=project.characters[String(args.characterId)],profile=character&&project.skeletons[character.skeletonId],characterAsset=character&&project.assets[character.assetId]
+  let action:ReturnType<typeof getAction>
+  try{action=getAction({actionUuid})}catch{fail('ASSET_MISSING')}
+  const rigMatches=!!profile&&(action.rig===profile.family||action.rig.startsWith('mixamo65+')&&profile.family==='mixamo65')
+  if(!character||!profile||!characterAsset||characterAsset.source.mediaType!=='model/gltf-binary'||!rigMatches)fail('PROFILE_MISMATCH')
+  const bytes=await readFile(action.glbPath),target=await resolveUnifiedAssetFile(project,characterAsset.id,'source')
+  const glbSha256=createHash('sha256').update(bytes).digest('hex'),characterSha256=createHash('sha256').update(target.bytes).digest('hex')
+  if(characterSha256!==characterAsset.source.sha256)fail('IDENTITY_MISMATCH')
+  const proof:App3LibraryActionProof={actionUuid:action.uuid,characterId:character.id,characterAssetId:characterAsset.id,characterSha256,packId:action.packId,glbSha256,glbAnimationIndex:action.glbAnimationIndex,name:action.name}
+  return executeApp3Bridge(await freshProject(project,fresh),command,args,requestId,dryRun,expectedRevision,proof)
+ }
  if(command==='app3.command.submit'&&args.tool==='shotOpen'){
   // Schema/lease/revision checks precede package I/O; dry-run never opens an editor.
   executeApp3Bridge(project,command,args,requestId,true,expectedRevision)
@@ -79,7 +97,7 @@ export async function executeApp3Artifacts(project:UnifiedProject,command:string
   const upload=await readStagedAssetUpload(args.uploadId)
   let name:string,mime:string
   if(claim.tool==='shotExport'){
-   const proof=claim.proof;if(!proof)fail('SHOT_PACKAGE_REQUIRED')
+   const proof=claim.proof;if(!proof||!('zipSha256' in proof))fail('SHOT_PACKAGE_REQUIRED')
    const base=await loadShotExport(project.projectId,proof.shotId),files=packageFiles(upload.bytes)
    if(base.saved.sourceRevision!==project.revision||sha256(base.files['shot.json']!)!==proof.baseShotSha256)fail('REVISION_CONFLICT')
    if(validateResult(files,base.files).length)fail('VALIDATION_FAILED')

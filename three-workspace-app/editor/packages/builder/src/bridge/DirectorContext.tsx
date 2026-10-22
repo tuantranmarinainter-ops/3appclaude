@@ -18,6 +18,7 @@ export interface DirectorApi {
   useStore: DirectorStore
   adapter: HostAdapter<DirectorDocument>
   session: StudioSession
+  documentId: string
 }
 
 const DirectorContext = createContext<DirectorApi | null>(null)
@@ -48,7 +49,7 @@ function createDirectorApi(
   const history = new History()
   const session = new StudioSession(stage, doc, editor, history, adapter, { readOnly })
   const sync = new DocumentSync(session)
-  return { stage, useStore: createStoreHook(session), adapter, session, sync }
+  return { stage, useStore: createStoreHook(session), adapter, session, documentId, sync }
 }
 
 export function DirectorProvider({

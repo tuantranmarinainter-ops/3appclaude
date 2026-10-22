@@ -29,9 +29,11 @@ import { preflightProjectFilm } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
+import { getAction } from '../../../packages/library/index'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const LIBRARY_ACTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MOTION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[48][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export class UnifiedStoreError extends Error {
@@ -120,6 +122,20 @@ function sameMixamo65Rest(a: NonNullable<ImportedAsset['skeleton']>, b: UnifiedP
       pointError <= 1e-5 && scaleError <= 1e-5 && rotationDot >= 0.999999
   })
   return okay
+}
+
+function sameRigTopology(a: NonNullable<ImportedAsset['skeleton']>, b: UnifiedProject['skeletons'][string]): boolean {
+  if (a.family !== b.family) return false
+  if (a.family === 'mixamo65') return isMixamo65Topology(a.bones) && isMixamo65Topology(b.bones)
+  if (a.bones.length !== b.bones.length) return false
+  const target = new Map(b.bones.map((bone) => [canonicalJointName(bone.name), bone]))
+  return a.bones.every((bone) => {
+    const other = target.get(canonicalJointName(bone.name))
+    if (!other) return false
+    const parent = a.bones.find((candidate) => candidate.id === bone.parentId)
+    const otherParent = b.bones.find((candidate) => candidate.id === other.parentId)
+    return (parent ? canonicalJointName(parent.name) : null) === (otherParent ? canonicalJointName(otherParent.name) : null)
+  })
 }
 
 function isFiniteNumber(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) }
@@ -830,6 +846,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   let shotReplacement: { sequenceId: string; clip: EditSequenceClip } | null = null
   let stagedAssetImports: Array<{ upload: StagedAssetUpload; imported: ImportedAsset }> | null = null
   let assignmentPlacement: { characterId: string; frameStart: number | null; jobId: string; provenance: Record<string, unknown> } | null = null
+  let libraryPlacement: { characterId: string; motionId: string; frameStart: number; name: string; duration: number } | null = null
   let stagedAssetRelink: { upload: StagedAssetUpload; asset: UnifiedProject['assets'][keyof UnifiedProject['assets']] } | null = null
   let characterAddition: { characterId: string; character: UnifiedProject['characters'][string]; scene: UnifiedProject['scene'] } | null = null
   let propAddition: { nodeId: string; assetId: string; scene: UnifiedProject['scene'] } | null = null
@@ -1162,7 +1179,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw error
     }
   }
-  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -1295,6 +1312,49 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (!item) throw new UnifiedStoreError('VALIDATION_FAILED', 'Model rebind upload is missing', 400)
       attachModelRebindReport(envelope.args.modelRebindReport, project, item.upload, item.imported)
     }
+    }
+  } else if (envelope.command === 'library.place') {
+    const { actionUuid, characterId } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID and Character UUID', 400)
+    }
+    const character = project.characters[characterId]
+    const targetProfile = character && project.skeletons[character.skeletonId]
+    const node = character && project.scene.content.nodes.find((item) => item.id === character.nodeId)
+    if (!character || !targetProfile || !node || node.locked) throw new UnifiedStoreError('NOT_FOUND', 'Target Character was not found or is locked', 404)
+    try {
+      const action = getAction({ actionUuid })
+      const rigMatches = action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
+      if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
+      const bytes = await readFile(action.glbPath)
+      const sourceHash = createHash('sha256').update(bytes).digest('hex')
+      const existing = project.motions[action.uuid]
+      if (existing) {
+        const asset = project.assets[existing.assetId]
+        if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
+          throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
+        }
+        libraryPlacement = { characterId, motionId: existing.id, frameStart: 0, name: action.name, duration: existing.durationSeconds }
+        stagedAssetImports = []
+      } else {
+        const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
+        let imported: ImportedAsset
+        try {
+          imported = buildImportedAsset(upload, 'glb')
+          attachApp1Manifest(imported, bytes, JSON.parse(await readFile(action.manifestPath, 'utf8')))
+        } catch (error) { throw new UnifiedStoreError('PROFILE_MISMATCH', error instanceof Error ? error.message : 'Library Action pack is invalid', 422) }
+        if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile)) {
+          throw new UnifiedStoreError('PROFILE_MISMATCH', 'Library Action does not use the selected Character rig and rest skeleton', 422)
+        }
+        const selected = imported.motions.find((item) => item.motion.id.toLowerCase() === action.uuid.toLowerCase())
+        if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
+        imported.motions = [selected]
+        stagedAssetImports = [{ upload, imported }]
+        libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: 0, name: selected.name, duration: selected.motion.durationSeconds }
+      }
+    } catch (error) {
+      if (error instanceof UnifiedStoreError) throw error
+      throw new UnifiedStoreError('ASSET_MISSING', error instanceof Error ? error.message : 'Could not load Action from the library', 404)
     }
   } else if (envelope.command === 'asset.relink') {
     const { assetId, file } = envelope.args
@@ -1667,7 +1727,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -1684,7 +1744,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
       if (envelope.command === 'shot.result.import') {
         if (!shotResult) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result package is unavailable', 400)
         result = await applyShotResult(next, shotResult)
@@ -1917,6 +1977,36 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           changedIds.push('scene', `motion-clip:${clip.id}`, `binding:${clip.id}`, `assignment:${motion.id}`)
           result = { ...(result as Record<string, unknown>), assignment: { motionId: motion.id, clipId: clip.id, characterId: character.id, frameStart, frameEnd, jobId: assignmentPlacement.jobId } }
         }
+        if (libraryPlacement) {
+          const motion = next.motions[libraryPlacement.motionId]
+          const character = next.characters[libraryPlacement.characterId]
+          const profile = character && next.skeletons[character.skeletonId]
+          if (!motion || !character || !profile || !isMixamo65Topology(profile.bones) || !isMixamo65Topology(next.skeletons[motion.skeletonId]?.bones ?? [])) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Imported Action is not compatible with the selected Character', 422)
+          const scene = structuredClone(next.scene)
+          const priorClips = scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === character.nodeId)
+          const frameStart = Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
+          const durationFrames = Math.max(1, Math.round(motion.durationSeconds * scene.content.timeline.fps))
+          const frameEnd = frameStart + durationFrames - 1
+          if (!Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
+          const metadata = next.extensions.retargetMotionMetadata?.[motion.id] as { clipIndex?: number } | undefined
+          const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(motion.assetId)}/source?format=glb`
+          const clip = appendMotionClip(scene, { type: 'add-motion', libraryId: motion.id, name: libraryPlacement.name, fbxKey: url, targetNodeId: character.nodeId, frameStart, durationSeconds: motion.durationSeconds })
+          clip.sourceDuration = motion.durationSeconds; clip.frameEnd = frameEnd
+          clip.playback.speed = 1; clip.playback.loop = false
+          clip.motion.speed = 1; clip.motion.loop = false; clip.motion.time = 0; clip.motion.sourceLengthSeconds = motion.durationSeconds
+          clip.motion.reverse = false; clip.motion.clipIndex = metadata?.clipIndex ?? 0; clip.motion.sourceRig = profile.family
+          const rootBone = profile.bones.find((bone) => bone.id === profile.rootBoneId)
+          if (!rootBone) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Receiver root joint is missing', 422)
+          clip.motion.rootMotion = { policy: 'skeletal', boneName: rootBone.name, alignment: 'continue' }; clip.motion.inPlace = false
+          if (!scene.content.asset.motionPath.some((entry) => entry.id === motion.id)) scene.content.asset.motionPath.push({ id: motion.id, path: url })
+          next.scene = scene
+          const conflict = findRootMotionConflict(scene)
+          if (conflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Action placement would conflict with an existing root-motion source', 422, conflict)
+          next.bindings[clip.id] = { clipId: clip.id, characterId: character.id, motionId: motion.id, sourceStartSeconds: 0,
+            sourceLengthSeconds: motion.durationSeconds, reverse: false, fadeInSeconds: 0, fadeOutSeconds: 0, rootPolicy: 'skeletal', alignment: 'continue' }
+          changedIds.push(`scene`, `motion-clip:${clip.id}`, `binding:${clip.id}`)
+          result = { ...(result as Record<string, unknown>), libraryPlacement: { actionUuid: motion.id, motionId: motion.id, clipId: clip.id, characterId: character.id, frameStart, frameEnd } }
+        }
       }
       if (envelope.command === 'scene.apply') changedIds.push(...reconcileMotionBindings(next))
       if (envelope.command === 'asset.import' && changedIds.length === 0) {
@@ -1950,7 +2040,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     next.revision = current.revision + 1
     nextIndex.revision = next.revision
     if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
-    if (envelope.command === 'asset.import') {
+    if (envelope.command === 'asset.import' || envelope.command === 'library.place') {
       if (!stagedAssetImports) throw new UnifiedStoreError('VALIDATION_FAILED', 'Asset upload handles are unavailable', 400)
       for (const { upload, imported } of stagedAssetImports) if (!current.assets[imported.asset.id] || imported.normalizationReport || imported.modelRebindReport) await persistImportedAssetFiles(id, imported, upload.bytes)
     }

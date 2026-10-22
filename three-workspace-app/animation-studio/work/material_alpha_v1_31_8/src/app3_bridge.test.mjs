@@ -150,6 +150,28 @@ test('E3 both JS schemas reject unsafe parameters and accept the same five tools
  }
 });
 
+test('App 3 host composition selects only the requested second library clip and binds it to the chosen character',()=>{
+ const host=readFileSync(new URL('./host_bridge.js',import.meta.url),'utf8'),start=host.indexOf('  const glbParts ='),end=host.indexOf('  const hostVisible',start);
+ const compose=new Function(host.slice(start,end)+'; return composeLibraryAction')();
+ const makeGlb=doc=>{const enc=new TextEncoder(),raw=enc.encode(JSON.stringify(doc)),json=new Uint8Array((raw.length+3)&~3);json.fill(32);json.set(raw);const bin=new Uint8Array([0,0,0,0]),out=new Uint8Array(12+8+json.length+8+bin.length),v=new DataView(out.buffer);v.setUint32(0,0x46546c67,true);v.setUint32(4,2,true);v.setUint32(8,out.length,true);v.setUint32(12,json.length,true);v.setUint32(16,0x4e4f534a,true);out.set(json,20);v.setUint32(20+json.length,bin.length,true);v.setUint32(24+json.length,0x004e4942,true);out.set(bin,28+json.length);return out.buffer};
+ const base={asset:{version:'2.0'},scene:0,scenes:[{nodes:[0]}],nodes:[{name:'mixamorig:Hips'}],buffers:[{byteLength:4}],bufferViews:[{buffer:0,byteOffset:0,byteLength:4}],accessors:[{bufferView:0,componentType:5126,count:1,type:'SCALAR'}]};
+ const action={...base,nodes:[{name:'Hips'}],animations:[{name:'First',samplers:[{input:0,output:0}],channels:[{sampler:0,target:{node:0,path:'translation'}}]},{name:'Second',samplers:[{input:0,output:0}],channels:[{sampler:0,target:{node:0,path:'rotation'}}]}]};
+ const result=compose(makeGlb(base),makeGlb(action),1),view=new DataView(result),json=JSON.parse(new TextDecoder().decode(new Uint8Array(result,20,view.getUint32(12,true))).trim());
+ assert.equal(json.animations.length,1);assert.equal(json.animations[0].name,'Second');assert.equal(json.animations[0].channels[0].target.node,0);assert.equal(json.animations[0].channels[0].target.path,'rotation');assert.equal(json.animations[0].samplers[0].input,1);
+});
+
+test('library Action open requires a verified compatible Action proof and queues an explicit broker command',()=>{
+ const p=project();p.revision=7;const l=register(p),id=identity(l);
+ const proof={actionUuid:randomUUID(),characterId:l.characterId,characterAssetId:Object.keys(p.assets)[0],characterSha256:sha,packId:'pack123',glbSha256:'c'.repeat(64),glbAnimationIndex:1,name:'Walk'};
+ const args={...id,tool:'libraryActionOpen',parameters:{actionUuid:proof.actionUuid},expectedAnimationRevision:'native:7'};
+ assert.throws(()=>execute(p,'app3.command.submit',args,randomUUID(),false,7),/VALIDATION_FAILED/);
+ const ticket=execute(p,'app3.command.submit',args,randomUUID(),false,7,proof);
+ const dispatched=call(p,'app3.session.poll',{...receiver(l),ready:true,active:true,context:{}}).commands[0];assert.equal(dispatched.tool,'libraryActionOpen');
+ const claim=call(p,'app3.session.claim',{...receiver(l),commandId:dispatched.commandId});assert.equal(claim.action.glbAnimationIndex,1);assert.equal(claim.action.characterAssetId,proof.characterAssetId);
+ const other=project();other.revision=7;const otherLease=register(other);assert.throws(()=>execute(other,'app3.command.submit',{...identity(otherLease),tool:'libraryActionOpen',parameters:{actionUuid:proof.actionUuid},expectedAnimationRevision:'native:7'},randomUUID(),false,7,proof),/IDENTITY_MISMATCH/);
+ assert.ok(ticket.commandId);
+});
+
 test('shot transition retires original lease, keeps result readable and private token only in receiver ack',()=>{
  const p=project();p.revision=7;const motion=randomUUID();p.motions[motion]={id:motion};const l=register(p),id=identity(l),r=receiver(l);
  const proof={shotId:randomUUID(),baseShotSha256:'b'.repeat(64),characterId:l.characterId,actionUuid:motion,glbSha256:'c'.repeat(64),zipSha256:'d'.repeat(64),frameRange:[100,160],fps:30,sourceRevision:7,jobId:randomUUID(),fileId:'0'};

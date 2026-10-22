@@ -126,6 +126,8 @@ export interface HostAdapter<TDocument = unknown> {
   // —— 素材库：宿主提供服务端分页检索，包内不拉 catalog ——
   searchAssets(query: AssetQuery): Promise<AssetPage<CharacterLibEntry | PropLibEntry | MotionLibEntry | PoseLibEntry>>
   listAssetFacets(kind: AssetQuery['kind']): Promise<AssetFacets>
+  /** Host-owned browse/pick flow for importing and placing a shared-library Action. */
+  browseLibraryAction?(documentId: string, characterNodeId: string): Promise<void>
   /** 按需拉一条姿势 JSON。包内不 fetch。 */
   loadPoseAsset?(modelUrl: string): Promise<PoseBonesPayload | null>
   /** 目录未加载时，按 pose id 取 `a3d_pose_<id>` 再拉 JSON。 */
