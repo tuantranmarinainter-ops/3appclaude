@@ -109,6 +109,28 @@ class FilmWorkerIntegrationTests(unittest.TestCase):
             self.assertEqual(report["runtimeAcceptance"], "not-run")
             self.assertEqual((package / "assets/models/unified/fixture_steve/model.bobj").read_bytes(), MODEL.read_bytes())
 
+    def test_aaa_effects_become_aaa_particle_replays(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = root / "manifest.json"
+            output = root / "exports"
+            output.mkdir()
+            document = self.manifest()
+            document["aaaEffects"] = [{"label": "aura01", "effect": "effeks/samples/aura01.efkefc", "x": 1, "y": 0, "z": 2, "yaw": 0, "scale": 0.7, "startTick": 12, "endTick": 40}]
+            manifest.write_text(json.dumps(document), encoding="utf-8")
+            package = Path(run_film_worker(manifest, output)["packageDirectory"])
+            raw = gzip.decompress((package / "films/film-worker-test.dat").read_bytes())
+            self.assertIn(b"bbs:aaa_particle", raw)
+            self.assertIn(b"assets:effeks/samples/aura01.efkefc", raw)
+            self.assertIn(b"VFX aura01", raw)
+            bad = root / "bad.json"
+            document["filmName"] = "film-worker-bad"
+            document["aaaEffects"][0]["effect"] = "../escape.efkefc"
+            bad.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                run_film_worker(bad, output)
+            self.assertFalse((output / "film-worker-bad").exists())
+
     def test_invalid_asset_hash_and_traversal_fail_without_leaving_package_data(self):
         too_large_revision = self.manifest()
         too_large_revision["sourceRevision"] = 9223372036854775808

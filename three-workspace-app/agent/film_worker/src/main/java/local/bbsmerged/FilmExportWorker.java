@@ -55,6 +55,8 @@ public final class FilmExportWorker {
         JsonArray actors = array(manifest, "actors", 1, 64);
         JsonArray cameras = array(manifest, "cameras", 1, 3);
         JsonArray models = manifest.has("models") ? array(manifest, "models", 0, 64) : new JsonArray();
+        // B15: AAA Particles effects (App 2 VFX cues) become extra replays after the actors.
+        JsonArray aaaEffects = manifest.has("aaaEffects") ? array(manifest, "aaaEffects", 0, 192) : new JsonArray();
 
         Path finalDir = out.resolve(filmName);
         if (Files.exists(finalDir, LinkOption.NOFOLLOW_LINKS)) throw new IllegalArgumentException("Export destination already exists");
@@ -204,6 +206,13 @@ public final class FilmExportWorker {
                 JsonObject mapping = new JsonObject(); mapping.addProperty("id", id); mapping.addProperty("clipId", clipId); mapping.addProperty("startTick", start); mapping.addProperty("durationTicks", clipDuration); cameraMap.add(mapping);
             }
 
+            for (JsonElement effectItem : aaaEffects) {
+                JsonObject effect = effectItem.getAsJsonObject(); JsonObject add = new JsonObject(); add.addProperty("filmId", draft);
+                add.addProperty("label", "VFX " + text(effect, "label")); add.addProperty("effect", text(effect, "effect"));
+                for (String component : List.of("x", "y", "z", "yaw", "scale")) add.addProperty(component, finite(effect, component));
+                add.addProperty("startTick", integer(effect, "startTick", 0, duration)); add.addProperty("endTick", integer(effect, "endTick", 1, duration)); add.addProperty("durationTicks", duration);
+                draftEditor.invoke("add_aaa_particle_actor", add);
+            }
             JsonObject publish = new JsonObject(); publish.addProperty("draft", draft); publish.addProperty("film", filmName); publish.addProperty("editor_closed", true);
             JsonObject published = editor.invoke("publish_film", publish).getAsJsonObject();
             Path nativeFilm = Path.of(require(published, "path").getAsString()).toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -215,7 +224,7 @@ public final class FilmExportWorker {
             String reread = BbsCodec.toJson(BbsCodec.read(BbsCodec.write(decoded, true))).toString();
             if (!semantic.equals(reread)) throw new IOException("BBS typed codec semantic read-back mismatch");
             JsonObject decodedJson = BbsCodec.toJson(decoded).getAsJsonObject();
-            if (array(decodedJson, "replays", 0, 64).size() != actors.size()) throw new IOException("Film actor count changed during native read-back");
+            if (array(decodedJson, "replays", 0, 256).size() != actors.size() + aaaEffects.size()) throw new IOException("Film actor count changed during native read-back");
             long emittedCameras = array(decodedJson, "camera", 0, 4096).asList().stream().filter(c -> c.isJsonObject() && c.getAsJsonObject().has("mcp_id") && c.getAsJsonObject().has("title") && cameraIds.contains(c.getAsJsonObject().get("title").getAsString())).count();
             if (emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
             int actualPoseTracks = 0;

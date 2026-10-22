@@ -109,6 +109,28 @@ public final class DraftEditor {
                 transform(a,p,0); array(a,"actions"); group(a,"properties");
                 List<Node> actors=array(root,"replays"); actors.add(a); result=snapshot(a,draft,actors.size()-1,0);
             }
+            case "add_aaa_particle_actor" -> {
+                // B15: one AAA Particles (Effekseer) replay per App 2 VFX cue, laid out like the addon's own film editor:
+                // form bbs:aaa_particle (effect link, loop, particleScale) and boolean "visible"/"restart" tracks that
+                // show it from startTick, restart it there and hide it again at endTick.
+                String effect=str(p,"effect");
+                if(!effect.matches("[A-Za-z0-9_./-]{1,200}[.]efkefc")||effect.contains("..")||effect.startsWith("/")) throw new IllegalArgumentException("AAA effect must be an assets-relative .efkefc path");
+                int duration=tick(p,"durationTicks",1), start=tick(p,"startTick",0), end=tick(p,"endTick",start+1);
+                if(start>=end||end>duration) throw new IllegalArgumentException("AAA effect ticks must satisfy start < end <= duration");
+                double scale=num(p,"scale",1); if(!(scale>0&&scale<=1000)) throw new IllegalArgumentException("AAA effect scale must be in (0,1000]");
+                Node a=BbsCodec.map(); map(a).put("label",string(str(p,"label"))); map(a).put("enabled",bool(true)); map(a).put("actor",bool(false));
+                Node form=group(a,"form"); map(form).put("id",string("bbs:aaa_particle")); map(form).put("effect",string("assets:"+effect));
+                map(form).put("loop",bool(true)); map(form).put("paused",bool(false)); map(form).put("restart",bool(false)); map(form).put("speed",number(1)); map(form).put("particleScale",number(scale));
+                transform(a,p,0); transform(a,p,duration); array(a,"actions");
+                Node props=group(a,"properties");
+                if(start>0) key(props,"visible","boolean",0,bool(false));
+                key(props,"visible","boolean",start,bool(true));
+                if(end<duration) key(props,"visible","boolean",end,bool(false));
+                if(start>0) key(props,"restart","boolean",0,bool(false));
+                key(props,"restart","boolean",start,bool(true));
+                key(props,"restart","boolean",Math.min(duration,start+2),bool(false));
+                List<Node> actors=array(root,"replays"); actors.add(a); result=snapshot(a,draft,actors.size()-1,0);
+            }
             case "set_transform" -> { Node a=actor(root,p); transform(a,p,tick(p,"tick",0)); result=snapshot(a,draft,Integer.parseInt(str(p,"replayId")),tick(p,"tick",0)); }
             case "move_actor" -> {
                 int startTick=tick(p,"startTick",0), endTick=tick(p,"endTick",0);

@@ -4,7 +4,7 @@
 (Minecraft): khung hình, góc camera, chuyển động camera, hướng và động tác nhân vật, hậu cảnh, hiệu ứng. **Không vào
 Minecraft để duyệt cho đến khi người dùng yêu cầu.** Phim chỉ xuất sang BBS FS ở bước cuối.
 
-Chia việc: **Codex** làm phần code có test tự động, không cần chạy game hay trình duyệt (B1–B9). **Claude** làm phần
+Cập nhật 2026-10-23: B9, B13, B14, B15, B16 do Claude làm (người dùng chuyển). Chia việc ban đầu: **Codex** làm phần code có test tự động, không cần chạy game hay trình duyệt (B1–B9). **Claude** làm phần
 phải chạy thật (Chromium, Effekseer, so ảnh, BBS FS khi được yêu cầu), kiểm và merge PR của Codex (C1–C6).
 
 ## Cách nộp (Codex)
@@ -44,14 +44,14 @@ Repo `tuantranmarinainter-ops/3appclaude`, nhánh `main`. Quy tắc chung như `
 | B6 | Codex | Khung nhìn giống film: xoay theo keyframe khi có động tác (chỉ khi "Xem như BBS") | `packages/builder/src/engine/core/Stage.ts`, `packages/builder/src/engine/objects/filmPoseView.ts` (mới), test |
 | B7 | Codex | Lệnh `camera.motion.add`: áp chuyển động camera từ thư viện bằng lệnh | `unifiedProjectStore.ts`, `apps/studio/src/cameraMotionCommand.ts` (mới), `agent/unified_*` nếu cần cho CLI, test |
 | B8 | Codex | Làn hiệu ứng (VFX cue) trong project App 2 + xuất kèm film | `apps/studio/src/vfxCues.ts` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, `components/vfx-cues/` (mới), test |
-| B9 | Codex | Phát hiệu ứng trong khung nhìn App 2 bằng bảng sprite (sprite sheet) | `packages/builder/src/engine/objects/vfxSprites.ts` (mới), `Stage.ts`, test |
+| B9 | Claude | Phát hiệu ứng trong khung nhìn App 2 bằng bảng sprite (sprite sheet) | `packages/builder/src/engine/objects/vfxSprites.ts` (mới), `Stage.ts`, test |
 | B10 | Codex | Kiểm trước khi xuất (báo cáo lỗi/cảnh báo) | `apps/studio/src/filmPreflight.ts` (mới), `components/film-export/`, `unifiedProjectStore.ts`, test |
 | B11 | Codex | Gói cả tập: tự chia đoạn, xuất một gói nhiều film | `apps/studio/src/filmSeries.ts` (mới), `unifiedJobs.ts`, `unifiedProjectStore.ts`, `components/film-export/`, test |
 | B12 | Codex | Nút "Cài vào BBS FS" (chép vào thư mục game, không ghi đè) | `apps/studio/src/bbsInstall.ts` (mới), route/API Studio, `components/film-export/`, test |
-| B13 | Codex | Nút "Gửi sang App 2" trong Workbench App 1 | `packages/retarget/workbench/` (chỉ thư mục này), `apps/studio/src/` (lệnh nhận nếu cần), test |
-| B14 | Codex | Lệnh "Kịch bản → cảnh" (`storyboard.build`) | `apps/studio/src/storyboard.ts` (mới), `unifiedProjectStore.ts`, `docs/STORYBOARD-FORMAT.md` (mới), test |
-| B15 | Codex | Nhúng hiệu ứng AAA vào film | **chờ C7** (Claude bổ sung đặc tả) |
-| B16 | Codex | Làn thoại và âm thanh trong App 2 | `apps/studio/src/audioCues.ts` (mới), `components/audio-cues/` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, khung nhìn (phát tiếng), test |
+| B13 | Claude | Nút "Gửi sang App 2" trong Workbench App 1 | `packages/retarget/workbench/` (chỉ thư mục này), `apps/studio/src/` (lệnh nhận nếu cần), test |
+| B14 | Claude | Lệnh "Kịch bản → cảnh" (`storyboard.build`) | `apps/studio/src/storyboard.ts` (mới), `unifiedProjectStore.ts`, `docs/STORYBOARD-FORMAT.md` (mới), test |
+| B15 | Claude | Nhúng hiệu ứng AAA vào film | xong (xem mục B15) |
+| B16 | Claude | Làn thoại và âm thanh trong App 2 | `apps/studio/src/audioCues.ts` (mới), `components/audio-cues/` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, khung nhìn (phát tiếng), test |
 | C1 | Claude | Chạy B5+B6 trong Chromium, đo lệch so với ảnh game có sẵn (không vào game) | — |
 | C2 | Claude | "Xem như BBS" (đã xong, commit `9197b6f`) | — |
 | C3 | Claude | Nướng bảng sprite cho hiệu ứng bằng Effekseer thật (App 4) cho B9 | `three-workspace-app/vfx/` |
@@ -238,9 +238,14 @@ và lệnh `audio.mixdown` trả một WAV trộn (giảm nhạc khi có thoại
 **Đạt khi:** test thuần cho lịch phát (cue nào kêu ở frame nào), mixdown (độ dài đúng, nhạc giảm ≥ 6 dB khi có thoại),
 lệnh sai → `VALIDATION_FAILED`; phần Web Audio test với AudioContext giả.
 
-## B15 — Nhúng hiệu ứng AAA vào film
-Chờ Claude làm C7 (đọc fork `BBS-AAAddon` nhánh `fs-2.7`: hiệu ứng được lưu thế nào trong film/replay) rồi bổ sung đặc
-tả vào đây. Không bắt đầu trước khi mục này có nội dung.
+## B15 — Nhúng hiệu ứng AAA vào film (Claude làm, 2026-10-23)
+C7 (đọc film addon AAA tự lưu trong game): mỗi hiệu ứng là một replay có form `bbs:aaa_particle`
+(`effect = assets:<đường dẫn .efkefc>`, `loop`, `particleScale`, `paused`, `restart`, `speed`), vị trí/yaw ở kênh
+keyframe của replay, và hai kênh thuộc tính boolean `visible` (tắt → bật ở `startTick` → tắt ở `endTick`) và `restart`
+(bật ở `startTick` trong 2 tick). Đã làm: `DraftEditor.add_aaa_particle_actor`, manifest film thêm `aaaEffects`
+(`FilmExportWorker`), App 2 điền từ làn VFX (`filmAaaEffects` trong `unifiedJobs.ts`; đường dẫn
+`<W01_AAA_EFFECT_ROOT>/<effect>.efkefc`, mặc định `effeks/samples`). `effects.json` vẫn ghi kèm. Hiệu ứng phải được cài sẵn
+trong game ở `config/bbs/assets/<thư mục đó>`. **Chưa kiểm trong BBS FS** (chờ người dùng yêu cầu).
 
 ---
 

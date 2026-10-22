@@ -51,6 +51,16 @@ const ZIP_SCRIPT = 'import pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]).r
 
 type FilmManifest = ReturnType<typeof buildFilmExportManifest>
 
+/** B15: Film-worker entries for AAA Particles replays; ticks clamp into the Film and empty intervals are dropped. */
+export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number }>, durationTicks: number) {
+  const root = (process.env.W01_AAA_EFFECT_ROOT?.trim() || 'effeks/samples').replace(/^\/+|\/+$/g, '')
+  return effects.flatMap((item) => {
+    const startTick = Math.max(0, Math.min(durationTicks - 1, Math.round(item.startTick)))
+    const endTick = Math.max(startTick + 1, Math.min(durationTicks, Math.round(item.endTick)))
+    return [{ label: item.effect, effect: `${root}/${item.effect}.efkefc`, x: item.x, y: item.y, z: item.z, yaw: item.yaw, scale: item.scale, startTick, endTick }]
+  })
+}
+
 /** Add static backdrop actors after conversion; this pure step is shared by the job and manifest tests. */
 export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number): void {
   if (!Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Backdrop Film duration must be a positive whole number of ticks')
@@ -269,6 +279,9 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
       }
     }
     appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks)
+    // B15: VFX cues ride in the Film itself as AAA Particles replays (the effects must be installed in the game under
+    // config/bbs/assets/<root>; W01_AAA_EFFECT_ROOT, default effeks/samples). effects.json stays as a sidecar.
+    Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks) })
     const manifestPath = path.join(work, 'manifest.json')
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
     const outputRoot = path.join(work, 'package'); await mkdir(outputRoot)
