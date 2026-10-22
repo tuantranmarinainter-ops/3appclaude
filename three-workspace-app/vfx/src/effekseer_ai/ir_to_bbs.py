@@ -12,6 +12,8 @@ from typing import Any
 
 TICKS_PER_SECOND = 20
 TIME_QUANTUM = 1 / TICKS_PER_SECOND
+# BBS FS 2.7 ParticleComponentAppearanceBillboard draws a quad of side size * 2.25; an Effekseer sprite is 1 unit * scale.
+BBS_BILLBOARD_SIDE = 2.25
 ADD_DEFAULTS = {"alphaScale": 1.0, "coreExponent": 1.5, "haloSize": 1.9, "haloAlpha": 0.55, "haloColorBoost": 0.25}
 
 
@@ -64,8 +66,11 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             if render_type in {"ribbon", "track"}:
                 entry["suggestedAlternative"] = "Replace with short-lived oriented sprite billboards; BBS TrailForm is an actor trail, not an Effekseer per-particle ribbon."
             node_blockers.append(entry)
+        vertices = node.get("spriteVertices")
+        if vertices is not None and vertices != {"LL": [-0.5, -0.5], "LR": [0.5, -0.5], "UL": [-0.5, 0.5], "UR": [0.5, 0.5]}:
+            node_blockers.append(_entry(node_path, "spriteVertices", "BLOCKED", "Custom sprite corners (off-centre pivot or stretched quad) have no Snowstorm billboard equivalent; BBS quads are always centred"))
         orientation = _normal(node.get("orientation", "billboard"))
-        facing_modes = {"billboard": "lookat_xyz", "rotatedbillboard": "rotate_xyz", "yaxisfixed": "lookat_y"}
+        facing_modes ={"billboard": "lookat_xyz", "rotatedbillboard": "rotate_xyz", "yaxisfixed": "lookat_y"}
         facing_camera_mode = facing_modes.get(orientation)
         if facing_camera_mode is None:
             node_blockers.append(_entry(node_path, "orientation", "BLOCKED", f"Effekseer billboard orientation {orientation or 'missing'} is not mapped to a verified Snowstorm facing mode"))
@@ -438,7 +443,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         components: dict[str, Any] = {
             "minecraft:particle_lifetime_expression": {"max_lifetime": lifetime_expression},
             "minecraft:particle_appearance_billboard": {
-                "size": node_size,
+                "size": [_mul_expression(value, 1 / BBS_BILLBOARD_SIDE) for value in node_size],
                 "facing_camera_mode": facing_camera_mode or "lookat_xyz",
                 "uv": {"texture_width": 1, "texture_height": 1, "uv": [0, 0], "uv_size": [1, 1]},
             },
@@ -527,7 +532,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             halo["addBlend"]["derivedTexture"] = f"textures/vfx/add/{_slug(node_id)}_halo.png"
             halo["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{halo['addBlend']['derivedTexture']}"
             halo_components = halo["json"]["particle_effect"]["components"]
-            halo_components["minecraft:particle_appearance_billboard"]["size"] = [_mul_expression(value, add_options["haloSize"]) for value in node_size]
+            halo_components["minecraft:particle_appearance_billboard"]["size"] = [_mul_expression(value, add_options["haloSize"] / BBS_BILLBOARD_SIDE) for value in node_size]
             dynamic_color = color_molang or (_gradient_to_molang(color_easing, color_interpolant) if color_easing else None)
             if dynamic_color is not None:
                 halo_components["minecraft:particle_appearance_tinting"]["color"] = [

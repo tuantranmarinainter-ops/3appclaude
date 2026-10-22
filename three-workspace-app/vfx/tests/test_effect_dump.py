@@ -5,81 +5,68 @@ import os
 from pathlib import Path
 
 from effekseer_ai.effect_dump import dump_effect_ir, write_effect_ir
+from effekseer_ai.ir_to_bbs import BBS_BILLBOARD_SIDE, convert_effect_ir
 import pytest
+
+CORE_PATHS = Path(__file__).parent / "fixtures" / "core-paths"
 
 
 class FakeSession:
-    """Small fixture shaped from the public Effekseer 1.80.6 Core data classes."""
-    path = Path("spark.efkefc")
-    node = "node/root/0"
+    """Answers property_get from a real Effekseer 1.80.6 Core snapshot (tests/fixtures/core-paths)."""
 
-    def __init__(self):
-        self.values = {
-            f"{self.node}/DrawingValues/Type": "Sprite",
-            f"{self.node}/DrawingValues/Sprite/Billboard": "Billboard",
-            f"{self.node}/DrawingValues/ColorAll/Type": "Fixed",
-            f"{self.node}/DrawingValues/ColorAll/Fixed/R/Value": 26,
-            f"{self.node}/DrawingValues/ColorAll/Fixed/G/Value": 51,
-            f"{self.node}/DrawingValues/ColorAll/Fixed/B/Value": 77,
-            f"{self.node}/DrawingValues/ColorAll/Fixed/A/Value": 102,
-            f"{self.node}/RendererCommonValues/AlphaBlend": "Add",
-            f"{self.node}/RendererCommonValues/ColorTexture/RelativePath": "Texture/Particle01.png",
-            f"{self.node}/CommonValues/MaxGeneration/Value": 20,
-            f"{self.node}/CommonValues/Infinite/Value": True,
-            f"{self.node}/CommonValues/GenerationTime/Center": 3,
-            f"{self.node}/CommonValues/GenerationTime/Amplitude": 1,
-            f"{self.node}/CommonValues/Life/Min": 12,
-            f"{self.node}/CommonValues/Life/Max": 24,
-            f"{self.node}/LocationValues/Type": "PVA",
-            f"{self.node}/RotationValues/Type": "PVA",
-            f"{self.node}/ScalingValues/Type": "PVA",
-        }
-        for group, prop, centers in (
-            ("LocationValues/PVA", "Location", (2, 4, 6)),
-            ("LocationValues/PVA", "Velocity", (4, 5, 6)),
-            ("LocationValues/PVA", "Acceleration", (7, 8, 9)),
-            ("RotationValues/PVA", "Rotation", (20, 21, 22)),
-            ("ScalingValues/PVA", "Scale", (5, 6, 7)),
-        ):
-            for axis, center in zip("XYZ", centers):
-                self.values[f"{self.node}/{group}/{prop}/{axis}/Center"] = center
-                if prop == "Location":
-                    self.values[f"{self.node}/{group}/{prop}/{axis}/Amplitude"] = 1
-        self.leaves = [f"{parent}/IsValueChangedFromDefault" for parent in self.values
-                       if parent.startswith((f"{self.node}/LocationValues/", f"{self.node}/RotationValues/",
-                                             f"{self.node}/ScalingValues/", f"{self.node}/DrawingValues/ColorAll/"))
-                       and not parent.endswith("/Type")]
+    def __init__(self, sample: str = "Simple_Sprite_BillBoard") -> None:
+        data = json.loads((CORE_PATHS / f"{sample}.core-paths.json").read_text(encoding="utf-8"))
+        self.path = Path(f"{sample}.efkefc")
+        self.nodes = data["nodes"]
+        self.values = {f"{node['path']}/{key}": value for node in self.nodes for key, value in node["values"].items()}
 
     def node_list(self):
-        return [{"path": self.node, "id": "node/id/sprite-id", "name": "Spark", "children": 0}]
-
-    def property_list(self, path):
-        return self.leaves
+        return [{"path": node["path"], "id": f"node/id/{index}", "name": node["name"]} for index, node in enumerate(self.nodes)]
 
     def property_get(self, path):
         if path not in self.values:
-            raise ValueError(path)
+            raise KeyError(path)
         return self.values[path]
 
 
-def test_effect_dump_reads_core_enum_parent_paths_and_records_sources():
-    result = dump_effect_ir(FakeSession(), fps=60)
-    first = result["nodes"][0]
-    assert first["renderType"] == "sprite"
-    assert first["blend"] == "add"
-    assert first["texture"] == "Texture/Particle01.png"
-    assert first["generation"] == {"maxGeneration": 20, "infinite": True, "generationTime": 3, "generationTimeAmplitude": 1}
-    assert first["life"] == {"min": 12, "max": 24}
-    assert first["location"]["position"] == [2, 4, 6]
-    assert first["location"]["velocity"] == [4, 5, 6]
-    assert first["location"]["acceleration"] == [7, 8, 9]
-    assert first["rotation"] == [20, 21, 22]
-    assert first["size"] == [5, 6]
-    assert first["color"] == [26 / 255, 51 / 255, 77 / 255, 102 / 255]
-    assert first["sourcePaths"]["renderType"].endswith("DrawingValues/Type")
-    assert first["orientation"] == "Billboard"
-    assert first["sourcePaths"]["orientation"].endswith("DrawingValues/Sprite/Billboard")
-    assert first["sourcePaths"]["blend"].endswith("RendererCommonValues/AlphaBlend")
+def dump(sample: str) -> list[dict]:
+    return dump_effect_ir(FakeSession(sample))["nodes"]
+
+
+def test_real_core_paths_dump_without_missing_values():
+    for sample in ("Simple_Sprite_BillBoard", "Simple_SpawnMethod1", "Laser01"):
+        for node in dump(sample):
+            assert not [item for item in node.get("unsupportedFeatures", []) if item.startswith("missing")], (sample, node["name"])
+
+
+def test_billboard_sample_reads_easing_location_pva_scale_easing_color_and_generation():
+    node = dump("Simple_Sprite_BillBoard")[0]
+    assert (node["renderType"], node["blend"], node["orientation"]) == ("sprite", "add", "Billboard")
+    assert node["generation"] == {"maxGeneration": 100, "infinite": False, "generationTime": pytest.approx(0.1)}
+    leaves = node["valueModes"]["numericLeaves"]
+    assert leaves["locationPosition"]["end"]["X"]["amplitude"] == 5.0
+    assert set(leaves["color"]) == {"start", "end"} and set(leaves["color"]["start"]) == set("RGBA")
+    assert set(leaves) >= {"scale", "scaleVelocity", "scaleAcceleration"}
+    assert node["sourcePaths"]["generation.infinite"].endswith("CommonValues/MaxGeneration/Infinite/Value")
+
+
+def test_single_easing_scale_and_custom_material_and_custom_quad_are_read():
+    assert set(dump("Simple_SpawnMethod1")[0]["valueModes"]["numericLeaves"]) >= {"singleScaleStart", "singleScaleEnd"}
+    assert all("material:File" in node["unsupportedFeatures"] for node in dump("Simple_Turbulence_Particles"))
+    laser = dump("Laser01")[0]
+    assert laser["spriteVertices"]["LL"] == [-0.5, 0.0] and laser["orientation"] == "YAxisFixed"
+
+
+def test_real_dumps_convert_or_block_for_the_right_reason():
+    billboard = convert_effect_ir({"schemaVersion": 1, "name": "bb", "fps": 60, "nodes": dump("Simple_Sprite_BillBoard")})
+    assert billboard["status"] != "BLOCKED" and billboard["schemes"]
+    core = next(scheme for scheme in billboard["schemes"]
+                if not scheme["json"]["particle_effect"]["description"]["identifier"].endswith("_halo"))
+    size = core["json"]["particle_effect"]["components"]["minecraft:particle_appearance_billboard"]["size"]
+    assert all(isinstance(value, str) and f"{1 / BBS_BILLBOARD_SIDE:g}" in value for value in size), size
+    laser = convert_effect_ir({"schemaVersion": 1, "name": "laser", "fps": 60, "nodes": dump("Laser01")}, allow_partial=True)
+    assert [entry["property"] for entry in laser["blocked"]] == ["spriteVertices"]
+    assert len(laser["schemes"]) >= 4
 
 
 def test_unknown_core_enum_is_explicitly_unsupported_not_unknown():
@@ -92,88 +79,6 @@ def test_unknown_core_enum_is_explicitly_unsupported_not_unknown():
     node = dump_effect_ir(Unknown())["nodes"][0]
     assert node["renderType"] == "unsupported"
     assert "unmapped-core-render-type:UnlistedRenderer" in node["unsupportedFeatures"]
-
-
-def test_dump_reads_1806_scalar_leaf_paths_not_vector_parent_strings():
-    class Core1806(FakeSession):
-        def property_list(self, path):
-            roots = ("LocationValues/PVA/Location", "LocationValues/PVA/Velocity",
-                     "LocationValues/PVA/Acceleration", "ScalingValues/Easing/Start",
-                     "ScalingValues/Easing/End", "RotationValues/Fixed/Rotation")
-            vector_leaves = [f"{path}/{root}/{axis}/{part}/IsValueChangedFromDefault"
-                             for root in roots for axis in ("X", "Y", "Z")
-                             for part in ("Center", "Amplitude")]
-            color_leaves = [f"{path}/DrawingValues/ColorAll/Fixed/{channel}/Value/IsValueChangedFromDefault"
-                            for channel in "RGBA"]
-            return vector_leaves + color_leaves
-
-        def property_get(self, path):
-            exact = {
-                "node/root/0/LocationValues/Type": "PVA",
-                "node/root/0/ScalingValues/Type": "Easing",
-                "node/root/0/RotationValues/Type": "Fixed",
-                "node/root/0/DrawingValues/ColorAll/Type": "Fixed",
-            }
-            if path in exact:
-                return exact[path]
-            if path.endswith("/IsValueChangedFromDefault"):
-                raise ValueError(path)
-            if path.endswith("/Center"):
-                return 2.5
-            if path.endswith("/Amplitude"):
-                return 0.5
-            if path.endswith("/Value") and "/DrawingValues/ColorAll/" in path:
-                return 128.0
-            if path.endswith(("/X", "/Y", "/Z", "/R", "/G", "/B", "/A")):
-                return 3.0
-            return super().property_get(path)
-
-    node = dump_effect_ir(Core1806())["nodes"][0]
-    leaves = node["valueModes"]["numericLeaves"]
-    assert leaves["locationPosition"]["value"]["X"] == {"center": 2.5, "amplitude": 0.5}
-    assert leaves["scale"]["start"]["X"] == {"center": 2.5, "amplitude": 0.5}
-    assert any(path.endswith("ScalingValues/Easing/Start/X/Center")
-               for path in node["sourcePaths"]["scale.components"])
-    assert node["color"] == [128 / 255] * 4
-    assert any(path.endswith("DrawingValues/ColorAll/Fixed/R/Value")
-               for path in node["sourcePaths"]["color.components"])
-
-
-@pytest.mark.parametrize("mode,paths", [
-    ("Fixed", ("Fixed/R/Value", "Fixed/G/Value", "Fixed/B/Value", "Fixed/A/Value")),
-    ("Random", ("Random/R/Center", "Random/R/Amplitude", "Random/G/Center", "Random/G/Amplitude",
-                 "Random/B/Center", "Random/B/Amplitude", "Random/A/Center", "Random/A/Amplitude")),
-    ("Easing", ("Easing/Start/R/Center", "Easing/Start/R/Amplitude", "Easing/End/R/Center",
-                 "Easing/End/R/Amplitude", "Easing/Start/G/Center", "Easing/Start/G/Amplitude",
-                 "Easing/End/G/Center", "Easing/End/G/Amplitude", "Easing/Start/B/Center",
-                 "Easing/Start/B/Amplitude", "Easing/End/B/Center", "Easing/End/B/Amplitude",
-                 "Easing/Start/A/Center", "Easing/Start/A/Amplitude", "Easing/End/A/Center",
-                 "Easing/End/A/Amplitude")),
-])
-def test_color_all_uses_1806_drawing_values_standard_color_tree(mode, paths):
-    class ColorMode(FakeSession):
-        def __init__(self):
-            super().__init__()
-            self.values[f"{self.node}/DrawingValues/ColorAll/Type"] = mode
-            for key in list(self.values):
-                if "/DrawingValues/ColorAll/Fixed/" in key:
-                    del self.values[key]
-            for index, relative in enumerate(paths):
-                parent = f"{self.node}/DrawingValues/ColorAll/{relative}"
-                self.values[parent] = 40 + index
-            self.leaves = [f"{parent}/IsValueChangedFromDefault" for parent in self.values
-                           if "/DrawingValues/ColorAll/" in parent and not parent.endswith("/Type")]
-
-        def property_list(self, path, max_depth=6):
-            # Model Core's walk returning a scalar parent when deeper than its
-            # requested depth rather than a synthetic IsValueChanged leaf.
-            return [leaf.rsplit("/IsValueChangedFromDefault", 1)[0] for leaf in self.leaves]
-
-    node = dump_effect_ir(ColorMode())['nodes'][0]
-    assert node['valueModes']['color']['type'] == mode.lower()
-    assert node['sourcePaths']['color.values']
-    assert node['sourcePaths']['color.components']
-    assert not any(path.startswith('missing-active-value:color') for path in node.get('unsupportedFeatures', []))
 
 
 def test_effect_dump_writes_versioned_json_atomically(tmp_path: Path):

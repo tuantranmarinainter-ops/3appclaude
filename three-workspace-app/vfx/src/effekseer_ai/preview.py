@@ -11,7 +11,7 @@ import zlib
 from pathlib import Path
 from typing import Any
 
-from .ir_to_bbs import convert_effect_ir
+from .ir_to_bbs import BBS_BILLBOARD_SIDE, convert_effect_ir
 
 
 DEFAULT_VIEWER_CAMERA = {"projection": "perspective", "distance": 15.0, "angle_x": 20.0, "angle_y": 30.0,
@@ -157,8 +157,8 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
             px, py = map(round, projected)
             depth = _camera_depth((x, y, _eval_molang(origin[2], age, life, randoms)), camera_settings)
             focal = height / (2 * math.tan(math.radians(float(camera_settings["vertical_fov_degrees"])) / 2))
-            rx = max(1, min(120, round(abs(evaluated_size[0]) * focal / depth / 2)))
-            ry = max(1, min(120, round(abs(evaluated_size[1] if len(evaluated_size) > 1 else evaluated_size[0]) * focal / depth / 2)))
+            rx = max(1, min(120, round(abs(evaluated_size[0]) * BBS_BILLBOARD_SIDE * focal / depth / 2)))
+            ry = max(1, min(120, round(abs(evaluated_size[1] if len(evaluated_size) > 1 else evaluated_size[0]) * BBS_BILLBOARD_SIDE * focal / depth / 2)))
             spin = components.get("minecraft:particle_initial_spin", {})
             rotation = _eval_molang(spin.get("rotation", 0), age, life, randoms) + _eval_molang(spin.get("rotation_rate", 0), age, life, randoms) * age
             fade = max(0.15, 1 - age / max(life, 1e-9))
