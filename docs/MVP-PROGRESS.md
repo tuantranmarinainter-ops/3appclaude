@@ -96,9 +96,9 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 ## E2E trong BBS FS thật (Claude, 2026-10-22)
 3 bài test: App 1 (action Minecraft20/Mixamo65) → App 5 (`library.place` Samba) → App 2 (dựng cảnh, xuất 3 film) → BBS FS 2.7
 (Minecraft dev) + App 4 qua addon AAA (vòng, glow, vệt kiếm, laser). Video: `C:\w01-samples	est-queue\e2e\e2e-bbsfs-3-bai-test.mp4`.
-Công cụ: fork BBS-AAAddon nhánh `fs-2.7-autotest` (`-Dbbsaaa.autotest=films`). **Lỗi App 2 tìm được, CHƯA sửa:**
-1. Yaw camera film lệch 180° (`apps/studio/src/filmCamera.ts` `cameraAngles`: xuất 167° cho camera nhìn −Z, BBS cần −13°;
-   video hiện tại đã bù +180 trong game). Sửa: yaw + 180 và kiểm lại roll; cập nhật test filmCamera.
-2. Yaw actor trong film .dat là radian (−1.5708) dù `filmManifest.ts` tính độ — truy nguồn trong worker/bridge (`DraftEditor`).
-3. Màu/texture nhân vật mất trong BOBJ (Gỗ Xưa hiện tím thay vì xanh lá).
+Công cụ: fork BBS-AAAddon nhánh `fs-2.7-autotest` (`-Dbbsaaa.autotest=films`). Lỗi tìm được khi chạy thật — **đã sửa**:
+1. Yaw camera film lệch 180° (`filmCamera.ts`): clip BBS lưu yaw Minecraft + 180; test filmCamera dùng mô hình đúng `Ry(yaw)`.
+2. Màu nhân vật mất trong BOBJ: `film_worker/blender/convert_model.py` nướng màu material phẳng thành `model.png` bảng màu + UV.
+3. (Lỗi script test, không phải App 2) transform App 2 dùng độ; script cũ truyền radian.
+Quay lại không bù: camera đúng, Gỗ Xưa xanh lá, Đen/Herobrine quay mặt nhau, laser trúng. test:all 11/11 PASS.
 App 3 chưa nằm trong chuỗi E2E này.

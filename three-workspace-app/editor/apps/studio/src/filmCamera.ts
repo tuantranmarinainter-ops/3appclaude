@@ -62,8 +62,12 @@ function cameraAngles(quaternion: number[], previous?: FilmCameraKeyframe) {
   let pitch = -Math.atan2(dy, horizontal) * degrees
   const sy = Math.sin(yaw / degrees), cy = Math.cos(yaw / degrees)
   const sp = Math.sin(pitch / degrees), cp = Math.cos(pitch / degrees)
-  // BBS view = Rz(roll) Rx(pitch) Ry(yaw + 180); project up onto its unrolled basis.
+  // View = Rz(roll) Rx(pitch) Ry(mcYaw + 180); project up onto its unrolled basis.
   let roll = Math.atan2(-ux * cy - uz * sy, -ux * sy * sp + uy * cp + uz * cy * sp) * degrees
+  // yaw above is Minecraft's (0 looks along +Z). BBS camera clips store yaw + 180: Position.apply sets
+  // rotation.y = yaw and CameraController hands Minecraft yaw = rotation.y - 180 (verified in BBS FS 2.7).
+  yaw += 180
+  if (!previous) yaw = unwrap(yaw, 0)
   if (previous) {
     const primary = [unwrap(yaw, previous.yaw), unwrap(pitch, previous.pitch), unwrap(roll, previous.roll)]
     // The equivalent Euler branch avoids a 180-degree yaw/roll jump when crossing a pole.

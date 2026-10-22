@@ -73,7 +73,7 @@ def save_texture(meshes, output_dir):
         paths = sorted(images)
         raise ValueError("BOBJ conversion supports one shared model texture; atlas multiple material images first (" + ", ".join(paths) + ")")
     if not images:
-        return False
+        return save_palette_texture(meshes, output_dir)
     if any(not mesh.data.uv_layers for mesh in meshes if any(material in textured_materials for material in mesh.data.materials)):
         raise ValueError("Textured BOBJ meshes require UV coordinates")
     image = next(iter(images.values()))
@@ -109,6 +109,62 @@ def save_texture(meshes, output_dir):
     if signature != b"\x89PNG\r\n\x1a\n":
         prefix = signature.hex()
         raise ValueError(f"Blender did not write a valid model.png ({prefix})")
+    return True
+
+
+def material_color(material):
+    """Linear RGBA of a flat-colored material (Principled Base Color, else viewport diffuse)."""
+    if material.use_nodes and material.node_tree:
+        for node in material.node_tree.nodes:
+            if node.type == "BSDF_PRINCIPLED":
+                return tuple(node.inputs["Base Color"].default_value)
+    return tuple(material.diffuse_color)
+
+
+def linear_to_srgb(channel):
+    channel = max(0.0, min(1.0, channel))
+    return channel * 12.92 if channel <= 0.0031308 else 1.055 * channel ** (1 / 2.4) - 0.055
+
+
+def save_palette_texture(meshes, output_dir):
+    """Flat material colors would be lost in BOBJ (texture only): bake them into a palette model.png and point
+    every face's UVs at the centre of its material's cell. Returns False when there is nothing to bake."""
+    palette = []
+    for mesh in meshes:
+        for material in mesh.data.materials:
+            if material and material not in palette:
+                palette.append(material)
+    if not palette:
+        return False
+    cell = 4
+    width, height = cell * len(palette), cell
+    image = bpy.data.images.new("bbs_palette", width=width, height=height, alpha=True)
+    pixels = [0.0] * (width * height * 4)
+    for index, material in enumerate(palette):
+        r, g, b, a = material_color(material)
+        rgba = (linear_to_srgb(r), linear_to_srgb(g), linear_to_srgb(b), max(0.0, min(1.0, a)))
+        for y in range(height):
+            for x in range(index * cell, (index + 1) * cell):
+                offset = (y * width + x) * 4
+                pixels[offset:offset + 4] = rgba
+    image.pixels[:] = pixels
+    for mesh in meshes:
+        data = mesh.data
+        layer = data.uv_layers.active or data.uv_layers.new(name="bbs_palette")
+        data.uv_layers.active = layer
+        for polygon in data.polygons:
+            material = data.materials[polygon.material_index] if polygon.material_index < len(data.materials) else None
+            index = palette.index(material) if material in palette else 0
+            u = (index * cell + cell / 2) / width
+            for loop_index in polygon.loop_indices:
+                layer.data[loop_index].uv = (u, 0.5)
+    image_path = output_dir / "model.png"
+    try:
+        image.filepath_raw = str(image_path)
+        image.file_format = "PNG"
+        image.save()
+    finally:
+        bpy.data.images.remove(image)
     return True
 
 

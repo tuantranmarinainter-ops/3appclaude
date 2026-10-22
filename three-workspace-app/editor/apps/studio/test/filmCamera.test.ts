@@ -10,7 +10,7 @@ const radians = Math.PI / 180
 function bbsWorld(yaw: number, pitch: number, roll: number): Matrix4 {
   return new Matrix4().makeRotationZ(roll * radians)
     .multiply(new Matrix4().makeRotationX(pitch * radians))
-    .multiply(new Matrix4().makeRotationY((yaw + 180) * radians)).invert()
+    .multiply(new Matrix4().makeRotationY(yaw * radians)).invert() // BBS clip yaw already carries the +180
 }
 
 function quaternion(yaw = 0, pitch = 0, roll = 0): number[] {
