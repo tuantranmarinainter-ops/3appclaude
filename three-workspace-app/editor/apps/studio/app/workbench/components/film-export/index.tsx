@@ -19,19 +19,19 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
             <option value="series">{vi ? 'Cả tập' : 'Entire episode'}</option>
           </select>
         </label>
-        {state.exportMode === 'film' && <label>{vi ? 'Nội dung' : 'Content'}
+        <label>{vi ? 'Nội dung' : 'Content'}
           <select value={state.content} onChange={(event) => state.setContent(event.target.value as typeof state.content)} disabled={state.busy}>
             <option value="characters">{vi ? 'Chỉ nhân vật' : 'Characters only'}</option>
             <option value="backdrops">{vi ? 'Chỉ hậu cảnh' : 'Backdrops only'}</option>
             <option value="both">{vi ? 'Cả nhân vật và hậu cảnh' : 'Characters and backdrops'}</option>
           </select>
-        </label>}
+        </label>
         {(state.exportMode === 'series' || state.content !== 'backdrops') && <label>{vi ? 'Nhân vật' : 'Characters'}
           <select multiple value={state.characterIds} onChange={(event) => state.setCharacterIds(Array.from(event.target.selectedOptions, (option) => option.value))} disabled={state.busy} aria-label={vi ? 'Nhân vật cần xuất gói BBS FS' : 'Characters to export'}>
             {state.characters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
           </select>
         </label>}
-        {state.exportMode === 'film' && state.content !== 'characters' && <label>{vi ? 'Hậu cảnh' : 'Backdrops'}
+        {state.content !== 'characters' && <label>{vi ? 'Hậu cảnh' : 'Backdrops'}
           <select multiple value={state.propIds} onChange={(event) => state.setPropIds(Array.from(event.target.selectedOptions, (option) => option.value))} disabled={state.busy} aria-label={vi ? 'Hậu cảnh cần xuất gói BBS FS' : 'Backdrops to export'}>
             {state.props.map((prop) => <option key={prop.id} value={prop.id}>{prop.name}</option>)}
           </select>

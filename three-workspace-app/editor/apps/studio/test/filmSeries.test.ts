@@ -50,11 +50,26 @@ test('film series groups 20 whole shots into seven worker-sized segments', async
     sequenceId: 'episode', characterIds: [characterId], name: 'episode', content: 'characters',
   } })
   assert.equal(dry.result.valid, true)
+  assert.equal(dry.result.content, 'characters')
   assert.equal(dry.result.segmentCount, 7)
   assert.equal((dry.result.series as Array<{ order: number }>).at(-1)?.order, 7)
-  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
-    sequenceId: 'episode', characterIds: [characterId], name: 'episode', content: 'backdrops',
-  } }), /not available yet/)
+  const propAdded = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'prop.add', args: {
+    assetId: project.characters[characterId]!.assetId, name: 'Episode backdrop',
+  } })
+  const propId = String(propAdded.result.nodeId)
+  const both = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: propAdded.revision, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', characterIds: [characterId], name: 'episode-both', content: 'both',
+  } })
+  assert.equal(both.result.content, 'both')
+  assert.deepEqual(both.result.characterIds, [characterId])
+  assert.deepEqual(both.result.propIds, [propId])
+  const backdrops = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: propAdded.revision, dryRun: true, command: 'scene.export.bbsFilmSeries', args: {
+    sequenceId: 'episode', name: 'episode-backdrops', content: 'backdrops',
+  } })
+  assert.equal(backdrops.result.content, 'backdrops')
+  assert.deepEqual(backdrops.result.characterIds, [])
+  assert.deepEqual(backdrops.result.propIds, [propId])
+  assert.equal(backdrops.result.segmentCount, 7)
 })
 
 test('film series rejects a shot that exceeds one worker segment without splitting it', async () => {

@@ -1163,24 +1163,40 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     return response
   }
   if (envelope.command === 'film.export') {
-    const { characterIds, sequenceId, range, viewportAspect, filmName } = envelope.args
+    const { content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
+        content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content)) ||
+        propIds !== undefined && !Array.isArray(propIds) ||
         typeof filmName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'film.export requires a safe filmName and valid Film sampling arguments', 400)
     }
-    let preflight: ReturnType<typeof preflightProjectFilm>, effectiveAspect: number
+    let preflight: ReturnType<typeof preflightProjectFilm>, normalizedFilm: ReturnType<typeof resolveSceneBbsFilmArgs>['film'], effectiveAspect: number
     try {
       effectiveAspect = resolveFilmFrameAspect(project.extensions, viewportAspect)
-      preflight = preflightProjectFilm(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: effectiveAspect })
+      if (typeof sequenceId !== 'string' || !isRecord(range) || !Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame) ||
+          content !== 'backdrops' && !Array.isArray(characterIds)) throw new TypeError('Film sampling arguments are invalid')
+      const resolved = resolveSceneBbsFilmArgs(project, {
+        ...(content === undefined ? {} : { content }),
+        sequenceId,
+        frameStart: range.startFrame as number,
+        frameEnd: range.endFrame as number,
+        ...(characterIds === undefined ? {} : { characterIds: characterIds as string[] }),
+        ...(propIds === undefined ? {} : { propIds: propIds as string[] }),
+        viewportAspect: effectiveAspect,
+        name: filmName,
+      })
+      normalizedFilm = resolved.film
+      preflight = preflightProjectFilm(project, resolved.film)
     } catch (error) {
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film sampling arguments are invalid', 400)
     }
-    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: preflight.durationTicks + 1, viewportAspect: effectiveAspect })
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: preflight.durationTicks + 1,
+      viewportAspect: effectiveAspect, content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds })
     try {
-      const job = await startUnifiedFilmExport(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: effectiveAspect, filmName })
+      const job = await startUnifiedFilmExport(project, { ...normalizedFilm, filmName })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, viewportAspect: effectiveAspect })
       await saveRequest(envelope, hash, response)
       return response
@@ -1191,8 +1207,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'film.preflight') {
-    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds'].includes(key))) {
-      throw new UnifiedStoreError('VALIDATION_FAILED', 'film.preflight accepts only characterIds, sequenceId, range, viewportAspect, and propIds', 400)
+    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
+        envelope.args.content !== undefined && (typeof envelope.args.content !== 'string' || !['characters', 'backdrops', 'both'].includes(envelope.args.content)) ||
+        envelope.args.propIds !== undefined && !Array.isArray(envelope.args.propIds)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'film.preflight accepts only characterIds, sequenceId, range, viewportAspect, propIds and content', 400)
     }
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film preflight source revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
@@ -1204,8 +1222,24 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: message, en: message } }], warnings: [] as FilmPreflightIssue[] }
       return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, preflight })
     }
-    const args = { ...envelope.args, viewportAspect: effectiveAspect } as {
-      characterIds: string[]; sequenceId: string; range: { startFrame: number; endFrame: number }; viewportAspect: number; propIds?: string[]
+    const rawContent = envelope.args.content as string | undefined
+    const content = rawContent ?? (Array.isArray(envelope.args.propIds) && envelope.args.propIds.length ? 'both' : 'characters')
+    const rawCharacterIds = envelope.args.characterIds
+    if (content === 'backdrops' && rawCharacterIds !== undefined && !Array.isArray(rawCharacterIds)) {
+      const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: 'Danh sách nhân vật phải là một mảng.', en: 'Character selection must be an array.' } }], warnings: [] as FilmPreflightIssue[] }
+      return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
+    }
+    const args = { ...envelope.args,
+      content,
+      characterIds: content === 'backdrops' && rawCharacterIds === undefined ? [] : rawCharacterIds,
+      propIds: content === 'characters' ? (envelope.args.propIds ?? []) : (envelope.args.propIds ?? project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string').map((node) => node.id)),
+      viewportAspect: effectiveAspect,
+    } as {
+      content: string; characterIds: string[]; sequenceId: string; range: { startFrame: number; endFrame: number }; viewportAspect: number; propIds?: string[]
+    }
+    if (content !== 'backdrops' && !Array.isArray(args.characterIds)) {
+      const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: 'Cần chọn nhân vật hợp lệ.', en: 'Valid Character selection is required.' } }], warnings: [] as FilmPreflightIssue[] }
+      return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
     }
     const assetIds = new Set<string>()
     for (const characterId of Array.isArray(args.characterIds) ? args.characterIds : []) {
@@ -1309,20 +1343,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
     }
-    if (content !== undefined && !['characters', 'backdrops', 'both'].includes(String(content))) throw new UnifiedStoreError('VALIDATION_FAILED', 'content must be characters, backdrops, or both', 400)
-    if (content !== undefined && content !== 'characters') throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Film series content mode "${String(content)}" is not available yet`, 422)
+    if (content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content))) throw new UnifiedStoreError('VALIDATION_FAILED', 'content must be characters, backdrops, or both', 400)
     if (sceneArgs.frameStart !== undefined || sceneArgs.frameEnd !== undefined) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series exports the complete editorial sequence; frameStart and frameEnd are not accepted', 400)
     let resolved: ReturnType<typeof resolveSceneBbsFilmArgs>, segments: ReturnType<typeof planFilmSeries>
     try {
-      resolved = resolveSceneBbsFilmArgs(project, sceneArgs)
-      segments = planFilmSeries(project, { ...resolved.film, ...(content === undefined ? {} : { content }) })
+      resolved = resolveSceneBbsFilmArgs(project, { ...sceneArgs, ...(content === undefined ? {} : { content }) })
+      segments = planFilmSeries(project, resolved.film)
     } catch (error) {
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film series arguments are invalid', 400)
     }
     if (resolved.film.filmName.length > 56) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film series name must be at most 56 safe ASCII characters so numbered segment names fit', 400)
     const series = segments.map((segment) => ({ order: segment.order, film: `films/${resolved.film.filmName}-${String(segment.order).padStart(2, '0')}.dat`,
       shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
-    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, content: content ?? 'characters', segmentCount: segments.length, series })
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, content: resolved.film.content,
+      characterIds: resolved.film.characterIds, propIds: resolved.film.propIds, segmentCount: segments.length, series })
     try {
       const job = await startUnifiedFilmSeriesExport(project, { name: resolved.film.filmName, segments })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, segmentCount: segments.length, series })

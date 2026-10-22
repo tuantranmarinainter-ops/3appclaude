@@ -109,11 +109,21 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
   assert.equal(bothPlan.content, 'both')
   assert.deepEqual(bothPlan.characterIds, characterIds)
   assert.deepEqual(bothPlan.propIds, [propId])
+  const bothSeries = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: { content: 'both', sequenceId: 'seq', name: 'series-both' } })
+  assert.equal(bothSeries.result.valid, true)
+  assert.equal(bothSeries.result.content, 'both')
+  assert.deepEqual(bothSeries.result.characterIds, characterIds)
+  assert.deepEqual(bothSeries.result.propIds, [propId])
   const backdrops = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'backdrops', sequenceId: 'seq' } })
   const backdropPlan = backdrops.result.sceneExport as Record<string, unknown>
   assert.equal(backdropPlan.content, 'backdrops')
   assert.deepEqual(backdropPlan.characterIds, [])
   assert.deepEqual(backdropPlan.propIds, [propId])
+  const backdropSeries = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilmSeries', args: { content: 'backdrops', sequenceId: 'seq', name: 'series-backdrops' } })
+  assert.equal(backdropSeries.result.valid, true)
+  assert.equal(backdropSeries.result.content, 'backdrops')
+  assert.deepEqual(backdropSeries.result.characterIds, [])
+  assert.deepEqual(backdropSeries.result.propIds, [propId])
   const legacyProps = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { sequenceId: 'seq', propIds: [propId] } })
   assert.equal((legacyProps.result.sceneExport as Record<string, unknown>).content, 'both')
   assert.deepEqual((legacyProps.result.sceneExport as Record<string, unknown>).propIds, [propId])
@@ -150,15 +160,37 @@ test('backdrop-only Film exports sample cameras without Characters and budget im
   await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { content: 'backdrops', propIds: [] } }), /requires at least one backdrop/)
 })
 
-test('film.export rejects the B4 content contract at the existing store allowlist boundary', async () => {
-  const { projectId, propId } = await backdropOnlyScene()
-  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: {
-    content: 'backdrops', characterIds: [], propIds: [propId], sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9, filmName: 'backdrops-only',
-  } }), (error: unknown) => {
-    assert.equal((error as { code?: string }).code, 'VALIDATION_FAILED')
-    assert.match((error as Error).message, /valid Film sampling arguments/)
-    return true
-  })
+test('film.export and film.preflight broker all content modes with normalized actor and prop selections', async () => {
+  const { projectId, characterIds, propId } = await twoCharacterScene()
+  const common = { sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
+  const characters = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: {
+    ...common, filmName: 'characters-only', content: 'characters', characterIds,
+  } })
+  assert.equal(characters.result.valid, true)
+  assert.equal(characters.result.content, 'characters')
+  assert.deepEqual(characters.result.characterIds, characterIds)
+  assert.deepEqual(characters.result.propIds, [])
+
+  const both = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: {
+    ...common, filmName: 'characters-and-backdrops', content: 'both', characterIds,
+  } })
+  assert.equal(both.result.valid, true)
+  assert.equal(both.result.content, 'both')
+  assert.deepEqual(both.result.characterIds, characterIds)
+  assert.deepEqual(both.result.propIds, [propId], 'both defaults to every prop when propIds is omitted')
+
+  const { projectId: backdropProjectId, propId: onlyPropId } = await backdropOnlyScene()
+  const preflight = await executeUnifiedCommand({ requestId: randomUUID(), projectId: backdropProjectId, dryRun: true, command: 'film.preflight', args: {
+    ...common, content: 'backdrops', characterIds: [], propIds: [onlyPropId],
+  } })
+  assert.equal(preflight.result.valid, true, JSON.stringify(preflight.result.preflight))
+  const backdrops = await executeUnifiedCommand({ requestId: randomUUID(), projectId: backdropProjectId, dryRun: true, command: 'film.export', args: {
+    ...common, filmName: 'backdrops-only', content: 'backdrops', characterIds: [], propIds: [onlyPropId],
+  } })
+  assert.equal(backdrops.result.valid, true)
+  assert.equal(backdrops.result.content, 'backdrops')
+  assert.deepEqual(backdrops.result.characterIds, [])
+  assert.deepEqual(backdrops.result.propIds, [onlyPropId])
 })
 
 function convertedProfile(sourceSha256: string, modelId: string, bones: Array<{ id: string; name: string; parentId: string | null }>): ConvertedFilmModelProfile {

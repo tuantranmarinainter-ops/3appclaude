@@ -11,7 +11,7 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmPreflight } from '../src/filmPreflight.ts'
 import { executeUnifiedCommand, readUnifiedProject, UnifiedStoreError } from '../src/unifiedProjectStore.ts'
 import { stageAssetUpload } from '../src/unifiedAssetFiles.ts'
-import { preflightProjectFilm } from '../src/unifiedFilmSampling.ts'
+import { inspectProjectFilm, preflightProjectFilm } from '../src/unifiedFilmSampling.ts'
 import { makeSceneReviewShot } from '../src/sceneReview.ts'
 
 const projectsDir = mkdtempSync(path.join(tmpdir(), 'bbs-film-preflight-'))
@@ -129,6 +129,22 @@ test('selected prop bone budget uses supplied source-profile evidence and blocks
   assert.ok(filmPreflight(project, args).errors.some((entry) => entry.code === 'FILM_PROP_BONE_COUNT_UNAVAILABLE'))
   const withKnownCount = filmPreflight(project, { ...args, propBoneCounts: { [character.assetId]: 500 } })
   assert.ok(withKnownCount.errors.some((entry) => entry.code === 'FILM_BONE_BUDGET'), JSON.stringify(withKnownCount.errors))
+})
+
+test('invalid backdrop transforms do not suppress valid Character models or aggregate bone-budget errors', async () => {
+  const clean = await validProject({ endFrame: 599, cameraCount: 4, characterCount: 2 })
+  const project = structuredClone(clean.project)
+  const character = project.characters[clean.characterIds[0]!]!
+  project.scene.content.nodes.push({ id: 'invalid-backdrop', type: 'prop', name: 'Scaled backdrop', visible: true, locked: false,
+    metadata: { assetId: character.assetId }, prop: { category: 'user' }, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 2, y: 1, z: 1 } } } as never)
+  const args = { content: 'both', characterIds: clean.characterIds, propIds: ['invalid-backdrop'], sequenceId: 'sequence-valid',
+    range: { startFrame: 0, endFrame: 599 }, viewportAspect: 16 / 9 }
+  const inspection = inspectProjectFilm(project, args)
+  assert.equal(inspection.models.length, clean.characterIds.length)
+  assert.ok(!inspection.issues.some((entry) => entry.code === 'CHARACTER_SELECTION_INVALID'))
+  const report = filmPreflight(project, args)
+  assert.ok(report.errors.some((entry) => entry.code === 'PROP_TRANSFORM_INVALID'))
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_BONE_BUDGET'))
 })
 
 test('film.preflight is read only, revision checked, and returns bilingual blocking issues', async () => {

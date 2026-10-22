@@ -60,7 +60,6 @@ function resolveContentSelection(project: UnifiedProject, args: FilmSamplingArgs
       propIds.some((id) => typeof id !== 'string' || !props.some((node) => node.id === id))) fail('propIds must select up to 64 unique model props in this scene')
   if (content === 'characters' && propIds.length) fail('Characters-only Film content cannot include backdrops')
   if (content === 'backdrops' && !propIds.length) fail('Backdrop-only Film content requires at least one backdrop prop')
-  let backdropBoneCount = 0
   for (const id of propIds) {
     const node = props.find((item) => item.id === id)!
     if ([node.transform.scale.x, node.transform.scale.y, node.transform.scale.z].some((value) => Math.abs(value - 1) > 1e-6)) fail(`Prop ${node.name} must use unit scale; bake its size into the model first`)
@@ -68,23 +67,26 @@ function resolveContentSelection(project: UnifiedProject, args: FilmSamplingArgs
     const assetId = node.metadata!.assetId as string
     const asset = project.assets[assetId as keyof typeof project.assets]
     if (!asset || asset.kind !== 'model') fail(`Backdrop ${node.name} is not a model asset`)
-    const byAsset = project.extensions.assetSkeletonFingerprints
-    const fingerprints = isRecord(byAsset) ? byAsset[assetId] : undefined
-    if (fingerprints !== undefined) {
-      if (!Array.isArray(fingerprints) || fingerprints.length !== 1 || typeof fingerprints[0] !== 'string') fail(`Backdrop ${node.name} must have exactly one imported rig profile to calculate its Film bone budget`)
-      const profiles = Object.values(project.skeletons).filter((profile) => profile.fingerprint === fingerprints[0])
-      if (profiles.length !== 1) fail(`Backdrop ${node.name} rig profile is missing; reimport the model before exporting`)
-      const count = filmSourceBones(profiles[0]!.bones).length
-      if (!count || count > 512) fail(`Backdrop ${node.name} exceeds the BOBJ worker bone limit`)
-      backdropBoneCount += count
-    } else {
-      const importModels = project.extensions.assetImportModels
-      if (!isRecord(importModels) || !isRecord(importModels[assetId])) fail(`Cannot determine the Film bone count for backdrop ${node.name}; reimport the model before exporting`)
-      // Studio's importer records static models without skeleton fingerprints; the pinned converter creates one root bone.
-      backdropBoneCount += 1
-    }
   }
-  return { content, characterIds, propIds, backdropBoneCount }
+  return { content, characterIds, propIds }
+}
+
+function backdropBoneCount(project: UnifiedProject, assetId: string, hostCount?: number): number | undefined {
+  if (Number.isSafeInteger(hostCount) && hostCount! > 0 && hostCount! <= 512) return hostCount
+  const byAsset = project.extensions.assetSkeletonFingerprints
+  const fingerprints = isRecord(byAsset) ? byAsset[assetId] : undefined
+  if (fingerprints !== undefined) {
+    if (!Array.isArray(fingerprints) || fingerprints.length !== 1 || typeof fingerprints[0] !== 'string') return undefined
+    const profiles = Object.values(project.skeletons).filter((profile) => profile.fingerprint === fingerprints[0])
+    if (profiles.length !== 1) return undefined
+    try {
+      const count = filmSourceBones(profiles[0]!.bones).length
+      return count > 0 && count <= 512 ? count : undefined
+    } catch { return undefined }
+  }
+  const importModels = project.extensions.assetImportModels
+  // Studio's importer records static models without skeleton fingerprints; the pinned converter creates one root bone.
+  return isRecord(importModels) && isRecord(importModels[assetId]) ? 1 : undefined
 }
 
 type ProfileBone = UnifiedProject['skeletons'][string]['bones'][number]
@@ -126,8 +128,11 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
   let selection: ReturnType<typeof resolveContentSelection> | undefined
   try { selection = resolveContentSelection(project, args) }
   catch (cause) { add('CONTENT_SELECTION_INVALID', cause instanceof Error ? cause.message : 'Invalid Film content selection') }
-  const characterIds = selection?.characterIds ?? []
-  if (!selection && args.content !== 'backdrops') add('CHARACTER_SELECTION_INVALID', 'Select 1-64 unique existing Characters')
+  const rawCharacterIds = args.content === 'backdrops' ? [] : args.characterIds
+  const validCharacterSelection = args.content === 'backdrops' || (Array.isArray(rawCharacterIds) && rawCharacterIds.length > 0 && rawCharacterIds.length <= 64 &&
+    new Set(rawCharacterIds).size === rawCharacterIds.length && rawCharacterIds.every((id) => typeof id === 'string' && Object.hasOwn(project.characters, id)))
+  const characterIds = selection?.characterIds ?? (validCharacterSelection && Array.isArray(rawCharacterIds) ? rawCharacterIds : [])
+  if (!validCharacterSelection) add('CHARACTER_SELECTION_INVALID', 'Select 1-64 unique existing Characters')
   const timeline = project.scene.content.timeline
   const validRange = !!range && Number.isSafeInteger(range.startFrame) && Number.isSafeInteger(range.endFrame) &&
     range.startFrame >= timeline.frameStart && range.endFrame <= timeline.frameEnd && range.endFrame >= range.startFrame &&
@@ -154,8 +159,8 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
     if (nextFrame !== range.endFrame + 1) add('SEQUENCE_COVERAGE', 'Film shots must cover the selected source range exactly')
   }
   const models: FilmSamplingInspection['models'] = []
-  let boneCount = selection?.backdropBoneCount ?? 0
-  if (selection) for (const id of characterIds) {
+  let boneCount = 0
+  if (validCharacterSelection) for (const id of characterIds) {
     const character = project.characters[id]!
     const profile = project.skeletons[character.skeletonId]!
     const node = project.scene.content.nodes.find((item) => item.id === character.nodeId)!
@@ -176,14 +181,23 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
     if (modelValid) models.push({ characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
       source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint, sourceBones })
   }
-  if (!selection && options.includePropBudget && Array.isArray(args.propIds)) {
-    for (const propId of args.propIds) {
-      const prop = project.scene.content.nodes.find((node) => node.id === propId && node.type === 'prop' && typeof node.metadata?.assetId === 'string')
-      const assetId = typeof prop?.metadata?.assetId === 'string' ? prop.metadata.assetId : undefined
-      const count = assetId ? options.propBoneCounts?.[assetId] : undefined
-      if (!prop || !assetId) continue
-      if (!Number.isSafeInteger(count) || count! < 1) add('PROP_BONE_COUNT_UNAVAILABLE', 'Could not determine a selected backdrop model bone count from its source profile', undefined, propId)
-      else boneCount += count!
+  const selectedPropIds = selection?.propIds ?? (Array.isArray(args.propIds) ? args.propIds : [])
+  for (const propId of selectedPropIds) {
+    const prop = project.scene.content.nodes.find((node) => node.id === propId && node.type === 'prop' && typeof node.metadata?.assetId === 'string')
+    const assetId = typeof prop?.metadata?.assetId === 'string' ? prop.metadata.assetId : undefined
+    if (!prop || !assetId) continue
+    const hostCount = options.propBoneCounts?.[assetId]
+    // Legacy preflight callers supplied selected prop IDs before the content mode existed. Keep their evidence
+    // contract: only the host's measured source-profile count is sufficient for this evidence-rich check.
+    const count = options.includePropBudget && args.content === undefined
+      ? (Number.isSafeInteger(hostCount) && hostCount! > 0 && hostCount! <= 512 ? hostCount : undefined)
+      : backdropBoneCount(project, assetId, hostCount)
+    if (count === undefined) {
+      // Keep the historical omitted-content call usable by Characters-only job callers. New explicit backdrop modes
+      // and the evidence-rich preflight still require an auditable source-profile count.
+      if (options.includePropBudget || args.content !== undefined) add('PROP_BONE_COUNT_UNAVAILABLE', 'Could not determine a selected backdrop model bone count from its source profile', undefined, propId)
+    } else {
+      boneCount += count
     }
   }
   const boneSampleCount = durationTicks === undefined ? undefined : boneCount * (durationTicks + 1)

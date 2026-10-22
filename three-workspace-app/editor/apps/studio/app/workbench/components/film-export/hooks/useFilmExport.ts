@@ -36,11 +36,10 @@ export function useFilmExport(project: UnifiedProject) {
 
   const selectionArgs = useMemo(() => {
     const range = { startFrame, endFrame }
-    if (exportMode === 'series') return { characterIds, sequenceId, range, viewportAspect }
-    if (content === 'characters') return { characterIds, sequenceId, range, viewportAspect }
-    return { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds, sequenceId, range, viewportAspect }
-  }, [exportMode, content, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
-  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, ...selectionArgs })
+    return { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
+      sequenceId, range, viewportAspect }
+  }, [content, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
+  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, exportMode, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
   const passedKey = useRef<string | null>(null)
@@ -71,11 +70,12 @@ export function useFilmExport(project: UnifiedProject) {
       })
     }, 250)
     return () => { clearTimeout(timer); cancelled = true }
-  }, [project.projectId, project.revision, selectionArgs, currentKey])
+  }, [project.projectId, project.revision, exportMode, selectionArgs, currentKey])
 
   // The whole-range preflight enforces single-Film limits (ticks, cameras, bones) that a series splits around; the series job
   // validates every segment itself. TODO(B10/B11 follow-up): run the preflight per planned segment instead.
-  const canExport = exportMode === 'series' ? !busy && characterIds.length > 0 : !busy && !checkingPreflight && preflightRevision === project.revision &&
+  const hasActorSelection = content === 'backdrops' ? propIds.length > 0 : characterIds.length > 0
+  const canExport = exportMode === 'series' ? !busy && hasActorSelection : !busy && !checkingPreflight && preflightRevision === project.revision &&
     preflightKey === currentKey && passedKey.current === currentKey && !!preflight && preflight.errors.length === 0
 
   const saveAgain = async (job: UnifiedJobView) => {
@@ -94,14 +94,11 @@ export function useFilmExport(project: UnifiedProject) {
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
     const sourceRevision = project.revision
-    if (exportMode === 'series' || content !== 'backdrops') {
+    if (content !== 'backdrops') {
       if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
     }
-    if (exportMode === 'film' && content !== 'characters' && (!propIds.length || new Set(propIds).size !== propIds.length || propIds.some((id) => !props.some((node) => node.id === id)))) {
+    if (content === 'backdrops' && !propIds.length || content !== 'characters' && (new Set(propIds).size !== propIds.length || propIds.some((id) => !props.some((node) => node.id === id)))) {
       setError(vi ? 'Chọn ít nhất một hậu cảnh hợp lệ.' : 'Choose at least one valid backdrop.'); return
-    }
-    if (exportMode === 'film' && content !== 'characters') {
-      setError(vi ? 'Máy chủ chưa nhận chế độ nội dung cho Film export.' : 'The server Film export contract does not yet accept content modes.'); return
     }
     if (!sequences.some((sequence) => sequence.id === sequenceId)) { setError(vi ? 'Chọn chuỗi camera có trong dự án.' : 'Choose a camera sequence in the project.'); return }
     if (exportMode === 'film' && (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) || startFrame < project.scene.content.timeline.frameStart || endFrame > project.scene.content.timeline.frameEnd || endFrame < startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
@@ -115,7 +112,10 @@ export function useFilmExport(project: UnifiedProject) {
       }
       const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
         command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
-        args: exportMode === 'series' ? { characterIds, sequenceId, viewportAspect, name: filmName, content: 'characters' } : { characterIds, sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
+        args: exportMode === 'series'
+          ? { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds, sequenceId, viewportAspect, name: filmName }
+          : { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
+              sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
       const jobId = String(started.result.jobId)
       setActiveJobId(jobId); setStatus(exportMode === 'series' ? (vi ? 'Đang chia đoạn và xuất cả tập…' : 'Segmenting and exporting episode…') : (vi ? 'Đang lấy mẫu và xuất Film…' : 'Sampling and exporting Film…'))
       let job = await loadUnifiedJob(project.projectId, jobId)
