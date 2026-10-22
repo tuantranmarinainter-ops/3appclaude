@@ -38,6 +38,87 @@ export function letterboxRect(canvasWidth: number, canvasHeight: number, aspect:
   return { x: (canvasWidth - width) / 2, y: (canvasHeight - height) / 2, width, height }
 }
 
+/** Largest centered frame for a film aspect inside the viewport. */
+export function filmFrameRect(viewW: number, viewH: number, aspect: number): { x: number; y: number; width: number; height: number } {
+  if (![viewW, viewH, aspect].every(Number.isFinite) || viewW <= 0 || viewH <= 0 || aspect <= 0) {
+    throw new RangeError('Viewport dimensions and film aspect must be positive finite numbers')
+  }
+  return letterboxRect(viewW, viewH, aspect)
+}
+
+/** Film framing only affects a live camera view while BBS look is active. */
+export function filmFrameAspectForView(enabled: boolean, cameraView: boolean, aspect: number | null): number | null {
+  if (!enabled || !cameraView || aspect === null) return null
+  if (!Number.isFinite(aspect) || aspect <= 0) throw new RangeError('Film aspect must be a positive finite number')
+  return aspect
+}
+
+export function viewportLetterboxRect(
+  width: number,
+  height: number,
+  filmAspect: number | null,
+  letterboxAspect: number | null,
+): { x: number; y: number; width: number; height: number } | null {
+  // Film framing uses the normal viewport render with an expanded camera frustum; the overlay shades outside the frame.
+  if (filmAspect !== null) return null
+  return letterboxAspect ? letterboxRect(width, height, letterboxAspect) : null
+}
+
+/** Project the film-sized view onto the largest centered area of the editor canvas. */
+export function applyFilmFrameProjection(cam: THREE.PerspectiveCamera, width: number, height: number, aspect: number): void {
+  const frame = filmFrameRect(width, height, aspect)
+  const view = cam.view
+  const same = view?.enabled
+    && Math.abs(view.fullWidth - frame.width) < 1e-3
+    && Math.abs(view.fullHeight - frame.height) < 1e-3
+    && view.width === width
+    && view.height === height
+  if (same) return
+  cam.aspect = aspect
+  cam.setViewOffset(frame.width, frame.height, (frame.width - width) / 2, (frame.height - height) / 2, width, height)
+}
+
+/** Apply the existing viewport projection policy, with film framing as a conditional override. */
+export function applyViewportProjection(
+  cam: THREE.PerspectiveCamera,
+  width: number,
+  height: number,
+  box: { width: number; height: number } | null,
+  filmAspect: number | null,
+  framedAspect: number | null,
+): void {
+  if (box) {
+    const aspect = box.width / box.height
+    if (!cam.view && Math.abs(cam.aspect - aspect) <= 1e-3) return
+    if (cam.view) cam.clearViewOffset()
+    cam.aspect = aspect
+    cam.updateProjectionMatrix()
+    return
+  }
+  if (filmAspect) {
+    applyFilmFrameProjection(cam, width, height, filmAspect)
+    return
+  }
+  if (framedAspect && framedAspect > 0) {
+    const frame = framedRect(width, height, framedAspect)
+    const view = cam.view
+    const same = view?.enabled
+      && Math.abs(view.fullWidth - frame.width) < 1e-3
+      && Math.abs(view.fullHeight - frame.height) < 1e-3
+      && view.width === width
+      && view.height === height
+    if (same) return
+    cam.aspect = framedAspect
+    cam.setViewOffset(frame.width, frame.height, (frame.width - width) / 2, (frame.height - height) / 2, width, height)
+    return
+  }
+  const aspect = width / height
+  if (cam.view) cam.clearViewOffset()
+  else if (Math.abs(cam.aspect - aspect) <= 1e-3) return
+  cam.aspect = aspect
+  cam.updateProjectionMatrix()
+}
+
 const _clearColor = new THREE.Color()
 
 export type GizmoMode = 'select' | 'translate' | 'rotate' | 'scale'
@@ -97,6 +178,8 @@ export class DualViewport {
   framedAspect: number | null = null
   /** 非空时主视口是成片监看：机位画面按画幅撑满画布，四周黑边，不露框外场景。 */
   letterboxAspect: number | null = null
+  private filmAspect: number | null = null
+  private filmFramePreviewEnabled = false
   /** 要描橙色外轮廓的选中对象根节点；由 Stage 每帧按 gizmo 同一套显隐条件填，空数组就是不描。 */
   outlineRoots: readonly THREE.Object3D[] = []
   private selectionOutline: SelectionOutline | null = null
@@ -127,6 +210,21 @@ export class DualViewport {
     private readonly editorCamera: THREE.PerspectiveCamera,
     private readonly host: ViewportHost,
   ) {}
+
+  /** Host hook: a null aspect clears the stored film frame for this viewport. */
+  setFilmFrameAspect(aspect: number | null): void {
+    if (aspect !== null && (!Number.isFinite(aspect) || aspect <= 0)) {
+      throw new RangeError('Film aspect must be a positive finite number or null')
+    }
+    this.filmAspect = aspect
+    this.host.onInvalidateMain()
+  }
+
+  /** Host hook: keep film framing restricted to BBS look camera views. */
+  setFilmFramePreviewEnabled(enabled: boolean): void {
+    this.filmFramePreviewEnabled = enabled
+    this.host.onInvalidateMain()
+  }
 
   attachMain(canvas: HTMLCanvasElement): void {
     this.rendererMain = createCanvasRenderer(canvas)
@@ -602,8 +700,10 @@ export class DualViewport {
       const width = c.clientWidth
       const height = Math.max(1, c.clientHeight)
       const aspect = width / height
-      const box = this.letterboxAspect ? letterboxRect(width, height, this.letterboxAspect) : null
-      this.syncEditorProjection(width, height, box)
+      const cameraView = Boolean(this.followMode || this.cameraPilot || this.letterboxAspect !== null)
+      const filmAspect = filmFrameAspectForView(this.filmFramePreviewEnabled, cameraView, this.filmAspect)
+      const box = viewportLetterboxRect(width, height, filmAspect, this.letterboxAspect)
+      this.syncEditorProjection(width, height, box, filmAspect)
       // 机位视角 / 操控相机要藏轨迹和 gizmo，地面网格在另一层，不能一起关掉。
       this.compass.resize(aspect)
       const viewCamera = this.viewCamera
@@ -640,35 +740,8 @@ export class DualViewport {
    * 取景时机位的垂直 FOV 只对应取景框的高度，不是整块画布；
    * 用负偏移的 view offset 把视锥向四周外扩，框内画面才和机位预览、导出一致。
    */
-  private syncEditorProjection(width: number, height: number, box: { width: number; height: number } | null): void {
-    const cam = this.editorCamera
-    const framed = this.framedAspect
-    if (box) {
-      const boxAspect = box.width / box.height
-      if (!cam.view && Math.abs(cam.aspect - boxAspect) <= 1e-3) return
-      if (cam.view) cam.clearViewOffset()
-      cam.aspect = boxAspect
-      cam.updateProjectionMatrix()
-      return
-    }
-    if (framed && framed > 0) {
-      const frame = framedRect(width, height, framed)
-      const view = cam.view
-      const same = view?.enabled
-        && Math.abs(view.fullWidth - frame.width) < 1e-3
-        && Math.abs(view.fullHeight - frame.height) < 1e-3
-        && view.width === width
-        && view.height === height
-      if (same) return
-      cam.aspect = framed
-      cam.setViewOffset(frame.width, frame.height, (frame.width - width) / 2, (frame.height - height) / 2, width, height)
-      return
-    }
-    const aspect = width / height
-    if (cam.view) cam.clearViewOffset()
-    else if (Math.abs(cam.aspect - aspect) <= 1e-3) return
-    cam.aspect = aspect
-    cam.updateProjectionMatrix()
+  private syncEditorProjection(width: number, height: number, box: { width: number; height: number } | null, filmAspect: number | null): void {
+    applyViewportProjection(this.editorCamera, width, height, box, filmAspect, this.framedAspect)
   }
 
   /**
