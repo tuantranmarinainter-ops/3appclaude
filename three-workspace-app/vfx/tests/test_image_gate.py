@@ -32,7 +32,9 @@ def test_four_official_effects_match_fixed_frame_visual_gate(tmp_path: Path) -> 
                    "--distance", "15", "--angle-x", "20", "--angle-y", "30"]
         subprocess.run(command, check=True, capture_output=True, text=True)
         effect_ir = dump_effect_ir(EffectSession.open(source))
-        conversion = render_preview(effect_ir, tmp_path / "converted" / name, [0.25, 0.5, 1.0], width=512, height=512)
+        conversion = render_preview(effect_ir, tmp_path / "converted" / name, [0.25, 0.5, 1.0], width=512, height=512,
+                                    camera={"projection": "perspective", "distance": 15.0, "angle_x": 20.0,
+                                            "angle_y": 30.0, "vertical_fov_degrees": 45.0, "focus": (0.0, 0.0, 0.0)})
         assert conversion["conversionStatus"] != "BLOCKED", f"{name} conversion was blocked"
         for frame, seconds in zip((15, 30, 60), (0.25, 0.5, 1.0)):
             ref = eff_dir / f"t{frame:04d}.png"
@@ -49,7 +51,7 @@ def test_four_official_effects_match_fixed_frame_visual_gate(tmp_path: Path) -> 
     report = Path(os.environ.get("VFX_IMAGE_GATE_REPORT", "../../docs/VFX-REPORT-V2-IMAGE-GATE.md"))
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("# VFX review 2 image measurements\n\n" + "\n".join(markdown) + "\n\n" +
-                      "Fixed 512x512 viewport, fixed Effekseer distance 15 / angles 20,30, background 20,20,24; no per-image auto-fit. Converted preview uses its documented fixed orthographic 8-unit viewport simulation, so camera projection remains an approximation and BBS runtime is not certified. Gate fails below 50% bbox width/height or above RGB mean Euclidean distance 40/255.\n",
+                      "Fixed 512x512 viewport, perspective projection, distance 15, angles 20/30, focus origin, background 20,20,24; no per-image auto-fit. Offline projection uses a fixed 45-degree vertical FOV because the native Viewer matrix is not exposed to the simulator; this FOV is an explicit approximation and is NOT_RUN against Windows. Gate fails below 50% bbox width/height or above RGB mean Euclidean distance 40/255. BBS runtime is not certified.\n",
                       encoding="utf-8")
     print(report.read_text(encoding="utf-8"))
     assert all(row["status"] == "PASS" for row in rows), "visual comparison failed; see measurement report"

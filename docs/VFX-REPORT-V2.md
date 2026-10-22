@@ -29,7 +29,7 @@
 | Simple_Turbulence_Particles / 0.25, 0.50, 1.00 s | NOT_RUN | NOT_RUN | NOT_RUN |
 | Laser01 / 0.25, 0.50, 1.00 s | NOT_RUN | NOT_RUN | NOT_RUN |
 
-No Effekseer DLL or official sample directory is mounted in this cloud environment, so no pixel measurements are claimed. The Windows gate must use one fixed 512×512 camera, distance, angles, background, and world scale for both renderers (no per-image auto-fit). It records pixels differing from background by >8/channel, their bounding box, and mean RGB over those pixels. Fail if converted bbox width or height is below 50% of Effekseer, or mean RGB Euclidean distance exceeds 40/255. The synthetic BBS preview is only a simulation and cannot establish BBS runtime equivalence.
+No Effekseer DLL or official sample directory is mounted in this cloud environment, so no pixel measurements are claimed. The Windows gate uses a fixed 512×512 camera, projection, distance, angles, focus, and background for both renderers (no per-image auto-fit). Its offline renderer uses a documented 45-degree vertical FOV approximation; exact native projection equivalence is NOT_RUN. It records pixels differing from background by >8/channel, their bounding box, and mean RGB over those pixels. Fail if converted bbox width or height is below 50% of Effekseer, or mean RGB Euclidean distance exceeds 40/255. The synthetic BBS preview is only a simulation and cannot establish BBS runtime equivalence.
 
 PowerShell rerun on the Windows Effekseer 1.80.6 machine (from `three-workspace-app/vfx`):
 
@@ -39,13 +39,13 @@ $env:EFFEKSEER_AI_SAMPLE_DIR='C:\path\to\Effekseer\Sample\00_Basic'
 python -m pytest -m integration -q
 ```
 
-The `test_four_official_effects_match_fixed_frame_visual_gate` integration test runs `tools/render_preview.py` for all four named samples at frames 15/30/60, dumps and converts each effect, runs the offline Snowstorm simulation at 0.25/0.5/1s, measures bright pixels/bbox/mean RGB, writes a table to `docs/VFX-REPORT-V2-IMAGE-GATE.md`, and asserts the gates. Both use fixed 512×512 output, background 20,20,24, distance 15, angles 20/30, and no per-image auto-fit. The converted renderer uses a fixed orthographic 8-world-unit camera as an explicit projection approximation to Effekseer's perspective viewer; the comparison is a heuristic screen-space gate, not a claim of camera equivalence or BBS runtime correctness.
+The `test_four_official_effects_match_fixed_frame_visual_gate` integration test runs `tools/render_preview.py` for all four named samples at frames 15/30/60, dumps and converts each effect, runs the offline Snowstorm simulation at 0.25/0.5/1s, measures bright pixels/bbox/mean RGB, writes a table to `docs/VFX-REPORT-V2-IMAGE-GATE.md`, and asserts the gates. Both use fixed 512×512 perspective output, background 20,20,24, focus at origin, distance 15, angles 20/30, and no per-image auto-fit. The offline renderer uses an explicit fixed 45-degree vertical FOV approximation because the native Viewer projection matrix is unavailable to it; this approximation is recorded in output and is NOT_RUN against Windows. The comparison is a heuristic screen-space gate, not a claim of native matrix equivalence or BBS runtime correctness.
 
 ## Gates
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install dev tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 39 passed, 3 skipped, 0 failed. Skips require the Core DLL and official sample directory. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install dev tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 40 passed, 3 skipped, 0 failed. Skips require the Core DLL and official sample directory. |
 | GitHub Actions `test` workflow | NOT_RUN | CI status is unverified for this report update; check PR #50's current run before review. |
 | Integration using Effekseer Core DLL and official samples | NOT_RUN | Neither input is available here. On Windows: `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'; $env:EFFEKSEER_AI_SAMPLE_DIR='C:\\path\\to\\Effekseer\\Sample\\00_Basic'; python -m pytest -m integration -q` from `three-workspace-app/vfx`. Integration checks that Simple_Sprite_BillBoard and Simple_SpawnMethod1 export schemes, while Simple_Ribbon_Sword, Simple_Ring_Shape1, and Simple_Distortion block. |
 | BBS FS 2.7 runtime | NOT_RUN | Requires the real game/runtime. On the Windows review machine, install the generated schemes and exercise them in BBS FS 2.7; do not treat schema conversion as a runtime pass. |

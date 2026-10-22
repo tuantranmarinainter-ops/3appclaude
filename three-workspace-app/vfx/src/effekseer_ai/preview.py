@@ -14,15 +14,22 @@ from typing import Any
 from .ir_to_bbs import convert_effect_ir
 
 
+DEFAULT_VIEWER_CAMERA = {"projection": "perspective", "distance": 15.0, "angle_x": 20.0, "angle_y": 30.0,
+                         "vertical_fov_degrees": 45.0, "focus": (0.0, 0.0, 0.0)}
+
+
 def render_preview(
     effect_ir: dict[str, Any], output_dir: str | Path, timestamps: list[float],
     reference_dir: str | Path | None = None, width: int = 256, height: int = 256,
+    camera: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if width < 16 or height < 16 or width > 2048 or height > 2048:
         raise ValueError("Preview dimensions must be between 16 and 2048 pixels")
     if not timestamps or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 for value in timestamps):
         raise ValueError("timestamps must be a non-empty list of finite nonnegative seconds")
     conversion = convert_effect_ir(effect_ir)
+    camera_settings = {**DEFAULT_VIEWER_CAMERA, **(camera or {})}
+    _validate_camera(camera_settings)
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     effect_name = _slug(str(effect_ir.get("name", "effect")))
@@ -32,7 +39,8 @@ def render_preview(
         "mode": "SIMULATION_ONLY",
         "actualBbsRuntime": "NOT_RUN",
         "warning": "Offline Snowstorm-subset simulation; this PNG is not an Effekseer render and does not certify BBS FS playback.",
-        "simulationNotes": ["Random particle lifetime ranges are simulated using the quantized maximum endpoint; random sampling is not reproduced.", "Add mode renders the converted halo behind the core; source texture pixels are not sampled, so luminance detail is represented by the configured tint and layer coefficients.", "Molang size and parametric expressions use deterministic per-particle random variables.", "Camera is a fixed orthographic 8-world-unit simulation; Effekseer reference uses its Viewer perspective camera, so projection remains approximate."],
+        "camera": camera_settings,
+        "simulationNotes": ["Random particle lifetime ranges are simulated using the quantized maximum endpoint; random sampling is not reproduced.", "Add mode renders the converted halo behind the core; source texture pixels are not sampled, so luminance detail is represented by the configured tint and layer coefficients.", "Molang size and parametric expressions use deterministic per-particle random variables.", "Camera position, perspective projection type, distance, angles, focus, viewport, and background match tools/render_preview.py defaults. The 45-degree vertical FOV approximates Effekseer Viewer projection; native matrix equivalence is NOT_RUN."],
         "conversionStatus": conversion["status"],
         "timestamps": [],
     }
@@ -45,7 +53,7 @@ def render_preview(
         if conversion["status"] == "BLOCKED":
             pixels = _blank(width, height)
         else:
-            pixels = _render_schemes(conversion["schemes"], seconds, width, height)
+            pixels = _render_schemes(conversion["schemes"], seconds, width, height, camera_settings)
         _write_png(sim_path, width, height, pixels)
         entry: dict[str, Any] = {
             "timeSeconds": seconds,
@@ -81,11 +89,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reference-dir", help="Optional directory containing <effect>_<seconds>s.png Effekseer references")
     parser.add_argument("--width", type=int, default=256)
     parser.add_argument("--height", type=int, default=256)
+    parser.add_argument("--distance", type=float, default=15.0)
+    parser.add_argument("--angle-x", type=float, default=20.0)
+    parser.add_argument("--angle-y", type=float, default=30.0)
+    parser.add_argument("--vertical-fov", type=float, default=45.0, help="Projection approximation; Effekseer native matrix is not exposed to this simulator")
     args = parser.parse_args(argv)
     try:
         effect = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
         timestamps = [float(part.strip()) for part in args.timestamps.split(",") if part.strip()]
-        result = render_preview(effect, args.output_dir, timestamps, args.reference_dir, args.width, args.height)
+        camera = {"distance": args.distance, "angle_x": args.angle_x, "angle_y": args.angle_y, "vertical_fov_degrees": args.vertical_fov}
+        result = render_preview(effect, args.output_dir, timestamps, args.reference_dir, args.width, args.height, camera)
     except (OSError, json.JSONDecodeError, ValueError, zlib.error) as error:
         print(json.dumps({"status": "ERROR", "error": str(error)}, ensure_ascii=False))
         return 2
@@ -93,7 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, height: int) -> bytearray:
+def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, height: int,
+                    camera: dict[str, Any] | None = None) -> bytearray:
+    camera_settings = {**DEFAULT_VIEWER_CAMERA, **(camera or {})}
+    _validate_camera(camera_settings)
     canvas = _blank(width, height)
     for scheme in schemes:
         effect = scheme["json"]["particle_effect"]
@@ -140,11 +156,42 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
             if parametric:
                 x += _eval_molang(parametric.get("x", 0), age, life, randoms)
                 y += _eval_molang(parametric.get("y", 0), age, life, randoms)
-            px = int(width / 2 + x * min(width, height) / 8)
-            py = int(height / 2 - y * min(width, height) / 8)
+            projected = project_camera((x, y, _eval_molang(origin[2], age, life, randoms)), width, height, camera_settings)
+            if projected is None:
+                continue
+            px, py = map(round, projected)
             fade = max(0.15, 1 - age / max(life, 1e-9))
             _disc(canvas, width, height, px, py, particle_radius, tuple(int(channel * fade) for channel in particle_color))
     return canvas
+
+
+def _validate_camera(camera: dict[str, Any]) -> None:
+    for key in ("distance", "vertical_fov_degrees"):
+        value = camera[key]
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"camera {key} must be a positive finite number")
+    if camera["vertical_fov_degrees"] >= 179:
+        raise ValueError("camera vertical_fov_degrees must be below 179")
+
+
+def project_camera(point: tuple[float, float, float], width: int, height: int,
+                   camera: dict[str, Any] | None = None) -> tuple[float, float] | None:
+    """Project one world point using the fixed perspective camera used by the preview gate."""
+    settings = {**DEFAULT_VIEWER_CAMERA, **(camera or {})}
+    _validate_camera(settings)
+    ax, ay = math.radians(float(settings["angle_x"])), math.radians(float(settings["angle_y"]))
+    cx, cy, cz = settings["focus"]
+    dx, dy, dz = point[0] - cx, point[1] - cy, point[2] - cz
+    right = (math.cos(ay), 0.0, -math.sin(ay))
+    up = (math.sin(ax) * math.sin(ay), math.cos(ax), math.sin(ax) * math.cos(ay))
+    forward = (-math.cos(ax) * math.sin(ay), math.sin(ax), -math.cos(ax) * math.cos(ay))
+    eye_depth = float(settings["distance"]) - (dx * forward[0] + dy * forward[1] + dz * forward[2])
+    if eye_depth <= 1e-6:
+        return None
+    focal = height / (2 * math.tan(math.radians(float(settings["vertical_fov_degrees"])) / 2))
+    sx = dx * right[0] + dy * right[1] + dz * right[2]
+    sy = dx * up[0] + dy * up[1] + dz * up[2]
+    return width / 2 + focal * sx / eye_depth, height / 2 - focal * sy / eye_depth
 
 
 def _blank(width: int, height: int) -> bytearray:

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from effekseer_ai.cli import build_parser, main
-from effekseer_ai.preview import _eval_molang, _random_values, _read_png, _render_schemes, _write_png, render_preview
+from effekseer_ai.preview import _eval_molang, _random_values, _read_png, _render_schemes, _write_png, project_camera, render_preview
 from effekseer_ai.ir_to_bbs import convert_effect_ir
 
 
@@ -86,3 +86,13 @@ def test_preview_evaluates_stable_random_lerp_and_effekseer_frame_age() -> None:
     # Effekseer PVA velocity is per 60-fps source frame.
     assert _eval_molang("1 * variable.particle_age * 60", 1, 2, randoms) == 60
     assert randoms == _random_values(7)
+
+
+def test_viewer_camera_projection_is_fixed_perspective_and_angle_sensitive() -> None:
+    center = project_camera((0, 0, 0), 512, 512)
+    assert center == (256, 256)
+    right = project_camera((1, 0, 0), 512, 512)
+    assert right is not None and right[0] > 256
+    turned = project_camera((1, 0, 0), 512, 512, {"angle_y": 90})
+    assert turned is not None and turned[0] == 256 and turned[1] != 256
+    assert project_camera((-100, 0, 0), 512, 512, {"distance": 15}) is None
