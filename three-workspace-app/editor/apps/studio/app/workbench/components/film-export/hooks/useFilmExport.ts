@@ -3,6 +3,9 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
 import { chooseDirectory, saveJob } from '../../scene-render/utils'
 import { useStudioLocale } from '../../../../../src/devtools/localePreference'
+import { readFilmFrameAspect } from '../../../../../src/filmFrame'
+
+function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
 
 export function useFilmExport(project: UnifiedProject) {
   const vi = useStudioLocale() === 'vi'
@@ -10,9 +13,10 @@ export function useFilmExport(project: UnifiedProject) {
   const sequences = project.scene.content.editorial?.sequences ?? []
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
   const [sequenceId, setSequenceId] = useState(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
+  const [exportMode, setExportMode] = useState<'film' | 'series'>('film')
   const [startFrame, setStartFrame] = useState(project.scene.content.timeline.frameStart)
   const [endFrame, setEndFrame] = useState(project.scene.content.timeline.frameEnd)
-  const [viewportAspect, setViewportAspect] = useState(16 / 9)
+  const [viewportAspect, setViewportAspect] = useState(readFilmFrameAspect(project.extensions))
   const [filmName, setFilmName] = useState(project.name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'project-film')
   const [busy, setBusy] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
@@ -24,8 +28,8 @@ export function useFilmExport(project: UnifiedProject) {
     setBusy(true); setError('')
     try {
       const directory = await chooseDirectory()
-      await saveJob(project.projectId, job, directory, 'film')
-      setStatus(vi ? `Đã lưu gói Film · revision ${job.sourceRevision}` : `Saved Film package · revision ${job.sourceRevision}`)
+      await saveJob(project.projectId, job, directory, isSeriesJob(job) ? 'film-series' : 'film')
+      setStatus(vi ? `Đã lưu gói ${isSeriesJob(job) ? 'cả tập' : 'Film'} · revision ${job.sourceRevision}` : `Saved ${isSeriesJob(job) ? 'episode' : 'Film'} package · revision ${job.sourceRevision}`)
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === 'AbortError')) setError(cause instanceof Error ? cause.message : String(cause))
     } finally { setBusy(false) }
@@ -35,15 +39,17 @@ export function useFilmExport(project: UnifiedProject) {
     if (busy) return
     if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
     if (!sequences.some((sequence) => sequence.id === sequenceId)) { setError(vi ? 'Chọn chuỗi camera có trong dự án.' : 'Choose a camera sequence in the project.'); return }
-    if (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) || startFrame < project.scene.content.timeline.frameStart || endFrame > project.scene.content.timeline.frameEnd || endFrame < startFrame) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
-    if (!Number.isFinite(viewportAspect) || viewportAspect <= 0 || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) { setError(vi ? 'Aspect phải dương; tên gói cần 1–64 ký tự ASCII an toàn và không kết thúc bằng dấu chấm.' : 'Aspect must be positive; the package name needs 1–64 safe ASCII characters and cannot end with a period.'); return }
+    if (exportMode === 'film' && (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) || startFrame < project.scene.content.timeline.frameStart || endFrame > project.scene.content.timeline.frameEnd || endFrame < startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
+    const maxNameLength = exportMode === 'series' ? 56 : 64
+    if (!Number.isFinite(viewportAspect) || viewportAspect <= 0 || filmName.length > maxNameLength || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filmName) || filmName.endsWith('.')) { setError(vi ? `Aspect phải dương; tên gói cần 1–${maxNameLength} ký tự ASCII an toàn và không kết thúc bằng dấu chấm.` : `Aspect must be positive; the package name needs 1–${maxNameLength} safe ASCII characters and cannot end with a period.`); return }
     setBusy(true); setError(''); setCompletedJob(null); setStatus(vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…')
     try {
       const directory = await chooseDirectory()
       const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
-        command: 'film.export', args: { characterIds, sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
+        command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
+        args: exportMode === 'series' ? { characterIds, sequenceId, viewportAspect, name: filmName, content: 'characters' } : { characterIds, sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
       const jobId = String(started.result.jobId)
-      setActiveJobId(jobId); setStatus(vi ? 'Đang lấy mẫu và xuất Film…' : 'Sampling and exporting Film…')
+      setActiveJobId(jobId); setStatus(exportMode === 'series' ? (vi ? 'Đang chia đoạn và xuất cả tập…' : 'Segmenting and exporting episode…') : (vi ? 'Đang lấy mẫu và xuất Film…' : 'Sampling and exporting Film…'))
       let job = await loadUnifiedJob(project.projectId, jobId)
       for (let attempt = 0; attempt < 900 && (job.state === 'queued' || job.state === 'running'); attempt++) {
         setStatus(vi ? `Đang xuất Film · ${Math.round(job.progress * 100)}% · revision ${job.sourceRevision}` : `Exporting Film · ${Math.round(job.progress * 100)}% · revision ${job.sourceRevision}`)
@@ -56,8 +62,9 @@ export function useFilmExport(project: UnifiedProject) {
       }
       if (job.state !== 'succeeded') throw new Error(job.error?.message ?? `Film export kết thúc với trạng thái ${job.state}.`)
       setCompletedJob(job); setStatus(vi ? 'Xuất xong · đang lưu ZIP đã xác minh…' : 'Export complete · saving the verified ZIP…')
-      await saveJob(project.projectId, job, directory, 'film')
-      setStatus(vi ? `Đã lưu gói Film · revision ${job.sourceRevision}` : `Saved Film package · revision ${job.sourceRevision}`)
+      const prefix = isSeriesJob(job) ? 'film-series' : 'film'
+      await saveJob(project.projectId, job, directory, prefix)
+      setStatus(vi ? `Đã lưu gói ${prefix === 'film-series' ? 'cả tập' : 'Film'} · revision ${job.sourceRevision}` : `Saved ${prefix === 'film-series' ? 'episode' : 'Film'} package · revision ${job.sourceRevision}`)
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === 'AbortError')) setError(cause instanceof Error ? cause.message : String(cause))
       setStatus('')
@@ -72,6 +79,6 @@ export function useFilmExport(project: UnifiedProject) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
-  return { characters, sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame,
+  return { characters, sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
     viewportAspect, setViewportAspect, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain }
 }

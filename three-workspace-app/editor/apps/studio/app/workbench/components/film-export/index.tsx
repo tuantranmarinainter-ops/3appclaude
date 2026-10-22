@@ -9,8 +9,14 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
   const state = useFilmExport(project)
   return (
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
-      <h2 id="wb-film-export-title">{vi ? 'Gói BBS FS 2.4' : 'BBS FS 2.4 package'}</h2>
+      <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
       <div className="wb-film-export-controls">
+        <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
+          <select value={state.exportMode} onChange={(event) => state.setExportMode(event.target.value as 'film' | 'series')} disabled={state.busy}>
+            <option value="film">{vi ? 'Film hiện tại' : 'Current Film'}</option>
+            <option value="series">{vi ? 'Cả tập' : 'Entire episode'}</option>
+          </select>
+        </label>
         <label>{vi ? 'Nhân vật' : 'Characters'}
           <select multiple value={state.characterIds} onChange={(event) => state.setCharacterIds(Array.from(event.target.selectedOptions, (option) => option.value))} disabled={state.busy} aria-label={vi ? 'Nhân vật cần xuất gói BBS FS' : 'Characters to export'}>
             {state.characters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
@@ -21,11 +27,11 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
             {state.sequences.map((sequence) => <option key={sequence.id} value={sequence.id}>{sequence.id}</option>)}
           </select>
         </label>
-        <label>{vi ? 'Frame đầu' : 'Start frame'}<input type="number" value={state.startFrame} onChange={(event) => state.setStartFrame(Number(event.target.value))} disabled={state.busy} /></label>
-        <label>{vi ? 'Frame cuối' : 'End frame'}<input type="number" value={state.endFrame} onChange={(event) => state.setEndFrame(Number(event.target.value))} disabled={state.busy} /></label>
+        {state.exportMode === 'film' && <label>{vi ? 'Frame đầu' : 'Start frame'}<input type="number" value={state.startFrame} onChange={(event) => state.setStartFrame(Number(event.target.value))} disabled={state.busy} /></label>}
+        {state.exportMode === 'film' && <label>{vi ? 'Frame cuối' : 'End frame'}<input type="number" value={state.endFrame} onChange={(event) => state.setEndFrame(Number(event.target.value))} disabled={state.busy} /></label>}
         <label>Aspect<input type="number" min="0.01" step="0.01" value={state.viewportAspect} onChange={(event) => state.setViewportAspect(Number(event.target.value))} disabled={state.busy} /></label>
-        <label>{vi ? 'Tên gói' : 'Package name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} disabled={state.busy} maxLength={64} /></label>
-        <small>{vi ? 'Gói editable cho BBS FS 2.4; cần FBX/GLB có rig hỗ trợ và camera perspective.' : 'Editable BBS FS 2.4 package; requires a supported FBX/GLB rig and perspective camera.'}</small>
+        <label>{vi ? 'Tên gói' : 'Package name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} disabled={state.busy} maxLength={state.exportMode === 'series' ? 56 : 64} /></label>
+        <small>{vi ? 'Xuất Film editable cho BBS FS 2.7. Chế độ Cả tập tự chia theo giới hạn worker, chỉ cắt ở ranh giới cảnh.' : 'Exports editable Film for BBS FS 2.7. Entire episode splits at shot boundaries to fit worker limits.'}</small>
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.exportFilm()} disabled={state.busy || !state.characters.length || !state.sequences.length}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : (vi ? 'Xuất gói' : 'Export package')}</button>
           {state.busy && state.activeJobId && <button type="button" onClick={() => void state.cancel()}>{vi ? 'Hủy' : 'Cancel'}</button>}
