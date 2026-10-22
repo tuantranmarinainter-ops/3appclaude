@@ -3,7 +3,7 @@ Ngày: 2026-10-22. Trạng thái: DRAFT đặc tả, **chưa có converter, chư
 Quyết định (người dùng chốt, `docs/DECISIONS.md`): đưa VFX vào BBS FS bằng cách chuyển sang particle Snowstorm JSON của BBS,
 phát native; tính năng không hỗ trợ thì chặn hoặc cảnh báo khi xuất. Đích là **BBS FS 2.7**; 2.4 chỉ để đối chiếu (§8). Người dùng chốt lại 2026-10-22: “Nếu 2.7 tốt hơn về efect thì chọn 2.7”, vì 2.4 vẽ particle không blend (`docs/DECISIONS.md`). Hướng addon AAA chỉ khảo sát.
 
-Blend Add (người dùng chốt 2026-10-22): xuất kèm cảnh báo, không chặn; fallback blend alpha + tăng sáng màu (§3).
+Blend Add (người dùng chốt 2026-10-22): xuất kèm cảnh báo, không chặn; dùng phương án 2: alpha theo độ sáng + lõi trắng + emitter quầng (§3).
 Viết code (converter và các bước sau): giao Codex. Session Windows chỉ chạy phần cần máy thật (DLL Effekseer, render, thử BBS FS) và review PR.
 
 ## 1. Nguồn đã đọc (chỉ đọc, không build)
@@ -83,7 +83,7 @@ Mức: **OK** chuyển được; **XẤP XỈ** chuyển được nhưng hình k
 | Color texture (1 ảnh PNG) | `basic_render_parameters.texture` → chép vào `config/bbs/assets/textures/vfx/<effect>/`, link `assets:` | OK |
 | AlphaBlend = Blend | `particles_blend` (blend alpha SRC_ALPHA, 1−SRC_ALPHA) | OK (2.4: chỉ cắt alpha, xem §8) |
 | AlphaBlend = Opacity | `particles_opaque` | OK |
-| AlphaBlend = **Add** (phổ biến nhất) | **Không chặn** (người dùng chốt 2026-10-22). Fallback: `particles_blend` (blend alpha) + **tăng sáng màu**; mỗi node Add có một mục trong `warnings[]` của báo cáo xuất (đường dẫn node, blend gốc, fallback). Không cộng dồn, không loá khi chồng nhiều lớp. | XẤP XỈ + cảnh báo bắt buộc |
+| AlphaBlend = **Add** (phổ biến nhất) | **Không chặn. Phương án 2** (người dùng chốt 2026-10-22, “Ok p an 2”; không sửa mod BBS FS), vẽ bằng `particles_blend`: (1) **texture mới** với alpha = độ sáng của texture gốc (texture Add của Effekseer có nền đen, alpha = 1); (2) **lõi trắng**: pha màu về trắng theo độ sáng; (3) **thêm một emitter quầng** cho mỗi node Add, kích thước ≈ 1.9× và alpha ≈ 0.55× so với node gốc. Mỗi node Add có một mục trong `warnings[]` của báo cáo xuất (đường dẫn node, blend gốc, phương án đã áp). Vẫn không cộng dồn độ sáng khi chồng nhiều lớp. Hệ số 1.9/0.55 cần so ảnh Effekseer với ảnh trong game. | XẤP XỈ + cảnh báo bắt buộc |
 | AlphaBlend = Sub, Mul | — | CHẶN |
 | Color Fixed/Random/Easing/FCurve | `particle_appearance_tinting` (solid / gradient + `interpolant`) | OK (FCurve: XẤP XỈ) |
 | UV Fixed | `billboard.uv` | OK |
@@ -151,4 +151,4 @@ Instance `S:\Minecraft\Minecraft Forge-1.20.1` (Forge 47.4.10 + Sinytra Connecto
 - Mod Fabric chạy qua Connector trên Forge: đường render particle chưa kiểm trong game.
 
 ### Hệ quả (đã chốt)
-Vì 2.4 không có particle bán trong suốt, người dùng chọn **đích 2.7** (2026-10-22). Fallback Add “blend alpha + tăng sáng” giữ nguyên trên 2.7. Ba phương án cho 2.4 (cắt alpha, dither, backport `ca9ae5f`) không còn cần.
+Vì 2.4 không có particle bán trong suốt, người dùng chọn **đích 2.7** (2026-10-22). Blend Add trên 2.7 dùng phương án 2 (alpha theo độ sáng + lõi trắng + emitter quầng, §3). Ba phương án cho 2.4 (cắt alpha, dither, backport `ca9ae5f`) không còn cần.
