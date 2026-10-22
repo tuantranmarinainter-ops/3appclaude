@@ -12,6 +12,44 @@ Kế hoạch: `docs/VFX-APP4-PLAN.md` (DRAFT). Máy: Windows 10 Pro 10.0.19045.
 | G0.3 | Runtime: Effekseer 1.80.6 (`EffekseerCore.dll`) | BLOCKED (thiếu) | Không tìm thấy `EffekseerCore.dll`/thư mục `*effekseer*` trong Downloads, Desktop, Program Files, Program Files (x86), `C:\Tools`, `D:` (độ sâu ≤5); `C:\w01-samples\effekseer\` chưa có. |
 | G0.4 | Mở → sửa → lưu → mở lại một hiệu ứng | NOT_RUN | Cần G0.2 + .NET 9 + Effekseer. |
 | G0.5 | Render preview thật tự động (ảnh theo mốc thời gian) | NOT_RUN | Repo gốc không có renderer; xem "Đường render đề xuất". Chưa có ảnh nào → không tuyên bố PASS. |
+| G0.6 | **Chạy trong BBS FS** (gate MVP, tách khỏi cấu trúc/hình/hiệu năng) | BLOCKED | BBS FS 2.4 không có đường phát Effekseer trong mã nguồn (xem mục "BBS FS phát Effekseer bằng cách nào"). Cần người dùng chốt đường phát. |
+
+## BBS FS phát Effekseer bằng cách nào (MVP, người dùng chốt 2026-10-22)
+Tiêu chí MVP (`docs/DECISIONS.md`): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật. Không đưa vào gói
+hiệu ứng chưa kiểm; tính năng vượt khả năng bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất.
+
+### Đã đọc (chỉ đọc, không build/chạy)
+Nguồn BBS FS trên máy: `C:\Users\Administrator\Documents\ChatGPT\BBS MINECRAFT\.build-tools\bbs-fs-1.20.1`
+(đích nội bộ commit `0085f77` = `mod_version=2.4`, Minecraft 1.20.1, **Fabric** loader 0.16.14, fabric-api 0.92.1; checkout HEAD `998c9d5` = 2.7).
+
+| Câu hỏi | Kết quả | Căn cứ |
+| --- | --- | --- |
+| BBS FS có phát Effekseer (`.efk`/`.efkefc`) không? | **Không** ở cả 2.4 và 2.7 | `git grep -i "effekseer\|aaaparticles\|efkefc"` trên `.java` của `0085f77` và `998c9d5`: 0 file. Kết quả duy nhất là chuỗi tiếng Đức/Hungary chứa "Partikeleffekt". |
+| BBS FS phát particle bằng gì? | `ParticleForm` (scheme JSON kiểu Bedrock/Snowstorm, `format_version` 1.10.0, MoLang, `user1..6`, `paused`, `texture`) và `VanillaParticleForm` (particle vanilla), thêm `TrailForm` | `forms/forms/ParticleForm.java`, `particles/ParticleParser.java`, `particles/ParticleManager.java` (JSON storage) |
+| Gắn vào actor hay xương? | Form gắn vào replay/actor của film; form con gắn vào xương qua `BodyPart` (`forms/forms/BodyPart.java`, `AnchorForm`). Đồng bộ thời gian theo tick film 20 Hz. | Đọc cấu trúc file; chưa kiểm trong game |
+| AAA Particles trên máy? | Không thấy jar AAA/Effekseer. `.minecraft/mods` hiện là bộ 1.12.2 (Blockbuster 2.7.1, mclib…). | `find` trong AppData/Roaming, Downloads, Desktop, curseforge (độ sâu ≤6) |
+
+### Hệ quả
+Hiện **không có đường nào** để một `.efkefc`/`.efk` chạy trong film BBS FS 2.4. Ba hướng, cần người dùng chọn:
+
+1. **Addon BBS gọi AAA Particles** — thêm một Form mới (ví dụ `EffekseerForm`) trong fork BBS FS, gọi API của AAA
+   Particles (bản Fabric 1.20.1) để phát `.efkefc` theo tick film, gắn actor/xương như form khác, hỗ trợ seek/reset.
+   Giữ đầy đủ Effekseer; là việc Java mới ở repo BBS FS (ngoài `vfx/`), phụ thuộc AAA có API phát + seek theo thời gian
+   hay không (chưa kiểm). Định dạng: `.efkefc` trong `assets/<namespace>/effeks/` (theo tài liệu AAA, chưa kiểm bản thật).
+2. **Chuyển Effekseer → particle BBS (Snowstorm JSON)** — chạy native trong BBS 2.4, không cần mod thêm, nhưng chỉ
+   chuyển được tập con (sprite billboard, emitter, màu/size curve). Ribbon, track, ring, model, distortion, material
+   tùy biến, GPU particle sẽ bị chặn/cảnh báo khi xuất. Effekseer khi đó chỉ là công cụ soạn.
+3. **AAA phát độc lập (lệnh/khối)** ngoài film — không đồng bộ seek/render film; không đạt MVP "chạy trong film".
+
+Đề xuất: làm hướng 2 trước cho MVP (kiểm được bằng BBS 2.4 sẵn có, chặn rõ tính năng không hỗ trợ), song song
+khảo sát API AAA cho hướng 1. Mọi hướng đều cần đề xuất với người dùng trước khi sửa ngoài `vfx/` (BBS FS, App 2).
+
+### Cần người dùng cung cấp để kiểm gate "chạy trong BBS FS"
+- Bản BBS FS đang chơi thật: 2.4 hay 2.7 (hoặc jar build riêng), file jar và hash.
+- Instance Minecraft 1.20.1 Fabric đang dùng (đường dẫn thư mục game, danh sách mods). Có AAA Particles không, bản nào, Fabric hay Forge.
+- 1–2 hiệu ứng mẫu người dùng muốn thấy chạy (hoặc đồng ý dùng mẫu CC0 do App 4 tạo).
+- Cách xác nhận "chạy được": ảnh/video chụp trong game ở các tick cụ thể, do người dùng chụp hay cho phép tự động
+  (có `MCP_SCREEN_CAPTURE` trên máy, chưa đọc).
 
 ## Cần người dùng đồng ý tải (chưa tải gì)
 | File | Nguồn | Dung lượng | Dùng cho |
@@ -56,4 +94,5 @@ $env:EFFEKSEER_AI_BIN_DIR = 'C:\w01-samples\effekseer\1.80.6\Tool\bin'
 3. Xem preview bằng cách nào: ảnh PNG theo mốc thời gian (mặc định), bảng ảnh ghép, hay video MP4?
 4. Chấp nhận preview qua WebGL (đường B) làm preview tự động chính, biết rằng có thể khác Editor/AAA?
 5. License mặc định khi tìm asset: chỉ CC0 (đề xuất) hay cho cả CC-BY có ghi công?
-6. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được?
+6. Đường phát VFX trong BBS FS: hướng 1 (addon BBS + AAA), 2 (chuyển sang particle BBS) hay cả hai? Xem mục BBS ở trên.
+7. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được?
