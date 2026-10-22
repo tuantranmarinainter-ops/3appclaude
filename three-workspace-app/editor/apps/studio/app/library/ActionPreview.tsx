@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-export function ActionPreview({ uuid, animationIndex }: { uuid: string; animationIndex: number }) {
+export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: string; animationIndex: number; characterUrl: string }) {
   const host = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -18,6 +18,7 @@ export function ActionPreview({ uuid, animationIndex }: { uuid: string; animatio
       try {
         const THREE = await import('three')
         const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
+        const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js')
         if (disposed || !element) return
         const scene = new THREE.Scene()
         scene.background = new THREE.Color('#15191f')
@@ -27,11 +28,17 @@ export function ActionPreview({ uuid, animationIndex }: { uuid: string; animatio
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
         element.replaceChildren(renderer.domElement)
-        const loader = new GLTFLoader()
-        const gltf = await loader.loadAsync(`/api/library/animation/${encodeURIComponent(uuid)}`)
+        // Built-in characters are Draco-compressed; Studio serves the decoder at /draco/.
+        const draco = new DRACOLoader().setDecoderPath('/draco/')
+        const loader = new GLTFLoader().setDRACOLoader(draco)
+        const [character, action] = await Promise.all([
+          loader.loadAsync(characterUrl),
+          loader.loadAsync(`/api/library/animation/${encodeURIComponent(uuid)}`),
+        ])
+        draco.dispose()
         if (disposed) { renderer.dispose(); return }
-        scene.add(gltf.scene)
-        const bounds = new THREE.Box3().setFromObject(gltf.scene)
+        scene.add(character.scene)
+        const bounds = new THREE.Box3().setFromObject(character.scene)
         const size = bounds.getSize(new THREE.Vector3())
         const center = bounds.getCenter(new THREE.Vector3())
         if (!Number.isFinite(size.length()) || size.length() < 0.0001) throw new Error('Action GLB has no previewable geometry')
@@ -39,9 +46,19 @@ export function ActionPreview({ uuid, animationIndex }: { uuid: string; animatio
         camera.position.set(center.x + span * 1.8, center.y + span * 0.7, center.z + span * 2.2)
         camera.lookAt(center)
         camera.near = Math.max(0.001, span / 1000); camera.far = span * 100; camera.updateProjectionMatrix()
-        const clip = gltf.animations[animationIndex]
+        const clip = action.animations[animationIndex]
         if (!clip) throw new Error('Action animation clip is missing from its GLB')
-        const mixer = new THREE.AnimationMixer(gltf.scene)
+        const canonical = (name: string) => name.split(':').at(-1)!.replace(/^mixamorig\d*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+        const targets = new Map<string, string>()
+        character.scene.traverse((object) => { if (object.name) targets.set(canonical(object.name), object.name) })
+        for (const track of clip.tracks) {
+          const property = track.name.match(/\.(position|quaternion|scale)$/)?.[1]
+          if (!property) continue
+          const sourceBone = track.name.slice(0, -(property.length + 1))
+          const targetBone = targets.get(canonical(sourceBone))
+          if (targetBone) track.name = `${targetBone}.${property}`
+        }
+        const mixer = new THREE.AnimationMixer(character.scene)
         mixer.clipAction(clip).play()
         const clock = new THREE.Clock()
         const resize = () => {
@@ -55,6 +72,6 @@ export function ActionPreview({ uuid, animationIndex }: { uuid: string; animatio
       } catch (cause) { if (!disposed) setError(cause instanceof Error ? cause.message : String(cause)) }
     })()
     return () => { disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); cleanup?.(); renderer?.dispose(); element.replaceChildren() }
-  }, [animationIndex, uuid])
+  }, [animationIndex, characterUrl, uuid])
   return <div ref={host} aria-label="Animation preview" style={{ width: '100%', height: 230, background: '#15191f', display: 'grid', placeItems: 'center' }}>{error && <span role="status">{error}</span>}</div>
 }

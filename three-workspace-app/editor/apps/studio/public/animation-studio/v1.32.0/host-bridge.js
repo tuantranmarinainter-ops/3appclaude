@@ -20,6 +20,38 @@
   try { parentAccessible = parent !== window && parent.location.origin === location.origin } catch {}
   const editorIdentity = () => { const c = localContext(); return JSON.stringify([c.rig, c.rootUuid, c.slot, c.activeRoot]) }
   const digest = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('')
+  const glbParts = bytes => {
+    const view = new DataView(bytes), length = view.getUint32(8, true)
+    if (view.getUint32(0, true) !== 0x46546c67 || length !== bytes.byteLength) throw Error('VALIDATION_FAILED')
+    let offset = 12, json, bin
+    while (offset < length) { const size = view.getUint32(offset, true), type = view.getUint32(offset + 4, true), chunk = bytes.slice(offset + 8, offset + 8 + size); if (type === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(chunk).trim()); if (type === 0x004e4942) bin = chunk; offset += 8 + size }
+    if (!json || !bin || json.buffers?.length !== 1 || json.buffers[0].uri) throw Error('VALIDATION_FAILED')
+    return { json, bin }
+  }
+  const composeLibraryAction = (characterBytes, actionBytes, animationIndex) => {
+    const character = glbParts(characterBytes), action = glbParts(actionBytes), doc = character.json, src = action.json
+    if (!Number.isInteger(animationIndex) || !src.animations?.[animationIndex] || doc.nodes?.length > 100000 || src.nodes?.length > 100000) throw Error('ASSET_MISSING')
+    const normalize = value => String(value || '').split(':').pop().replace(/^mixamorig\d*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+    const targetNodes = new Map((doc.nodes || []).map((node, index) => [normalize(node.name), index]).filter(([name]) => name))
+    const animation = structuredClone(src.animations[animationIndex])
+    for (const channel of animation.channels || []) {
+      const sourceName = src.nodes?.[channel.target?.node]?.name, target = targetNodes.get(normalize(sourceName))
+      if (!sourceName || target === undefined) throw Error('PROFILE_MISMATCH')
+      channel.target.node = target
+    }
+    const baseOffset = (character.bin.byteLength + 3) & ~3, actionViews = (src.bufferViews || []).map(view => ({ ...view, buffer: 0, byteOffset: (view.byteOffset || 0) + baseOffset }))
+    const accessors = (src.accessors || []).map(accessor => { const copy = structuredClone(accessor); if (copy.bufferView !== undefined) copy.bufferView += (doc.accessors || []).length; if (copy.sparse) { copy.sparse.indices.bufferView += (doc.accessors || []).length; copy.sparse.values.bufferView += (doc.accessors || []).length } return copy })
+    for (const sampler of animation.samplers || []) { sampler.input += (doc.accessors || []).length; sampler.output += (doc.accessors || []).length }
+    doc.bufferViews = [...(doc.bufferViews || []), ...actionViews]; doc.accessors = [...(doc.accessors || []), ...accessors]; doc.animations = [animation]
+    const bin = new Uint8Array(baseOffset + action.bin.byteLength); bin.set(character.bin); bin.set(action.bin, baseOffset); doc.buffers = [{ byteLength: bin.byteLength }]
+    const encoder = new TextEncoder(), rawJson = encoder.encode(JSON.stringify(doc)), json = new Uint8Array((rawJson.byteLength + 3) & ~3); json.fill(0x20); json.set(rawJson)
+    const binPadded = new Uint8Array((bin.byteLength + 3) & ~3); binPadded.set(bin)
+    const out = new Uint8Array(12 + 8 + json.byteLength + 8 + binPadded.byteLength), header = new DataView(out.buffer)
+    header.setUint32(0, 0x46546c67, true); header.setUint32(4, 2, true); header.setUint32(8, out.byteLength, true)
+    header.setUint32(12, json.byteLength, true); header.setUint32(16, 0x4e4f534a, true); out.set(json, 20)
+    const binHeader = 20 + json.byteLength; header.setUint32(binHeader, binPadded.byteLength, true); header.setUint32(binHeader + 4, 0x004e4942, true); out.set(binPadded, binHeader + 8)
+    return out.buffer
+  }
   const hostVisible = () => {
     try {
       if (!localActive || document.visibilityState === 'hidden') return false
@@ -98,7 +130,7 @@
       if (['projectId', 'sessionId', 'epoch', 'characterId', 'serverInstance'].some(key => response[key] !== lease[key])) throw Error('SESSION_REPLACED')
       for (const cmd of response.commands || []) {
         if (editorIdentity() !== loadedRig) { await resetLocal(); throw Error('SESSION_REPLACED') }
-        if (['export_animation','shotOpen','shotExport'].includes(cmd.tool)) {
+        if (['export_animation','shotOpen','shotExport','libraryActionOpen'].includes(cmd.tool)) {
           await artifactCommand(cmd, lease, generation)
           if (localLease !== lease) return
           continue
@@ -170,6 +202,23 @@
               return {result:{ok:true,value:shotIdentity()},transition:true}
             }finally{opening=false;if(!entry.release)document.body.inert=wasInert}
           }
+          if(cmd.tool==='libraryActionOpen'){
+            const proof=cmd.action
+            if(!proof||proof.actionUuid!==cmd.args.actionUuid||proof.characterId!==lease.characterId||typeof proof.characterAssetId!=='string'||!Number.isInteger(proof.glbAnimationIndex)||proof.glbAnimationIndex<0||typeof proof.glbSha256!=='string'||typeof proof.characterSha256!=='string')throw Error('IDENTITY_MISMATCH')
+            const [actionResponse,characterResponse]=await Promise.all([
+              fetch(`/api/library/animation/${encodeURIComponent(proof.actionUuid)}`,{signal:globalThis.AbortSignal?.timeout?.(45000)}),
+              fetch(`/api/unified/projects/${encodeURIComponent(lease.projectId)}/assets/${encodeURIComponent(proof.characterAssetId)}/source`,{signal:globalThis.AbortSignal?.timeout?.(45000)})
+            ])
+            if(!actionResponse.ok||!characterResponse.ok)throw Error('ASSET_MISSING')
+            const [actionBytes,characterBytes]=await Promise.all([actionResponse.arrayBuffer(),characterResponse.arrayBuffer()])
+            if(await digest(actionBytes)!==proof.glbSha256||await digest(characterBytes)!==proof.characterSha256)throw Error('IDENTITY_MISMATCH')
+            await verify();assertClean()
+            const combined=composeLibraryAction(characterBytes,actionBytes,proof.glbAnimationIndex)
+            await window.__studio.installAsset(combined,`${proof.name}.glb`,true)
+            loadedSha=await digest(combined);loadedRig=editorIdentity();savedSnapshot=JSON.stringify(window.__studio.serialized(false))
+            await verify(true)
+            return {result:{ok:true,value:{actionUuid:proof.actionUuid,characterId:proof.characterId,characterAssetId:proof.characterAssetId,glbAnimationIndex:proof.glbAnimationIndex,glbSha256:proof.glbSha256}}}
+          }
           if(cmd.tool==='shotExport')checkShot(cmd.shot)
           const output=cmd.tool==='shotExport'?{bytes:await window.__studio.shot.exportZip({includeMinecraft20:!!cmd.args.includeMinecraft20}),filename:'shot.result.zip'}:await window.__studio.director.exportBytes(cmd.args.format,cmd.expectedAnimationRevision)
           entry.release=window.__studio.director.lockArtifact();entry.locked=true
@@ -235,7 +284,7 @@
   addEventListener('message', async (event) => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.channel !== CHANNEL || typeof event.data.requestId !== 'string') return
     const { requestId, type, value } = event.data
-    const replaces = type === 'open' || type === 'shotOpen' || type === 'app3-bind'
+    const replaces = type === 'open' || type === 'shotOpen' || type === 'libraryActionOpen' || type === 'app3-bind'
     if (replaces && (opening || artifactBusy)) { reply(requestId, false, 'APP3_BUSY'); return }
     if (replaces) opening = true
     try {

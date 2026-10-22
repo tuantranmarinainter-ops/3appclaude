@@ -36,7 +36,7 @@ function scrollToSection(scroll: HTMLElement | null, id: string): void {
 
 export function CatalogPane({ tab }: { tab: LibraryTab }): ReactElement {
   const t = useT()
-  const { useStore, adapter } = useDirector()
+  const { useStore, adapter, documentId: apiDocumentId } = useDirector()
   const [queryByTab, setQueryByTab] = useState<Partial<Record<LibraryTab, string>>>({})
   const [anchorByTab, setAnchorByTab] = useState<Partial<Record<LibraryTab, string>>>({})
   const query = queryByTab[tab] ?? ''
@@ -140,6 +140,12 @@ export function CatalogPane({ tab }: { tab: LibraryTab }): ReactElement {
         onChip={onChip}
         catalog={catalog}
       />
+      {/* The rail has no Motion tab (TAB_ORDER), so offer the shared library from the Characters tab as well. */}
+      {(tab === 'motion' || tab === 'character') && selectedCharacter && adapter.browseLibraryAction ? (
+        <button type="button" className="t3d-leftrail-message" onClick={() => void run('library', async () => { await adapter.browseLibraryAction?.(apiDocumentId, selectedCharacter.id); return null })}>
+          Open Action Library for selected Character
+        </button>
+      ) : null}
       <div
         ref={setScrollEl}
         className="t3d-leftrail-scroll"

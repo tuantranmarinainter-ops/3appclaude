@@ -127,6 +127,56 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     return doc
   }
 
+  async browseLibraryAction(documentId: string, characterNodeId: string): Promise<void> {
+    if (this.base !== '/api/unified/projects') throw new Error('Shared-library Actions can only be placed in an App 2 project')
+    const project = (await loadUnifiedProject(documentId)).project
+    if (!Object.values(project.characters).some((item) => item.nodeId === characterNodeId)) throw new Error('Select a Character in the current App 2 project first')
+    const popup = window.open('/library?app2=1', 'bbs-action-library', 'popup,width=1100,height=760')
+    if (!popup) throw new Error('Allow popups to choose an Action from the library')
+    await new Promise<void>((resolve, reject) => {
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin || event.source !== popup) return
+        const data = event.data as { type?: unknown; actionUuid?: unknown }
+        if (typeof data?.actionUuid !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.actionUuid)) return
+        if (data.type !== 'bbs-library-place-action' && data.type !== 'bbs-library-open-app3') return
+        window.removeEventListener('message', onMessage)
+        popup.close()
+        const operation = data.type === 'bbs-library-place-action'
+          ? this.placeLibraryAction(documentId, data.actionUuid, characterNodeId)
+          : this.openLibraryAction(documentId, data.actionUuid)
+        void operation.then(resolve, reject)
+      }
+      window.addEventListener('message', onMessage)
+    })
+  }
+
+  async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {
+    if (this.base !== '/api/unified/projects') throw new Error('Shared-library Actions can only be placed in an App 2 project')
+    const project = (await loadUnifiedProject(documentId)).project
+    const character = Object.values(project.characters).find((item) => item.nodeId === characterNodeId)
+    if (!character) throw new Error('Select a Character in the current App 2 project first')
+    const result = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
+      command: 'library.place', args: { actionUuid, characterId: character.id } })
+    this.projects.set(project.projectId, { ...project, revision: result.revision })
+    this.revisions.set(project.projectId, result.revision)
+    window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: result.revision } }))
+    window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+  }
+
+  async openLibraryAction(documentId: string, actionUuid: string): Promise<void> {
+    if (this.base !== '/api/unified/projects') throw new Error('App 3 library Actions require an App 2 project')
+    const project = (await loadUnifiedProject(documentId)).project
+    const listed = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision, command: 'app3.session.list', args: {} })
+    const sessions = Array.isArray(listed.result.sessions) ? listed.result.sessions as Array<Record<string, unknown>> : []
+    const session = sessions.find(item => item.characterId && item.active === true && item.ready === true && Object.hasOwn(project.characters, String(item.characterId)))
+    if (!session) throw new Error('Open Animation Studio on a compatible App 2 Character first')
+    const identity = { sessionId: session.sessionId, epoch: session.epoch, characterId: session.characterId, serverInstance: session.serverInstance }
+    const context = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision, command: 'app3.context.get', args: identity })
+    const expectedAnimationRevision = String((context.result.context as Record<string, unknown> | undefined)?.revision ?? '')
+    if (!expectedAnimationRevision) throw new Error('Animation Studio has no current revision')
+    await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision, command: 'app3.command.submit', args: { ...identity, tool: 'libraryActionOpen', parameters: { actionUuid }, expectedAnimationRevision } })
+  }
+
   saveDocument?: (documentId: string, doc: DirectorDocument) => Promise<void> = async (documentId, doc) => {
     const res = await fetch(`${this.base}/${documentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) })
     if (!res.ok) throw new Error(translateStudio('保存失败: HTTP {{status}}', { status: res.status }))
