@@ -71,18 +71,18 @@ export function audibleAudioCues(cues: readonly AudioCue[], durations: ReadonlyM
   })
 }
 
-export interface FilmAudioEntry { file: string; kind: AudioCueKind; startTick: number; offsetSeconds: number; gainDb: number; speaker?: string; text?: string }
+export interface FilmAudioEntry { source: string; kind: AudioCueKind; startTick: number; offsetSeconds: number; gainDb: number; speaker?: string; text?: string }
 
 /** Film sidecar: cues heard inside [startFrame, endFrame], ticks at 20 Hz from the Film start; earlier starts get an offset. */
 export function filmAudioSchedule(cues: readonly AudioCue[], durations: ReadonlyMap<string, number>, startFrame: number, endFrame: number, fps: number,
-  fileOf: (assetId: string) => string): FilmAudioEntry[] {
+  sourceOf: (assetId: string) => string): FilmAudioEntry[] {
   const out: FilmAudioEntry[] = []
   for (const cue of cues) {
     const duration = durations.get(cue.assetId) ?? 0
     const cueEnd = cue.frameStart + duration * fps
     if (cue.frameStart > endFrame || cueEnd <= startFrame) continue
     const offsetSeconds = Math.max(0, (startFrame - cue.frameStart) / fps)
-    out.push({ file: fileOf(cue.assetId), kind: cue.kind, startTick: Math.max(0, Math.round((cue.frameStart - startFrame) * 20 / fps)), offsetSeconds,
+    out.push({ source: sourceOf(cue.assetId), kind: cue.kind, startTick: Math.max(0, Math.round((cue.frameStart - startFrame) * 20 / fps)), offsetSeconds,
       gainDb: cue.gainDb, ...(cue.speaker ? { speaker: cue.speaker } : {}), ...(cue.text ? { text: cue.text } : {}) })
   }
   return out.sort((a, b) => a.startTick - b.startTick)

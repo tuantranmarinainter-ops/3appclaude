@@ -42,8 +42,8 @@ test('plays the right cues from the right offset and shows the latest voice subt
 test('Film schedule keeps cues heard in the range with 20 Hz ticks and offsets for earlier starts', () => {
   const durations = new Map([['v', 1], ['m', 10]])
   const schedule = filmAudioSchedule([cue({ kind: 'music', assetId: 'm', frameStart: 0 }), cue({ kind: 'voice', assetId: 'v', frameStart: 75, text: 'A' }),
-    cue({ assetId: 'v', frameStart: 200 })], durations, 60, 119, 30, (id) => `audio/${id}.wav`)
-  assert.deepEqual(schedule.map((item) => [item.file, item.kind, item.startTick, item.offsetSeconds]), [['audio/m.wav', 'music', 0, 2], ['audio/v.wav', 'voice', 10, 0]])
+    cue({ assetId: 'v', frameStart: 200 })], durations, 60, 119, 30, (id) => `${id}-name`)
+  assert.deepEqual(schedule.map((item) => [item.source, item.kind, item.startTick, item.offsetSeconds]), [['m-name', 'music', 0, 2], ['v-name', 'voice', 10, 0]])
 })
 
 test('mixdown ducks music by at least 6 dB while a voice speaks', () => {

@@ -44,7 +44,7 @@ export function VfxCuePanel(props: VfxCuePanelProps) {
     <div className={styles.list}>
       {!rangeCues.length && <p role="status">{vi ? 'Chưa có hiệu ứng trong khoảng cảnh này.' : 'No effects in this scene range yet.'}</p>}
       {rangeCues.map((cue) => <article className={styles.item} key={cue.id}>
-        <div><strong>{cue.effect}</strong><span>{cue.frameStart}–{cue.frameEnd} · {vi ? 'cỡ' : 'scale'} {cue.scale}</span>
+        <div><strong>{cue.effect}</strong><span>{cue.frameStart}–{cue.frameEnd} · {vi ? 'cỡ' : 'scale'} {cue.scale}{cue.play === 'manual' ? (vi ? ' · phát thủ công' : ' · manual') : ''}</span>
           {cue.attachNodeId && <small>{vi ? 'Gắn với' : 'Attached to'} {nodes.find((node) => node.id === cue.attachNodeId)?.name ?? cue.attachNodeId}{cue.attachBone ? ` · ${cue.attachBone}` : ''}</small>}</div>
         <div className={styles.itemActions}><button type="button" disabled={busy} onClick={() => editCue(cue)}>{vi ? 'Sửa' : 'Edit'}</button><button type="button" disabled={busy} onClick={() => void remove(cue.id)}>{vi ? 'Xóa' : 'Delete'}</button></div>
       </article>)}
@@ -61,6 +61,10 @@ export function VfxCuePanel(props: VfxCuePanelProps) {
         <label>{vi ? 'Xoay Y (độ)' : 'Yaw (degrees)'}<input type="number" step="1" value={form.yaw} onChange={(event) => setField('yaw', Number(event.target.value))} /></label>
         <label>{vi ? 'Cỡ' : 'Scale'}<input type="number" min="0.001" step="0.1" value={form.scale} onChange={(event) => setField('scale', Number(event.target.value))} /></label>
       </div>
+      <label>{vi ? 'Trong BBS FS' : 'In BBS FS'}<select value={form.play ?? 'auto'} onChange={(event) => setField('play', event.target.value as 'auto' | 'manual')}>
+        <option value="auto">{vi ? 'Tự phát khi phim chạy tới' : 'Play when the Film reaches it'}</option>
+        <option value="manual">{vi ? 'Phát thủ công (đặt sẵn, tạm dừng)' : 'Manual (placed, paused)'}</option>
+      </select></label>
       <label>{vi ? 'Gắn vào node' : 'Attach to node'}<select value={form.attachNodeId ?? ''} onChange={(event) => setForm((current) => ({ ...current, attachNodeId: event.target.value || undefined, attachBone: undefined }))}>
         <option value="">{vi ? 'Không gắn' : 'World space'}</option>{nodes.map((node) => <option key={node.id} value={node.id}>{node.name}</option>)}
       </select></label>

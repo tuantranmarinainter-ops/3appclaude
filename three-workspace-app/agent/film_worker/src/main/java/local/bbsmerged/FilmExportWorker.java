@@ -211,6 +211,7 @@ public final class FilmExportWorker {
                 add.addProperty("label", "VFX " + text(effect, "label")); add.addProperty("effect", text(effect, "effect"));
                 for (String component : List.of("x", "y", "z", "yaw", "scale")) add.addProperty(component, finite(effect, component));
                 add.addProperty("startTick", integer(effect, "startTick", 0, duration)); add.addProperty("endTick", integer(effect, "endTick", 1, duration)); add.addProperty("durationTicks", duration);
+                if (effect.has("manual")) add.addProperty("manual", effect.get("manual").getAsBoolean());
                 draftEditor.invoke("add_aaa_particle_actor", add);
             }
             JsonObject publish = new JsonObject(); publish.addProperty("draft", draft); publish.addProperty("film", filmName); publish.addProperty("editor_closed", true);

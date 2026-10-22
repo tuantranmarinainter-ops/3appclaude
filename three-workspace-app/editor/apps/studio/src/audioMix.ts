@@ -19,7 +19,10 @@ export async function mixdownProjectAudio(project: UnifiedProject, startFrame: n
   return encodeWav16(mixAudio(cues, decoded, startFrame, endFrame, project.scene.content.timeline.fps))
 }
 
-/** Film package audio: source files under audio/, the 20 Hz schedule and a ducked mix of the Film range. */
+/**
+ * Film package audio, kept small: one ducked mix of the Film range (audio/mix.wav, ready for video editing) and the
+ * 20 Hz schedule with speaker/subtitle per cue (audio.json). Source files stay in the project.
+ */
 export async function filmAudioPackage(project: UnifiedProject, startFrame: number, endFrame: number, signal?: AbortSignal):
   Promise<{ files: Map<string, Buffer>; schedule: FilmAudioEntry[]; mix: Buffer } | null> {
   const cues = readAudioCueExtension(project).cues
@@ -27,18 +30,8 @@ export async function filmAudioPackage(project: UnifiedProject, startFrame: numb
   const fps = project.scene.content.timeline.fps
   const decoded = await decodeCueAssets(project, cues, signal)
   const durations = new Map([...decoded].map(([assetId, samples]) => [assetId, samples.length / MIX_RATE]))
-  const names = new Map<string, string>()
-  const fileOf = (assetId: string) => {
-    if (!names.has(assetId)) {
-      const asset = project.assets[assetId as keyof UnifiedProject['assets']]!
-      const extension = asset.source.mediaType === 'audio/mpeg' ? 'mp3' : asset.source.mediaType === 'audio/ogg' ? 'ogg' : 'wav'
-      names.set(assetId, `audio/${asset.source.sha256.slice(0, 16)}.${extension}`)
-    }
-    return names.get(assetId)!
-  }
-  const schedule = filmAudioSchedule(cues, durations, startFrame, endFrame, fps, fileOf)
+  const sourceOf = (assetId: string) => project.assets[assetId as keyof UnifiedProject['assets']]?.displayName ?? assetId
+  const schedule = filmAudioSchedule(cues, durations, startFrame, endFrame, fps, sourceOf)
   if (!schedule.length) return null
-  const files = new Map<string, Buffer>()
-  for (const [assetId, name] of names) files.set(name, (await resolveUnifiedAssetFile(project, assetId, 'source')).bytes)
-  return { files, schedule, mix: encodeWav16(mixAudio(cues, decoded, startFrame, endFrame, fps)) }
+  return { files: new Map(), schedule, mix: encodeWav16(mixAudio(cues, decoded, startFrame, endFrame, fps)) }
 }

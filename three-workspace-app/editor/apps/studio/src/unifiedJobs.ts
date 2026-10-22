@@ -52,12 +52,13 @@ const ZIP_SCRIPT = 'import pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]).r
 type FilmManifest = ReturnType<typeof buildFilmExportManifest>
 
 /** B15: Film-worker entries for AAA Particles replays; ticks clamp into the Film and empty intervals are dropped. */
-export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number }>, durationTicks: number) {
+export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number; play?: 'manual' }>, durationTicks: number) {
   const root = (process.env.W01_AAA_EFFECT_ROOT?.trim() || 'effeks/samples').replace(/^\/+|\/+$/g, '')
   return effects.flatMap((item) => {
     const startTick = Math.max(0, Math.min(durationTicks - 1, Math.round(item.startTick)))
     const endTick = Math.max(startTick + 1, Math.min(durationTicks, Math.round(item.endTick)))
-    return [{ label: item.effect, effect: `${root}/${item.effect}.efkefc`, x: item.x, y: item.y, z: item.z, yaw: item.yaw, scale: item.scale, startTick, endTick }]
+    return [{ label: item.effect, effect: `${root}/${item.effect}.efkefc`, x: item.x, y: item.y, z: item.z, yaw: item.yaw, scale: item.scale, startTick, endTick,
+      ...(item.play === 'manual' ? { manual: true } : {}) }]
   })
 }
 

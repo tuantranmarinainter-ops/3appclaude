@@ -116,13 +116,15 @@ class FilmWorkerIntegrationTests(unittest.TestCase):
             output = root / "exports"
             output.mkdir()
             document = self.manifest()
-            document["aaaEffects"] = [{"label": "aura01", "effect": "effeks/samples/aura01.efkefc", "x": 1, "y": 0, "z": 2, "yaw": 0, "scale": 0.7, "startTick": 12, "endTick": 40}]
+            document["aaaEffects"] = [{"label": "aura01", "effect": "effeks/samples/aura01.efkefc", "x": 1, "y": 0, "z": 2, "yaw": 0, "scale": 0.7, "startTick": 12, "endTick": 40},
+                                      {"label": "toonhit", "effect": "effeks/samples/toonhit.efkefc", "x": 0, "y": 1, "z": 0, "yaw": 0, "scale": 0.1, "startTick": 20, "endTick": 60, "manual": True}]
             manifest.write_text(json.dumps(document), encoding="utf-8")
             package = Path(run_film_worker(manifest, output)["packageDirectory"])
             raw = gzip.decompress((package / "films/film-worker-test.dat").read_bytes())
             self.assertIn(b"bbs:aaa_particle", raw)
             self.assertIn(b"assets:effeks/samples/aura01.efkefc", raw)
             self.assertIn(b"VFX aura01", raw)
+            self.assertIn(b"VFX toonhit", raw)
             bad = root / "bad.json"
             document["filmName"] = "film-worker-bad"
             document["aaaEffects"][0]["effect"] = "../escape.efkefc"

@@ -14,6 +14,8 @@ export interface VfxCue {
   scale: number
   attachNodeId?: string
   attachBone?: string
+  /** BBS FS playback: 'auto' (default) starts the effect when the Film reaches frameStart; 'manual' leaves it paused for the user to start. */
+  play?: 'auto' | 'manual'
 }
 
 export interface VfxCueExtension { version: 1; cues: VfxCue[] }
@@ -27,6 +29,7 @@ export interface VfxFilmEffect {
   scale: number
   startTick: number
   endTick: number
+  play?: 'manual'
 }
 
 const EFFECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -56,12 +59,13 @@ function canonicalBoneName(value: string): string {
 }
 
 function validateCueValue(value: unknown, timeline: { frameStart: number; frameEnd: number }, nodes: UnifiedProject['scene']['content']['nodes']): value is VfxCue {
-  if (!record(value) || Object.keys(value).some((key) => !['id', 'effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone'].includes(key))) return false
+  if (!record(value) || Object.keys(value).some((key) => !['id', 'effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone', 'play'].includes(key))) return false
   if (typeof value.id !== 'string' || !CUE_ID.test(value.id) || typeof value.effect !== 'string' || !EFFECT_ID.test(value.effect) ||
       !Number.isSafeInteger(value.frameStart) || !Number.isSafeInteger(value.frameEnd) ||
       (value.frameStart as number) < timeline.frameStart || (value.frameEnd as number) > timeline.frameEnd || (value.frameStart as number) > (value.frameEnd as number) ||
       !safeVector(value.position) || !finite(value.yaw) || Math.abs(value.yaw) > 360_000 ||
-      !finite(value.scale) || value.scale < 0.001 || value.scale > 1000) return false
+      !finite(value.scale) || value.scale < 0.001 || value.scale > 1000 ||
+      (value.play !== undefined && value.play !== 'auto' && value.play !== 'manual')) return false
 
   if (value.attachNodeId !== undefined) {
     if (typeof value.attachNodeId !== 'string' || !nodes.some((node) => node.id === value.attachNodeId && node.type !== 'camera' && node.type !== 'path')) return false
@@ -100,7 +104,7 @@ export function validateAttachedBone(project: Pick<UnifiedProject, 'scene' | 'ch
 }
 
 export function makeVfxCue(project: UnifiedProject, input: unknown, id: string): VfxCue {
-  if (!record(input) || Object.keys(input).some((key) => !['effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone'].includes(key))) {
+  if (!record(input) || Object.keys(input).some((key) => !['effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone', 'play'].includes(key))) {
     throw new TypeError('Cue fields are invalid')
   }
   const cue = { ...input, id } as unknown
@@ -110,7 +114,7 @@ export function makeVfxCue(project: UnifiedProject, input: unknown, id: string):
 }
 
 export function updateVfxCue(project: UnifiedProject, current: VfxCue, patch: unknown): VfxCue {
-  if (!record(patch) || Object.keys(patch).some((key) => !['effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone'].includes(key)) || !Object.keys(patch).length) {
+  if (!record(patch) || Object.keys(patch).some((key) => !['effect', 'frameStart', 'frameEnd', 'position', 'yaw', 'scale', 'attachNodeId', 'attachBone', 'play'].includes(key)) || !Object.keys(patch).length) {
     throw new TypeError('Cue update requires one or more editable fields')
   }
   const normalizedPatch = structuredClone(patch) as Record<string, unknown>
@@ -338,7 +342,7 @@ export async function buildVfxEffectsForFilm(project: UnifiedProject, args: Pick
     }
     if (!firstPose) continue
     output.push({ effect: cue.effect, x: firstPose.position.x, y: firstPose.position.y, z: firstPose.position.z,
-      yaw: firstPose.yaw, scale: firstPose.scale, startTick, endTick })
+      yaw: firstPose.yaw, scale: firstPose.scale, startTick, endTick, ...(cue.play === 'manual' ? { play: 'manual' as const } : {}) })
   }
   return output
 }
