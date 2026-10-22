@@ -11,6 +11,8 @@ import { parseBobjArmature } from '../src/reverse.ts'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { runNormalize } from '../cli/normalizeCore.ts'
 import { mergeAnimationGlbs } from '../cli/glbContract.ts'
+import { decodeGlb, encodeGlb } from '../cli/glb.ts'
+import { glbNodeNames } from '../cli/glbContract.ts'
 import { exportMinecraft20, limbTwistDegrees, untwistLimbs } from '../cli/toMinecraft20.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -81,6 +83,42 @@ test('duplicate GLB animation names (WC3 has two "Stand 2") get Blender-style .0
   assert.equal(exported.report.status, 'PASS')
   assert.deepEqual([...parseBobjActions(exported.bobj).keys()], ['running', 'running.001', 'running.002'])
   assert.deepEqual(exported.report.actions.map((item) => [item.name, item.glbName]), [['running', 'running'], ['running.001', 'running'], ['running.002', 'running']])
+})
+
+test('Minecraft20 reverse conversion reports every unmapped v1.1 extra bone by name', async () => {
+  const decoded = decodeGlb(await mixamoFromMinecraft(['running']))
+  const json = structuredClone(decoded.json)
+  json.nodes.push({ name: 'X_LeftHand_twistHelper', translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] })
+  const extended = encodeGlb(json, decoded.bin)
+  const exported = await exportMinecraft20(extended, armatureText)
+  assert.deepEqual(exported.report.droppedExtraBones, ['X_LeftHand_twistHelper'])
+  assert.equal(exported.report.status, 'PASS')
+})
+
+test('App 1 normalization preserves validated v1.1 extra bones and their declared rest pose', async () => {
+  const core = await mixamoFromMinecraft(['running']), decoded = decodeGlb(core), json = structuredClone(decoded.json)
+  const hand = json.nodes.findIndex((node: { name?: string }) => node.name === 'LeftHand')
+  assert.notEqual(hand, -1)
+  const extra = { name: 'X_LeftHand_twistHelper', parent: 'LeftHand', rest: { position: [0.02, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } }
+  const handNode = json.nodes[hand]!
+  handNode.children = [...(handNode.children ?? []), json.nodes.length]
+  json.nodes.push({ name: extra.name, translation: extra.rest.position, rotation: extra.rest.rotation, scale: extra.rest.scale })
+  json.skins[0]!.joints.push(json.nodes.length - 1)
+  const sourceGlb = encodeGlb(json, decoded.bin), sourceManifest = { version: '1.1.0', rig: 'mixamo65+twist', extraBones: [extra] }
+  const result = await runNormalize({ source: await loadAsset(sourceGlb, 'glb', { skeletonOnly: true }), sourceLabel: 'extended.glb', sourceSha256: '5'.repeat(64),
+    sourceExtraManifest: sourceManifest, sourceExtraGlb: sourceGlb,
+    target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }), targetLabel: 'target.glb', targetSha256: '4'.repeat(64), calibrate: 'none' })
+  assert.equal(result.status, 'PASS', JSON.stringify(result.report))
+  assert.equal(result.manifest.version, '1.1.0')
+  assert.equal(result.manifest.rig, sourceManifest.rig)
+  assert.deepEqual(result.manifest.extraBones, [extra])
+  const output = decodeGlb(result.glb!)
+  assert.ok(glbNodeNames(result.glb!).includes(extra.name))
+  assert.equal(output.json.skins[0]!.joints.length, 66)
+  const outIndex = output.json.nodes.findIndex((node: { name?: string }) => node.name === extra.name)
+  assert.ok(output.json.nodes.find((node: { children?: number[]; name?: string }) => node.name === extra.parent)?.children?.includes(outIndex))
+  assert.deepEqual(output.json.nodes[outIndex], { name: extra.name, translation: extra.rest.position, rotation: extra.rest.rotation, scale: extra.rest.scale })
+  assert.deepEqual(result.report.loss.extraBoneTracksDropped, [])
 })
 
 test('untwistLimbs removes the forearm twist relative to the upper arm but keeps its bend, elbow and hand positions', () => {

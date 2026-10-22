@@ -1,7 +1,7 @@
-import { validateExtraBones } from '../src/extraBones.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { canonical } from './autoMapping.ts'
 import { decodeGlb, encodeGlb } from './glb.ts'
+import { validateExtraBones, type ExtraBone } from '../src/extraBones.ts'
 
 const MIXAMO_BY_CANONICAL = new Map(MIXAMO65_BONE_PARENTS.map(([name]) => [canonical(name), name]))
 
@@ -61,4 +61,37 @@ export function validateGlbContract(glb: Uint8Array, manifest: Parameters<typeof
       if (nodes[index].matrix || values.length !== bone.rest[key].length || values.some((value: number, i: number) => !Number.isFinite(value) || Math.abs(value - bone.rest[key][i]!) > 1e-6)) throw new TypeError('GLB extra rest differs from manifest')
     }
   }
+}
+
+/** Validates source v1.1 extras, then appends their declared rest hierarchy to the normalized core GLB. */
+export function preserveExtraBones(glb: Uint8Array, sourceGlb: Uint8Array, manifest: { version?: unknown; rig?: unknown; extraBones?: unknown }): { glb: Uint8Array; extras: ExtraBone[] } {
+  const extras = validateExtraBones(manifest)
+  if (!extras.length) return { glb, extras }
+  const source = decodeGlb(sourceGlb).json as any, nodes = source.nodes ?? [], joints: number[] = source.skins?.[0]?.joints ?? []
+  const depth = (bone: ExtraBone) => { let result = 0, parent = bone.parent; while (extras.some((candidate) => candidate.name === parent)) { result++; parent = extras.find((candidate) => candidate.name === parent)!.parent } return result }
+  for (const bone of extras) {
+    const index = nodes.findIndex((node: any) => node.name === bone.name)
+    if (index < 0 || !joints.includes(index)) throw new TypeError(`Declared extra bone is not a skin joint: ${bone.name}`)
+    const parent = nodes.find((node: any) => (node.children ?? []).includes(index))
+    if (parent?.name !== bone.parent) throw new TypeError(`Extra bone parent differs from manifest: ${bone.name}`)
+    const node = nodes[index]
+    for (const [field, expected, fallback] of [['translation', bone.rest.position, [0, 0, 0]], ['rotation', bone.rest.rotation, [0, 0, 0, 1]], ['scale', bone.rest.scale, [1, 1, 1]]] as const) {
+      const value = node[field] ?? fallback
+      if (node.matrix || value.some((item: number, axis: number) => Math.abs(item - expected[axis]!) > 1e-6)) throw new TypeError(`Extra bone rest differs from manifest: ${bone.name}`)
+    }
+  }
+  const decoded = decodeGlb(glb), output = structuredClone(decoded.json) as any, outNodes = output.nodes as any[]
+  const byName = new Map(outNodes.map((node, index) => [node.name, index]))
+  const outJoints: number[] = output.skins?.[0]?.joints ?? []
+  for (const bone of [...extras].sort((a, b) => depth(a) - depth(b))) {
+    const parentIndex = byName.get(bone.parent)
+    if (parentIndex === undefined) throw new TypeError(`Normalized core parent missing: ${bone.parent}`)
+    const index = outNodes.length
+    outNodes.push({ name: bone.name, translation: [...bone.rest.position], rotation: [...bone.rest.rotation], scale: [...bone.rest.scale] })
+    outNodes[parentIndex]!.children = [...(outNodes[parentIndex]!.children ?? []), index]
+    outJoints.push(index); byName.set(bone.name, index)
+    // Exact-name extra animation is deliberately omitted here; normalize reports it as dropped.
+  }
+  output.skins[0].joints = outJoints
+  return { glb: encodeGlb(output, decoded.bin), extras }
 }
