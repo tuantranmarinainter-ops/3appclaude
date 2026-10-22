@@ -219,6 +219,9 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         if life_max < 3:
             node_warnings.append(_entry(node_path, "life", "WARNING", "Particle life is shorter than 3 source frames and is quantized to 20 Hz"))
 
+        source_material = _normal(node.get("material", "default"))
+        if source_material != "default":
+            node_blockers.append(_entry(node_path, "material", "BLOCKED", f"Effekseer material {source_material} (distortion/lighting/custom shader) has no BBS particle equivalent"))
         blend = _normal(node.get("blend", "blend"))
         if blend in {"sub", "mul", "multiply", "subtract"}:
             node_blockers.append(_entry(node_path, "blend", "BLOCKED", f"Blend mode {blend} is unsupported by BBS FS 2.7"))

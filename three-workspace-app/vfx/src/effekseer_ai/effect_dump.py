@@ -88,6 +88,11 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         if blend is None:
             unsupported.append(f"unmapped-core-blend:{raw_blend!s}")
             blend = "unsupported"
+        # Distortion and lit/custom shaders are a material choice, not a render type.
+        raw_material = get("material", ("RendererCommonValues/Material",), "Default")
+        material = _key(raw_material) or "default"
+        if material != "default":
+            unsupported.append(f"material:{raw_material!s}")
         texture = get("texture", ("RendererCommonValues/ColorTexture/RelativePath",), None)
         max_generation = get("generation.maxGeneration", ("CommonValues/MaxGeneration/Value",), 1)
         infinite = get("generation.infinite", ("CommonValues/Infinite/Value",), False)
@@ -118,7 +123,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         color = discover("color", "RendererCommonValues", ("allcolor",), [1, 1, 1, 1], 4, str(color_type))
         node: dict[str, Any] = {
             "id": stable_id, "path": path, "name": str(item.get("name", stable_id)), "parentId": parent_id,
-            "renderType": render_type or "unsupported", "blend": blend,
+            "renderType": render_type or "unsupported", "blend": blend, "material": material,
             "generation": {"maxGeneration": _int(max_generation, 1), "infinite": bool(infinite), "generationTime": _num(generation_time, 1)},
             "life": {"min": _num(life_min, 60), "max": _num(life_max, 60)},
             "location": {"type": str(location_type).lower(), "position": position, "direction": [0, 1, 0], "velocity": velocity, "acceleration": acceleration},

@@ -59,6 +59,15 @@ def test_looping_aura_has_steady_spawn_rate_and_looping_lifetime() -> None:
     assert result["timeConversion"]["quantumSeconds"] == 0.05
 
 
+def test_sprite_with_distortion_material_is_blocked_not_exported_as_plain_sprite() -> None:
+    effect_ir = fixture("looping-aura")
+    effect_ir["nodes"][0]["material"] = "backdistortion"
+    result = convert_effect_ir(effect_ir)
+    assert result["status"] == "BLOCKED"
+    assert result["schemes"] == []
+    assert any(entry["property"] == "material" and "distortion" in entry["detail"] for entry in result["blocked"])
+
+
 def test_random_lifetime_range_is_preserved_and_quantized_to_twenty_hz() -> None:
     result = convert_effect_ir(fixture("looping-aura"))
     components = result["schemes"][0]["json"]["particle_effect"]["components"]

@@ -124,6 +124,11 @@ def test_official_core_samples_map_or_block_expected_renderers():
             assert converted["schemes"], stem
         else:
             assert converted["status"] == "BLOCKED", stem
+            if expectation == "distortion":
+                # Distortion is an Effekseer material (BackDistortion), not a render type.
+                assert any(entry.get("property") == "material" and "distortion" in str(entry.get("detail", "")).lower() for entry in converted["blocked"]), stem
+                assert any(node.get("material") == "backdistortion" for node in effect_ir["nodes"]), stem
+                continue
             render_blockers = [entry for entry in converted["blocked"] if entry.get("property") == "renderType"]
             assert render_blockers, stem
             assert any(expectation in str(entry.get("detail", "")).lower() for entry in render_blockers), stem
