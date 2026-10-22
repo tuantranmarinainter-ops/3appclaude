@@ -77,7 +77,7 @@ import type { CamInstance, CharInstance } from '../objects/types'
 import { PlaybackClock } from './Clock'
 import { EDITOR_LAYER } from './Layers'
 import { RenderLoop } from './RenderLoop'
-import { DEFAULT_EDITOR_CAMERA, DualViewport, type GizmoMode } from './Viewport'
+import { DEFAULT_EDITOR_CAMERA, DualViewport, filmFrameAspectForView, type GizmoMode } from './Viewport'
 import {
   applyLivePathStroke,
   applyLivePathTransform,
@@ -115,6 +115,10 @@ export class Stage implements DirectorEngine, PathViewHost {
   get viewCamera(): THREE.PerspectiveCamera | THREE.OrthographicCamera { return this.viewport.viewCamera }
   readEditorViewDirection(): EditorViewDirection | null { return this.viewport.viewDirection }
   readFramedAspect(): number | null { return this.viewport.framedAspect }
+  readFilmFrameAspect(): number | null {
+    const cameraView = Boolean(this.viewport.followMode || this.viewport.cameraPilot || this.viewport.letterboxAspect !== null)
+    return filmFrameAspectForView(this.bbsLookWanted, cameraView, this.filmFrameAspect)
+  }
 
   readonly editorCamera: THREE.PerspectiveCamera
   readonly motionPlayer = new MotionPlayer()
@@ -178,6 +182,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   private readonly bbsLookView = new BbsLookView()
   private bbsLookWanted = false
   private readonly filmPoseViewRestore = new Map<string, { motionRoot?: THREE.Matrix4; rootMatrix?: THREE.Matrix4; matrixAutoUpdate?: boolean }>()
+  private filmFrameAspect: number | null = null
+  private lastFilmFrameAspect: number | null = null
   private jointDrag: JointDrag | null = null
   private jointDragNodeId: string | null = null
   private poseEditingId: string | null = null
@@ -269,10 +275,21 @@ export class Stage implements DirectorEngine, PathViewHost {
   setBbsLook(enabled: boolean): void {
     if (enabled === this.bbsLookWanted) return
     this.bbsLookWanted = enabled
+    this.viewport.setFilmFramePreviewEnabled(enabled)
     if (!enabled) {
       this.restoreFilmPoseView()
       this.bbsLookView.restore(this.scene)
     } else this.applyFilmPoseView(this.frameOut)
+    this.invalidate()
+  }
+
+  setFilmFrameAspect(aspect: number | null): void {
+    if (aspect !== null && (!Number.isFinite(aspect) || aspect <= 0)) {
+      throw new RangeError('Film aspect must be a positive finite number or null')
+    }
+    if (aspect === this.filmFrameAspect) return
+    this.filmFrameAspect = aspect
+    this.viewport.setFilmFrameAspect(aspect)
     this.invalidate()
   }
 
@@ -1469,6 +1486,11 @@ export class Stage implements DirectorEngine, PathViewHost {
       : null
     if (framedAspect !== this.viewport.framedAspect) {
       this.viewport.framedAspect = framedAspect
+      this.events.emit('camera:frame', framedAspect)
+    }
+    const filmAspect = this.readFilmFrameAspect()
+    if (filmAspect !== this.lastFilmFrameAspect) {
+      this.lastFilmFrameAspect = filmAspect
       this.events.emit('camera:frame', framedAspect)
     }
     this.syncJointHandles()

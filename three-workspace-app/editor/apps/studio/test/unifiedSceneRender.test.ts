@@ -12,6 +12,41 @@ const projectsDir = mkdtempSync(path.join(tmpdir(), 'bbs-scene-render-test-'))
 process.env.BBS_UNIFIED_PROJECTS_DIR = projectsDir
 test.after(() => { rmSync(projectsDir, { recursive: true, force: true }) })
 
+test('film.frame.set persists through revisioned history and scene.render fits the saved aspect', async () => {
+  const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: {
+    name: 'Film frame command', scene: makeEmptyDraft('Film frame command', 30, 90, { fov: 50, position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } }),
+  } })
+  const projectId = String(created.result.projectId)
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'film.frame.set', args: { aspect: '9:16' } }),
+    (error: unknown) => error instanceof UnifiedStoreError && error.code === 'VALIDATION_FAILED')
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, command: 'film.frame.set', args: { aspect: 0 } }),
+    (error: unknown) => error instanceof UnifiedStoreError && error.code === 'VALIDATION_FAILED')
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 1, command: 'film.frame.set', args: { aspect: '9:16' } }),
+    (error: unknown) => error instanceof UnifiedStoreError && error.code === 'REVISION_CONFLICT')
+
+  const dry = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, dryRun: true, command: 'film.frame.set', args: { aspect: '9:16' } })
+  assert.equal(dry.result.valid, true)
+  const set = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 0, command: 'film.frame.set', args: { aspect: '9:16' } })
+  assert.equal(set.revision, 1)
+  assert.equal(set.result.viewportAspect, 9 / 16)
+  const rendered = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.render', args: {
+    frames: [0], cameraNodeIds: ['camera_1'], width: 1000, height: 1000, outputDirectory: { kind: 'client-directory', id: randomUUID() },
+  } })
+  assert.deepEqual([rendered.result.width, rendered.result.height, rendered.result.actualAspect, rendered.result.aspectError], [558, 992, 9 / 16, 0])
+  const overridden = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.render', args: {
+    frames: [0], cameraNodeIds: ['camera_1'], width: 1000, height: 1000, viewportAspect: 1, outputDirectory: { kind: 'client-directory', id: randomUUID() },
+  } })
+  assert.deepEqual([overridden.result.width, overridden.result.height, overridden.result.viewportAspect], [1000, 1000, 1])
+  await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.render', args: {
+    frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, outputDirectory: { kind: 'client-directory', id: randomUUID() },
+  } }), (error: unknown) => error instanceof UnifiedStoreError && error.code === 'VALIDATION_FAILED')
+  const undone = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 1, command: 'history.undo', args: {} })
+  assert.equal(undone.revision, 2)
+  const project = await readUnifiedProjectState(projectId)
+  assert.equal(project.project.extensions.filmFrame, undefined)
+  assert.equal(project.history.canRedo, true)
+})
+
 test('scene.render requires an opaque browser directory capability and valid snapshot inputs', async () => {
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: {
     name: 'Scene render validation', scene: makeEmptyDraft('Scene render validation', 30, 90, { fov: 50, position: { x: 1, y: 2, z: 3 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } }),
@@ -53,7 +88,7 @@ test('scene.render runs an immutable Topview snapshot and exposes only verified 
   const projectId = String(created.result.projectId)
   const request = {
     requestId: randomUUID(), projectId, command: 'scene.render', args: {
-      frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64,
+      frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, viewportAspect: 1,
       outputDirectory: { kind: 'client-directory', id: randomUUID() },
     },
   }
@@ -81,7 +116,7 @@ test('scene.render runs an immutable Topview snapshot and exposes only verified 
   const cancelled = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'job.cancel', args: { jobId: job.jobId } })
   assert.deepEqual(cancelled.result, { state: 'succeeded', committed: true })
   const cancellable = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'scene.render', args: {
-    frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, outputDirectory: { kind: 'client-directory', id: randomUUID() },
+    frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, viewportAspect: 1, outputDirectory: { kind: 'client-directory', id: randomUUID() },
   } })
   const previewCancel = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'job.cancel', args: { jobId: cancellable.result.jobId }, dryRun: true })
   assert.equal(previewCancel.result.valid, true)

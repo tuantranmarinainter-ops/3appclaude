@@ -114,6 +114,8 @@ export interface DirectorEngine {
   /** 像 BBS FS 一样看（只影响显示，不写文档）。 */
   readonly bbsLook: boolean
   setBbsLook(enabled: boolean): void
+  /** Current project's film aspect, or null to clear the host-provided framing. */
+  setFilmFrameAspect(aspect: number | null): void
 
   attachViewport(role: ViewportRole, canvas: HTMLCanvasElement): void
   detachViewport(role: ViewportRole): void
@@ -149,6 +151,8 @@ export interface DirectorEngine {
   readEditorViewDirection?(): EditorViewDirection | null
   /** 主视口按机位取景时的画幅比例；自由视角为 null。变化时发 `camera:frame`。 */
   readFramedAspect?(): number | null
+  /** Saved film aspect only while BBS look is active in a camera view. */
+  readFilmFrameAspect(): number | null
   setEditorView?(direction: EditorViewDirection): void
   resetEditorView(): void
   focusNode(nodeId: string): void

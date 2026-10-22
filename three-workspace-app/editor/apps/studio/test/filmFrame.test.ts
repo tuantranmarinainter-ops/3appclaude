@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_FILM_FRAME_ASPECT, readFilmFrameAspect, writeFilmFrameAspect } from '../src/filmFrame'
+import { DEFAULT_FILM_FRAME_ASPECT, fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect } from '../src/filmFrame'
 
 test('film frame extension helpers default old projects to 16:9 and read named aspects', () => {
     assert.equal(readFilmFrameAspect(undefined), DEFAULT_FILM_FRAME_ASPECT)
@@ -22,4 +22,15 @@ test('film frame extension writes immutably without discarding other project ext
     assert.deepEqual(next, { topview: original.topview, filmFrame: { aspect: '9:16' } })
     assert.equal('filmFrame' in original, false)
     assert.throws(() => writeFilmFrameAspect(original, 0), /positive finite/)
+})
+
+test('render bounds fit exact named aspects and report custom numeric rounding', () => {
+  assert.deepEqual(fitFilmFrameDimensions(1000, 1000, 16 / 9), { width: 992, height: 558, aspect: 16 / 9, aspectError: 0 })
+  assert.deepEqual(fitFilmFrameDimensions(1000, 1000, 1), { width: 1000, height: 1000, aspect: 1, aspectError: 0 })
+  const custom = fitFilmFrameDimensions(1000, 1000, 2.4)
+  assert.deepEqual({ width: custom.width, height: custom.height }, { width: 1000, height: 417 })
+  assert.ok(custom.aspectError > 0)
+  assert.equal(resolveFilmFrameAspect({ filmFrame: { aspect: '9:16' } }, undefined), 9 / 16)
+  assert.equal(resolveFilmFrameAspect({ filmFrame: { aspect: '1:1' } }, 9 / 16), 9 / 16)
+  assert.throws(() => fitFilmFrameDimensions(64, 64, 9 / 16), /minimum 64 pixel/)
 })

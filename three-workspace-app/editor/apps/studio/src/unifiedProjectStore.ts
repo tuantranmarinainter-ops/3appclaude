@@ -28,6 +28,7 @@ import { evaluateSceneChecks } from '@topview/3d-director-cli/scene-checks.mjs'
 import { cancelUnifiedJob, getUnifiedJob, readUnifiedJobFile, startUnifiedFilmExport, startUnifiedSceneRender, startUnifiedNormalization, startUnifiedAssignment } from './unifiedJobs'
 import { preflightProjectFilm } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
+import { fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect, type FilmFrameDimensions } from './filmFrame'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
 import { getAction } from '../../../packages/library/index'
@@ -855,6 +856,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   let retargetSessionAddition: { session: RetargetSession; nativeProject: RetargetProjectV99 } | null = null
   let shotResult: Awaited<ReturnType<typeof prepareShotResult>> | null = null
   let motionPlacement: { scene: UnifiedProject['scene']; binding: MotionBinding; clipId: string } | null = null
+  let filmFrameExtensions: Record<string, unknown> | null = null
   let nativeAnimationAddition: { characterId: string; sourceMotionId: string | null; clipId: string | null; name: string; fps: number; duration: number; edit: Record<string, unknown>; glbBytes: Buffer; motionId: string; skeletonId: string } | null = null
 
   if (envelope.command === 'project.create') {
@@ -906,6 +908,14 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const response = success(envelope.requestId, id, project.revision, { revision: project.revision, sha256: createHash('sha256').update(JSON.stringify(project)).digest('hex'), manifestPath: `${id}/project.json` })
     await saveRequest(envelope, hash, response)
     return response
+  }
+  if (envelope.command === 'film.frame.set') {
+    if (Object.keys(envelope.args).some((key) => key !== 'aspect')) throw new UnifiedStoreError('VALIDATION_FAILED', 'film.frame.set accepts only aspect', 400)
+    if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for film.frame.set', 400)
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Film frame revision changed; reload before saving', 409, { expected: envelope.expectedRevision, actual: project.revision })
+    try { filmFrameExtensions = writeFilmFrameAspect(project.extensions, envelope.args.aspect as '16:9' | '9:16' | '1:1' | number) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid film frame aspect', 400) }
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, aspect: envelope.args.aspect, viewportAspect: readFilmFrameAspect(filmFrameExtensions) })
   }
   if (envelope.command === 'rig.inspect') {
     const { assetId, skeletonProfileId } = envelope.args
@@ -1058,13 +1068,14 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'scene.render') {
-    const { frames, cameraNodeIds, width, height, outputDirectory, silhouette, bbsLook } = envelope.args
+    const { frames, cameraNodeIds, width, height, outputDirectory, silhouette, bbsLook, viewportAspect } = envelope.args
     const cameras = project.scene.content.nodes.filter((node) => node.type === 'camera')
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Render snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['frames', 'cameraNodeIds', 'width', 'height', 'outputDirectory', 'silhouette', 'bbsLook'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['frames', 'cameraNodeIds', 'width', 'height', 'outputDirectory', 'silhouette', 'bbsLook', 'viewportAspect'].includes(key)) ||
       silhouette !== undefined && typeof silhouette !== 'boolean' || bbsLook !== undefined && typeof bbsLook !== 'boolean' ||
+      viewportAspect !== undefined && (typeof viewportAspect !== 'number' || !Number.isFinite(viewportAspect) || viewportAspect <= 0) ||
       !Array.isArray(frames) || !frames.length || frames.length > 9 || frames.some((frame) => !Number.isSafeInteger(frame) || frame < project.scene.content.timeline.frameStart || frame > project.scene.content.timeline.frameEnd) || new Set(frames).size !== frames.length ||
       !Array.isArray(cameraNodeIds) || !cameraNodeIds.length || cameraNodeIds.length > 3 || frames.length * cameraNodeIds.length > 9 ||
       new Set(cameraNodeIds).size !== cameraNodeIds.length || cameraNodeIds.some((cameraId) => typeof cameraId !== 'string' || !cameras.some((camera) => camera.id === cameraId)) ||
@@ -1073,10 +1084,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       outputDirectory.kind !== 'client-directory' || typeof outputDirectory.id !== 'string' || !UUID.test(outputDirectory.id)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.render requires up to nine frame-camera samples and an approved client directory handle', 400)
     }
-    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: frames.length * cameraNodeIds.length })
+    let renderAspect: number, renderSize: FilmFrameDimensions
     try {
-      const job = await startUnifiedSceneRender(project, { frames: frames as number[], cameraNodeIds: cameraNodeIds as string[], width: width as number, height: height as number, ...(silhouette ? { silhouette: true } : {}), ...(bbsLook ? { bbsLook: true } : {}) })
-      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress })
+      renderAspect = resolveFilmFrameAspect(project.extensions, viewportAspect)
+      renderSize = fitFilmFrameDimensions(width as number, height as number, renderAspect)
+    } catch (error) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film aspect does not fit render bounds', 400)
+    }
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision,
+      sampleCount: frames.length * cameraNodeIds.length, viewportAspect: renderAspect, width: renderSize.width, height: renderSize.height,
+      actualAspect: renderSize.aspect, aspectError: renderSize.aspectError })
+    try {
+      const job = await startUnifiedSceneRender(project, { frames: frames as number[], cameraNodeIds: cameraNodeIds as string[], width: renderSize.width, height: renderSize.height, ...(silhouette ? { silhouette: true } : {}), ...(bbsLook ? { bbsLook: true } : {}) })
+      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress,
+        viewportAspect: renderAspect, width: renderSize.width, height: renderSize.height, actualAspect: renderSize.aspect, aspectError: renderSize.aspectError })
       await saveRequest(envelope, hash, response)
       return response
     } catch (error) {
@@ -1136,16 +1157,17 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         typeof filmName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'film.export requires a safe filmName and valid Film sampling arguments', 400)
     }
-    let preflight: ReturnType<typeof preflightProjectFilm>
+    let preflight: ReturnType<typeof preflightProjectFilm>, effectiveAspect: number
     try {
-      preflight = preflightProjectFilm(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: viewportAspect as number })
+      effectiveAspect = resolveFilmFrameAspect(project.extensions, viewportAspect)
+      preflight = preflightProjectFilm(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: effectiveAspect })
     } catch (error) {
       throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Film sampling arguments are invalid', 400)
     }
-    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: preflight.durationTicks + 1 })
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: preflight.durationTicks + 1, viewportAspect: effectiveAspect })
     try {
-      const job = await startUnifiedFilmExport(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: viewportAspect as number, filmName })
-      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress })
+      const job = await startUnifiedFilmExport(project, { characterIds: characterIds as string[], sequenceId: sequenceId as string, range: range as { startFrame: number; endFrame: number }, viewportAspect: effectiveAspect, filmName })
+      const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, viewportAspect: effectiveAspect })
       await saveRequest(envelope, hash, response)
       return response
     } catch (error) {
@@ -1210,7 +1232,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw error
     }
   }
-  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (!['film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -1758,7 +1780,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -1775,8 +1797,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
-      if (envelope.command === 'shot.result.import') {
+    if (envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+      if (envelope.command === 'film.frame.set') {
+        if (!filmFrameExtensions) throw new UnifiedStoreError('VALIDATION_FAILED', 'Film frame extension was not validated', 400)
+        next.extensions = filmFrameExtensions as UnifiedProject['extensions']
+        changedIds = ['film-frame']
+        result = { aspect: envelope.args.aspect, viewportAspect: readFilmFrameAspect(next.extensions) }
+      } else if (envelope.command === 'shot.result.import') {
         if (!shotResult) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result package is unavailable', 400)
         result = await applyShotResult(next, shotResult)
         changedIds = ['scene', ...shotResult.edits.map(item => `motion:${item.edit.newActionUuid}`)]

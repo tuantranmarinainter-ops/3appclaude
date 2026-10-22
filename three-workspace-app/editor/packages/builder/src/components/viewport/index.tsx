@@ -15,9 +15,11 @@ import { PilotCameraIcon } from './PilotCameraIcon'
 import { QuickAddMenu } from './QuickAddMenu'
 import { TimelinePlayHint } from './TimelinePlayHint'
 import { useFramedAspect } from './hooks/useFramedAspect'
+import { useFilmFrameAspect } from './hooks/useFilmFrameAspect'
 import { useGizmoHoverTip } from './hooks/useGizmoHoverTip'
 import { useViewportInteractions } from './hooks/useViewportInteractions'
 import { GizmoHoverTip } from './GizmoHoverTip'
+import { FilmFrameOverlay } from './FilmFrameOverlay'
 
 export function Viewport() {
   const t = useT()
@@ -88,6 +90,7 @@ export function Viewport() {
   const poseEligible = poseEditEligibleId(doc?.content.nodes ?? [], selection)
   const pilotEligible = cameraPilotEligibleId(doc?.content.nodes ?? [], selection)
   const framedAspect = useFramedAspect()
+  const filmFrameAspect = useFilmFrameAspect()
   const idleModes = !lookAtPickingId && !pathApplyPickingId && !placeOnSupportPickingId && !followMode && !pathDrawMode && !pathEditingId && !film && !cameraPilotId
   const aimPickingId = lookAtPickingId || pathApplyPickingId || placeOnSupportPickingId
 
@@ -131,7 +134,8 @@ export function Viewport() {
           </button>
         </div>
       ) : null}
-      {framedAspect ? (
+      {filmFrameAspect ? <FilmFrameOverlay aspect={filmFrameAspect} /> : null}
+      {!filmFrameAspect && framedAspect ? (
         <div className="t3d-pilot-mask" aria-hidden="true">
           <div
             className="t3d-pilot-frame"

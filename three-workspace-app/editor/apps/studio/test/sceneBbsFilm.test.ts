@@ -81,6 +81,24 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
   assert.equal(picked.result.archiveName, 'take-2.bbs-film.zip')
 })
 
+test('film exports use the saved frame aspect unless an explicit numeric override is supplied', async () => {
+  const { projectId, revision } = await twoCharacterScene()
+  const saved = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'film.frame.set', args: { aspect: '1:1' } })
+  const bbsDefault = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: {} })
+  assert.equal((bbsDefault.result.sceneExport as Record<string, unknown>).viewportAspect, 1)
+  const bbsOverride = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { viewportAspect: 9 / 16 } })
+  assert.equal((bbsOverride.result.sceneExport as Record<string, unknown>).viewportAspect, 9 / 16)
+
+  const common = { sequenceId: 'seq', range: { startFrame: 0, endFrame: 29 }, filmName: 'frame-check' }
+  const project = await readUnifiedProject(projectId)
+  const characterIds = Object.keys(project.characters)
+  const filmDefault = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: { ...common, characterIds } })
+  assert.equal(filmDefault.result.viewportAspect, 1)
+  const filmOverride = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'film.export', args: { ...common, characterIds, viewportAspect: 9 / 16 } })
+  assert.equal(filmOverride.result.viewportAspect, 9 / 16)
+  assert.equal(saved.revision, revision + 1)
+})
+
 const toolsReady = [process.env.BBS_JAVA_HOME, process.env.BBS_BLENDER_EXE].every((item) => item && existsSync(item))
 test('scene.export.bbsFilm writes <scene>.bbs-film.zip with both actors, both cameras and scene-export.json', { timeout: 900_000,
   skip: toolsReady ? false : 'Set BBS_JAVA_HOME (JDK 17) and BBS_BLENDER_EXE (Blender 4.2+) to run the native Film export' }, async () => {

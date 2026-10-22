@@ -1,5 +1,6 @@
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import type { FilmSamplingArgs } from './unifiedFilmSampling'
+import { resolveFilmFrameAspect } from './filmFrame'
 
 /** `scene.export.bbsFilm` arguments; every field is optional and defaults to "the whole scene". */
 export interface SceneBbsFilmArgs {
@@ -26,6 +27,7 @@ export interface ResolvedSceneBbsFilm {
     mode: 'editable'
     sequenceId: string
     range: { startFrame: number; endFrame: number }
+    viewportAspect: number
     characterIds: string[]
     propIds: string[]
     cameraNodeIds: string[]
@@ -84,7 +86,7 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
     if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6)) fail(`Prop ${node.name} must use unit scale; bake its size into the model first`)
     if (Math.abs(rotation.x) > 1e-6 || Math.abs(rotation.z) > 1e-6) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
   }
-  const viewportAspect = args.viewportAspect ?? 16 / 9
+  const viewportAspect = resolveFilmFrameAspect(project.extensions, args.viewportAspect)
   if (args.viewportAspect === undefined) defaulted.push('viewportAspect')
   const filmName = args.name ?? safeFilmName(project.name)
   if (args.name === undefined) defaulted.push('name')
@@ -93,7 +95,7 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   return {
     film: { characterIds, propIds, sequenceId, range, viewportAspect, filmName },
     archiveName: `${filmName}.bbs-film.zip`,
-    sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', sequenceId, range,
+    sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', sequenceId, range, viewportAspect,
       characterIds, propIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },
   }
 }

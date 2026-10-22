@@ -108,7 +108,7 @@ for (const prefix of ['', 'mixamorig:']) test(`v1.1 import, evaluate, jaw pose U
   assert.ok(new Quaternion().fromArray((await evaluate(0)).find(b => b.name === 'X_Head_Jaw')!.rotation).angleTo(new Quaternion()) < 1e-6)
 
   if (!prefix) {
-    const render = await command('scene.render', { frames: [0, 30], cameraNodeIds: ['camera_1'], width: 192, height: 192, outputDirectory: { kind: 'client-directory', id: randomUUID() } })
+    const render = await command('scene.render', { frames: [0, 30], cameraNodeIds: ['camera_1'], width: 192, height: 192, viewportAspect: 1, outputDirectory: { kind: 'client-directory', id: randomUUID() } })
     let job = await getUnifiedJob(String(render.result.jobId), projectId)
     for (let i = 0; i < 300 && !['succeeded', 'failed', 'cancelled'].includes(job.state); i++) {
       await new Promise(resolve => setTimeout(resolve, 100)); job = await getUnifiedJob(job.jobId, projectId)

@@ -7,6 +7,7 @@ import type { DirectorApi } from '@topview/3d-builder'
 import { LocalHostAdapter, type LocalDocumentSource } from '../../../src/LocalHostAdapter'
 import { getLiveStudio, setLiveStudio, subscribeLiveStudio } from '../../../src/devtools/liveStudio'
 import { setStudioLocale, useStudioLocale } from '../../../src/devtools/localePreference'
+import { readFilmFrameAspect } from '../../../src/filmFrame'
 import { useStudioT } from '../../../src/locale'
 import { ensureUnifiedSession, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
 import { FeatureNavigation } from './feature-navigation'
@@ -146,6 +147,16 @@ export function StudioOverlay({
     apply()
     return subscribeLiveStudio(apply)
   }, [bbsLook])
+  const filmFrameAspect = source === 'unified' && projectState ? readFilmFrameAspect(projectState.project.extensions) : null
+  useEffect(() => {
+    const apply = () => getLiveStudio()?.stage.setFilmFrameAspect(filmFrameAspect)
+    apply()
+    const unsubscribe = subscribeLiveStudio(apply)
+    return () => {
+      unsubscribe()
+      getLiveStudio()?.stage.setFilmFrameAspect(null)
+    }
+  }, [filmFrameAspect])
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const assetInputRef = useRef<HTMLInputElement>(null)
   const relinkInputRef = useRef<HTMLInputElement>(null)

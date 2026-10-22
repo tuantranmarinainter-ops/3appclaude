@@ -1185,7 +1185,7 @@ test('Mixamo FBX import persists its source skeleton and clip motion', { skip: p
   assert.equal(Number.isFinite(grounding.nodes[0]!.bottomOffset), true)
   assert.equal(geometryCheck.revision, 4)
   const render = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: 4, command: 'scene.render', args: {
-    frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, outputDirectory: { kind: 'client-directory', id: randomUUID() },
+    frames: [0], cameraNodeIds: ['camera_1'], width: 64, height: 64, viewportAspect: 1, outputDirectory: { kind: 'client-directory', id: randomUUID() },
   } })
   let renderJob = await getUnifiedJob(String(render.result.jobId), projectId)
   for (let attempt = 0; attempt < 120 && !['succeeded', 'failed', 'cancelled'].includes(renderJob.state); attempt++) {
