@@ -6,6 +6,7 @@
 - Every result states `SIMULATION_ONLY`, marks actual BBS runtime `NOT_RUN`, and labels each PNG as not an Effekseer or BBS FS render. Unsupported/blocked conversions still produce timestamped blank status frames rather than suggesting the blocked feature rendered.
 - Optional caller-supplied PNG references can be placed side by side with the simulation. Reports label provenance as unverified; the preview tool does not claim a reference is an Effekseer render or claim pixel equivalence.
 - Random particle lifetime expressions are simulated using the quantized maximum endpoint; the preview report states that random sampling is not reproduced.
+- Add effects simulate both converted layers in draw order: halo behind core, applying the configured halo size/alpha/color and core exponent. Since the simulator does not sample source texture pixels, it uses a representative 0.5 luminance for the core and states this limitation in the report.
 - Uses only Python's standard library. Test-generated PNGs are temporary; no PNG assets are committed.
 
 ## Synthetic measurements
@@ -18,7 +19,7 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 31 passed, 1 skipped, 0 failed. The skip is the Windows Core integration test. |
+| VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 33 passed, 2 skipped, 0 failed. Skips require the Windows Core DLL and official sample directory. |
 | Offline preview for MVP fixtures | PASS | Covered by `test_all_three_mvp_fixtures_render_timestamp_pngs_and_label_simulation`; no network service is used by the preview implementation. |
 | GitHub Actions `test` workflow | NOT_RUN | CI is unverified after the V2 base synchronization; check PR #52's latest run before review. |
 | Effekseer reference comparison | NOT_RUN | No Effekseer PNGs were available. On Windows, open each `.efkefc` fixture in Effekseer and save reference frames as `<effect>_<seconds>s.png` at the desired times; then run `effekseer-ai preview <effect-ir.json> <out-dir> --timestamps 0,0.25,0.5 --reference-dir <reference-dir>`. |
@@ -27,4 +28,4 @@
 
 ## Dependency
 
-This PR is based on PR #50 (`ai1/v2-convert`) and consumes V2b's EffectIR-to-Snowstorm conversion output. It does not depend on V3 packaging and has no V3 branch ancestry. PR #50 is itself stacked on PR #49 because V2a uses V1 stable node references. No merge was performed.
+This PR is based on PR #50 (`ai1/v2-convert`), which is now based on main after V1 PR #49 merged. It consumes V2b's EffectIR-to-Snowstorm conversion output, including the Add core and halo schemes. It does not depend on V3 packaging. No merge was performed.
