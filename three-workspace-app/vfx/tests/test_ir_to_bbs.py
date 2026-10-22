@@ -81,6 +81,8 @@ def test_allow_partial_exports_supported_nodes_and_keeps_blockers(tmp_path: Path
 def test_invalid_ir_and_unsafe_texture_are_rejected() -> None:
     with pytest.raises(ValueError, match="schemaVersion"):
         convert_effect_ir({"schemaVersion": 2, "nodes": []})
+    with pytest.raises(ValueError, match="schemaVersion"):
+        convert_effect_ir({"schemaVersion": True, "nodes": []})
     invalid = fixture("looping-aura")
     invalid["nodes"][1]["texture"] = "../../outside.png"
     result = convert_effect_ir(invalid)
@@ -125,4 +127,13 @@ def test_rerun_removes_only_previous_generated_schemes(tmp_path: Path) -> None:
     assert not (tmp_path / "aura.json").exists()
     assert (tmp_path / "user-notes.json").is_file()
     assert json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))["status"] == "BLOCKED"
+
+
+def test_group_transform_is_applied_and_ok_entries_are_not_warnings() -> None:
+    ir = fixture("looping-aura")
+    ir["nodes"][0]["transform"] = {"position": [2, 0, 0], "scale": [2, 2, 2]}
+    result = convert_effect_ir(ir)
+    assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_shape_sphere"]["offset"] == [2, 0, 0]
+    assert any(entry["property"] == "parent.transform" and entry["status"] == "OK" for entry in result["nodes"][1]["properties"])
+    assert all(entry["status"] != "OK" for entry in result["warnings"])
 

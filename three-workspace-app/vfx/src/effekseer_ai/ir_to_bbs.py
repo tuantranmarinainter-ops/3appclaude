@@ -17,7 +17,8 @@ ADD_BRIGHTNESS_BOOST = 2.0
 
 def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) -> dict[str, Any]:
     """Return Snowstorm schemes and a per-property support report."""
-    if not isinstance(effect_ir, dict) or effect_ir.get("schemaVersion") != 1:
+    if (not isinstance(effect_ir, dict) or isinstance(effect_ir.get("schemaVersion"), bool)
+            or effect_ir.get("schemaVersion") != 1):
         raise ValueError("EffectIR schemaVersion must be 1")
     fps = _number(effect_ir.get("fps", 60), "fps", minimum=0.000001)
     nodes = effect_ir.get("nodes")
@@ -92,7 +93,8 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False) ->
         location_velocity = transformed["velocity"]
         location_acceleration = transformed["acceleration"]
         node_size = transformed["size"]
-        node_warnings.extend(transform_warnings)
+        result["properties"].extend(entry for entry in transform_warnings if entry["status"] == "OK")
+        node_warnings.extend(entry for entry in transform_warnings if entry["status"] != "OK")
         node_blockers.extend(transform_blockers)
         location_kind = _normal(location.get("type", "fixed"))
         if location_kind in {"nurbs", "viewoffset", "model"}:
