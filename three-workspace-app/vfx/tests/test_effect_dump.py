@@ -89,6 +89,45 @@ def test_unknown_core_enum_is_explicitly_unsupported_not_unknown():
     assert "unmapped-core-render-type:UnlistedRenderer" in node["unsupportedFeatures"]
 
 
+def test_dump_reads_1806_scalar_leaf_paths_not_vector_parent_strings():
+    class Core1806(FakeSession):
+        def property_list(self, path):
+            roots = ("LocationValues/PVA/Location", "LocationValues/PVA/Velocity",
+                     "LocationValues/PVA/Acceleration", "ScalingValues/Easing/Start",
+                     "ScalingValues/Easing/End", "RotationValues/Fixed/Rotation",
+                     "RendererCommonValues/AllColor/Fixed")
+            return [f"{path}/{root}/{axis}/{part}/IsValueChangedFromDefault"
+                    for root in roots
+                    for axis in ("X", "Y", "Z", "R", "G", "B", "A")
+                    for part in ("Center", "Amplitude")]
+
+        def property_get(self, path):
+            exact = {
+                "node/root/0/LocationValues/Type": "PVA",
+                "node/root/0/ScalingValues/Type": "Easing",
+                "node/root/0/RotationValues/Type": "Fixed",
+                "node/root/0/RendererCommonValues/AllColor/Type": "Fixed",
+            }
+            if path in exact:
+                return exact[path]
+            if path.endswith("/IsValueChangedFromDefault"):
+                raise ValueError(path)
+            if path.endswith("/Center"):
+                return 2.5
+            if path.endswith("/Amplitude"):
+                return 0.5
+            if path.endswith(("/X", "/Y", "/Z", "/R", "/G", "/B", "/A")):
+                return 3.0
+            return super().property_get(path)
+
+    node = dump_effect_ir(Core1806())["nodes"][0]
+    leaves = node["valueModes"]["numericLeaves"]
+    assert leaves["locationPosition"]["value"]["X"] == {"center": 2.5, "amplitude": 0.5}
+    assert leaves["scale"]["start"]["X"] == {"center": 2.5, "amplitude": 0.5}
+    assert any(path.endswith("ScalingValues/Easing/Start/X/Center")
+               for path in node["sourcePaths"]["scale.components"])
+
+
 def test_effect_dump_writes_versioned_json_atomically(tmp_path: Path):
     output = tmp_path / "subdir" / "spark.json"
     assert write_effect_ir(FakeSession(), output) == output

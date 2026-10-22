@@ -22,6 +22,7 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         parent_id = next((str(n["id"]).removeprefix("node/id/") for n in nodes if str(n["path"]) == parent), None)
         field_paths: dict[str, Any] = {}
         listed_paths: list[str] | None = None
+        missing_core_fields: list[str] = []
 
         def get(field: str, candidates: tuple[str, ...], default: Any = None) -> Any:
             for suffix in candidates:
@@ -32,6 +33,8 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
                     continue
                 field_paths[field] = property_path
                 return value
+            if default is not None:
+                missing_core_fields.append(field)
             return default
 
         def discover(field: str, root: str, terms: tuple[str, ...], default: Any, size: int, active_mode: str | None = None) -> Any:
@@ -79,6 +82,104 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
             field_paths[field] = matches[0][1]
             return parsed
 
+        def capture_mode(field: str, root: str, mode: str) -> dict[str, Any]:
+            """Read every active Core value via property_get(parentPath).
+
+            property_list exposes IsValueChangedFromDefault leaves, not values;
+            the Core API returns the actual value only for the parent path.
+            Keeping the full relative path preserves endpoints and random ranges
+            even when this converter does not yet understand a particular curve.
+            """
+            nonlocal listed_paths
+            if listed_paths is None:
+                try:
+                    listed_paths = list(session.property_list(path))
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    listed_paths = []
+            prefix = f"{path}/{root}/".lower()
+            wanted = f"/{mode.lower()}/"
+            values: dict[str, Any] = {}
+            absolute: list[str] = []
+            for leaf in listed_paths:
+                normalized = leaf.replace("\\", "/")
+                low = normalized.lower()
+                if not low.startswith(prefix) or wanted not in low:
+                    continue
+                parent_path = normalized.rsplit("/", 1)[0] if low.endswith("/isvaluechangedfromdefault") else normalized
+                relative = parent_path[len(path) + 1:]
+                try:
+                    value = session.property_get(parent_path)
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    continue
+                values[relative] = value
+                absolute.append(parent_path)
+            if values:
+                field_paths[field] = absolute
+            return values
+
+        def read_axes(field: str, root: str, mode: str, prop: str, axes: str = "XYZ") -> dict[str, Any]:
+            """Read concrete scalar leaves used by Vector/Color and random value types."""
+            nonlocal listed_paths
+            if listed_paths is None:
+                try:
+                    listed_paths = list(session.property_list(path))
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    listed_paths = []
+            out: dict[str, Any] = {}
+            sources: list[str] = []
+            for leaf in listed_paths:
+                normalized = leaf.replace("\\", "/")
+                low = normalized.lower()
+                if not low.startswith(f"{path}/{root}/".lower()) or f"/{mode.lower()}/" not in low:
+                    continue
+                parts = low.split("/")
+                if (prop and prop.lower() not in parts) or not low.endswith("/isvaluechangedfromdefault"):
+                    continue
+                axis = next((a for a in axes.lower() if a in parts), None)
+                if axis is None:
+                    continue
+                parent_path = normalized.rsplit("/", 1)[0]
+                try:
+                    value = float(session.property_get(parent_path))
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    continue
+                parent_leaf = parent_path.rsplit("/", 1)[-1].lower()
+                tail = "value" if parent_leaf in axes.lower() else parent_leaf
+                axis_index = parts.index(axis)
+                endpoint = parts[axis_index - 1] if axis_index > 0 and parts[axis_index - 1] in {"start", "end", "middle"} else "value"
+                bucket = out.setdefault(endpoint, {}).setdefault(axis.upper(), {})
+                bucket[tail] = value
+                sources.append(parent_path)
+            if sources:
+                field_paths[field] = sources
+            return out
+
+        def read_scalar(field: str, root: str, mode: str, prop: str) -> dict[str, float]:
+            nonlocal listed_paths
+            if listed_paths is None:
+                listed_paths = list(session.property_list(path))
+            out: dict[str, float] = {}
+            sources: list[str] = []
+            for leaf in listed_paths:
+                low = leaf.lower().replace("\\", "/")
+                if not low.startswith(f"{path}/{root}/".lower()) or f"/{mode.lower()}/" not in low or not low.endswith("/isvaluechangedfromdefault"):
+                    continue
+                parts = low.split("/")
+                if prop.lower() not in parts:
+                    continue
+                parent = leaf.replace("\\", "/").rsplit("/", 1)[0]
+                key = parent.rsplit("/", 1)[-1].lower()
+                if key not in {"center", "amplitude", "min", "max", "value"}:
+                    continue
+                try:
+                    out[key] = float(session.property_get(parent))
+                except (AttributeError, KeyError, ValueError, TypeError):
+                    continue
+                sources.append(parent)
+            if sources:
+                field_paths[field] = sources
+            return out
+
         raw_render = get("renderType", ("DrawingValues/Type",), None)
         normalized_render = _key(raw_render)
         render_type = _RENDER_TYPES.get(normalized_render)
@@ -115,12 +216,68 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         rotation_type = get("rotation.type", ("RotationValues/Type", "RotationValues/Rotation/Type"), "Fixed")
         scale_type = get("scale.type", ("ScalingValues/Type", "ScalingValues/Scale/Type"), "Fixed")
         color_type = get("color.type", ("RendererCommonValues/AllColor/Type",), "Fixed")
-        position = discover("location.position", "LocationValues", ("position",), [0, 0, 0], 3, str(location_type))
+        mode_values = {
+            "location": capture_mode("location.values", "LocationValues", str(location_type)),
+            "rotation": capture_mode("rotation.values", "RotationValues", str(rotation_type)),
+            "scaling": capture_mode("scaling.values", "ScalingValues", str(scale_type)),
+            "color": capture_mode("color.values", "RendererCommonValues/AllColor", str(color_type)),
+        }
+        position = discover("location.position", "LocationValues", ("location",), [0, 0, 0], 3, str(location_type))
         velocity = discover("location.velocity", "LocationValues", ("velocity",), [0, 0, 0], 3, str(location_type))
         acceleration = discover("location.acceleration", "LocationValues", ("acceleration",), [0, 0, 0], 3, str(location_type))
         rotation = discover("rotation", "RotationValues", ("rotation",), [0, 0, 0], 3, str(rotation_type))
         scale = discover("scale", "ScalingValues", ("scale",), [1, 1], 3, str(scale_type))
         color = discover("color", "RendererCommonValues", ("allcolor",), [1, 1, 1, 1], 4, str(color_type))
+        # 1.80.6 models vectors as X/Y/Z scalar Value objects and random values
+        # as Center/Amplitude (or Min/Max) leaves; parent vectors stringify to
+        # object names, so read each numeric leaf explicitly.
+        for spec, field, root, mode, prop, axes in (
+            ("locationPosition", "location.position", "LocationValues", str(location_type), "Location" if _key(location_type) in {"fixed", "pva"} else "", "XYZ"),
+            ("locationVelocity", "location.velocity", "LocationValues", str(location_type), "Velocity", "XYZ"),
+            ("locationAcceleration", "location.acceleration", "LocationValues", str(location_type), "Acceleration", "XYZ"),
+            ("rotation", "rotation", "RotationValues", str(rotation_type), "Rotation" if _key(rotation_type) in {"fixed", "pva"} else "", "XYZ"),
+            ("rotationVelocity", "rotation.velocity", "RotationValues", str(rotation_type), "Velocity", "XYZ"),
+            ("rotationAcceleration", "rotation.acceleration", "RotationValues", str(rotation_type), "Acceleration", "XYZ"),
+            ("scale", "scale", "ScalingValues", str(scale_type), "Scale" if _key(scale_type) in {"fixed", "pva"} else "", "XYZ"),
+            ("scaleVelocity", "scale.velocity", "ScalingValues", str(scale_type), "Velocity", "XYZ"),
+            ("scaleAcceleration", "scale.acceleration", "ScalingValues", str(scale_type), "Acceleration", "XYZ"),
+        ):
+            components = read_axes(f"{field}.components", root, mode, prop, axes)
+            if components:
+                mode_values.setdefault("numericLeaves", {})[spec] = components
+                ordered_axes = "XYZ"
+                target = [0.0, 0.0, 0.0]
+                center_values = components.get("value", components.get("start", {}))
+                for index, axis in enumerate(ordered_axes):
+                    values = center_values.get(axis, {})
+                    if "center" in values:
+                        target[index] = values["center"]
+                    elif "value" in values:
+                        target[index] = values["value"]
+                    elif "min" in values and "max" in values:
+                        target[index] = (values["min"] + values["max"]) / 2
+                if spec == "locationPosition":
+                    position = target
+                elif spec == "locationVelocity":
+                    velocity = target
+                elif spec == "locationAcceleration":
+                    acceleration = target
+                elif spec == "rotation":
+                    rotation = target
+                elif spec == "scale":
+                    scale = target
+        color_components = read_axes("color.components", "RendererCommonValues/AllColor", str(color_type), "", "RGBA")
+        if color_components:
+            mode_values.setdefault("numericLeaves", {})["color"] = color_components
+            color_values = color_components.get("value", color_components.get("start", {}))
+            color = [color_values.get(axis, {}).get("center", color_values.get(axis, {}).get("value", 1.0)) for axis in "RGBA"]
+            color = [float(channel) / 255 if float(channel) > 1 else float(channel) for channel in color]
+        if _key(scale_type) == "singlepva":
+            for field, prop in (("singleScale", "Scale"), ("singleScaleVelocity", "Velocity"), ("singleScaleAcceleration", "Acceleration")):
+                mode_values.setdefault("numericLeaves", {})[field] = read_scalar(f"scaling.{field}", "ScalingValues", "SinglePVA", prop)
+        elif _key(scale_type) == "singleeasing":
+            for field, endpoint in (("singleScaleStart", "Start"), ("singleScaleEnd", "End")):
+                mode_values.setdefault("numericLeaves", {})[field] = read_scalar(f"scaling.{field}", "ScalingValues", "SingleEasing", endpoint)
         node: dict[str, Any] = {
             "id": stable_id, "path": path, "name": str(item.get("name", stable_id)), "parentId": parent_id,
             "renderType": render_type or "unsupported", "blend": blend, "material": material,
@@ -133,6 +290,21 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
             field_paths["parentId"] = parent
         if texture:
             node["texture"] = str(texture).replace("\\", "/")
+        # Never disguise a missing/unsupported active Core value as a plausible
+        # zero, unit scale, or white tint. Preserve the source data above and
+        # make conversion block when the active mode has no readable values.
+        for label, values in mode_values.items():
+            if not values:
+                unsupported.append(f"missing-active-value:{label}:{location_type if label == 'location' else rotation_type if label == 'rotation' else scale_type if label == 'scaling' else color_type}")
+        for field in missing_core_fields:
+            unsupported.append(f"missing-core-property:{field}")
+        node["valueModes"] = {
+            "location": {"type": str(location_type).lower(), "values": mode_values["location"]},
+            "rotation": {"type": str(rotation_type).lower(), "values": mode_values["rotation"]},
+            "scaling": {"type": str(scale_type).lower(), "values": mode_values["scaling"]},
+            "color": {"type": str(color_type).lower(), "values": mode_values["color"]},
+            "numericLeaves": mode_values.get("numericLeaves", {}),
+        }
         if unsupported:
             node["unsupportedFeatures"] = unsupported
         if generation_amp:

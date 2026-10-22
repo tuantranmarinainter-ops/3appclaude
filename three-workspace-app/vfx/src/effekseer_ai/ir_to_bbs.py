@@ -109,6 +109,112 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
         elif location_kind in {"fixed", "pva"}:
             result["properties"].append(_entry(node_path, "location.type", "OK", f"{location_kind} coordinates are represented by Snowstorm emitter and particle motion fields"))
 
+        # EffectIR from Core records raw active mode values and concrete source
+        # leaves. Only mark a mode usable after its stochastic/easing behavior
+        # is represented in Snowstorm; numeric center-only fallbacks are unsafe.
+        value_modes = node.get("valueModes")
+        if isinstance(value_modes, dict):
+            checks = (("location", location_kind, {"fixed", "pva", "easing"}),
+                      ("rotation", _normal(value_modes.get("rotation", {}).get("type", "")), {"fixed", "pva", "easing"}),
+                      ("scaling", _normal(value_modes.get("scaling", {}).get("type", "")), {"fixed", "pva", "easing", "singlepva", "singleeasing"}),
+                      ("color", _normal(value_modes.get("color", {}).get("type", "")), {"fixed", "random", "easing"}))
+            for label, mode_name, supported in checks:
+                if mode_name not in supported:
+                    node_blockers.append(_entry(node_path, f"{label}.type", "BLOCKED", f"Effekseer {mode_name or 'missing'} mode is captured with sourcePaths but its output representation is not supported by the Snowstorm converter"))
+            if not isinstance(value_modes.get("numericLeaves"), dict):
+                node_blockers.append(_entry(node_path, "valueModes.numericLeaves", "BLOCKED", "Core scalar leaves were not decoded; refusing center/default-only output"))
+        mode_leaves = value_modes.get("numericLeaves", {}) if isinstance(value_modes, dict) else {}
+        location_parametric: list[str] | None = None
+        if location_kind == "pva" and mode_leaves:
+            vectors = ("locationPosition", "locationVelocity", "locationAcceleration")
+            if all(_has_xyz(mode_leaves.get(key, {}).get("value", {})) for key in vectors):
+                location_position = _randomized_axes(mode_leaves[vectors[0]]["value"])
+                location_velocity = _randomized_axes(mode_leaves[vectors[1]]["value"])
+                location_acceleration = _randomized_axes(mode_leaves[vectors[2]]["value"])
+                location_parametric = [
+                    f"({velocity}) * variable.particle_age * {fps:g} + 0.5 * ({acceleration}) * variable.particle_age * variable.particle_age * {fps:g} * {fps:g}"
+                    for velocity, acceleration in zip(location_velocity, location_acceleration)
+                ]
+                node_warnings.append(_entry(node_path, "location.pva", "APPROX", "PVA vector ranges use stable particle_random variables and parametric motion; engine integration is not runtime-verified"))
+            else:
+                node_blockers.append(_entry(node_path, "location.pva", "BLOCKED", "One or more Core PVA Center/Amplitude or Min/Max vector components are missing"))
+        elif location_kind == "fixed" and mode_leaves and not _has_xyz(mode_leaves.get("locationPosition", {}).get("value", {})):
+            node_blockers.append(_entry(node_path, "location.fixed", "BLOCKED", "Core Fixed location scalar leaves are missing; refusing origin fallback"))
+        elif location_kind == "easing" and mode_leaves:
+            endpoints = mode_leaves.get("locationPosition", {})
+            if "start" in endpoints and "end" in endpoints:
+                location_parametric = _easing_axes(endpoints["start"], endpoints["end"])
+                result["properties"].append(_entry(node_path, "location.easing", "APPROX", "Start-to-end movement uses particle_age/particle_lifetime interpolation with stable per-particle random values; curve easing is linear"))
+            else:
+                node_blockers.append(_entry(node_path, "location.easing", "BLOCKED", "Core Start/End scalar leaves are incomplete"))
+        scale_mode = _normal(value_modes.get("scaling", {}).get("type", "")) if isinstance(value_modes, dict) else "fixed"
+        if scale_mode == "easing" and mode_leaves:
+            endpoints = mode_leaves.get("scale", {})
+            if "start" in endpoints and "end" in endpoints:
+                node_size = _easing_axes(endpoints["start"], endpoints["end"])[:2]
+                result["properties"].append(_entry(node_path, "scaling.easing", "APPROX", "Size uses particle_age/particle_lifetime interpolation with stable per-particle random values; curve easing is linear"))
+            else:
+                node_blockers.append(_entry(node_path, "scaling.easing", "BLOCKED", "Core Start/End scale leaves are incomplete"))
+        elif scale_mode == "pva" and mode_leaves:
+            if _has_xyz(mode_leaves.get("scale", {}).get("value", {})):
+                node_size = _pva_axes(mode_leaves["scale"]["value"],
+                                      mode_leaves.get("scaleVelocity", {}).get("value", {}),
+                                      mode_leaves.get("scaleAcceleration", {}).get("value", {}), fps)[:2]
+            else:
+                node_blockers.append(_entry(node_path, "scaling.pva", "BLOCKED", "Core scale PVA does not contain all XYZ scalar leaves"))
+        elif scale_mode == "singleeasing" and mode_leaves:
+            start, end = mode_leaves.get("singleScaleStart", {}), mode_leaves.get("singleScaleEnd", {})
+            if start and end:
+                a, b = _axis_expression(start, 1), _axis_expression(end, 1)
+                expression = f"math.lerp({a}, {b}, math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1))"
+                node_size = [expression, expression]
+                result["properties"].append(_entry(node_path, "scaling.singleEasing", "APPROX", "Single-axis Easing scales both billboard dimensions; curve family is linear"))
+            else:
+                node_blockers.append(_entry(node_path, "scaling.singleEasing", "BLOCKED", "Core SingleEasing Start/End scalar leaves are incomplete"))
+        elif scale_mode == "singlepva" and mode_leaves:
+            base = mode_leaves.get("singleScale", {})
+            velocity = mode_leaves.get("singleScaleVelocity", {})
+            accel = mode_leaves.get("singleScaleAcceleration", {})
+            if base:
+                start = _axis_expression(base, 1)
+                speed = _axis_expression(velocity, 2) if velocity else 0
+                acceleration = _axis_expression(accel, 3) if accel else 0
+                time = f"(variable.particle_age * {fps:g})"
+                expression = f"({start}) + ({speed}) * {time} + 0.5 * ({acceleration}) * {time} * {time}"
+                node_size = [expression, expression]
+                result["properties"].append(_entry(node_path, "scaling.singlePVA", "APPROX", "SinglePVA uses stable particle_random variables and 60-fps frame age; uniform scale approximation"))
+            else:
+                node_blockers.append(_entry(node_path, "scaling.singlePVA", "BLOCKED", "Core SinglePVA scale scalar leaves are missing"))
+        elif scale_mode == "fixed" and mode_leaves and not _has_xyz(mode_leaves.get("scale", {}).get("value", {})):
+            node_blockers.append(_entry(node_path, "scaling.fixed", "BLOCKED", "Core Fixed scale scalar leaves are missing; refusing unit-size fallback"))
+        rotation_mode = _normal(value_modes.get("rotation", {}).get("type", "")) if isinstance(value_modes, dict) else "fixed"
+        if rotation_mode in {"fixed", "pva"} and mode_leaves and not _has_xyz(mode_leaves.get("rotation", {}).get("value", {})):
+            node_blockers.append(_entry(node_path, "rotation", "BLOCKED", "Core rotation scalar leaves are missing"))
+        color_mode = _normal(value_modes.get("color", {}).get("type", "")) if isinstance(value_modes, dict) else "fixed"
+        if color_mode == "fixed" and mode_leaves and not _has_rgba(mode_leaves.get("color", {}).get("value", {})):
+            node_blockers.append(_entry(node_path, "color.fixed", "BLOCKED", "Core Fixed color scalar leaves are missing; refusing white fallback"))
+        color_easing: dict[str, str] | None = None
+        color_interpolant = "math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1)"
+        if color_mode == "easing" and mode_leaves:
+            endpoints = mode_leaves.get("color", {})
+            if _has_rgba(endpoints.get("start", {})) and _has_rgba(endpoints.get("end", {})):
+                try:
+                    color_easing = {"0.0": _hex_from_axes(endpoints["start"]), "1.0": _hex_from_axes(endpoints["end"])}
+                    result["properties"].append(_entry(node_path, "color.easing", "APPROX", "AllColor Easing maps to a Snowstorm age interpolant; Effekseer easing curve shape is approximated linearly"))
+                except ValueError as error:
+                    node_blockers.append(_entry(node_path, "color.easing", "BLOCKED", str(error)))
+            else:
+                node_blockers.append(_entry(node_path, "color.easing", "BLOCKED", "Core color easing Start/End channels are incomplete"))
+        elif color_mode == "random" and mode_leaves:
+            random_channels = mode_leaves.get("color", {}).get("value", {})
+            if _has_rgba(random_channels):
+                low, high = _hex_from_axes(random_channels, endpoint="min"), _hex_from_axes(random_channels, endpoint="max")
+                color_easing = {"0.0": low, "1.0": high}
+                color_interpolant = "variable.particle_random_1"
+                result["properties"].append(_entry(node_path, "color.random", "APPROX", "AllColor Random range is mapped to a gradient selected by stable particle_random_1; channel randoms are correlated"))
+            else:
+                node_blockers.append(_entry(node_path, "color.random", "BLOCKED", "Core random color min/max scalar leaves are incomplete"))
+
         shape = _normal(location.get("shape", "point"))
         if shape in {"point", "sphere", "circle", "disc"}:
             shape_component = "minecraft:emitter_shape_point" if shape == "point" else (
@@ -160,14 +266,18 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             node_blockers.append(_entry(node_path, "generation", "BLOCKED", str(error)))
             max_generation = 1
             gen_frames = 1
-        generation_seconds = _quantize(gen_frames / fps)
-        emitter_lifetime = _quantize(max_generation * gen_frames / fps)
+        # Effekseer generation time is measured in 60 fps frames. Keep the
+        # continuous rate; quantizing a sub-tick interval to one tick drops
+        # most particles (100 particles / 10 frames must remain 100 particles).
+        generation_seconds = gen_frames / fps
+        emitter_lifetime = max_generation * generation_seconds
+        instant_emission = emitter_lifetime < TIME_QUANTUM
         generation_valid = not any(entry["property"] == "generation" for entry in node_blockers)
         if generation_valid:
             result["properties"].append(_entry(node_path, "generation.maxGeneration", "OK", f"Maximum particle count is {max_generation}"))
-            result["properties"].append(_entry(node_path, "generation.generationTime", "OK", f"Source frames converted to {generation_seconds:g} seconds per 20-Hz tick interval"))
-        if gen_frames < 3:
-            node_warnings.append(_entry(node_path, "generation.generationTime", "WARNING", "Emission interval is shorter than 3 source frames and is quantized to 20 Hz"))
+            result["properties"].append(_entry(node_path, "generation.generationTime", "OK", f"60-fps source frames retained as {fps / gen_frames:g} particles/second"))
+        if instant_emission:
+            node_warnings.append(_entry(node_path, "generation.generationTime", "APPROX", "Total burst duration is below one 20-Hz tick; emitted with emitter_rate_instant to preserve particle count"))
         offset_frames = generation.get("generationTimeOffset", 0)
         try:
             offset_value = _number(offset_frames, "generation.generationTimeOffset", minimum=0) / fps
@@ -316,8 +426,25 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
                 "facing_camera_mode": "lookat_xyz",
                 "uv": {"texture_width": 1, "texture_height": 1, "uv": [0, 0], "uv_size": [1, 1]},
             },
-            "minecraft:particle_appearance_tinting": {"color": _hex_color(color)},
+            "minecraft:particle_appearance_tinting": {"color": ({"gradient": color_easing, "interpolant": color_interpolant} if color_easing else _hex_color(color))},
         }
+        if rotation_mode in {"fixed", "pva", "easing"} and mode_leaves:
+            spin_value: Any = None
+            spin_rate: Any = 0
+            if rotation_mode in {"fixed", "pva"}:
+                rotation_axes = mode_leaves.get("rotation", {}).get("value", {})
+                spin_value = _axis_expression(rotation_axes.get("Z", {}), 4)
+                if rotation_mode == "pva":
+                    spin_rate = _mul_expression(_axis_expression(mode_leaves.get("rotationVelocity", {}).get("value", {}).get("Z", {}), 3), fps)
+            elif rotation_mode == "easing":
+                endpoints = mode_leaves.get("rotation", {})
+                if "start" in endpoints and "end" in endpoints:
+                    spin_value = _axis_expression(endpoints["start"].get("Z", {}), 4)
+                    spin_end = _axis_expression(endpoints["end"].get("Z", {}), 4)
+                    spin_value = f"math.lerp({spin_value}, {spin_end}, math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1))"
+            if spin_value is not None:
+                components["minecraft:particle_initial_spin"] = {"rotation": spin_value, "rotation_rate": spin_rate}
+                node_warnings.append(_entry(node_path, "rotation", "APPROX", "Effekseer Z Euler rotation maps to billboard spin; X/Y axis orientation is not represented"))
         components[shape_component] = {
             "offset": location_position,
             "direction": location_direction,
@@ -326,10 +453,13 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             components[shape_component]["radius"] = shape_radius
         elif shape == "line":
             components[shape_component]["half_dimensions"] = shape_extents
-        components["minecraft:emitter_rate_steady"] = {
-            "spawn_rate": _quantize_rate(generation_seconds),
-            "max_particles": max_generation,
-        }
+        if instant_emission:
+            components["minecraft:emitter_rate_instant"] = {"num_particles": max_generation}
+        else:
+            components["minecraft:emitter_rate_steady"] = {
+                "spawn_rate": fps / gen_frames,
+                "max_particles": max_generation,
+            }
         if infinite:
             components["minecraft:emitter_lifetime_looping"] = {"active_time": 0, "sleep_time": 0}
         else:
@@ -339,11 +469,16 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
                 "activation_expression": f"variable.emitter_age >= {offset_seconds:g}"
             }
 
-        speed = math.sqrt(sum(value * value for value in location_velocity))
+        speed = None if any(isinstance(value, str) for value in location_velocity) else math.sqrt(sum(value * value for value in location_velocity))
         if speed:
             components["minecraft:particle_initial_speed"] = speed
         if any(location_acceleration):
             components["minecraft:particle_motion_dynamic"] = {"linear_acceleration": location_acceleration}
+        if location_parametric is not None:
+            components["minecraft:particle_motion_parametric"] = {
+                "relative_position": {"x": location_parametric[0], "y": location_parametric[1], "z": location_parametric[2]},
+                "direction": {"x": 0, "y": 0, "z": 0},
+            }
         if node.get("lighting") is not None:
             components["minecraft:particle_appearance_lighting"] = {"enabled": bool(node["lighting"])}
         if flipbook_data is not None:
@@ -372,7 +507,7 @@ def convert_effect_ir(effect_ir: dict[str, Any], allow_partial: bool = False, ad
             halo["addBlend"]["derivedTexture"] = f"textures/vfx/add/{_slug(node_id)}_halo.png"
             halo["json"]["particle_effect"]["description"]["basic_render_parameters"]["texture"] = f"assets:{halo['addBlend']['derivedTexture']}"
             halo_components = halo["json"]["particle_effect"]["components"]
-            halo_components["minecraft:particle_appearance_billboard"]["size"] = [value * add_options["haloSize"] for value in node_size]
+            halo_components["minecraft:particle_appearance_billboard"]["size"] = [_mul_expression(value, add_options["haloSize"]) for value in node_size]
             halo_components["minecraft:particle_appearance_tinting"]["color"] = _hex_color([min(1, c + add_options["haloColorBoost"]) for c in color[:3]] + [color[3] * add_options["haloAlpha"]])
             halo["json"]["particle_effect"]["description"]["identifier"] += "_halo"
             schemes.append(halo)
@@ -548,6 +683,84 @@ def _color(value: Any) -> list[float]:
     if len(color) == 3:
         color.append(1.0)
     return color
+
+
+def _axis_expression(value: dict[str, Any], variable_index: int) -> str | float:
+    """Build a deterministic per-particle interpolation for one Core axis."""
+    if "center" in value and "amplitude" in value:
+        low = float(value["center"]) - abs(float(value["amplitude"]))
+        high = float(value["center"]) + abs(float(value["amplitude"]))
+    elif "min" in value and "max" in value:
+        low, high = float(value["min"]), float(value["max"])
+    elif "center" in value:
+        return float(value["center"])
+    elif "value" in value:
+        return float(value["value"])
+    else:
+        return 0.0
+    if abs(high - low) < 1e-9:
+        return low
+    return f"math.lerp({low:g}, {high:g}, variable.particle_random_{variable_index})"
+
+
+def _randomized_axes(axes: dict[str, Any]) -> list[str | float]:
+    return [_axis_expression(axes.get(axis, {}), index + 1) for index, axis in enumerate("XYZ")]
+
+
+def _has_xyz(axes: dict[str, Any]) -> bool:
+    return all(axis in axes and bool(axes[axis]) and any(key in axes[axis] for key in ("center", "min", "value")) for axis in "XYZ")
+
+
+def _has_rgba(axes: dict[str, Any]) -> bool:
+    return all(axis in axes and bool(axes[axis]) and any(key in axes[axis] for key in ("center", "min", "value")) for axis in "RGBA")
+
+
+def _hex_from_axes(axes: dict[str, Any], endpoint: str = "center") -> str:
+    channels = []
+    for axis in "RGBA":
+        data = axes[axis]
+        if endpoint in data:
+            value = float(data[endpoint])
+        elif endpoint in {"min", "max"} and "center" in data and "amplitude" in data:
+            value = float(data["center"]) + (1 if endpoint == "max" else -1) * abs(float(data["amplitude"]))
+        elif endpoint == "min" and "min" in data:
+            value = float(data["min"])
+        elif endpoint == "max" and "max" in data:
+            value = float(data["max"])
+        else:
+            value = _axis_expression(data, "RGBA".index(axis) + 1)
+        if not isinstance(value, (int, float)):
+            raise ValueError("Random color endpoint cannot be represented in a static gradient")
+        channel = float(value) / 255 if value > 1 else float(value)
+        channels.append(max(0, min(255, round(channel * 255))))
+    return "#" + "".join(f"{channel:02x}" for channel in channels[:3])
+
+
+def _easing_axes(start: dict[str, Any], end: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    for index, axis in enumerate("XYZ"):
+        a = _axis_expression(start.get(axis, {}), index + 1)
+        b = _axis_expression(end.get(axis, {}), index + 1)
+        result.append(f"math.lerp({a}, {b}, math.clamp(variable.particle_age / variable.particle_lifetime, 0, 1))")
+    return result
+
+
+def _pva_axes(value: dict[str, Any], velocity: dict[str, Any], acceleration: dict[str, Any], fps: float) -> list[str | float]:
+    result: list[str | float] = []
+    for index, axis in enumerate("XYZ"):
+        start = _axis_expression(value.get(axis, {}), index + 1)
+        speed = _axis_expression(velocity.get(axis, {}), (index + 1) % 4 + 1)
+        accel = _axis_expression(acceleration.get(axis, {}), (index + 2) % 4 + 1)
+        if speed == 0 and accel == 0:
+            result.append(start)
+        else:
+            t = f"(variable.particle_age * {fps:g})"
+            result.append(f"({start}) + ({speed}) * {t} + 0.5 * ({accel}) * {t} * {t}")
+    return result
+
+
+def _mul_expression(value: str | float, factor: float) -> str | float:
+    return value * factor if isinstance(value, (int, float)) else f"({value}) * {factor:g}"
 
 
 def _hex_color(color: list[float]) -> str:

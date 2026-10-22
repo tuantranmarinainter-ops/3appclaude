@@ -1,0 +1,340 @@
+"""Offline, deterministic Snowstorm-subset preview renderer (not BBS runtime)."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import math
+import struct
+import zlib
+from pathlib import Path
+from typing import Any
+
+from .ir_to_bbs import convert_effect_ir
+
+
+def render_preview(
+    effect_ir: dict[str, Any], output_dir: str | Path, timestamps: list[float],
+    reference_dir: str | Path | None = None, width: int = 256, height: int = 256,
+) -> dict[str, Any]:
+    if width < 16 or height < 16 or width > 2048 or height > 2048:
+        raise ValueError("Preview dimensions must be between 16 and 2048 pixels")
+    if not timestamps or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 for value in timestamps):
+        raise ValueError("timestamps must be a non-empty list of finite nonnegative seconds")
+    conversion = convert_effect_ir(effect_ir)
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    effect_name = _slug(str(effect_ir.get("name", "effect")))
+    result = {
+        "schemaVersion": 1,
+        "effect": effect_ir.get("name"),
+        "mode": "SIMULATION_ONLY",
+        "actualBbsRuntime": "NOT_RUN",
+        "warning": "Offline Snowstorm-subset simulation; this PNG is not an Effekseer render and does not certify BBS FS playback.",
+        "simulationNotes": ["Random particle lifetime ranges are simulated using the quantized maximum endpoint; random sampling is not reproduced.", "Add mode renders the converted halo behind the core; source texture pixels are not sampled, so luminance detail is represented by the configured tint and layer coefficients.", "Molang size and parametric expressions use deterministic per-particle random variables.", "Camera is a fixed orthographic 8-world-unit simulation; Effekseer reference uses its Viewer perspective camera, so projection remains approximate."],
+        "conversionStatus": conversion["status"],
+        "timestamps": [],
+    }
+    reference_root = Path(reference_dir) if reference_dir else None
+    for timestamp in timestamps:
+        seconds = float(timestamp)
+        stamp = _stamp(seconds)
+        sim_name = f"simulation_{effect_name}_{stamp}s.png"
+        sim_path = output / sim_name
+        if conversion["status"] == "BLOCKED":
+            pixels = _blank(width, height)
+        else:
+            pixels = _render_schemes(conversion["schemes"], seconds, width, height)
+        _write_png(sim_path, width, height, pixels)
+        entry: dict[str, Any] = {
+            "timeSeconds": seconds,
+            "simulationPng": sim_name,
+            "simulationLabel": "SIMULATION ONLY — NOT EFFEKSEER OR BBS FS RENDER",
+            "conversionStatus": conversion["status"],
+        }
+        if reference_root is not None:
+            reference = reference_root / f"{effect_name}_{stamp}s.png"
+            if reference.is_file():
+                ref_width, ref_height, ref_pixels = _read_png(reference)
+                comparison_name = f"comparison_{effect_name}_{stamp}s.png"
+                _write_comparison(output / comparison_name, pixels, width, height, ref_pixels, ref_width, ref_height)
+                entry.update({
+                    "referencePng": str(reference),
+                    "referenceSource": "caller-supplied image; provenance is not verified",
+                    "comparisonPng": comparison_name,
+                    "comparisonLabel": "Left: simulation only. Right: caller-supplied reference image (provenance unverified); no pixel-equivalence claim.",
+                })
+            else:
+                entry["effekseerReferenceStatus"] = "NOT_AVAILABLE"
+        result["timestamps"].append(entry)
+    manifest_path = output / "preview-report.json"
+    manifest_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="effekseer-ai preview")
+    parser.add_argument("effect_ir", help="EffectIR JSON input")
+    parser.add_argument("output_dir", help="Directory for simulation PNGs and preview-report.json")
+    parser.add_argument("--timestamps", default="0,0.25,0.5", help="Comma-separated timestamps in seconds")
+    parser.add_argument("--reference-dir", help="Optional directory containing <effect>_<seconds>s.png Effekseer references")
+    parser.add_argument("--width", type=int, default=256)
+    parser.add_argument("--height", type=int, default=256)
+    args = parser.parse_args(argv)
+    try:
+        effect = json.loads(Path(args.effect_ir).read_text(encoding="utf-8"))
+        timestamps = [float(part.strip()) for part in args.timestamps.split(",") if part.strip()]
+        result = render_preview(effect, args.output_dir, timestamps, args.reference_dir, args.width, args.height)
+    except (OSError, json.JSONDecodeError, ValueError, zlib.error) as error:
+        print(json.dumps({"status": "ERROR", "error": str(error)}, ensure_ascii=False))
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, height: int) -> bytearray:
+    canvas = _blank(width, height)
+    for scheme in schemes:
+        effect = scheme["json"]["particle_effect"]
+        components = effect["components"]
+        if "minecraft:emitter_lifetime_once" in components:
+            active_time = components["minecraft:emitter_lifetime_once"]["active_time"]
+            if time > active_time:
+                continue
+        life = _max_lifetime(components["minecraft:particle_lifetime_expression"]["max_lifetime"])
+        instant = components.get("minecraft:emitter_rate_instant", {}).get("num_particles")
+        rate = components.get("minecraft:emitter_rate_steady", {}).get("spawn_rate", 1)
+        cap = components.get("minecraft:emitter_rate_steady", {}).get("max_particles", instant if instant is not None else 32)
+        cap = min(int(cap), 256)
+        shape_key = next((key for key in components if key.startswith("minecraft:emitter_shape_")), None)
+        shape = components.get(shape_key, {}) if shape_key else {}
+        origin = shape.get("offset", [0, 0, 0])
+        direction = shape.get("direction", [0, 1, 0])
+        acceleration = components.get("minecraft:particle_motion_dynamic", {}).get("linear_acceleration", [0, 0, 0])
+        speed = _eval_molang(components.get("minecraft:particle_initial_speed", 0), 0, life, _random_values(0))
+        tint = components.get("minecraft:particle_appearance_tinting", {}).get("color", "#ffffff")
+        size = components.get("minecraft:particle_appearance_billboard", {}).get("size", [1, 1])
+        add_layer = scheme.get("addBlend", {}).get("layer")
+        emitted = min(cap, int(instant) if instant is not None else max(0, int(math.floor(time * float(rate))) + 1))
+        for index in range(emitted):
+            spawn = index / max(float(rate), 1e-9)
+            age = time - spawn
+            if age < 0 or age > life:
+                continue
+            randoms = _random_values(index)
+            particle_color = _tint_color(tint, age, life, randoms)
+            if add_layer == "halo":
+                particle_color = (*particle_color[:3], round(particle_color[3] * float(scheme["addBlend"]["options"]["haloAlpha"])))
+            elif add_layer == "core":
+                exponent = float(scheme["addBlend"]["options"]["coreExponent"])
+                mix = 0.5 ** exponent
+                particle_color = tuple(round(channel * (1 - mix) + 255 * mix) for channel in particle_color[:3]) + (particle_color[3],)
+            evaluated_size = [_eval_molang(value, age, life, randoms) for value in size]
+            particle_radius = max(1, min(18, int(max(evaluated_size) * 12)))
+            angle = (index * 2.399963229728653) % (math.tau)
+            shape_radius = float(shape.get("radius", 0))
+            x = _eval_molang(origin[0], age, life, randoms) + math.cos(angle) * shape_radius + float(direction[0]) * speed * age + float(acceleration[0]) * age * age / 2
+            y = _eval_molang(origin[1], age, life, randoms) + math.sin(angle) * shape_radius + float(direction[1]) * speed * age + float(acceleration[1]) * age * age / 2
+            parametric = components.get("minecraft:particle_motion_parametric", {}).get("relative_position", {})
+            if parametric:
+                x += _eval_molang(parametric.get("x", 0), age, life, randoms)
+                y += _eval_molang(parametric.get("y", 0), age, life, randoms)
+            px = int(width / 2 + x * min(width, height) / 8)
+            py = int(height / 2 - y * min(width, height) / 8)
+            fade = max(0.15, 1 - age / max(life, 1e-9))
+            _disc(canvas, width, height, px, py, particle_radius, tuple(int(channel * fade) for channel in particle_color))
+    return canvas
+
+
+def _blank(width: int, height: int) -> bytearray:
+    return bytearray([20, 20, 24, 255] * width * height)
+
+
+def _disc(pixels: bytearray, width: int, height: int, cx: int, cy: int, radius: int, color: tuple[int, int, int, int]) -> None:
+    for y in range(max(0, cy - radius), min(height, cy + radius + 1)):
+        for x in range(max(0, cx - radius), min(width, cx + radius + 1)):
+            if (x - cx) ** 2 + (y - cy) ** 2 > radius ** 2:
+                continue
+            index = (y * width + x) * 4
+            alpha = color[3] / 255
+            for channel in range(3):
+                pixels[index + channel] = round(color[channel] * alpha + pixels[index + channel] * (1 - alpha))
+            pixels[index + 3] = 255
+
+
+def _write_png(path: Path, width: int, height: int, pixels: bytearray) -> None:
+    raw = b"".join(b"\x00" + pixels[y * width * 4:(y + 1) * width * 4] for y in range(height))
+    _png_bytes(path, width, height, zlib.compress(raw, 9))
+
+
+def _png_bytes(path: Path, width: int, height: int, compressed: bytes) -> None:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    data = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", compressed) + chunk(b"IEND", b"")
+    path.write_bytes(data)
+
+
+def _read_png(path: Path) -> tuple[int, int, bytearray]:
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError(f"Reference is not a PNG: {path}")
+    pos, width, height, color_type, compressed = 8, 0, 0, 0, bytearray()
+    while pos < len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        kind = data[pos + 4:pos + 8]
+        payload = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind == b"IHDR":
+            width, height, depth, color_type, compression, filtering, interlace = struct.unpack(">IIBBBBB", payload)
+            if depth != 8 or color_type not in {2, 6} or compression or filtering or interlace:
+                raise ValueError("Reference PNG must be non-interlaced 8-bit RGB/RGBA")
+        elif kind == b"IDAT":
+            compressed.extend(payload)
+        elif kind == b"IEND":
+            break
+    channels = 4 if color_type == 6 else 3
+    stride = width * channels
+    raw = zlib.decompress(compressed)
+    rows: list[bytearray] = []
+    previous = bytearray(stride)
+    offset = 0
+    for _ in range(height):
+        filter_type = raw[offset]
+        scan = bytearray(raw[offset + 1:offset + 1 + stride])
+        offset += stride + 1
+        for i in range(stride):
+            left = scan[i - channels] if i >= channels else 0
+            up = previous[i]
+            upper_left = previous[i - channels] if i >= channels else 0
+            if filter_type == 1:
+                scan[i] = (scan[i] + left) & 255
+            elif filter_type == 2:
+                scan[i] = (scan[i] + up) & 255
+            elif filter_type == 3:
+                scan[i] = (scan[i] + ((left + up) // 2)) & 255
+            elif filter_type == 4:
+                scan[i] = (scan[i] + _paeth(left, up, upper_left)) & 255
+            elif filter_type != 0:
+                raise ValueError(f"Unsupported PNG row filter: {filter_type}")
+        rgba = bytearray(width * 4)
+        for x in range(width):
+            source = x * channels
+            target = x * 4
+            rgba[target:target + 3] = scan[source:source + 3]
+            rgba[target + 3] = scan[source + 3] if channels == 4 else 255
+        rows.append(rgba)
+        previous = scan
+    return width, height, bytearray().join(rows)
+
+
+def _write_comparison(path: Path, left: bytearray, lw: int, lh: int, right: bytearray, rw: int, rh: int) -> None:
+    height = max(lh, rh)
+    width = lw + rw
+    canvas = _blank(width, height)
+    _blit(canvas, width, height, left, lw, lh, 0, (height - lh) // 2)
+    _blit(canvas, width, height, right, rw, rh, lw, (height - rh) // 2)
+    _write_png(path, width, height, canvas)
+
+
+def _blit(target: bytearray, tw: int, th: int, source: bytearray, sw: int, sh: int, x0: int, y0: int) -> None:
+    for y in range(sh):
+        if y + y0 >= th:
+            break
+        start = y * sw * 4
+        end = start + sw * 4
+        dest = ((y + y0) * tw + x0) * 4
+        target[dest:dest + sw * 4] = source[start:end]
+
+
+def _paeth(left: int, up: int, upper_left: int) -> int:
+    estimate = left + up - upper_left
+    distances = (abs(estimate - left), abs(estimate - up), abs(estimate - upper_left))
+    return (left, up, upper_left)[distances.index(min(distances))]
+
+
+def _parse_color(value: str) -> tuple[int, int, int, int]:
+    value = value.lstrip("#")
+    if len(value) != 6:
+        return 255, 255, 255, 255
+    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16), 255
+
+
+def _random_values(index: int) -> dict[str, float]:
+    return {f"variable.particle_random_{i}": (index * (0.61803398875 + i * 0.17320508075) + i * 0.31415926535) % 1 for i in range(1, 5)}
+
+
+def _eval_molang(value: Any, age: float, life: float, randoms: dict[str, float]) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if not isinstance(value, str):
+        raise ValueError(f"Unsupported Molang value: {value!r}")
+    tree = ast.parse(value, mode="eval")
+
+    def visit(node: ast.AST) -> float:
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.Name) and node.id == "variable":
+            return 0
+        if isinstance(node, ast.Attribute):
+            name = _attribute_name(node)
+            if name == "variable.particle_age": return age
+            if name == "variable.particle_lifetime": return life
+            if name in randoms: return randoms[name]
+            raise ValueError(f"Unsupported Molang variable: {name}")
+        if isinstance(node, ast.BinOp):
+            a, b = visit(node.left), visit(node.right)
+            if isinstance(node.op, ast.Add): return a + b
+            if isinstance(node.op, ast.Sub): return a - b
+            if isinstance(node.op, ast.Mult): return a * b
+            if isinstance(node.op, ast.Div): return a / b if b else 0
+            if isinstance(node.op, ast.Pow): return a ** b
+        if isinstance(node, ast.UnaryOp):
+            return -visit(node.operand) if isinstance(node.op, ast.USub) else visit(node.operand)
+        if isinstance(node, ast.Call):
+            name = _attribute_name(node.func)
+            args = [visit(arg) for arg in node.args]
+            if name == "math.lerp" and len(args) == 3: return args[0] + (args[1] - args[0]) * args[2]
+            if name == "math.clamp" and len(args) == 3: return min(max(args[0], args[1]), args[2])
+        raise ValueError(f"Unsupported Molang expression: {value}")
+
+    return visit(tree.body)
+
+
+def _attribute_name(node: ast.AST) -> str:
+    return _attribute_name(node.value) + "." + node.attr if isinstance(node, ast.Attribute) else node.id if isinstance(node, ast.Name) else ""
+
+
+def _tint_color(value: Any, age: float, life: float, randoms: dict[str, float]) -> tuple[int, int, int, int]:
+    if isinstance(value, dict) and isinstance(value.get("gradient"), dict):
+        gradient = value["gradient"]
+        points = sorted((float(key), _parse_color(color)) for key, color in gradient.items())
+        t = _eval_molang(value.get("interpolant", 0), age, life, randoms)
+        if len(points) >= 2:
+            (a, ca), (b, cb) = points[0], points[-1]
+            factor = min(1, max(0, (t - a) / (b - a))) if b > a else 0
+            return tuple(round(x + (y - x) * factor) for x, y in zip(ca, cb))
+    return _parse_color(value) if isinstance(value, str) else (255, 255, 255, 255)
+
+
+def _max_lifetime(value: Any) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str) and value.startswith("math.random(") and value.endswith(")"):
+        endpoints = value[len("math.random("):-1].split(",")
+        if len(endpoints) == 2:
+            return max(float(endpoint.strip()) for endpoint in endpoints)
+    raise ValueError(f"Unsupported Snowstorm lifetime expression for preview: {value}")
+
+
+def _slug(value: str) -> str:
+    slug = "".join(character.lower() if character.isalnum() else "_" for character in value).strip("_")
+    return slug or "effect"
+
+
+def _stamp(value: float) -> str:
+    return f"{value:g}".replace(".", "p")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

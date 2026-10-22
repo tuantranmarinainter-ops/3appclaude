@@ -157,6 +157,42 @@ def test_source_frames_are_quantized_to_twenty_hz() -> None:
     assert result["schemes"][0]["json"]["particle_effect"]["components"]["minecraft:emitter_lifetime_once"]["active_time"] == 6
 
 
+def test_subtick_burst_uses_instant_rate_and_preserves_particle_count() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["generation"].update({"maxGeneration": 100, "generationTime": 0.01, "infinite": False})
+    result = convert_effect_ir(ir)
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    assert components["minecraft:emitter_rate_instant"] == {"num_particles": 100}
+    assert "minecraft:emitter_rate_steady" not in components
+    assert components["minecraft:emitter_lifetime_once"]["active_time"] == pytest.approx(100 * .01 / 60)
+
+
+def test_easing_and_pva_emit_stable_per_particle_molang() -> None:
+    ir = fixture("looping-aura")
+    node = next(node for node in ir["nodes"] if node["renderType"] == "sprite")
+    node["location"]["type"] = "easing"
+    node["valueModes"] = {
+        "location": {"type": "easing"}, "rotation": {"type": "fixed"},
+        "scaling": {"type": "easing"}, "color": {"type": "fixed"},
+        "numericLeaves": {
+            "locationPosition": {"start": {axis: {"center": value, "amplitude": .5} for axis, value in zip("XYZ", (0, 1, 2))},
+                                  "end": {axis: {"center": value, "amplitude": 1} for axis, value in zip("XYZ", (2, 3, 4))}},
+            "scale": {"start": {axis: {"center": 1} for axis in "XYZ"},
+                      "end": {axis: {"center": 3} for axis in "XYZ"}},
+            "rotation": {"value": {axis: {"value": 0} for axis in "XYZ"}},
+            "color": {"value": {axis: {"value": 1} for axis in "RGBA"}},
+        },
+    }
+    result = convert_effect_ir(ir)
+    components = result["schemes"][0]["json"]["particle_effect"]["components"]
+    position = components["minecraft:particle_motion_parametric"]["relative_position"]["x"]
+    size = components["minecraft:particle_appearance_billboard"]["size"][0]
+    assert "variable.particle_age / variable.particle_lifetime" in position
+    assert "variable.particle_random_1" in position
+    assert "variable.particle_age / variable.particle_lifetime" in size
+
+
 def test_invalid_shape_and_flipbook_are_reported_as_blocked_not_exceptions() -> None:
     ir = fixture("looping-aura")
     ir["nodes"][1]["location"]["radius"] = "wide"

@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from effekseer_ai.effect_dump import dump_effect_ir
+from effekseer_ai.image_gate import compare_metrics, image_metrics
+from effekseer_ai.session import EffectSession
+
+
+@pytest.mark.integration
+def test_four_official_effects_match_fixed_frame_visual_gate(tmp_path: Path) -> None:
+    dll = os.environ.get("EFFEKSEER_AI_BIN_DIR")
+    samples = os.environ.get("EFFEKSEER_AI_SAMPLE_DIR")
+    if not dll or not samples:
+        pytest.skip("Set EFFEKSEER_AI_BIN_DIR and EFFEKSEER_AI_SAMPLE_DIR on Windows")
+    from effekseer_ai.preview import render_preview
+    sample_root = Path(samples)
+    names = ("Simple_Sprite_BillBoard", "Simple_SpawnMethod1", "Simple_Turbulence_Particles", "Laser01")
+    rows = []
+    for name in names:
+        source = next(sample_root.rglob(f"{name}.efkefc"), None)
+        assert source is not None, f"Missing official Effekseer sample {name}.efkefc"
+        eff_dir = tmp_path / "effekseer" / name
+        command = [sys.executable, "tools/render_preview.py", str(source), str(eff_dir),
+                   "--frames", "15,30,60", "--size", "512", "--background", "20,20,24",
+                   "--distance", "15", "--angle-x", "20", "--angle-y", "30"]
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        effect_ir = dump_effect_ir(EffectSession.open(source))
+        conversion = render_preview(effect_ir, tmp_path / "converted" / name, [0.25, 0.5, 1.0], width=512, height=512)
+        assert conversion["conversionStatus"] != "BLOCKED", f"{name} conversion was blocked"
+        for frame, seconds in zip((15, 30, 60), (0.25, 0.5, 1.0)):
+            ref = eff_dir / f"t{frame:04d}.png"
+            stamp = str(seconds).replace(".", "p")
+            converted = tmp_path / "converted" / name / f"simulation_{name.lower()}_{stamp}s.png"
+            a, b = image_metrics(ref), image_metrics(converted)
+            gate = compare_metrics(a, b)
+            rows.append({"sample": name, "seconds": seconds, "effekseer": a, "converted": b, **gate})
+
+    markdown = ["| Sample | Seconds | Effekseer bright pixels / bbox / mean RGB | Converted bright pixels / bbox / mean RGB | bbox ratio W/H | color distance | Gate |",
+                "|---|---:|---|---|---|---:|---|"]
+    for row in rows:
+        markdown.append(f"| {row['sample']} | {row['seconds']:.2f} | {row['effekseer']['brightPixels']} / {row['effekseer']['bbox']} / {row['effekseer']['meanRGB']} | {row['converted']['brightPixels']} / {row['converted']['bbox']} / {row['converted']['meanRGB']} | {row['bboxRatio']} | {row['meanColorDistance']} | {row['status']} |")
+    report = Path(os.environ.get("VFX_IMAGE_GATE_REPORT", "../../docs/VFX-REPORT-V2-IMAGE-GATE.md"))
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("# VFX review 2 image measurements\n\n" + "\n".join(markdown) + "\n\n" +
+                      "Fixed 512x512 viewport, fixed Effekseer distance 15 / angles 20,30, background 20,20,24; no per-image auto-fit. Converted preview uses its documented fixed orthographic 8-unit viewport simulation, so camera projection remains an approximation and BBS runtime is not certified. Gate fails below 50% bbox width/height or above RGB mean Euclidean distance 40/255.\n",
+                      encoding="utf-8")
+    print(report.read_text(encoding="utf-8"))
+    assert all(row["status"] == "PASS" for row in rows), "visual comparison failed; see measurement report"

@@ -78,7 +78,7 @@ All CLI results are JSON printed to standard output, which makes the commands su
 
 | Group | Commands |
 | --- | --- |
-| Document | `new`, `open`, `save`, `export`, `edit-undo`, `effect-dump` |
+| Document | `new`, `open`, `save`, `export`, `edit-undo`, `effect-dump`, `preview` |
 | Nodes | `node-list`, `node-add`, `node-rename`, `node-remove`, `node-move` |
 | Properties | `property-list`, `property-get`, `property-set` |
 | Resources | `image-import` |
@@ -87,6 +87,8 @@ All CLI results are JSON printed to standard output, which makes the commands su
 Run `effekseer-ai --help` or `effekseer-ai <command> --help` for arguments and JSON input formats.
 
 Use `effekseer-ai effect-dump .\effect.efkefc .\effect-ir.json` to extract an EffectIR v1 snapshot through Effekseer Core. Unknown Core renderer properties are preserved under `properties` and marked unsupported so they cannot be silently exported.
+
+`effekseer-ai preview .\effect-ir.json .\preview --timestamps 0.25,0.5,1 --width 512 --height 512` renders a deterministic Snowstorm-subset simulation for the image integration gate. It is not an Effekseer or in-game render. Expressions use fixed per-particle random variables; the simulator camera is a fixed orthographic 8-world-unit view.
 
 ### Convert EffectIR to BBS FS 2.7 Snowstorm
 
