@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 28 passed, 1 skipped, 0 failed. The skip is the Windows Core integration test. |
 | Offline preview for MVP fixtures | PASS | Covered by `test_all_three_mvp_fixtures_render_timestamp_pngs_and_label_simulation`; no network service is used by the preview implementation. |
+| GitHub Actions `test` workflow | NOT_RUN | The PR check was still `pending` when this report was updated; treat it as unverified until the run completes. |
 | Effekseer reference comparison | NOT_RUN | No Effekseer PNGs were available. On Windows, open each `.efkefc` fixture in Effekseer and save reference frames as `<effect>_<seconds>s.png` at the desired times; then run `effekseer-ai preview <effect-ir.json> <out-dir> --timestamps 0,0.25,0.5 --reference-dir <reference-dir>`. |
 | BBS FS 2.7 actual runtime | NOT_RUN | Install generated resources in BBS FS 2.7 on Windows and capture actual game frames. The simulator does not certify game playback. |
 | Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |
