@@ -110,6 +110,15 @@ effekseer-ai bbs-package .\effect-ir.json .\out\effect.zip --assets-root .
 ```
 
 The package contains `config/bbs/assets/particles/`, referenced textures, a conversion report, a manifest, `CREDITS.md`, and actor/bone `ParticleForm` usage notes including pause/restart guidance. A blocked conversion produces no ZIP unless `--allow-partial` is explicit. The MCP server exposes the same operation as `bbs_package`.
+### Offline preview
+
+Render a local simulation at selected timestamps without network access:
+
+```powershell
+effekseer-ai preview .\effect-ir.json .\preview --timestamps 0,0.25,0.5
+```
+
+The output PNGs and `preview-report.json` are explicitly labeled as simulation only, not Effekseer or BBS FS renders. Optionally place Effekseer reference PNGs named `<effect>_<seconds>s.png` in a directory and pass `--reference-dir`; the command writes a side-by-side comparison and labels its left and right panels. The simulator uses only the exported Snowstorm subset and is not a substitute for the Windows game/runtime gate.
 
 ## MCP server
 

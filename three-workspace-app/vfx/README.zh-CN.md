@@ -78,7 +78,7 @@ CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
 
 | 分类 | 命令 |
 | --- | --- |
-| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump`、`bbs-package` |
+| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump`、`bbs-package`、`preview` |
 | 节点 | `node-list`、`node-add`、`node-rename`、`node-remove`、`node-move` |
 | 属性 | `property-list`、`property-get`、`property-set` |
 | 资源 | `image-import` |
@@ -108,6 +108,15 @@ effekseer-ai bbs-package .\effect-ir.json .\out\effect.zip --assets-root .
 ```
 
 压缩包包含 `config/bbs/assets/particles/`、引用的纹理、转换报告、资源清单、`CREDITS.md`，以及包含 `ParticleForm` actor/bone 用法和暂停/重启提示的说明。默认遇到阻断节点时不生成 ZIP；仅在明确指定 `--allow-partial` 时打包部分结果。MCP 服务也提供 `bbs_package` 工具。
+### 离线预览
+
+选择时间点运行本地模拟，不访问网络：
+
+```powershell
+effekseer-ai preview .\effect-ir.json .\preview --timestamps 0,0.25,0.5
+```
+
+输出 PNG 和 `preview-report.json` 会明确标记为模拟结果，不是 Effekseer 或 BBS FS 渲染。可选地将 Effekseer 参考 PNG 按 `<effect>_<seconds>s.png` 命名放入目录，并通过 `--reference-dir` 指定；工具会生成左右并排的对比图，并说明左右两侧的来源。模拟只覆盖导出的 Snowstorm 子集，不能替代 Windows 游戏运行验证。
 
 ## MCP 服务
 
