@@ -10,7 +10,7 @@ import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 import { stageAssetUpload } from '../src/unifiedAssetFiles'
 import { FILM_SERIES_ARCHIVE_SCRIPT, planFilmSeries } from '../src/filmSeries'
-import { getUnifiedJob, startUnifiedFilmSeriesExport } from '../src/unifiedJobs'
+import { cancelUnifiedJob, getUnifiedJob, startUnifiedFilmSeriesExport } from '../src/unifiedJobs'
 
 const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const temp = mkdtempSync(path.join(tmpdir(), 'film-series-'))
@@ -65,6 +65,45 @@ test('film series rejects a shot that exceeds one worker segment without splitti
   assert.throws(() => planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9 }), /Shot shot-01 exceeds a single Film worker segment.*cut the shot shorter/)
 })
 
+test('film series respects the exact 255-tick and bone-sample boundaries', async () => {
+  const { projectId, characterId } = await twentyShotProject()
+  let project = await readUnifiedProject(projectId)
+  project.scene.content.timeline.fps = 20
+  const sequence = project.scene.content.editorial!.sequences[0]!
+  sequence.clips = [
+    { ...sequence.clips[0]!, id: 'max-tick-shot', sourceFrameStart: 0, sourceFrameEnd: 254 },
+    { ...sequence.clips[1]!, id: 'over-max-shot', sourceFrameStart: 255, sourceFrameEnd: 255 },
+  ]
+  const tickBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9 })
+  assert.deepEqual(tickBounded.map((segment) => segment.ticks), [255, 1])
+
+  const original = project.characters[characterId]!
+  const characterIds = [characterId]
+  const boneCount = () => characterIds.reduce((sum, id) => sum + project.skeletons[project.characters[id]!.skeletonId]!.bones.length, 0)
+  let revision = project.revision
+  while (boneCount() <= 128) {
+    const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'character.add', args: {
+      assetId: original.assetId, skeletonId: original.skeletonId, name: `Boundary actor ${characterIds.length + 1}`,
+    } })
+    characterIds.push(String(added.result.characterId))
+    revision = added.revision
+    project = await readUnifiedProject(projectId)
+  }
+  const totalBones = boneCount()
+  const maxBoneTicks = Math.floor(32768 / totalBones) - 1
+  assert.ok(maxBoneTicks > 0 && maxBoneTicks < 255)
+  assert.ok(totalBones * (maxBoneTicks + 1) <= 32768)
+  assert.ok(totalBones * (maxBoneTicks + 2) > 32768)
+  project.scene.content.timeline.fps = 20
+  const boneSequence = project.scene.content.editorial!.sequences[0]!
+  boneSequence.clips = [
+    { ...boneSequence.clips[0]!, id: 'bone-budget-shot', sourceFrameStart: 0, sourceFrameEnd: maxBoneTicks - 1 },
+    { ...boneSequence.clips[1]!, id: 'over-budget-shot', sourceFrameStart: maxBoneTicks, sourceFrameEnd: maxBoneTicks },
+  ]
+  const boneBounded = planFilmSeries(project, { sequenceId: 'episode', characterIds, viewportAspect: 16 / 9 })
+  assert.deepEqual(boneBounded.map((segment) => segment.ticks), [maxBoneTicks, 1])
+})
+
 test('middle segment failure keeps the parent reservation and leaves no partial series ZIP', async () => {
   const { projectId, characterId } = await twentyShotProject()
   const project = await readUnifiedProject(projectId)
@@ -105,6 +144,37 @@ test('middle segment failure keeps the parent reservation and leaves no partial 
   assert.deepEqual(readdirSync(root), ['job.json'])
 })
 
+test('cancelling a series aborts its active segment, releases the reservation, and cleans staging', async () => {
+  const { projectId, characterId } = await twentyShotProject()
+  const project = await readUnifiedProject(projectId)
+  const segments = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9 })
+  let reachedRunner!: () => void
+  const runnerReached = new Promise<void>((resolve) => { reachedRunner = resolve })
+  const runner = (_project: unknown, _args: unknown, signal: AbortSignal) => new Promise<Buffer>((_resolve, reject) => {
+    reachedRunner()
+    signal.addEventListener('abort', () => reject(new Error('segment aborted')), { once: true })
+  })
+  const started = await startUnifiedFilmSeriesExport(project, { name: 'episode', segments }, runner)
+  await runnerReached
+  const cancelled = await cancelUnifiedJob(started.jobId, projectId)
+  assert.deepEqual(cancelled, { state: 'cancelled', committed: false })
+  const job = await getUnifiedJob(started.jobId, projectId)
+  assert.equal(job.result, undefined)
+  const root = path.join(process.env.BBS_UNIFIED_PROJECTS_DIR!, projectId, '.jobs', started.jobId)
+  assert.equal(existsSync(path.join(root, 'files')), false)
+  assert.equal(existsSync(path.join(root, 'film-series-work')), false)
+  assert.deepEqual(readdirSync(root), ['job.json'])
+
+  const next = await startUnifiedFilmSeriesExport(project, { name: 'next', segments }, async () => { throw new Error('reservation was released') })
+  assert.ok(next.jobId)
+  let nextJob = await getUnifiedJob(next.jobId, projectId)
+  for (let attempt = 0; attempt < 20 && (nextJob.state === 'queued' || nextJob.state === 'running'); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    nextJob = await getUnifiedJob(next.jobId, projectId)
+  }
+  assert.equal(nextJob.state, 'failed')
+})
+
 test('series ZIP includes ordered films and series metadata, deduplicates identical assets, and rejects conflicting names', () => {
   const python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
   const fixture = path.join(temp, 'fake-package.py')
@@ -140,4 +210,24 @@ test('series ZIP includes ordered films and series metadata, deduplicates identi
   const rejected = spawnSync(python, ['-c', FILM_SERIES_ARCHIVE_SCRIPT, conflicting, failedOutput, readme, failedZip], { encoding: 'utf8' })
   assert.notEqual(rejected.status, 0)
   assert.equal(existsSync(failedZip), false)
+
+  for (const [index, unsafeName] of [
+    ['single-backslash', 'assets/models\\sneaky/model.bobj'],
+    ['nested-ntfs-stream', 'assets/models/foo:stream.bobj'],
+    ['windows-device-name', 'assets/models/CON.bobj'],
+  ] as const) {
+    const unsafeSpec = path.join(temp, `unsafe-${index}.json`)
+    const unsafeOutput = path.join(temp, `unsafe-${index}-output`)
+    const unsafeArchive = path.join(temp, `unsafe-${index}.zip`)
+    const fixtureResult = spawnSync(python, [fixture, JSON.stringify([
+      [fakeArchives[0], 'film1', 'same', unsafeName],
+      [fakeArchives[1], 'film2', 'same'],
+    ])])
+    assert.equal(fixtureResult.status, 0)
+    writeFileSync(unsafeSpec, JSON.stringify({ segments, series: [] }))
+    const unsafeResult = spawnSync(python, ['-c', FILM_SERIES_ARCHIVE_SCRIPT, unsafeSpec, unsafeOutput, readme, unsafeArchive], { encoding: 'utf8' })
+    assert.notEqual(unsafeResult.status, 0, `merger accepted unsafe path ${JSON.stringify(unsafeName)}`)
+    assert.match(unsafeResult.stderr, /Unsafe cross-platform Film package path/)
+    assert.equal(existsSync(unsafeArchive), false)
+  }
 })

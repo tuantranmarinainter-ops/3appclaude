@@ -22,11 +22,21 @@ out=pathlib.Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=False)
 films=out/'films'; films.mkdir()
 assets={}
 effects={}
+def unsafe_name(name):
+    path=pathlib.PurePosixPath(name)
+    devices={'con','prn','aux','nul','conin$','conout$'}
+    if chr(92) in name or name.startswith('/') or path.is_absolute() or '..' in path.parts:
+        return True
+    for part in path.parts:
+        stem=part.rstrip(' .').split('.')[0].casefold()
+        if ':' in part or part.endswith(('.', ' ')) or stem in devices or stem in {f'{prefix}{number}' for prefix in ('com','lpt') for number in (*range(1,10),'¹','²','³')}:
+            return True
+    return False
 for item in spec['segments']:
     with zipfile.ZipFile(item['zip']) as source:
         names=[n for n in source.namelist() if not n.endswith('/')]
         if len(names)!=len(set(names)): raise ValueError('Duplicate entry names in Film worker package')
-        if any('\\' in n or n.startswith('/') or ':' in pathlib.PurePosixPath(n).parts[0] or any(part.endswith(('.', ' ')) for part in pathlib.PurePosixPath(n).parts) for n in names): raise ValueError('Unsafe cross-platform Film package path')
+        if any(unsafe_name(n) for n in names): raise ValueError('Unsafe cross-platform Film package path')
         dat=[n for n in names if n.startswith('films/') and n.endswith('.dat')]
         if len(dat)!=1: raise ValueError('Each Film worker package must contain exactly one films/*.dat')
         target=films/item['film']
@@ -41,7 +51,7 @@ for item in spec['segments']:
             if name.startswith('assets/'):
                 p=pathlib.PurePosixPath(name)
                 mode=(source.getinfo(name).external_attr >> 16) & 0o170000
-                if p.is_absolute() or '..' in p.parts or mode == stat.S_IFLNK: raise ValueError('Unsafe asset path in Film package')
+                if mode == stat.S_IFLNK: raise ValueError('Unsafe asset path in Film package')
                 data=source.read(name)
                 key=name.casefold(); previous=assets.get(key)
                 if previous is not None and previous[1] != data: raise ValueError('Film asset filename collision has different bytes: '+name)
