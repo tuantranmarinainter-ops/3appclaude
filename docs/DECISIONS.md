@@ -25,6 +25,9 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
 - App 4 VFX: mã `laodeng000/effekseer-ai` (MIT, commit `208922e`) được **chép vào repo chính** tại `three-workspace-app/vfx/`
   (giữ LICENSE gốc + ghi nguồn) để Codex cloud làm được; DLL Effekseer/.NET không commit. Kế hoạch: `docs/VFX-APP4-PLAN.md`
   (DRAFT, bắt đầu từ giai đoạn 0: xác minh runtime + render tự động trên máy Windows).
+- **MVP App 4 (người dùng chốt 2026-10-22): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật.**
+  BBS nâng từ giai đoạn 5 lên MVP. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
+  bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 
 ## Input/Output
 | App | Vào | Ra |
