@@ -107,8 +107,8 @@ def dump_effect_ir(session: Any, name: str | None = None, fps: float = 60) -> di
         if life_max is None and life_min is not None:
             life_max = life_min
         location_type = get("location.type", ("LocationValues/Type",), "Fixed")
-        rotation_type = get("rotation.type", ("RotationValues/Type",), "Fixed")
-        scale_type = get("scale.type", ("ScalingValues/Type",), "Fixed")
+        rotation_type = get("rotation.type", ("RotationValues/Type", "RotationValues/Rotation/Type"), "Fixed")
+        scale_type = get("scale.type", ("ScalingValues/Type", "ScalingValues/Scale/Type"), "Fixed")
         color_type = get("color.type", ("RendererCommonValues/AllColor/Type",), "Fixed")
         position = discover("location.position", "LocationValues", ("position",), [0, 0, 0], 3, str(location_type))
         velocity = discover("location.velocity", "LocationValues", ("velocity",), [0, 0, 0], 3, str(location_type))
