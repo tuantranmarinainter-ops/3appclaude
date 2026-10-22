@@ -45,14 +45,25 @@ Repo `tuantranmarinainter-ops/3appclaude`, nhánh `main`. Quy tắc chung như `
 | B7 | Codex | Lệnh `camera.motion.add`: áp chuyển động camera từ thư viện bằng lệnh | `unifiedProjectStore.ts`, `apps/studio/src/cameraMotionCommand.ts` (mới), `agent/unified_*` nếu cần cho CLI, test |
 | B8 | Codex | Làn hiệu ứng (VFX cue) trong project App 2 + xuất kèm film | `apps/studio/src/vfxCues.ts` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, `components/vfx-cues/` (mới), test |
 | B9 | Codex | Phát hiệu ứng trong khung nhìn App 2 bằng bảng sprite (sprite sheet) | `packages/builder/src/engine/objects/vfxSprites.ts` (mới), `Stage.ts`, test |
+| B10 | Codex | Kiểm trước khi xuất (báo cáo lỗi/cảnh báo) | `apps/studio/src/filmPreflight.ts` (mới), `components/film-export/`, `unifiedProjectStore.ts`, test |
+| B11 | Codex | Gói cả tập: tự chia đoạn, xuất một gói nhiều film | `apps/studio/src/filmSeries.ts` (mới), `unifiedJobs.ts`, `unifiedProjectStore.ts`, `components/film-export/`, test |
+| B12 | Codex | Nút "Cài vào BBS FS" (chép vào thư mục game, không ghi đè) | `apps/studio/src/bbsInstall.ts` (mới), route/API Studio, `components/film-export/`, test |
+| B13 | Codex | Nút "Gửi sang App 2" trong Workbench App 1 | `packages/retarget/workbench/` (chỉ thư mục này), `apps/studio/src/` (lệnh nhận nếu cần), test |
+| B14 | Codex | Lệnh "Kịch bản → cảnh" (`storyboard.build`) | `apps/studio/src/storyboard.ts` (mới), `unifiedProjectStore.ts`, `docs/STORYBOARD-FORMAT.md` (mới), test |
+| B15 | Codex | Nhúng hiệu ứng AAA vào film | **chờ C7** (Claude bổ sung đặc tả) |
+| B16 | Codex | Làn thoại và âm thanh trong App 2 | `apps/studio/src/audioCues.ts` (mới), `components/audio-cues/` (mới), `unifiedProjectStore.ts`, `unifiedJobs.ts`, khung nhìn (phát tiếng), test |
 | C1 | Claude | Chạy B5+B6 trong Chromium, đo lệch so với ảnh game có sẵn (không vào game) | — |
 | C2 | Claude | "Xem như BBS" (đã xong, commit `9197b6f`) | — |
 | C3 | Claude | Nướng bảng sprite cho hiệu ứng bằng Effekseer thật (App 4) cho B9 | `three-workspace-app/vfx/` |
 | C4 | Claude | Nối bảng duyệt (B3) với renderer, chạy Tập 15 | sau B2, B3 |
 | C5 | Claude | Áp chuyển động camera cho Tập 15 bằng B7, duyệt trong App 2 | sau B7 |
-| C6 | Claude | Kiểm trong BBS FS **chỉ khi người dùng yêu cầu** (hướng hậu cảnh, B4, B8) | — |
+| C6 | Claude | Kiểm trong BBS FS **chỉ khi người dùng yêu cầu** (hướng hậu cảnh, B4, B8, B11, B12) | — |
+| C7 | Claude | Khảo sát cách addon AAA lưu hiệu ứng trong film BBS, viết đặc tả B15 | fork `BBS-AAAddon` |
+| C8 | Claude | Khảo sát nâng giới hạn 255 tick / 3 camera của bộ xuất film | `agent/film_worker/` |
 
-Thứ tự Codex: **B1 → B2 → B6 → B5 → B3 → B7 → B4 → B8 → B9**. B1–B2 là nền cho B3, B5, B6.
+Thứ tự Codex: **B1 → B2 → B6 → B5 → B3 → B7 → B10 → B11 → B12 → B4 → B8 → B9 → B13 → B14 → B16**, B15 khi C7 xong.
+B1–B2 là nền cho B3, B5, B6. Lệnh ghi mới phải được thêm vào danh sách lệnh hỗ trợ trong `unifiedProjectStore.ts`
+(chỗ kiểm `UNSUPPORTED_CAPABILITY`).
 
 ---
 
@@ -157,6 +168,67 @@ màu kèm tên hiệu ứng (để vẫn duyệt được vị trí/thời gian)
 **Đạt khi:** vitest thuần cho chọn ô (frame đầu, giữa, cuối, loop/không loop), cỡ, cue ngoài khoảng không vẽ,
 không có sheet → placeholder; typecheck PASS. Claude kiểm hình (C3).
 
+## B10 — Kiểm trước khi xuất
+`filmPreflight.ts`: hàm thuần `filmPreflight(project, args)` → `{ errors: Issue[], warnings: Issue[] }`, mỗi `Issue`
+`{ code, message (vi + en), nodeId?, clipId?, frame? }`. Lỗi (chặn xuất): hậu cảnh scale ≠ 1 hoặc xoay ngoài trục dọc,
+nhân vật có shear/scale ≠ 1, đoạn > 255 tick, > 3 camera, vượt ngân sách xương `bones × (ticks + 1) ≤ 32768`, asset
+thiếu file. Cảnh báo: cảnh chưa Đạt trong bảng duyệt (B3), VFX cue không có bản BBS (B8), nhân vật dưới sàn
+(y < -0.05) hoặc lơ lửng (chân > 0.3 m khi không có động tác nhảy/rơi). Lệnh `film.preflight` (chỉ đọc). Khung xuất hiện
+danh sách, nút Xuất bị khoá khi có lỗi. Dùng lại các kiểm có sẵn trong `sceneBbsFilm.ts`, `filmManifest.ts`,
+`unifiedFilmSampling.ts` (tách thành hàm dùng chung, không chép hai nơi).
+**Đạt khi:** test cho từng mã lỗi/cảnh báo trên dự án tổng hợp; dự án sạch → không lỗi; test film cũ PASS.
+
+## B11 — Gói cả tập (tự chia đoạn)
+`filmSeries.ts`: chia một sequence editorial thành các đoạn vừa giới hạn worker, theo đúng logic
+`C:\w01-samples\tap15v2\export_v2.mts` (`fits`: ≤ 3 clip, ≤ 255 tick, ngân sách xương), không cắt giữa clip; clip đơn
+vượt giới hạn → lỗi rõ ràng (gợi ý cắt cảnh). Lệnh `scene.export.bbsFilmSeries { sequenceId, name, content?, ... }`
+chạy lần lượt từng đoạn bằng job hiện có, rồi đóng **một zip**: `films/<name>-01.dat …`, `assets/` (gộp, không trùng),
+`series.json` `[{ order, film, shots, startFrame, endFrame, ticks }]`, `effects.json` theo từng film (B8), `README.txt`
+(sửa chữ "BBS FS 2.4" thành 2.7, ghi cách cài). Khung xuất có lựa chọn "Cả tập".
+**Đạt khi:** test chia đoạn (biên đúng, không cắt clip, ra 7 đoạn như Tập 15 khi đưa cùng thông số), zip đủ file và
+`series.json` đúng thứ tự; job lỗi giữa chừng → không để lại zip dở.
+
+## B12 — Cài vào BBS FS
+`bbsInstall.ts` (host Studio, Node): `planInstall(packageZip, gameDir, worldName)` → danh sách file sẽ chép
+(`assets/**` → `<gameDir>/config/bbs/assets/**`, `films/*.dat` → `<gameDir>/saves/<world>/bbs/films/`), đánh dấu file
+đã tồn tại (khác nội dung → **không ghi đè**, báo xung đột; giống hệt → bỏ qua). `applyInstall(plan)` chép và ghi nhật
+ký `<gameDir>/config/bbs/w01-install-log.json` (thời gian, gói, danh sách file) để gỡ theo nhật ký. Giao diện: nhập thư
+mục game (nhớ trong localStorage), chọn world (liệt kê `saves/*` có `level.dat`), xem trước danh sách, bấm **Cài**.
+Không xoá file ngoài nhật ký; không chép khi chưa bấm xác nhận.
+**Đạt khi:** test trên thư mục tạm: cài, cài lại (bỏ qua), xung đột (không ghi đè), gỡ theo nhật ký; đường dẫn thoát
+khỏi `gameDir` (zip slip) bị chặn.
+
+## B13 — "Gửi sang App 2" từ Workbench App 1
+Workbench (`packages/retarget/workbench/`) sau khi chạy xong có nút **Gửi sang App 2**: gọi API Studio (địa chỉ cấu
+hình, mặc định `http://127.0.0.1:3002`) để nhập GLB + manifest vào kho App 5 và (tuỳ chọn) vào project đang mở bằng
+`asset.import` có `manifest` / `library.place`. Báo kết quả (số Action, id). Không sửa thuật toán retarget.
+**Đạt khi:** test workbench với Studio giả (HTTP mock): gửi đúng file, đúng manifest; Studio lỗi → báo lỗi, không mất
+kết quả; `test/workbench.test.ts` cũ PASS.
+
+## B14 — "Kịch bản → cảnh"
+`docs/STORYBOARD-FORMAT.md` + `storyboard.ts`: định dạng JSON `storyboard.v1` theo các trường đã dùng trong
+`C:\w01-samples\tap15v2\episode_v2.mts` (mảng `SHOTS`): mỗi cảnh `{ id, sec, camera: { target, az, el, dist, fov?,
+motion?: { presetId, config? } }, actors: [{ who, at, yaw, acts: [[action, t0, t1]], moves?: [[t, x, y, z, yaw?]] }],
+props?: [{ asset, at, yaw }], fx?: [như VFX cue], lines?: [[speaker, text, t]] }` và bảng `cast` ánh xạ `who` → asset
+nhân vật + bộ Action. Lệnh `storyboard.build { storyboard }` dựng vào project: nhân vật, động tác (lặp clip như script),
+keyframe vị trí/xoay, camera mỗi cảnh + chuyển động (B7), hậu cảnh, VFX cue (B8), thoại (B16), editorial sequence.
+Mỗi cảnh ở một vùng riêng (`area` mặc định 40 m theo trục x) như script.
+**Đạt khi:** test dựng storyboard tổng hợp 3 cảnh: đúng số node, clip, keyframe, camera, sequence; dựng lại cùng file ra
+cùng kết quả (id ổn định theo `id` cảnh); tham chiếu sai (`who`, action, preset) → `VALIDATION_FAILED` kèm vị trí.
+
+## B16 — Làn thoại và âm thanh
+`audioCues.ts`: `project.extensions.audioCues = { version: 1, cues: [{ id, kind: 'voice' | 'sfx' | 'music', assetId,
+frameStart, gainDb, speaker?, text? }] }`; âm thanh là asset của project (nhập WAV/MP3 qua `asset.import`). Lệnh
+`audio.cue.add | update | remove | list`. Khung nhìn App 2 phát tiếng theo timeline khi Play (Web Audio, đồng bộ frame,
+dừng khi Pause/Seek), phụ đề thoại hiện dưới khung film. Xuất: thêm `audio/` + `audio.json` vào gói film/gói cả tập,
+và lệnh `audio.mixdown` trả một WAV trộn (giảm nhạc khi có thoại như `C:\w01-samples\tap15v2\build_v2.py`).
+**Đạt khi:** test thuần cho lịch phát (cue nào kêu ở frame nào), mixdown (độ dài đúng, nhạc giảm ≥ 6 dB khi có thoại),
+lệnh sai → `VALIDATION_FAILED`; phần Web Audio test với AudioContext giả.
+
+## B15 — Nhúng hiệu ứng AAA vào film
+Chờ Claude làm C7 (đọc fork `BBS-AAAddon` nhánh `fs-2.7`: hiệu ứng được lưu thế nào trong film/replay) rồi bổ sung đặc
+tả vào đây. Không bắt đầu trước khi mục này có nội dung.
+
 ---
 
 ## Phần Claude (có runtime)
@@ -168,4 +240,7 @@ không có sheet → placeholder; typecheck PASS. Claude kiểm hình (C3).
 - **C4:** nối bảng duyệt (B3) với `scene.render` + `bbsLook`, chạy Tập 15, gửi người dùng duyệt trong app.
 - **C5:** áp chuyển động camera cho 20 cảnh Tập 15 bằng B7 theo bảng người dùng duyệt; chuyển lịch hiệu ứng ngoài repo
   vào làn VFX (B8); duyệt trong App 2.
-- **C6:** chỉ khi người dùng yêu cầu: quay trong BBS FS để kiểm hướng hậu cảnh, B4, B8.
+- **C6:** chỉ khi người dùng yêu cầu: quay trong BBS FS để kiểm hướng hậu cảnh, B4, B8, B11, B12.
+- **C7:** đọc fork AAA (`fs-2.7`), xác định cách lưu hiệu ứng trong film BBS, viết đặc tả B15.
+- **C8:** khảo sát nâng giới hạn 255 tick / 3 camera của bộ xuất (`agent/film_worker/`, bản BBS FS 2.7); nâng được thì
+  B11 dùng giới hạn mới.
