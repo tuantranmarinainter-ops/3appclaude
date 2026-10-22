@@ -2,19 +2,20 @@
 
 ## Work completed
 
-- Added GLB v1.1 extra-bone metadata validation for a Mixamo65 core, including chained extras, named core ancestry, unique names, local rest TRS, and finite/nonzero transforms.
-- Extra bones remain in the existing rig tree and use the existing selection, transform, keyframe, and GLB export paths. The tree labels them as extras; exported GLBs carry `mixamo65+extras` metadata, and the existing `window.__studio.recordNames()` bridge reports `extraBone` while `window.__studio.extraBones()` exposes validated metadata.
-- Kept the feature inventory intact: **434/434 IDs**, no missing IDs or unresolved lookups.
+- Added GLB v1.1 extra-bone validation for Mixamo65 rigs, including chained extras, named core ancestry, unique names, local rest TRS, and finite/nonzero transforms.
+- Extra bones appear in the existing rig tree and use standard selection and editing. Exported GLBs carry extra-bone metadata while ordinary rigs keep the v1.0 path.
+- Extended the Animation Studio broker context with `extraBone` on each bone and an `extraBones` list containing each extra's ID, name, parent name, and rest transform. The existing MCP transport in `studio_bridge.js` sends this context and dispatches broker calls; no out-of-scope editor-host file was changed.
+- Feature inventory remains **434/434 IDs**, with no missing IDs or unresolved lookups.
 
 ## Rerun commands and gates
 
-- `node --test work/material_alpha_v1_31_8/src/extra_bones.test.mjs` — **PASS**, 4 passed, 0 failed.
-- From `three-workspace-app/animation-studio/work/material_alpha_v1_31_8`: `node src/build.mjs` — **PASS**, standalone HTML built.
+- From `three-workspace-app/animation-studio/work/material_alpha_v1_31_8`: `node src/build.mjs` — **PASS**.
+- From `three-workspace-app/animation-studio`: `node --test work/material_alpha_v1_31_8/src/extra_bones.test.mjs` — **PASS**, 4 passed, 0 failed.
 - From `three-workspace-app/animation-studio`: `node tools/check-features.mjs ../editor/apps/studio/public/animation-studio/v1.31.8/index.html outputs/Animation_Studio_v1_32_0.html` — **PASS**, 434/434.
-- From `three-workspace-app/editor`: `pnpm --filter @topview/3d-builder build && pnpm typecheck` — **PASS**, workspace package builds and recursive typechecks completed.
-- Synthetic browser import/select/edit/save/reload/export test — **BLOCKED**. The first Chromium harness attempt failed while parsing the generated synthetic GLB (`GLTFLoader: Unsupported asset. glTF versions >=2.0 are supported.`); this does not establish whether the Studio roundtrip passes. Re-run after correcting the synthetic GLB generator/harness.
-- Native Windows checks — **NOT_RUN** in this Linux environment. Claude can run `pnpm --filter @topview/3d-builder build && pnpm typecheck` from `three-workspace-app/editor`, then repeat the synthetic GLB browser roundtrip on Windows/Chromium. Blender, Java, and BBS FS checks are not part of this App3 change.
+- From `three-workspace-app/animation-studio`: `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium node tools/test-extra-bones-roundtrip.mjs` — **PASS** on Linux. The test derives a valid synthetic GLB from the built-in character GLB, adds an uncompressed skinned triangle, `X_Head_Jaw` as joint 66, and a jaw animation. Chromium imported it (66 records, 1 mesh, 1 source clip), selected the tree row, edited the jaw through broker `set_pose` + `apply_patch`, read its key through `read_keyframes`, exported and reloaded it, and verified the bone, animation track, and GLB `extras.extraBones` metadata. After reload, `get_animation_context` still reports the extra.
+- From `three-workspace-app/editor`: `pnpm --filter @topview/3d-builder build && pnpm typecheck` — **PASS**, builder build and recursive workspace typechecks completed.
+- Native Windows run — **NOT_RUN** here. With dependencies and Chromium installed, Claude can run `node tools/test-extra-bones-roundtrip.mjs` from `three-workspace-app/animation-studio`; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only if Chromium is not at Playwright's default path. Blender, Java, and BBS FS checks are not part of this App3 change.
 
-## Bridge boundary
+## Broker API exercised
 
-The editor host bridge file is outside the assigned `animation-studio` region, so it was left unchanged. The existing host bridge can consume the enriched record names and the exported GLB metadata through its current API. Separate host controls for changing extras metadata were not added or verified; the Studio’s existing in-app selection and transform controls are used for edits.
+The roundtrip test used `window.__studio.director.call('get_animation_context')`, `set_pose`, `apply_patch`, and `read_keyframes`. These are the same `context` and `call` methods passed by `director_controller.js` to the existing `StudioBridge` in `studio_bridge.js`, which transports them to the connected host. The editor-side host bridge remains unchanged and outside this agent's permitted file scope.
