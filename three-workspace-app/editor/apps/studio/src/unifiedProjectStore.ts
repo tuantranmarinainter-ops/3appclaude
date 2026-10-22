@@ -31,6 +31,7 @@ import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
 import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
 import { getAction } from '../../../packages/library/index'
+import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -1210,7 +1211,31 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw error
     }
   }
-  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (envelope.command === 'scene.review.get') {
+    const { sequenceId, clipId } = envelope.args
+    const sequence = typeof sequenceId === 'string' ? project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId) : undefined
+    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'clipId'].includes(key)) || typeof sequenceId !== 'string' || !sequenceId.trim() ||
+      !sequence || clipId !== undefined && (typeof clipId !== 'string' || !clipId.trim() || !sequence.clips.some((clip) => clip.id === clipId))) throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.review.get requires an existing sequence and optional clip', 400)
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Scene review source revision is stale', 409)
+    const frames = new Map(planReviewFrames(project, sequenceId).map((item) => [item.clipId, item.frames]))
+    const response = success(envelope.requestId, id, project.revision, clipId === undefined
+      ? { sequenceId, shots: sequence.clips.map((clip) => ({ clipId: clip.id, ...reviewStatusForSequence(project, sequenceId, clip.id), frames: frames.get(clip.id) ?? [] })) }
+      : { sequenceId, clipId, ...reviewStatusForSequence(project, sequenceId, clipId), frames: frames.get(clipId) ?? [] })
+    return response
+  }
+  if (envelope.command === 'scene.review.set') {
+    const { sequenceId, clipId, status, note = '' } = envelope.args
+    const sequence = typeof sequenceId === 'string' ? project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId) : undefined
+    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'clipId', 'status', 'note'].includes(key)) || typeof sequenceId !== 'string' || !sequenceId.trim() ||
+      typeof clipId !== 'string' || !clipId.trim() || !sequence?.clips.some((clip) => clip.id === clipId) ||
+      !['pending', 'ok', 'note'].includes(String(status)) || typeof note !== 'string' || note.length > 2000) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.review.set requires an existing sequence/clip, a valid status, and a note up to 2000 characters', 400)
+    }
+    if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.review.set requires expectedRevision', 400)
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Scene review source revision is stale', 409)
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sequenceId, clipId, frames: planReviewFrames(project, sequenceId).find((item) => item.clipId === clipId)?.frames ?? [] })
+  }
+  if (!['shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'asset.import', 'library.place', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -1758,7 +1783,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -1775,7 +1800,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+    if (envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
       if (envelope.command === 'shot.result.import') {
         if (!shotResult) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result package is unavailable', 400)
         result = await applyShotResult(next, shotResult)
@@ -1821,6 +1846,15 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         next.scene = propAddition.scene
         changedIds = [`prop:${propAddition.nodeId}`]
         result = { nodeId: propAddition.nodeId, assetId: propAddition.assetId }
+      } else if (envelope.command === 'scene.review.set') {
+        const { sequenceId, clipId, status, note = '' } = envelope.args
+        const currentReview = next.extensions.sceneReview as unknown as ReturnType<typeof emptySceneReview> | undefined
+        const review = currentReview?.version === 1 && currentReview.sequenceId === sequenceId ? structuredClone(currentReview) : emptySceneReview(sequenceId as string)
+        const shot = makeSceneReviewShot(next, sequenceId as string, clipId as string, status as SceneReviewStatus, note as string)
+        review.shots[clipId as string] = shot
+        next.extensions.sceneReview = review as unknown as Record<string, unknown>
+        changedIds = [`scene-review:${clipId}`]
+        result = { sequenceId, clipId, ...shot }
       } else if (envelope.command === 'skeleton.mapping.set') {
         if (!mappingAddition) throw new UnifiedStoreError('VALIDATION_FAILED', 'Mapping data is unavailable', 400)
         const calibrationBytes = Buffer.from(canonicalJsonExact(mappingAddition.calibration), 'utf8')
