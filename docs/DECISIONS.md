@@ -33,6 +33,12 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   (a) texture mới alpha = độ sáng (texture Add của Effekseer là nền đen, alpha = 1), (b) **lõi trắng**: pha màu về trắng
   theo độ sáng texture, (c) **lớp quầng**: thêm 1 emitter cùng nhịp, kích thước ~1.9×, alpha ~0.55×, màu sáng hơn, vẽ trước (nằm sau lớp chính).
   Ghi mọi hệ số vào report. Ảnh mô phỏng: `C:\w01-samples\vfx-review\blend-options-27.png`. Không sửa mod BBS (bỏ PA 4).
+- **Đường AAA Particles (2026-10-22, đang thử):** fork `tuantranmarinainter-ops/BBS-AAAddon` nhánh `fs-2.7` — port addon
+  AAA của Diobedevn (CC0, vốn cho BBS CML) sang API BBS FS 2.7; sửa lỗi sập khi thoát world (gọi OpenGL từ luồng Netty).
+  Test tự động trong Minecraft dev (nhánh `fs-2.7-autotest`): laser/ribbon/ring phát khi phát film client, phát scene qua
+  server và replay actor; keyframe paused/restart/speed đúng; không đen màn hình. Chưa kiểm film editor bằng tay và Forge+Connector.
+  Nếu người dùng xác nhận trong game: App 4 thêm lệnh xuất gói AAA (`.efkefc` + texture vào `config/bbs/assets/effeks/`)
+  cho hiệu ứng mà đường particle BBS phải chặn; gửi PR cho tác giả.
 
 ## Input/Output
 | App | Vào | Ra |
