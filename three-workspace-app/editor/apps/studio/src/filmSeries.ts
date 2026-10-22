@@ -33,6 +33,7 @@ out=pathlib.Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=False)
 films=out/'films'; films.mkdir()
 assets={}
 effects={}
+audio={}
 def unsafe_name(name):
     path=pathlib.PurePosixPath(name)
     devices={'con','prn','aux','nul','conin$','conout$'}
@@ -58,8 +59,13 @@ for item in spec['segments']:
         except (UnicodeDecodeError,json.JSONDecodeError) as error: raise ValueError('Film effects.json is not valid UTF-8 JSON') from error
         if not isinstance(effect_data,list): raise ValueError('Film effects.json must contain a cue array')
         effects['films/'+item['film']]=effect_data
+        if 'audio.json' in names:
+            audio['films/'+item['film']]=json.loads(source.read('audio.json').decode('utf-8'))
         for name in names:
-            if name.startswith('assets/'):
+            if name=='audio/mix.wav':
+                stem=pathlib.PurePosixPath(item['film']).stem
+                assets[('audio/mix-'+stem+'.wav').casefold()]=('audio/mix-'+stem+'.wav',source.read(name))
+            elif name.startswith('assets/') or name.startswith('audio/'):
                 p=pathlib.PurePosixPath(name)
                 mode=(source.getinfo(name).external_attr >> 16) & 0o170000
                 if mode == stat.S_IFLNK: raise ValueError('Unsafe asset path in Film package')
@@ -72,6 +78,7 @@ for name,data in assets.values():
     target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(data)
 (out/'series.json').write_text(json.dumps(spec['series'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'effects.json').write_text(json.dumps(effects,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+if audio: (out/'audio.json').write_text(json.dumps(audio,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'README.txt').write_text(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'),encoding='utf-8')
 archive=pathlib.Path(sys.argv[4])
 with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:

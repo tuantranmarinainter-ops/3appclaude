@@ -13,6 +13,7 @@ import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment
 import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries'
 import { buildVfxEffectsForFilm, readVfxCueExtension } from './vfxCues'
 import { listVfxPreviews, readVfxSheetImage } from './vfxPreviews'
+import { filmAudioPackage } from './audioMix'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -281,6 +282,14 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     for (const [name, value] of Object.entries(options.extraFiles ?? {})) await writeFile(path.join(packagePath, name), `${JSON.stringify(value, null, 2)}
 `, { flag: 'wx' })
     await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
+    // B16: voices/SFX/music heard in this Film, their 20 Hz schedule and a ducked mix for video editing.
+    const audio = await filmAudioPackage(snapshot, args.range.startFrame, args.range.endFrame, signal)
+    if (audio) {
+      await mkdir(path.join(packagePath, 'audio'), { recursive: true })
+      for (const [name, bytes] of audio.files) await writeFile(path.join(packagePath, ...name.split('/')), bytes, { flag: 'wx' })
+      await writeFile(path.join(packagePath, 'audio.json'), `${JSON.stringify(audio.schedule, null, 2)}\n`, { flag: 'wx' })
+      await writeFile(path.join(packagePath, 'audio', 'mix.wav'), audio.mix, { flag: 'wx' })
+    }
     await writeFile(path.join(packagePath, 'README.txt'), [
       'BBS FS 2.7 Film package. Copy films/*.dat into saves/<world>/bbs/films/ and assets/** into config/bbs/assets/, keeping the included directory layout.',
       'effects.json is a project-side schedule with one transform per cue interval; startTick and endTick are relative to this Film at 20 Hz.',

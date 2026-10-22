@@ -18,7 +18,7 @@ SERVER_META = {"io.modelcontextprotocol/serverInfo": SERVER_INFO}
 # shortcut: expose commands only after their shared broker implementation exists; add file handles and legacy protocols with their adapters.
 SUPPORTED_COMMANDS = (
     "project.create", "project.inspect", "project.save", "scene.apply", "scene.layout.read", "scene.layout.preview", "scene.layout.apply", "camera.framing.preview", "camera.framing.apply", "scene.evaluate", "scene.render", "film.export", "shot.export", "shot.result.import", "job.get", "job.cancel",
-    "character.add", "prop.add", "camera.shot.set", "camera.motion.add", "camera.motion.remove", "motion.edit", "motion.place", "library.place", "motion.binding.set", "history.undo", "history.redo", "retarget.session.set",
+    "character.add", "prop.add", "camera.shot.set", "camera.motion.add", "camera.motion.remove", "vfx.cue.list", "vfx.cue.add", "vfx.cue.update", "vfx.cue.remove", "audio.cue.list", "audio.cue.add", "audio.cue.update", "audio.cue.remove", "motion.edit", "motion.place", "library.place", "motion.binding.set", "history.undo", "history.redo", "retarget.session.set",
     "rig.inspect", "rig.normalization.plan", "rig.normalization.run", "animation.assignment.plan", "animation.assignment.run", "animation.assignment.commit",
 )
 TOOL = {

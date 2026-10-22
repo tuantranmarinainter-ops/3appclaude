@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { AUDIO_FORMATS } from './audioCues'
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Bone, Matrix4, PropertyBinding, Quaternion, REVISION, Vector3 } from 'three'
@@ -575,7 +576,16 @@ export function buildImportedAsset(upload: StagedAssetUpload, format: string, un
   const hash = upload.sha256
   const id = `sha256:${hash}` as const
   const basename = safeName(upload.name)
-  const mediaType = selected === 'glb' ? 'model/gltf-binary' : selected === 'gltf' ? 'model/gltf+json' : selected === 'png' ? 'image/png' : selected === 'jpg' || selected === 'jpeg' ? 'image/jpeg' : selected === 'fbx' ? 'application/vnd.autodesk.fbx' : 'application/octet-stream'
+  const mediaType = selected === 'glb' ? 'model/gltf-binary' : selected === 'gltf' ? 'model/gltf+json' : selected === 'png' ? 'image/png' : selected === 'jpg' || selected === 'jpeg' ? 'image/jpeg' : selected === 'fbx' ? 'application/vnd.autodesk.fbx' : AUDIO_FORMATS[selected] ?? 'application/octet-stream'
+  if (AUDIO_FORMATS[selected]) {
+    // B16 audio lane: stored as-is, no derivatives; cues reference it by asset ID.
+    if (skeletonOverride || unitMeters !== 1) throw new TypeError('Audio files take no skeleton or unit options')
+    const source = { path: `assets/${hash}/${basename}`, sha256: hash, mediaType, byteLength: upload.byteLength }
+    const original = { path: `originals/${hash}/${basename}`, sha256: hash, mediaType, byteLength: upload.byteLength }
+    const asset: Asset = { id, kind: 'other', displayName: basename.replace(/\.[^.]+$/, '') || basename, source, derivatives: {},
+      provenance: { sourceKey: 'audio', sourceVersion: '1', sourceHash: hash, original }, license: null, dependencies: [] }
+    return { asset, skeleton: null, skeletonProfiles: [], motions: [] }
+  }
   if (!['glb', 'gltf', 'fbx', 'png', 'jpg', 'jpeg'].includes(selected)) throw new TypeError(`No importer is available for ${selected || 'unknown'} files`)
   if (skeletonOverride && !['glb', 'gltf'].includes(selected)) throw new TypeError('A target skeleton override is only supported for animation-only glTF files')
   const source = { path: `assets/${hash}/${basename}`, sha256: hash, mediaType, byteLength: upload.byteLength }

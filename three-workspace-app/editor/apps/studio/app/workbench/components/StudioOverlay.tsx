@@ -19,6 +19,8 @@ import { SceneRenderPanel } from './scene-render'
 import { FilmExportPanel } from './film-export'
 import { SceneReviewPanel } from './scene-review'
 import { VfxCueHost } from './vfx-cues'
+import { AudioCueHost, AudioSubtitle } from './audio-cues'
+import { useAudioPlayback } from './audio-cues/useAudioPlayback'
 import { useVfxPreview } from './vfx-cues/hooks/useVfxPreview'
 import { planReviewFrames, reviewStatusForSequence } from '../../../src/sceneReview'
 import { DiagnosticsPanel } from '../../../src/devtools/tools/DiagnosticsPanel'
@@ -90,7 +92,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'diagnostics'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics'
 const WORKSPACES: Array<{ id: Workspace; number: string; vi: string; en: string }> = [
   { id: 'retarget', number: '1', vi: 'Chuẩn hóa', en: 'Standardize' },
   { id: 'scene', number: '2', vi: 'Dựng cảnh', en: 'Scene' },
@@ -162,6 +164,7 @@ export function StudioOverlay({
     }
   }, [filmFrameAspect])
   useVfxPreview(source === 'unified' ? projectState?.project ?? null : null)
+  const subtitle = useAudioPlayback(source === 'unified' ? projectState?.project ?? null : null)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const assetInputRef = useRef<HTMLInputElement>(null)
   const relinkInputRef = useRef<HTMLInputElement>(null)
@@ -482,7 +485,7 @@ export function StudioOverlay({
           </nav>
           <div className="wb-unified-actions">
             <h2 id="wb-history-title" className="wb-sr-only">Undo / Redo</h2>
-            <input ref={assetInputRef} className="wb-sr-only" type="file" multiple accept=".glb,.gltf,.png,.jpg,.jpeg" aria-label={vi ? 'Chọn model GLB/GLTF hoặc texture để nhập' : 'Choose GLB/GLTF models or textures to import'} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void importAssets(files) }} />
+            <input ref={assetInputRef} className="wb-sr-only" type="file" multiple accept=".glb,.gltf,.png,.jpg,.jpeg,.wav,.mp3,.ogg" aria-label={vi ? 'Chọn model GLB/GLTF hoặc texture để nhập' : 'Choose GLB/GLTF models or textures to import'} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void importAssets(files) }} />
             <input ref={relinkInputRef} className="wb-sr-only" type="file" aria-label={vi ? 'Chọn file cần liên kết lại' : 'Choose a file to relink'} onChange={(event) => { const file = event.target.files?.[0]; const assetId = relinkTargetRef.current; event.target.value = ''; relinkTargetRef.current = null; if (file && assetId) void relinkAsset(assetId, file) }} />
             <button type="button" className="wb-host-secondary" onClick={openFeatureSearch} title={vi ? 'Tìm chức năng (Ctrl+K)' : 'Find a feature (Ctrl+K)'}>{vi ? 'Tìm' : 'Find'} <kbd>Ctrl K</kbd></button>
             <button type="button" className="wb-host-secondary" onClick={() => setDrawer('assets')}>{vi ? 'Tài nguyên' : 'Assets'}</button>
@@ -490,6 +493,7 @@ export function StudioOverlay({
             <button type="button" id="wb-bbs-look-toggle" className={`wb-host-secondary${bbsLook ? ' is-active' : ''}`} aria-pressed={bbsLook} onClick={() => setBbsLook((value) => !value)} title={vi ? 'Xem như BBS FS: ánh sáng, trời và sàn cỏ Minecraft (Shift+B)' : 'BBS look: Minecraft lighting, sky and grass as in BBS FS (Shift+B)'}>{vi ? 'Xem như BBS' : 'BBS look'} <kbd>Shift B</kbd></button>
             <button type="button" id="wb-scene-review-open" className="wb-host-secondary" onClick={() => setDrawer('review')}>{vi ? 'Duyệt cảnh' : 'Review shots'}</button>
             <button type="button" id="wb-vfx-cues-open" className="wb-host-secondary" onClick={() => setDrawer('vfx')}>{vi ? 'Hiệu ứng' : 'Effects'}</button>
+            <button type="button" id="wb-audio-cues-open" className="wb-host-secondary" onClick={() => setDrawer('audio')}>{vi ? 'Âm thanh' : 'Audio'}</button>
             {activeWorkspace === 'animation' && <button type="button" className="wb-host-secondary" onClick={() => setDrawer('animation')}>{vi ? 'Thêm animation' : 'Add animation'}</button>}
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Hoàn tác' : 'Undo'} title="Undo (Ctrl+Z)" disabled={historyBusy || !projectState?.history.canUndo} onClick={() => void runHistory('history.undo')}>↶</button>
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>
@@ -502,7 +506,7 @@ export function StudioOverlay({
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div></div>}
+          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} /></div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={activeWorkspace === 'animation' && drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>
@@ -537,6 +541,9 @@ export function StudioOverlay({
           </HostDrawer>
           <HostDrawer open={drawer === 'vfx'} title={vi ? 'Hiệu ứng' : 'Effects'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             <VfxCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'vfx'} />
+          </HostDrawer>
+          <HostDrawer open={drawer === 'audio'} title={vi ? 'Thoại và âm thanh' : 'Voice and sound'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
+            <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
         </>}

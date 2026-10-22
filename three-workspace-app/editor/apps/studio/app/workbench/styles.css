@@ -1040,3 +1040,9 @@
   .wb-export-groups .wb-film-export-controls { grid-template-columns: minmax(0, 1fr); }
   .wb-export-groups .wb-film-export-controls > small,.wb-export-groups .wb-film-export-controls .wb-scene-render-actions { grid-column: 1; }
 }
+/* B16: voice subtitle over the App 2 viewport, like the Shorts captions. */
+.wb-unified-scene { position: relative; }
+.wb-audio-subtitle { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); max-width: min(80%, 900px); padding: 6px 14px; border-radius: 6px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 18px; line-height: 1.35; text-align: center; pointer-events: none; z-index: 20; }
+.wb-audio-cues .wb-audio-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+.wb-audio-cues ul { list-style: none; padding: 0; display: grid; gap: 4px; }
+.wb-audio-cues li { display: flex; justify-content: space-between; gap: 8px; }
