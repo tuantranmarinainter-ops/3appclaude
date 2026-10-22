@@ -13,7 +13,7 @@ Tải và cài theo đồng ý của người dùng ("Ok đồng ý", 2026-10-22
 | G0.3 | Runtime: Effekseer 1.80.6 | PASS | `Effekseer1.80.6Win.zip` 96 564 040 byte, SHA-256 `faf73b3e…a2092a8c02` khớp digest GitHub release 1806; giải nén `C:\w01-samples\effekseer\1.80.6\Effekseer1.80.6Win\` (169 MB). `Tool\bin\EffekseerCore.dll` nạp được: mở `Sample\00_Basic\Laser01.efkefc` → 5 node, 0.74 s. |
 | G0.4 | Mở → sửa → lưu → mở lại | PASS | `tools/g0_roundtrip.py`, mỗi bước một process mới. Bản sao của `Laser01.efkefc`: `node/root/4/CommonValues/MaxGeneration` 60 → 67, đổi tên `node/root/0` "Laser" → "G0Renamed"; mở lại: giá trị 67, tên mới, 5/5 node, các node khác không đổi, file nguồn giữ nguyên hash; `.efkefc` 5 993 byte, export `.efk` 4 360 byte. 4.1 s. |
 | G0.5 | Render preview thật tự động | PASS | `tools/render_preview.py` (mục "Đường render"). 5 ảnh PNG 512×512 tại frame 0/15/30/60/120 (60 fps), 2.5 s cho 5 ảnh. Ảnh đã được mở xem: có laser, hạt, glow đúng texture mẫu. Render 2 lần cho **cùng SHA-256** ở cả 5 frame (tất định). Bản sửa khác bản gốc đúng chỗ kỳ vọng (bảng dưới). |
-| G0.6 | **Chạy trong BBS FS** (gate MVP, tách khỏi cấu trúc/hình/hiệu năng) | BLOCKED | BBS FS 2.4 không có đường phát Effekseer trong mã nguồn (xem mục "BBS FS phát Effekseer bằng cách nào"). Cần người dùng chốt đường phát. |
+| G0.6 | **Chạy trong BBS FS 2.7** (gate MVP, tách khỏi cấu trúc/hình/hiệu năng) | BLOCKED | Người dùng chốt hướng 2 (chuyển sang particle BBS) và đích BBS FS **2.7**. Đặc tả ánh xạ + gate xuất: `docs/VFX-BBS-PARTICLE-MAPPING.md`. Converter chưa viết; chưa có thư mục instance Minecraft của người dùng để kiểm trong game. |
 
 Phân biệt: G0.4/G0.5 là kiểm **cấu trúc** và **hình ảnh trong renderer của Effekseer**. Chưa có số đo hiệu năng
 trong game và chưa chạy trong Minecraft/BBS; các gate đó vẫn mở.
@@ -99,8 +99,9 @@ Ghi chú: thư mục làm việc phải nằm cạnh texture của hiệu ứng 
 kiểm, không commit, không đưa vào gói phân phối (license từng sample khác nhau).
 
 ## Câu cần người dùng chốt
-1. Đường phát VFX trong BBS FS: hướng 1 (addon BBS + AAA), 2 (chuyển sang particle BBS) hay cả hai? Xem mục BBS ở trên.
-2. Bản Effekseer đang dùng thật: 1.80.6 hay khác? Bản AAA Particles (nếu có) và bản BBS FS (2.4 hay 2.7) đang chơi?
+1. ~~Đường phát VFX trong BBS FS~~ — đã chốt 2026-10-22: hướng 2 trước, khảo sát AAA song song (kết quả khảo sát ở `docs/VFX-BBS-PARTICLE-MAPPING.md` §7). BBS FS đang chơi: 2.7.
+2. Bản Effekseer đang dùng thật: 1.80.6 hay khác? Có cài AAA Particles không, bản nào? Thư mục instance Minecraft 1.20.1 Fabric chạy BBS FS 2.7?
+2b. Hiệu ứng dùng blend Add (đa số mẫu) chỉ xấp xỉ được trong BBS (không có additive): chấp nhận xuất kèm cảnh báo, hay chặn?
 3. Xem preview bằng cách nào: ảnh PNG theo mốc thời gian (đang có), bảng ảnh ghép (Recorder có SpriteSheet), hay GIF/video (Recorder có Gif/AVI/H264, chưa thử)?
 4. License mặc định khi tìm asset: chỉ CC0 (đề xuất) hay cho cả CC-BY có ghi công?
 5. Push nhánh `claude/vfx-app4-g0` lên origin để Codex cloud dùng được? (Codex cloud chạy Linux, không có Effekseer Windows: chỉ chạy được 4 test, không render.)
