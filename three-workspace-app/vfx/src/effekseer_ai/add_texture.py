@@ -7,7 +7,7 @@ from typing import Iterable
 _SIG = b"\x89PNG\r\n\x1a\n"
 
 
-def add_layers(data: bytes, exponent: float = 1.5, alpha_scale: float = 1.0) -> tuple[bytes, bytes]:
+def add_layers(data: bytes, exponent: float = 1.5, alpha_scale: float = 1.0, halo_alpha: float = 0.55) -> tuple[bytes, bytes]:
     width, height, pixels = _decode(data)
     core = bytearray()
     halo = bytearray()
@@ -20,7 +20,7 @@ def add_layers(data: bytes, exponent: float = 1.5, alpha_scale: float = 1.0) -> 
         core.extend(round(255 * (c * (1 - mix) + mix)) for c in normalized)
         core.append(round(max(0, min(255, lum * alpha_scale * 255))))
         halo.extend(round(c * 255) for c in normalized)
-        halo.append(round(max(0, min(255, lum * alpha_scale * 255))))
+        halo.append(round(max(0, min(255, lum * alpha_scale * halo_alpha * 255))))
     return _encode(width, height, bytes(core)), _encode(width, height, bytes(halo))
 
 

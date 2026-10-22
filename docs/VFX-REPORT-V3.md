@@ -3,7 +3,7 @@
 ## Changes
 
 - Added the `bbs-package` CLI and MCP `bbs_package` tool. Both consume EffectIR and use the same packaging implementation.
-- Packages Snowstorm particle JSON under `config/bbs/assets/particles/<id>.json`, includes referenced texture files under `config/bbs/assets/`, and writes an EffectIR conversion report plus a package asset manifest. Add textures are transformed into core and halo PNGs (luminance alpha, normalized RGB, white-core mix); each derived asset retains source credit and license metadata.
+- Packages Snowstorm particle JSON under `config/bbs/assets/particles/<id>.json`, includes referenced texture files under `config/bbs/assets/`, and writes an EffectIR conversion report plus a package asset manifest. Add textures are transformed into core and halo PNGs (luminance alpha, normalized RGB, white-core mix); halo alpha is multiplied by 0.55, and each derived asset retains source credit and license metadata.
 - External textures require `license` and `credit` entries in EffectIR `assets`; optional `source` paths must stay within `--assets-root`. The ZIP includes a generated `CREDITS.md` and usage notes for `ParticleForm` actor/bone attachments and pause/restart behavior.
 - Blocked conversion creates no ZIP unless `--allow-partial` is explicit. ZIP creation is atomic. Existing MCP tools remain registered; V2's `effect-dump` and V1's `edit_undo` are preserved.
 - Invalid package inputs return one JSON error object and exit code 2 from the CLI; they do not produce a traceback. Unit tests use transient synthetic PNGs in pytest temp directories; no binary asset is committed.

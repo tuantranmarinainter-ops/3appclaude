@@ -85,7 +85,7 @@ def build_bbs_package(
             transformed_cache: dict[Path, tuple[bytes, bytes]] = {}
             for relative, (source, layer, options) in sorted(generated_textures.items()):
                 if source not in transformed_cache:
-                    transformed_cache[source] = add_layers(source.read_bytes(), options["coreExponent"], options["alphaScale"])
+                    transformed_cache[source] = add_layers(source.read_bytes(), options["coreExponent"], options["alphaScale"], options["haloAlpha"])
                 payload = transformed_cache[source][0 if layer == "core" else 1]
                 archive.writestr(f"config/bbs/assets/{relative}", payload)
             package_assets = [{key: value for key, value in metadata.items() if key != "source"} for relative, metadata in sorted(manifest.items()) if relative in texture_files]

@@ -41,7 +41,7 @@ def test_package_contains_particles_textures_report_and_credits(tmp_path: Path) 
         assert "config/bbs/assets/textures/vfx/add/ring_halo.png" in names
         core = archive.read("config/bbs/assets/textures/vfx/add/ring_core.png")
         halo = archive.read("config/bbs/assets/textures/vfx/add/ring_halo.png")
-        assert _decode(core)[2][3] == _decode(halo)[2][3]  # texture alpha is luminance-derived
+        assert _decode(halo)[2][3] == round(_decode(core)[2][3] * 0.55)  # halo alpha coefficient is baked in
         assert _decode(core)[2][:3] != _decode(halo)[2][:3]  # core is mixed toward white
         assert "config/bbs/effekseer-ai-manifest.json" in names
         assert "config/bbs/effekseer-ai-report.json" in names
