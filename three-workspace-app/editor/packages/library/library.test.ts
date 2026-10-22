@@ -39,6 +39,7 @@ function makeNormalizedOutput(root: string): string {
   }))
   writeFileSync(join(directory, 'walk.report.json'), JSON.stringify({ status: 'PASS' }))
   writeFileSync(join(directory, 'walk.preview.png'), Buffer.from([137, 80, 78, 71]))
+  writeFileSync(join(directory, 'walk.minecraft20.bobj'), 'temporary test fixture')
   return directory
 }
 
@@ -53,6 +54,7 @@ test('imports normalized outputs into content-addressed packs and searches rig/c
   assert.equal(imported.metadata.license.commitable, false)
   assert.equal(imported.metadata.boundCharacter, 'b'.repeat(64))
   assert.equal(imported.metadata.actions[0]!.cover, `covers/${firstUuid}.png`)
+  assert.equal(readFileSync(join(root, 'packs', imported.packId, 'anim.bobj'), 'utf8'), 'temporary test fixture', 'App 1 .minecraft20.bobj sidecar is kept')
   assert.equal(importPack({ root, sourceDirectory: source }).created, false)
   const results = searchLibrary({ root, rig: 'mixamo65', category: 'locomotion', tags: ['happy'], text: 'walk' })
   assert.equal(results.total, 2)

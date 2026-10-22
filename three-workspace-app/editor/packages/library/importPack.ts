@@ -194,7 +194,8 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
       copyFileSync(input.glbPath, safeChild(staging, 'anim.glb'))
       copyFileSync(input.manifestPath, safeChild(staging, 'anim.manifest.json'))
       if (existsSync(input.reportPath)) { ensureRegularFile(input.reportPath); copyFileSync(input.reportPath, safeChild(staging, 'anim.report.json')) }
-      const bobjPath = input.artifact('.bobj')
+      // App 1 names the Minecraft20 action file `<stem>.minecraft20.bobj` (normalize.ts --bobj).
+      const bobjPath = [input.artifact('.minecraft20.bobj'), input.artifact('.bobj')].find((path) => existsSync(path)) ?? ''
       if (existsSync(bobjPath)) { ensureRegularFile(bobjPath); copyFileSync(bobjPath, safeChild(staging, 'anim.bobj')) }
       if (hasCover) {
         mkdirSync(safeChild(staging, 'covers'))
