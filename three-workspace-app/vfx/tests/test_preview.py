@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from effekseer_ai.cli import build_parser, main
-from effekseer_ai.preview import _eval_molang, _random_values, _read_png, _render_schemes, _write_png, project_camera, render_preview
+from effekseer_ai.preview import _blank, _ellipse, _eval_molang, _random_values, _read_png, _render_schemes, _spawn_times, _write_png, project_camera, render_preview
 from effekseer_ai.ir_to_bbs import convert_effect_ir
 
 
@@ -96,3 +96,29 @@ def test_viewer_camera_projection_is_fixed_perspective_and_angle_sensitive() -> 
     turned = project_camera((1, 0, 0), 512, 512, {"angle_y": 90})
     assert turned is not None and turned[0] == 256 and turned[1] != 256
     assert project_camera((-100, 0, 0), 512, 512, {"distance": 15}) is None
+
+
+def test_emitter_cutoff_stops_new_births_but_keeps_existing_particles_alive() -> None:
+    active_time, lifetime = 1 / 6, 1.0
+    burst_spawns = _spawn_times(0.5, 60, 16, active_time, instant_count=3)
+    assert burst_spawns == [0, 0, 0]
+    burst_ages = [0.5 - spawn for spawn in burst_spawns]
+    assert all(age < lifetime for age in burst_ages)
+    assert _spawn_times(1.2, 60, 16, active_time, instant_count=3) == [0, 0, 0]
+    assert all(1.2 - spawn >= lifetime for spawn in burst_spawns)
+
+    steady_spawns = _spawn_times(0.5, 10, 20, active_time)
+    assert steady_spawns == [0.0, 0.1]
+    assert sum(0 <= 0.5 - spawn < lifetime for spawn in steady_spawns) == 2
+    assert _spawn_times(1.2, 10, 20, active_time) == steady_spawns
+    assert not any(1.2 - spawn < lifetime for spawn in steady_spawns)
+
+
+def test_billboard_preserves_anisotropic_size_as_rotatable_ellipse() -> None:
+    pixels = _blank(64, 64)
+    _ellipse(pixels, 64, 64, 32, 32, 2, 12, 0, (255, 255, 255, 255))
+    bright = [(x, y) for y in range(64) for x in range(64)
+              if pixels[(y * 64 + x) * 4] > 30]
+    width = max(x for x, _ in bright) - min(x for x, _ in bright) + 1
+    height = max(y for _, y in bright) - min(y for _, y in bright) + 1
+    assert height > width * 4

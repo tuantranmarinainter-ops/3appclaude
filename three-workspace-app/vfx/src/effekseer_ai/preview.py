@@ -114,10 +114,7 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
     for scheme in schemes:
         effect = scheme["json"]["particle_effect"]
         components = effect["components"]
-        if "minecraft:emitter_lifetime_once" in components:
-            active_time = components["minecraft:emitter_lifetime_once"]["active_time"]
-            if time > active_time:
-                continue
+        active_time = float(components.get("minecraft:emitter_lifetime_once", {}).get("active_time", math.inf))
         life = _max_lifetime(components["minecraft:particle_lifetime_expression"]["max_lifetime"])
         instant = components.get("minecraft:emitter_rate_instant", {}).get("num_particles")
         rate = components.get("minecraft:emitter_rate_steady", {}).get("spawn_rate", 1)
@@ -132,11 +129,10 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
         tint = components.get("minecraft:particle_appearance_tinting", {}).get("color", "#ffffff")
         size = components.get("minecraft:particle_appearance_billboard", {}).get("size", [1, 1])
         add_layer = scheme.get("addBlend", {}).get("layer")
-        emitted = min(cap, int(instant) if instant is not None else max(0, int(math.floor(time * float(rate))) + 1))
-        for index in range(emitted):
-            spawn = index / max(float(rate), 1e-9)
+        spawns = _spawn_times(time, float(rate), cap, active_time, int(instant) if instant is not None else None)
+        for index, spawn in enumerate(spawns):
             age = time - spawn
-            if age < 0 or age > life:
+            if spawn > active_time or age < 0 or age > life:
                 continue
             randoms = _random_values(index)
             particle_color = _tint_color(tint, age, life, randoms)
@@ -147,7 +143,6 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
                 mix = 0.5 ** exponent
                 particle_color = tuple(round(channel * (1 - mix) + 255 * mix) for channel in particle_color[:3]) + (particle_color[3],)
             evaluated_size = [_eval_molang(value, age, life, randoms) for value in size]
-            particle_radius = max(1, min(18, int(max(evaluated_size) * 12)))
             angle = (index * 2.399963229728653) % (math.tau)
             shape_radius = float(shape.get("radius", 0))
             x = _eval_molang(origin[0], age, life, randoms) + math.cos(angle) * shape_radius + float(direction[0]) * speed * age + float(acceleration[0]) * age * age / 2
@@ -160,9 +155,24 @@ def _render_schemes(schemes: list[dict[str, Any]], time: float, width: int, heig
             if projected is None:
                 continue
             px, py = map(round, projected)
+            depth = _camera_depth((x, y, _eval_molang(origin[2], age, life, randoms)), camera_settings)
+            focal = height / (2 * math.tan(math.radians(float(camera_settings["vertical_fov_degrees"])) / 2))
+            rx = max(1, min(120, round(abs(evaluated_size[0]) * focal / depth / 2)))
+            ry = max(1, min(120, round(abs(evaluated_size[1] if len(evaluated_size) > 1 else evaluated_size[0]) * focal / depth / 2)))
+            spin = components.get("minecraft:particle_initial_spin", {})
+            rotation = _eval_molang(spin.get("rotation", 0), age, life, randoms) + _eval_molang(spin.get("rotation_rate", 0), age, life, randoms) * age
             fade = max(0.15, 1 - age / max(life, 1e-9))
-            _disc(canvas, width, height, px, py, particle_radius, tuple(int(channel * fade) for channel in particle_color))
+            _ellipse(canvas, width, height, px, py, rx, ry, math.radians(rotation), tuple(int(channel * fade) for channel in particle_color))
     return canvas
+
+
+def _spawn_times(time: float, rate: float, cap: int, active_time: float, instant_count: int | None = None) -> list[float]:
+    if instant_count is not None:
+        return [0.0] * min(cap, instant_count) if time >= 0 and active_time >= 0 else []
+    if rate <= 0 or time < 0:
+        return []
+    last_index = min(cap - 1, int(math.floor(min(time, active_time) * rate)))
+    return [index / rate for index in range(max(0, last_index + 1))]
 
 
 def _validate_camera(camera: dict[str, Any]) -> None:
@@ -194,6 +204,13 @@ def project_camera(point: tuple[float, float, float], width: int, height: int,
     return width / 2 + focal * sx / eye_depth, height / 2 - focal * sy / eye_depth
 
 
+def _camera_depth(point: tuple[float, float, float], camera: dict[str, Any]) -> float:
+    ax, ay = math.radians(float(camera["angle_x"])), math.radians(float(camera["angle_y"]))
+    forward = (-math.cos(ax) * math.sin(ay), math.sin(ax), -math.cos(ax) * math.cos(ay))
+    dx, dy, dz = (point[i] - camera["focus"][i] for i in range(3))
+    return max(1e-6, float(camera["distance"]) - (dx * forward[0] + dy * forward[1] + dz * forward[2]))
+
+
 def _blank(width: int, height: int) -> bytearray:
     return bytearray([20, 20, 24, 255] * width * height)
 
@@ -208,6 +225,24 @@ def _disc(pixels: bytearray, width: int, height: int, cx: int, cy: int, radius: 
             for channel in range(3):
                 pixels[index + channel] = round(color[channel] * alpha + pixels[index + channel] * (1 - alpha))
             pixels[index + 3] = 255
+
+
+def _ellipse(pixels: bytearray, width: int, height: int, cx: int, cy: int, rx: int, ry: int,
+             angle: float, color: tuple[int, int, int, int]) -> None:
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    extent_x = min(256, math.ceil(math.sqrt((rx * cos_a) ** 2 + (ry * sin_a) ** 2)))
+    extent_y = min(256, math.ceil(math.sqrt((rx * sin_a) ** 2 + (ry * cos_a) ** 2)))
+    alpha = color[3] / 255
+    for y in range(max(0, cy - extent_y), min(height, cy + extent_y + 1)):
+        for x in range(max(0, cx - extent_x), min(width, cx + extent_x + 1)):
+            dx, dy = x - cx, y - cy
+            u, v = dx * cos_a + dy * sin_a, -dx * sin_a + dy * cos_a
+            if (u / rx) ** 2 + (v / ry) ** 2 > 1:
+                continue
+            offset = (y * width + x) * 4
+            for channel in range(3):
+                pixels[offset + channel] = round(color[channel] * alpha + pixels[offset + channel] * (1 - alpha))
+            pixels[offset + 3] = 255
 
 
 def _write_png(path: Path, width: int, height: int, pixels: bytearray) -> None:
