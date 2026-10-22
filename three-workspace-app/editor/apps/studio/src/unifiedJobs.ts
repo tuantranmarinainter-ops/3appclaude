@@ -11,7 +11,8 @@ import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from '
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
 import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries'
-import { buildVfxEffectsForFilm } from './vfxCues'
+import { buildVfxEffectsForFilm, readVfxCueExtension } from './vfxCues'
+import { listVfxPreviews, readVfxSheetImage } from './vfxPreviews'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -427,10 +428,22 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
     const fcurves = snapshot.extensions.topview && typeof snapshot.extensions.topview === 'object'
       ? (snapshot.extensions.topview as Record<string, unknown>).fcurves ?? null
       : null
+    // VFX cues render as App 4 sprite sheets; the headless page has no session cookie, so sheets travel as data URLs.
+    const cues = readVfxCueExtension(snapshot).cues
+    let vfx: { cues: typeof cues; sheets: Record<string, { url: string; meta: unknown }> } | null = null
+    if (cues.length) {
+      const metas = await listVfxPreviews()
+      const sheets: Record<string, { url: string; meta: unknown }> = {}
+      for (const effect of new Set(cues.map((cue) => cue.effect))) {
+        const bytes = metas[effect] ? await readVfxSheetImage(effect) : null
+        if (bytes) sheets[effect] = { url: `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`, meta: metas[effect] }
+      }
+      vfx = { cues, sheets }
+    }
     for (const [cameraIndex, cameraNodeId] of args.cameraNodeIds.entries()) {
       if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
       const result = await renderFrames({
-        document: snapshot.scene, fcurves, frames: args.frames, width: args.width, height: args.height,
+        document: snapshot.scene, fcurves, frames: args.frames, width: args.width, height: args.height, ...(vfx ? { vfx } : {}),
         cameraNodeId, sceneSequence: snapshot.scene.content.editorial?.sequences?.[0]?.id,
         outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets, ...(args.silhouette ? { silhouette: true } : {}), ...(args.bbsLook ? { bbsLook: true } : {}),
       }, { signal, onProgress: async (completed, total) => {

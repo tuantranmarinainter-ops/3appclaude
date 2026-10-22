@@ -1,5 +1,6 @@
 export { DirectorStudio, StudioBootOverlay, DEFAULT_AUTO_SAVE_INTERVAL_MS } from './DirectorStudio'
 export type { DirectorStudioProps, StudioBootOverlayProps, DirectorApi, StudioCloseHandler } from './DirectorStudio'
+export type { VfxSheet, VfxSheetMeta, VfxSpriteCue } from './engine/objects/vfxSprites'
 export { DEFAULT_LOCALE, LOCALE_NAMES, listLocales, localeName, orderedLocales, resolveLocale } from './locale'
 export { fbxSourceBones } from './evaluate/retarget/fbxSourceBones'
 

@@ -25,7 +25,7 @@
       window.compileDirectorPose = compileLibraryPose
 
       window.createDirectorRenderer = async ({
-        document, fcurves, width, height, publicAssetBase, dracoDecoderPath, localAssetUrls,
+        document, fcurves, width, height, publicAssetBase, dracoDecoderPath, localAssetUrls, vfx,
       }) => {
         const renderer = createHeadlessRenderer({
           width,
@@ -40,6 +40,7 @@
           if (node.character) node.character.label = { ...node.character.label, showLabel: false }
         }
         await renderer.load(renderDocument, fcurves)
+        if (vfx?.cues?.length) await renderer.setVfx(vfx.cues, vfx.sheets || {})
         return renderer
       }
 

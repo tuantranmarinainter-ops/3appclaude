@@ -1,3 +1,4 @@
+import type { VfxSheet, VfxSpriteCue } from './objects/vfxSprites'
 import type { EditorViewDirection } from './interact/camera/axisView'
 import type { DirectorDocument, DraftNode } from '../contract/types'
 import type { FCurveSet } from '../evaluate/curves/FCurveSet'
@@ -114,6 +115,8 @@ export interface DirectorEngine {
   /** 像 BBS FS 一样看（只影响显示，不写文档）。 */
   readonly bbsLook: boolean
   setBbsLook(enabled: boolean): void
+  /** VFX cue preview (view only): sprite sheets keyed by effect name. */
+  setVfxCues(cues: readonly VfxSpriteCue[], sheets: Record<string, VfxSheet>): void
   /** Current project's film aspect, or null to clear the host-provided framing. */
   setFilmFrameAspect(aspect: number | null): void
 

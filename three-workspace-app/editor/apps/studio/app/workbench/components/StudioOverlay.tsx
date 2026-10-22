@@ -19,6 +19,7 @@ import { SceneRenderPanel } from './scene-render'
 import { FilmExportPanel } from './film-export'
 import { SceneReviewPanel } from './scene-review'
 import { VfxCueHost } from './vfx-cues'
+import { useVfxPreview } from './vfx-cues/hooks/useVfxPreview'
 import { planReviewFrames, reviewStatusForSequence } from '../../../src/sceneReview'
 import { DiagnosticsPanel } from '../../../src/devtools/tools/DiagnosticsPanel'
 import { LanguageMenu } from './LanguageMenu'
@@ -160,6 +161,7 @@ export function StudioOverlay({
       getLiveStudio()?.stage.setFilmFrameAspect(null)
     }
   }, [filmFrameAspect])
+  useVfxPreview(source === 'unified' ? projectState?.project ?? null : null)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved')
   const assetInputRef = useRef<HTMLInputElement>(null)
   const relinkInputRef = useRef<HTMLInputElement>(null)

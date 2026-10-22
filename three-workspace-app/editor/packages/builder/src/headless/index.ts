@@ -9,6 +9,7 @@ import {
 } from '../evaluate/evaluateFrame'
 import { sceneFromDocument } from '../evaluate/sceneFromDocument'
 import { Stage } from '../engine/core/Stage'
+import type { VfxSheet, VfxSpriteCue } from '../engine/objects/vfxSprites'
 import { makeOffscreenRenderer, renderExportFrame } from '../engine/io/exportShared'
 import type { ResolveMediaUrl } from '../engine/io/mediaRefs'
 
@@ -39,6 +40,8 @@ export interface HeadlessRenderFrameOptions {
 
 export interface HeadlessRenderer {
   load(doc: DirectorDocument, fcurves?: unknown): Promise<void>
+  /** VFX cue preview: sprite sheets (any loadable URL, e.g. data URLs); resolves once the sheets have loaded. */
+  setVfx(cues: readonly VfxSpriteCue[], sheets: Record<string, VfxSheet>): Promise<void>
   renderFrame(frame: number, opts?: HeadlessRenderFrameOptions): Promise<Blob>
   evaluate(frame: number): FrameSnapshot
   dispose(): void
@@ -67,6 +70,10 @@ export function createHeadlessRenderer(options: HeadlessRendererOptions): Headle
       await stage.load(doc)
       if (fcurves != null) stage.setFcurves(FCurveSet.parse(fcurves))
       else stage.setFcurves(null)
+    },
+    async setVfx(cues, sheets) {
+      stage.setVfxCues(cues, sheets)
+      await stage.vfxReady()
     },
     async renderFrame(frame, opts) {
       const doc = stage.doc

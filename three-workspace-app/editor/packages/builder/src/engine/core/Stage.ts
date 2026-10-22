@@ -99,6 +99,7 @@ import { clearCameraMotionGuide, syncCameraMotionGuide as applyCameraMotionGuide
 import { SilhouetteView } from '../objects/silhouette'
 import { BbsLookView } from '../objects/bbsLook'
 import { filmPoseViewDelta, filmPoseViewLocalTurn } from '../objects/filmPoseView'
+import { VfxSpriteLayer, findBoneByCanonicalName, type VfxSheet, type VfxSpriteCue } from '../objects/vfxSprites'
 
 export const FRAME_THROTTLE_MS = 100
 export type { EvalContext, NodeSnapshot } from '../DirectorEngine'
@@ -180,6 +181,7 @@ export class Stage implements DirectorEngine, PathViewHost {
   private readonly silhouetteView = new SilhouetteView()
   private silhouetteWanted = false
   private readonly bbsLookView = new BbsLookView()
+  private readonly vfxLayer = new VfxSpriteLayer()
   private bbsLookWanted = false
   private readonly filmPoseViewRestore = new Map<string, { motionRoot?: THREE.Matrix4; rootMatrix?: THREE.Matrix4; matrixAutoUpdate?: boolean }>()
   private filmFrameAspect: number | null = null
@@ -984,6 +986,36 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.restoreFilmPoseView()
     applyFrameSnapshot(this, snapshot)
     if (this.bbsLookWanted) this.applyFilmPoseView(snapshot)
+    this.syncVfxSprites(snapshot.frame ?? this.currentFrame)
+  }
+
+  /** VFX cue preview (view only, never saved): sprite sheets baked by App 4, placeholders when a sheet is missing. */
+  setVfxCues(cues: readonly VfxSpriteCue[], sheets: Record<string, VfxSheet>): void {
+    this.vfxLayer.setCues(cues, sheets)
+    this.syncVfxSprites(this.currentFrame)
+    this.invalidate()
+  }
+
+  /** Resolves once every VFX sprite sheet has loaded (or failed); headless renders wait before the first frame. */
+  vfxReady(): Promise<void> {
+    return this.vfxLayer.ready()
+  }
+
+  private syncVfxSprites(frame: number): void {
+    if (!this.vfxLayer.cueCount) { if (this.vfxLayer.group.parent) this.vfxLayer.group.removeFromParent(); return }
+    if (this.vfxLayer.group.parent !== this.scene) this.scene.add(this.vfxLayer.group)
+    this.scene.updateMatrixWorld(true)
+    const object = (nodeId: string) => this.characters.get(nodeId)?.root ?? this.props.get(nodeId) ?? this.primitives.get(nodeId) ?? null
+    this.vfxLayer.update(frame, this.doc?.content.timeline.fps ?? 30, {
+      node: (nodeId) => {
+        const character = this.characters.get(nodeId)
+        return (character ? (character.motionRoot ?? character.root) : object(nodeId))?.matrixWorld ?? null
+      },
+      bone: (nodeId, bone) => {
+        const root = this.characters.get(nodeId)?.root
+        return root ? findBoneByCanonicalName(root, bone)?.matrixWorld ?? null : null
+      },
+    })
   }
 
   private restoreFilmPoseView(): void {
@@ -1369,6 +1401,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.silhouetteView.dispose()
     this.bbsLookView.restore(this.scene)
     this.bbsLookView.dispose()
+    this.vfxLayer.dispose()
     this.renderLoop.disposed = true
     this.renderLoop.stop()
     this.stopAmbient()
