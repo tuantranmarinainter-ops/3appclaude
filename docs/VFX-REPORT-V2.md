@@ -19,7 +19,7 @@
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
 | VFX Python unit suite | PASS | `python -m pytest -q` from `three-workspace-app/vfx`: 25 passed, 1 skipped, 0 failed. The skip is the integration test below. |
-| GitHub Actions `test` workflow | NOT_RUN | The PR check was still `pending` when this report was updated; treat it as unverified until the run completes. |
+| GitHub Actions `test` workflow | NOT_RUN | The initial PR check was `pending`; after the report-only push, GitHub reported no checks for the current head. Treat CI as unverified. |
 | Integration using Effekseer Core DLL | NOT_RUN | `EFFEKSEER_AI_BIN_DIR` and an actual `.efkefc` sample are unavailable here. On Windows: `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'; python -m pytest -m integration -q`; then `effekseer-ai effect-dump .\\effect.efkefc .\\effect-ir.json`. |
 | BBS FS 2.7 runtime | NOT_RUN | Requires the real game/runtime. On the Windows review machine, install the generated schemes and exercise them in BBS FS 2.7; do not treat schema conversion as a runtime pass. |
 | Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |
