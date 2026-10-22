@@ -31,6 +31,8 @@ class ProtocolTests(unittest.TestCase):
         commands = listed["result"]["tools"][0]["inputSchema"]["properties"]["command"]["enum"]
         self.assertIn("scene.apply", commands)
         self.assertIn("prop.add", commands)
+        self.assertIn("camera.motion.add", commands)
+        self.assertIn("camera.motion.remove", commands)
         self.assertIn("retarget.session.set", commands)
         self.assertIn("motion.place", commands)
         self.assertIn("library.place", commands)
