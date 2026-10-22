@@ -20,10 +20,11 @@
 
 | Gate | Status | Result / rerun command |
 | --- | --- | --- |
-| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 37 passed, 2 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths, corrupt PNG error handling, and generated texture verification. |
+| VFX Python unit suite | PASS | From `three-workspace-app/vfx`, install test tools with `python -m pip install -e ".[dev]"`, then run `PYTHONPATH=src python -m pytest -q` (PowerShell: `$env:PYTHONPATH='src'; python -m pytest -q`): 49 passed, 3 skipped, 0 failed. Skips require Windows Core DLL and official sample directory. Includes CLI success/error paths, corrupt PNG error handling, and generated texture verification. |
 | Integration using Effekseer Core DLL and official samples | NOT_RUN | On Windows set `$env:EFFEKSEER_AI_BIN_DIR='C:\\path\\to\\Effekseer\\Tool\\bin'` and `$env:EFFEKSEER_AI_SAMPLE_DIR='C:\\path\\to\\Effekseer\\Sample\\00_Basic'`, then run `python -m pytest -m integration -q` from `three-workspace-app/vfx`. |
 | MCP tool inventory | PASS | Unit test checks all existing tools remain present and confirms the additive `bbs_package` tool. |
 | GitHub Actions `test` workflow | NOT_RUN | No check is currently reported for the latest head; verify PR #51's status before review. |
+| Review 2 Effekseer image gate | NOT_RUN | The inherited integration test renders the four required samples at 0.25/0.5/1s, writes bright-pixel/bbox/mean-RGB measurements and fails below 50% bbox width/height or above RGB distance 40/255. On Windows set both required environment variables and run `python -m pytest -m integration -q`; camera uses fixed Viewer distance/angles and a documented 45-degree FOV approximation, with no auto-fit. No cloud measurements are claimed; see `VFX-REPORT-V2.md`. |
 | BBS FS 2.7 runtime | NOT_RUN | Install the generated ZIP in an actual BBS FS 2.7 resource pack and exercise its particles on Windows. |
 | Compile and whitespace | PASS | `python -m compileall -q src tests`; `git diff --check`. |
 
