@@ -1,0 +1,20 @@
+.panel { display: grid; gap: 16px; padding: 16px; color: #e8edf4; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.header h2 { margin: 0; font-size: 18px; }
+.header p { margin: 5px 0 0; color: #aab6c5; font-size: 12px; }
+.list { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px; border: 1px solid #344154; border-radius: 8px; background: #161e2a; }
+.item > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.item strong { overflow: hidden; text-overflow: ellipsis; }
+.item span, .item small { color: #aab6c5; font-size: 12px; }
+.itemActions, .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.itemActions button, .actions button { border: 1px solid #526276; border-radius: 6px; padding: 6px 10px; color: inherit; background: #243247; cursor: pointer; }
+.itemActions button:hover, .actions button:hover { background: #31445f; }
+.form { display: grid; gap: 10px; min-width: 0; border: 1px solid #344154; border-radius: 8px; padding: 12px; }
+.form legend { padding: 0 5px; font-weight: 650; }
+.form label { display: grid; gap: 4px; color: #c6d0dc; font-size: 12px; }
+.form input, .form select { min-width: 0; border: 1px solid #45546a; border-radius: 5px; padding: 7px; color: #f3f6fa; background: #101722; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.form [role='alert'] { margin: 0; color: #ffadad; }
+.actions { margin-top: 3px; }
