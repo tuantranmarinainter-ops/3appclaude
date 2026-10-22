@@ -180,11 +180,49 @@ test('synthetic skin: 6 influences are cut to 4 with weights renormalized, unmap
   assert.equal(json.materials.length, 1)
 })
 
-test('non-Mixamo family is BLOCKED before the mesh source is even loaded', { skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture not present: C:/w01-samples/Xbot.glb' }, async () => {
-  const animation = await normalizeBytes(readFileSync('C:/w01-samples/Xbot.glb'), 'glb', 1)
+test('model mode fits a UE-named skeleton to mapped source joint positions', async () => {
+  const bytes = new TextEncoder().encode('synthetic-ue')
+  const original = await syntheticSource({ withMesh: false })
+  const aliases: Record<string, string> = {
+    Hips: 'pelvis', Spine: 'spine01', Spine1: 'spine02', Spine2: 'spine03', Neck: 'neck01',
+    LeftShoulder: 'clavicle_l', LeftArm: 'upperarm_l', LeftForeArm: 'lowerarm_l', LeftHand: 'hand_l', LeftUpLeg: 'thigh_l', LeftLeg: 'calf_l', LeftFoot: 'foot_l',
+    RightShoulder: 'clavicle_r', RightArm: 'upperarm_r', RightForeArm: 'lowerarm_r', RightHand: 'hand_r', RightUpLeg: 'thigh_r', RightLeg: 'calf_r', RightFoot: 'foot_r',
+  }
+  const rename = (root: Object3D) => root.traverse((node) => {
+    if (node.name.startsWith('mixamorig')) {
+      const target = node.name.replace(/^mixamorig/, '')
+      node.name = aliases[target] ?? target
+    }
+  })
+  rename(original)
+  const upper = original.getObjectByName('upperarm_l')!
+  upper.position.multiplyScalar(1.2)
+  original.updateMatrixWorld(true)
+  const animation = await normalizeBytes(bytes, 'glb', 1, original)
   assert.ok('glb' in animation)
-  // Pretend the auto mapping saw another family: the gate reads the report, not the file.
-  const other = { ...animation, report: { ...animation.report, mapping: { ...animation.report.mapping, family: 'lol' } } }
+  const mapping = (animation.report as any).mapping
+  mapping.family = 'ue'
+  for (const joint of mapping.joints) if (aliases[joint.target]) joint.source = aliases[joint.target]
+  const source = await syntheticSource({ withMesh: true })
+  rename(source)
+  source.getObjectByName('upperarm_l')!.position.multiplyScalar(1.2)
+  source.updateMatrixWorld(true)
+  const model = await applyModelMode(animation, { loadSource: async () => source, files: null, unitMeters: 1, upAxis: 'y' })
+  assert.ok('glb' in model, JSON.stringify((model.report as any).blocker))
+  const report = (model.report as any).model
+  assert.equal(report.status, 'PASS', JSON.stringify(report.checks))
+  assert.ok(report.fittedJoints >= 12)
+  assert.ok(report.jointFit.maxMeters < 1e-6, `mapped joint fit ${report.jointFit.maxMeters} m`)
+  assert.ok(report.restMaxErrorMeters < 1e-3, `skinned rest error ${report.restMaxErrorMeters} m`)
+  assert.equal(report.warnings.some((warning: any) => warning.code === 'MODEL_NOT_REFIT'), false)
+  assert.equal(decodeGlb(model.glb).json.skins[0].joints.length, 65)
+  console.log('synthetic UE fit', JSON.stringify({ fittedJoints: report.fittedJoints, maxJointErrorMeters: report.jointFit.maxMeters, maxRestErrorMeters: report.restMaxErrorMeters }))
+})
+
+test('unknown family is BLOCKED before the mesh source is even loaded', async () => {
+  const animation = await normalizeBytes(new TextEncoder().encode('synthetic-unknown'), 'glb', 1, await syntheticSource({ withMesh: false }))
+  assert.ok('glb' in animation)
+  const other = { ...animation, report: { ...animation.report, mapping: { ...animation.report.mapping, family: 'unknown' } } }
   let loaded = false
   const result = await applyModelMode(other, { loadSource: async () => { loaded = true; throw new Error('must not load') }, files: null, unitMeters: 1, upAxis: 'y' })
   assert.equal(result.status, 'BLOCKED')
@@ -200,7 +238,7 @@ test('Draco and meshopt sources are BLOCKED with DRACO_UNSUPPORTED', () => {
   }
 })
 
-test('CLI: --mode model writes mode=model manifest and exits 2 for a non-Mixamo family', { timeout: 120_000, skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture not present: C:/w01-samples/Xbot.glb' }, () => {
+test('CLI: --mode model writes mode=model manifest for a Mixamo source', { timeout: 120_000, skip: existsSync('C:/w01-samples/Xbot.glb') ? false : 'External fixture not present: C:/w01-samples/Xbot.glb' }, () => {
   const out = mkdtempSync(join(tmpdir(), 'w01-model-'))
   const run = (src: string, extra: string[] = []) => spawnSync(process.execPath, ['--import', 'tsx', cliPath, '--src', src, '--target', targetPath, '--out', join(out, src.split('/').pop()!.replace(/\W/g, '_')), '--mode', 'model', ...extra], { cwd: tsxHome, encoding: 'utf8' })
   const ok = run('C:/w01-samples/Xbot.glb')
