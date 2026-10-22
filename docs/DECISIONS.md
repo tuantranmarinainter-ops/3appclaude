@@ -31,7 +31,7 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 - **Blend Add trên BBS FS 2.7 (người dùng chốt 2026-10-22: "phương án 2")**: không chặn, cảnh báo; bộ chuyển làm
   (a) texture mới alpha = độ sáng (texture Add của Effekseer là nền đen, alpha = 1), (b) **lõi trắng**: pha màu về trắng
-  theo độ sáng texture, (c) **lớp quầng**: thêm 1 emitter cùng nhịp, kích thước ~1.9×, alpha ~0.55×, màu sáng hơn, vẽ sau.
+  theo độ sáng texture, (c) **lớp quầng**: thêm 1 emitter cùng nhịp, kích thước ~1.9×, alpha ~0.55×, màu sáng hơn, vẽ trước (nằm sau lớp chính).
   Ghi mọi hệ số vào report. Ảnh mô phỏng: `C:\w01-samples\vfx-review\blend-options-27.png`. Không sửa mod BBS (bỏ PA 4).
 
 ## Input/Output
