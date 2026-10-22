@@ -78,13 +78,15 @@ All CLI results are JSON printed to standard output, which makes the commands su
 
 | Group | Commands |
 | --- | --- |
-| Document | `new`, `open`, `save`, `export`, `edit-undo` |
+| Document | `new`, `open`, `save`, `export`, `edit-undo`, `effect-dump` |
 | Nodes | `node-list`, `node-add`, `node-rename`, `node-remove`, `node-move` |
 | Properties | `property-list`, `property-get`, `property-set` |
 | Resources | `image-import` |
 | Editor data | `settings-list`, `settings-set`, `curve-list`, `curve-set` |
 
 Run `effekseer-ai --help` or `effekseer-ai <command> --help` for arguments and JSON input formats.
+
+Use `effekseer-ai effect-dump .\effect.efkefc .\effect-ir.json` to extract an EffectIR v1 snapshot through Effekseer Core. Unknown Core renderer properties are preserved under `properties` and marked unsupported so they cannot be silently exported.
 
 ### Convert EffectIR to BBS FS 2.7 Snowstorm
 

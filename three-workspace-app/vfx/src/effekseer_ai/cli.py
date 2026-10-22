@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .session import EffectSession
+from .effect_dump import write_effect_ir
 
 
 def _emit(value: Any) -> None:
@@ -37,6 +38,11 @@ def _save(args: argparse.Namespace) -> dict[str, Any]:
 def _edit_undo(args: argparse.Namespace) -> dict[str, str]:
     session = _open(args.effect)
     return {"path": str(session.edit_undo())}
+
+
+def _effect_dump(args: argparse.Namespace) -> dict[str, str]:
+    session = _open(args.effect)
+    return {"path": str(write_effect_ir(session, args.output, args.name, args.fps))}
 
 
 def _node_list(args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -136,6 +142,11 @@ def build_parser() -> argparse.ArgumentParser:
     save.add_argument("destination", nargs="?")
     undo = command("edit-undo", _edit_undo)
     undo.add_argument("effect")
+    dump = command("effect-dump", _effect_dump)
+    dump.add_argument("effect", help="Input .efkefc file")
+    dump.add_argument("output", help="Destination EffectIR JSON file")
+    dump.add_argument("--name")
+    dump.add_argument("--fps", type=float, default=60)
 
     node_list = command("node-list", _node_list)
     node_list.add_argument("effect")

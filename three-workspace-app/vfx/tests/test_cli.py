@@ -10,7 +10,7 @@ def test_cli_exposes_only_the_portable_effect_bridge_commands() -> None:
     )
     commands = set(command_parser.choices)
 
-    assert {"new", "open", "save", "export", "node-list", "node-add", "edit-undo"} <= commands
+    assert {"new", "open", "save", "export", "node-list", "node-add", "edit-undo", "effect-dump"} <= commands
     assert not {
         "generate",
         "model-convert",

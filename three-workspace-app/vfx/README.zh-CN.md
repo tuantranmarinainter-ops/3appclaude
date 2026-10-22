@@ -78,13 +78,15 @@ CLI 会将结果以 JSON 输出到标准输出，便于脚本和 Agent 调用。
 
 | 分类 | 命令 |
 | --- | --- |
-| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo` |
+| 特效文档 | `new`、`open`、`save`、`export`、`edit-undo`、`effect-dump` |
 | 节点 | `node-list`、`node-add`、`node-rename`、`node-remove`、`node-move` |
 | 属性 | `property-list`、`property-get`、`property-set` |
 | 资源 | `image-import` |
 | 编辑器数据 | `settings-list`、`settings-set`、`curve-list`、`curve-set` |
 
 使用 `effekseer-ai --help` 或 `effekseer-ai <命令> --help` 查看参数和 JSON 输入格式。
+
+使用 `effekseer-ai effect-dump .\effect.efkefc .\effect-ir.json` 通过 Effekseer Core 提取 EffectIR v1。未知的 Core 渲染器属性会保存在 `properties` 中并标记为不支持，避免静默导出。
 
 ### 转换 EffectIR 到 BBS FS 2.7 Snowstorm
 
