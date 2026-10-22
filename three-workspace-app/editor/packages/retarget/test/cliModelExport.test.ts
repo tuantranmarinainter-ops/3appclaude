@@ -249,8 +249,9 @@ test('CLI: --mode model writes mode=model manifest for a Mixamo source', { timeo
   assert.equal(sha(readFileSync(join(out, 'Xbot_glb', 'Xbot.glb'))), manifest.glbSha256)
   const sion = 'C:/Users/Administrator/Downloads/MODEL WARCRAFT/NAP MODEL CHO CLAUDE/LOL/sion.glb'
   if (existsSync(sion)) {
-    const blocked = run(sion)
-    assert.equal(blocked.status, 2, blocked.stdout + blocked.stderr)
-    assert.match(blocked.stdout, /MODEL_MODE_FAMILY_UNSUPPORTED/)
+    // D3: League of Legends rigs are fitted, no longer BLOCKED.
+    const lol = run(sion)
+    assert.equal(lol.status, 0, lol.stdout + lol.stderr)
+    assert.match(lol.stdout, /model PASS/)
   }
 })
