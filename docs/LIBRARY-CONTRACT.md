@@ -77,7 +77,7 @@ C:\w01-library\
 - Animation luôn đi qua App 1 (chuẩn hoá) trước, rồi mới vào App 5. Người dùng sẽ chuẩn hoá hàng loạt
   để nạp kho → cần lệnh batch: App 1 CLI chạy nhiều nguồn → `packages/library` ghi pack.
 
-## 8. Chốt tạm (2026-10-22, người dùng giao EPIC-I; có thể đổi sau, khi đổi thì tăng `libraryVersion`)
+## 8. Đã chốt (người dùng duyệt cả 4 điểm 2026-10-22; khi đổi thì tăng `libraryVersion`)
 1. **Gắn theo rig**: pack có `rig` (`mixamo65` | `minecraft20` | rig mở rộng) và dùng cho mọi nhân vật cùng rig;
    `boundCharacter` (tuỳ chọn) ghi nhân vật đích App 1 đã retarget theo (fingerprint) để ưu tiên khi lọc.
 2. **Danh mục cố định + tag tự do**. Danh mục: `locomotion`, `idle`, `combat`, `emote`, `dance`, `gesture`,

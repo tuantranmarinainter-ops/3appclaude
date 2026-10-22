@@ -81,5 +81,5 @@ Ký hiệu: ✅ đã kiểm và merge · 🔍 Claude đang kiểm · ↩️ tr�
 ## Cần người dùng
 | Việc | Trạng thái |
 | --- | --- |
-| Chốt chính sách vị trí khi sửa ở App 3 (đề xuất: `placementKeys`, giữ root Action) | ⏳ |
+| Chốt chính sách vị trí khi sửa ở App 3 | ✅ `placementKeys`, giữ root Action (2026-10-22) |
 | Thử `.bobj` / film trong BBS FS thật | ⏳ |

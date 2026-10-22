@@ -26,7 +26,8 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   (giữ LICENSE gốc + ghi nguồn) để Codex cloud làm được; DLL Effekseer/.NET không commit. Kế hoạch: `docs/VFX-APP4-PLAN.md`
   (DRAFT, bắt đầu từ giai đoạn 0: xác minh runtime + render tự động trên máy Windows).
 - **MVP App 4 (người dùng chốt 2026-10-22): mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật.**
-  BBS nâng từ giai đoạn 5 lên MVP. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
+  BBS nâng từ giai đoạn 5 lên MVP. Hướng chốt 2026-10-22: **chuyển Effekseer → particle BBS (Snowstorm JSON) trước**
+  (chạy native, chặn tính năng không hỗ trợ khi xuất); song song khảo sát addon gọi AAA Particles. Không đưa vào gói BBS FS hiệu ứng chưa kiểm chạy; tính năng ngoài khả năng của
   bản BBS/AAA thật thì chặn hoặc cảnh báo khi xuất. Gate "chạy trong BBS FS" tách riêng khỏi gate cấu trúc/hình/hiệu năng.
 
 ## Input/Output
@@ -40,8 +41,10 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   `host-bridge.js`/broker. Ngoại lệ: bỏ phần nhập Warcraft (MDX/MDL/DDS, Reforged) khỏi phạm vi App 3 vì app khác
   của người dùng đã lo; không kiểm/sửa phần đó. Ghép xương Warcraft (`wc3r`) của App 1 vẫn giữ.
 - App 2 nhận Action mới thì thay clip bằng UUID mới, giữ Action gốc.
-- Còn mở (chốt khi làm App 2/3): vị trí sửa ở App 3 lưu ở root motion hay transform trong shot
-  JSON (tránh cộng root hai lần); đặc tả định dạng film BBS/FS.
+- Chốt 2026-10-22: vị trí sửa ở App 3 lưu thành key vị trí riêng trong cảnh (`placementKeys`), **giữ nguyên root
+  của Action** (tránh cộng root hai lần; Action dùng lại được). G2b đã làm theo cách này.
+- Chốt 2026-10-22: người dùng chơi **BBS FS 2.7** (không phải 2.4). Film đang xuất theo worker 2.4 → kiểm khác biệt
+  2.4 → 2.7 rồi chuyển đích nếu cần.
 
 ## Hợp đồng GLB trao đổi v1.0.0
 File GLB:

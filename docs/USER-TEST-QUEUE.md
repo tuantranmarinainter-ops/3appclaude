@@ -33,9 +33,9 @@ Mọi file nằm trong `C:\w01-samples\test-queue\` (ngoài repo). Claude đã k
 | `d2-hands-compare.png` | Ngón tay WoW/LoL: nguồn / cũ / mới | Tạm gác; code ở nhánh `claude/d2-fingers`, chưa merge |
 
 ## 4. Quyết định còn chờ
-- Chính sách vị trí khi sửa ở App 3 (đề xuất: `placementKeys`, giữ root Action).
-- 4 điểm hợp đồng kho animation App 5 (`docs/LIBRARY-CONTRACT.md`).
-- Có merge nhánh ngón tay `claude/d2-fingers` không.
+- Đã chốt 2026-10-22: vị trí App 3 = `placementKeys` giữ root Action; duyệt 4 điểm thư viện App 5; giữ nhánh
+  `claude/d2-fingers` chưa merge; VFX → particle BBS trước; người dùng chơi BBS FS **2.7**.
+- Còn hỏi: thư mục Minecraft 1.20.1 Fabric đang chơi, có AAA Particles không.
 
 ## Ghi chú kỹ thuật
 - Film export lỗi `FileNotFoundError ... .film-m...` nếu thư mục project quá sâu (giới hạn 260 ký tự đường dẫn của Windows).
