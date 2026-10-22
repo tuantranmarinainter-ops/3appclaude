@@ -15,7 +15,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { evaluateProjectSkeletons, projectEvaluationScene } from './unifiedSkeletonEvaluation'
+import { evaluateProjectSkeletons, projectEvaluationScene, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
 import { inspectProjectRig } from './unifiedRigInspection'
 import { planProjectAssignment } from './unifiedAssignment'
 import { planProjectNormalization } from './unifiedNormalizationPlan'
@@ -30,10 +30,11 @@ import { preflightProjectFilm } from './unifiedFilmSampling'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import { fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect, type FilmFrameDimensions } from './filmFrame'
 import { isMixamo65Topology, isRetargetCalibrationV1, isRetargetProjectV99, isUniversalCalibrationDraftV1, isUniversalReferencePoseV1, sealUniversalCalibrationV1, validateSemanticMapping, type MappingValidationReport, type RetargetCalibrationV1, type RetargetProjectV99, type SemanticBonePair, type UniversalCalibrationDraftV1, type UniversalCalibrationV1, type UniversalReferencePoseV1 } from '@bbs/retarget'
-import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
+import { buildImportedAsset, canonicalJsonExact, glbAnimationBoneNames, glbAnimationCount, glbTargetFingerprint, normalizeAnimationGlbBoneNames, persistImportedAssetFiles, persistNativeAnimationMotion, persistNativeRetargetProject, persistRelinkedAssetFiles, persistRetargetCalibration, persistUniversalReferencePose, readStagedAssetUpload, removeStagedAssetUploads, resolveProjectBlob, resolveUnifiedAssetFile, sha256CanonicalJson, type ImportedAsset, type StagedAssetUpload } from './unifiedAssetFiles'
 import { getAction } from '../../../packages/library/index'
 import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCommandResult } from './cameraMotionCommand'
+import { filmPreflight, type FilmPreflightIssue } from './filmPreflight'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -297,6 +298,15 @@ async function createNewProject(
 
 function success(requestId: string, projectId: string, revision: number, result: Record<string, unknown>, changedIds: string[] = []): CommandSuccess {
   return { ok: true, requestId, projectId, revision, result, warnings: [], changedIds }
+}
+
+function hasAirborneMotionAt(project: UnifiedProject, nodeId: string, frame: number): boolean {
+  return project.scene.content.timeline.animation.motionClips.some((clip) => {
+    if (clip.target.nodeId !== nodeId || frame < clip.frameStart || frame > clip.frameEnd) return false
+    const assetId = project.motions[clip.motion.assetId]?.assetId
+    const name = project.assets[assetId as keyof typeof project.assets]?.displayName ?? ''
+    return /jump|fall|leap|hop|nhay|roi/i.test(name)
+  })
 }
 
 function applyCameraShot(document: UnifiedProject['scene'], sequenceId: string, clip: EditSequenceClip): { document: UnifiedProject['scene']; shotId: string } {
@@ -1178,6 +1188,82 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (typeof native.code === 'string' && typeof native.status === 'number') throw new UnifiedStoreError(native.code, typeof native.message === 'string' ? native.message : 'Film export job could not start', native.status)
       throw error
     }
+  }
+  if (envelope.command === 'film.preflight') {
+    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds'].includes(key))) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'film.preflight accepts only characterIds, sequenceId, range, viewportAspect, and propIds', 400)
+    }
+    if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
+      throw new UnifiedStoreError('REVISION_CONFLICT', 'Film preflight source revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
+    }
+    let effectiveAspect: number
+    try { effectiveAspect = resolveFilmFrameAspect(project.extensions, envelope.args.viewportAspect) }
+    catch (error) {
+      const message = error instanceof Error ? error.message : 'Film aspect is invalid'
+      const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: message, en: message } }], warnings: [] as FilmPreflightIssue[] }
+      return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, preflight })
+    }
+    const args = { ...envelope.args, viewportAspect: effectiveAspect } as {
+      characterIds: string[]; sequenceId: string; range: { startFrame: number; endFrame: number }; viewportAspect: number; propIds?: string[]
+    }
+    const assetIds = new Set<string>()
+    for (const characterId of Array.isArray(args.characterIds) ? args.characterIds : []) {
+      const character = project.characters[characterId]
+      if (!character) continue
+      assetIds.add(character.assetId)
+      for (const clip of project.scene.content.timeline.animation.motionClips) {
+        if (clip.target.nodeId !== character.nodeId || !args.range || clip.frameEnd < args.range.startFrame || clip.frameStart > args.range.endFrame) continue
+        const motion = project.motions[clip.motion.assetId]
+        if (motion) assetIds.add(motion.assetId)
+      }
+    }
+    for (const propId of Array.isArray(args.propIds) ? args.propIds : []) {
+      const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
+      if (typeof node?.metadata?.assetId === 'string') assetIds.add(node.metadata.assetId)
+    }
+    const assetAvailability: Record<string, boolean> = {}
+    await Promise.all([...assetIds].map(async (assetId) => {
+      try {
+        const motion = Object.values(project.motions).find((item) => item.assetId === assetId && item.evaluator === 'animation-1.31.8')
+        if (motion) await resolveProjectBlob(project.projectId, motion.sourceClip)
+        else await resolveUnifiedAssetFile(project, assetId, 'source')
+        assetAvailability[assetId] = true
+      }
+      catch { assetAvailability[assetId] = false }
+    }))
+    const footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean }>> = {}
+    let canSample = false
+    try {
+      preflightProjectFilm(project, args)
+      canSample = Object.values(assetAvailability).every(Boolean)
+    } catch { /* The pure preflight below reports the exact sampling failure. */ }
+    if (canSample && Array.isArray(args.characterIds) && args.range && Number.isSafeInteger(args.range.startFrame) && Number.isSafeInteger(args.range.endFrame)) {
+      try {
+        for await (const sample of sampleProjectSkeletonRange(project, { ...args.range, sampleFps: 20 }, args.characterIds)) {
+          for (const skeleton of sample.skeletonSamples) {
+            const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
+            if (!character) continue
+            const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+            const boneName = (name: string) => {
+              const value = canonical(name)
+              if (['leftfoot', 'footleft', 'lfoot', 'footl'].includes(value)) return 'left'
+              if (['rightfoot', 'footright', 'rfoot', 'footr'].includes(value)) return 'right'
+              return undefined
+            }
+            const feet = skeleton.bones.flatMap((bone) => {
+              const side = boneName(bone.name)
+              return side ? [{ side, y: bone.worldMatrix[13]! }] : []
+            })
+            const leftY = feet.find((foot) => foot.side === 'left')?.y
+            const rightY = feet.find((foot) => foot.side === 'right')?.y
+            const values = footSamples[character.id] ?? (footSamples[character.id] = [])
+            values.push({ frame: sample.frame, leftY, rightY, airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame) })
+          }
+        }
+      } catch { /* Missing/unsupported CPU evaluation is surfaced as an explicit warning. */ }
+    }
+    const preflight = filmPreflight(project, { ...args, assetAvailability, footSamples })
+    return success(envelope.requestId, id, project.revision, { valid: preflight.errors.length === 0, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
   }
   if (envelope.command === 'scene.export.bbsFilm') {
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {

@@ -27,10 +27,21 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
         <label>{vi ? 'Tên gói' : 'Package name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} disabled={state.busy} maxLength={64} /></label>
         <small>{vi ? 'Gói editable cho BBS FS 2.4; cần FBX/GLB có rig hỗ trợ và camera perspective.' : 'Editable BBS FS 2.4 package; requires a supported FBX/GLB rig and perspective camera.'}</small>
         <div className="wb-scene-render-actions">
-          <button type="button" onClick={() => void state.exportFilm()} disabled={state.busy || !state.characters.length || !state.sequences.length}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : (vi ? 'Xuất gói' : 'Export package')}</button>
+          <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : state.checkingPreflight ? (vi ? 'Đang kiểm tra…' : 'Checking…') : (vi ? 'Xuất gói' : 'Export package')}</button>
           {state.busy && state.activeJobId && <button type="button" onClick={() => void state.cancel()}>{vi ? 'Hủy' : 'Cancel'}</button>}
           {!state.busy && state.completedJob?.state === 'succeeded' && <button type="button" onClick={() => void state.saveAgain(state.completedJob!)}>{vi ? 'Lưu lại…' : 'Save again…'}</button>}
           {state.status && <span role="status" aria-live="polite">{state.status}</span>}
+        </div>
+        <div className="wb-film-preflight" aria-live="polite" aria-busy={state.checkingPreflight}>
+          {state.checkingPreflight && <p>{vi ? 'Đang kiểm tra lựa chọn xuất…' : 'Checking the export selection…'}</p>}
+          {state.preflight?.errors.map((item, index) => <p key={`error-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`} role="alert">
+            {vi ? 'Lỗi: ' : 'Error: '}{vi ? item.message.vi : item.message.en}
+          </p>)}
+          {state.preflight?.warnings.map((item, index) => <p key={`warning-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`}>
+            {vi ? 'Cảnh báo: ' : 'Warning: '}{vi ? item.message.vi : item.message.en}
+          </p>)}
+          {state.preflight && !state.checkingPreflight && state.preflight.errors.length === 0 && state.preflight.warnings.length === 0 &&
+            <p>{vi ? 'Kiểm tra trước khi xuất đạt.' : 'Preflight passed.'}</p>}
         </div>
         {state.error && <p className="wb-scene-render-error" role="alert">{state.error}</p>}
       </div>
