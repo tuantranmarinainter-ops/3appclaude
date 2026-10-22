@@ -72,12 +72,13 @@ effekseer-ai property-set .\effects\spark.efkefc '<property-path>' '0.5'
 ```
 
 All CLI results are JSON printed to standard output, which makes the commands suitable for scripts and agent tools.
+`node-list` includes a stable `id` (`node/id/<uuid>`) alongside each display path. Use the ID when referring to a node across delete/move operations in the same session. `image-import` stores resources by SHA-256 and records source names in `resources/manifest.json`. Saving over an existing effect keeps one `.bak` file; `edit-undo <effect.efkefc>` restores that prior saved version once.
 
 ### CLI commands
 
 | Group | Commands |
 | --- | --- |
-| Document | `new`, `open`, `save`, `export` |
+| Document | `new`, `open`, `save`, `export`, `edit-undo` |
 | Nodes | `node-list`, `node-add`, `node-rename`, `node-remove`, `node-move` |
 | Properties | `property-list`, `property-get`, `property-set` |
 | Resources | `image-import` |

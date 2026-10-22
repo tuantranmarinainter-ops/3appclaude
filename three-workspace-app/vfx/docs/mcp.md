@@ -18,13 +18,13 @@ The client must inherit the virtual environment where `effekseer-ai` was install
 
 | Area | Tools |
 | --- | --- |
-| Document | `effect_new`, `effect_open`, `effect_save`, `effect_export` |
+| Document | `effect_new`, `effect_open`, `effect_save`, `effect_export`, `edit_undo` |
 | Nodes | `node_list`, `node_add`, `node_rename`, `node_remove`, `node_move` |
 | Properties | `property_list`, `property_get`, `property_set` |
 | Images | `asset_import_image` |
 | Settings and curves | `settings_list`, `settings_set`, `curve_list`, `curve_set` |
 
-The server keeps one effect document in memory per process. Use `effect_new` or `effect_open` before invoking tools that modify or inspect the current document. Call `effect_save` after changes to persist them.
+The server keeps one effect document in memory per process. `node_list` returns a stable `id` (`node/id/<uuid>`) as well as the current structural path; the ID remains usable after node deletes or moves within that process. Use `effect_new` or `effect_open` before invoking tools that modify or inspect the current document. Call `effect_save` after changes to persist them. Saving over an existing file creates one `.efkefc.bak` backup, and `edit_undo` restores that previous saved version once.
 
 ## Agent guidance
 

@@ -34,6 +34,11 @@ def _save(args: argparse.Namespace) -> dict[str, Any]:
     return session.summary()
 
 
+def _edit_undo(args: argparse.Namespace) -> dict[str, str]:
+    session = _open(args.effect)
+    return {"path": str(session.edit_undo())}
+
+
 def _node_list(args: argparse.Namespace) -> list[dict[str, Any]]:
     return _open(args.effect).node_list()
 
@@ -129,6 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
     save = command("save", _save)
     save.add_argument("source")
     save.add_argument("destination", nargs="?")
+    undo = command("edit-undo", _edit_undo)
+    undo.add_argument("effect")
 
     node_list = command("node-list", _node_list)
     node_list.add_argument("effect")
