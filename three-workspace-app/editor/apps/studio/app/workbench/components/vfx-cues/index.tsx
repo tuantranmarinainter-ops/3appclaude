@@ -1,9 +1,36 @@
 'use client'
 
+import { useState } from 'react'
+import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 import { useVfxCuePanel } from './hooks/useVfxCuePanel'
+import { useVfxCueHost } from './hooks/useVfxCueHost'
 import type { VfxCuePanelProps } from './types'
 import styles from './vfx-cues.module.css'
+
+export function VfxCueHost({ projectId, project, active }: { projectId: string; project: UnifiedProject; active: boolean }) {
+  const vi = useStudioLocale() === 'vi'
+  const host = useVfxCueHost(projectId, project, active)
+  const [shotId, setShotId] = useState('')
+  const editorial = host.project.scene.content.editorial
+  const sequence = editorial?.sequences.find((item) => item.id === editorial.activeSequenceId) ?? editorial?.sequences[0]
+  const shot = sequence?.clips.find((item) => item.id === shotId) ?? sequence?.clips[0]
+  const frameRange = shot ? { startFrame: Math.min(shot.sourceFrameStart, shot.sourceFrameEnd),
+    endFrame: Math.max(shot.sourceFrameStart, shot.sourceFrameEnd) } : {
+    startFrame: host.project.scene.content.timeline.frameStart, endFrame: host.project.scene.content.timeline.frameEnd,
+  }
+  return <div>
+    {sequence && <label className={styles.shotSelect}>{vi ? 'Cảnh biên tập' : 'Editorial shot'}
+      <select value={shot?.id ?? ''} onChange={(event) => setShotId(event.target.value)}>
+        {sequence.clips.map((clip, index) => <option key={clip.id} value={clip.id}>{vi ? 'Cảnh' : 'Shot'} {index + 1} · {clip.sourceFrameStart}–{clip.sourceFrameEnd}</option>)}
+      </select>
+    </label>}
+    {host.loading && <p role="status">{vi ? 'Đang tải hiệu ứng…' : 'Loading effects…'}</p>}
+    {host.error && <p role="alert">{host.error}</p>}
+    <VfxCuePanel key={`${sequence?.id ?? 'timeline'}:${shot?.id ?? 'all'}`} project={host.project} cues={host.cues} frameRange={frameRange}
+      onAdd={host.onAdd} onUpdate={host.onUpdate} onRemove={host.onRemove} />
+  </div>
+}
 
 export function VfxCuePanel(props: VfxCuePanelProps) {
   const vi = useStudioLocale() === 'vi'

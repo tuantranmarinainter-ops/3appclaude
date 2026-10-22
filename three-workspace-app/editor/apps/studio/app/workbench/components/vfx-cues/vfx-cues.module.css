@@ -18,3 +18,5 @@
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .form [role='alert'] { margin: 0; color: #ffadad; }
 .actions { margin-top: 3px; }
+.shotSelect { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.75rem 0; }
+.shotSelect select { width: 100%; padding: 0.45rem; }
