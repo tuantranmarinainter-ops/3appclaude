@@ -26,7 +26,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("io.modelcontextprotocol/serverInfo", discovered["result"]["_meta"])
         self.assertEqual((discovered["result"]["ttlMs"], discovered["result"]["cacheScope"]), (0, "private"))
         listed = unified_mcp.handle_message(request("tools/list"))
-        self.assertEqual([tool["name"] for tool in listed["result"]["tools"]], ["bbs_unified_command"])
+        self.assertEqual([tool["name"] for tool in listed["result"]["tools"]], ["bbs_unified_command", "library.search", "library.get", "library.characters"])
         self.assertEqual((listed["result"]["ttlMs"], listed["result"]["cacheScope"]), (0, "private"))
         commands = listed["result"]["tools"][0]["inputSchema"]["properties"]["command"]["enum"]
         self.assertIn("scene.apply", commands)
@@ -42,6 +42,21 @@ class ProtocolTests(unittest.TestCase):
             self.assertIn(name, commands)
         self.assertNotIn("asset.import", commands)
         self.assertNotIn("retarget.bake", commands)
+
+    def test_library_tools_search_get_and_list_characters_from_external_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            action = {"uuid": "action-uuid", "name": "Happy walk", "rig": "mixamo65", "category": "locomotion", "tags": ["walk", "happy"], "packId": "0123456789abcdef"}
+            (root / "index.json").write_text(json.dumps({"actions": [action], "characters": [{"charId": "hero"}]}), encoding="utf-8")
+            pack = root / "packs" / action["packId"]
+            pack.mkdir(parents=True)
+            (pack / "meta.json").write_text(json.dumps({"actions": [action]}), encoding="utf-8")
+            (pack / "anim.glb").write_bytes(b"glb")
+            (pack / "anim.manifest.json").write_text(json.dumps({"actions": []}), encoding="utf-8")
+            with patch.dict("os.environ", {"W01_LIBRARY": directory}):
+                self.assertEqual(unified_mcp._library_call("library.search", {"rig": "mixamo65", "tags": ["walk"]})["total"], 1)
+                self.assertEqual(unified_mcp._library_call("library.characters", {})["characters"], [{"charId": "hero"}])
+                self.assertEqual(unified_mcp._library_call("library.get", {"actionUuid": "action-uuid"})["action"], action)
 
     def test_requires_modern_metadata_and_reports_version_mismatch(self):
         missing = unified_mcp.handle_message({"jsonrpc": "2.0", "id": "a", "method": "tools/list", "params": {}})

@@ -4,8 +4,8 @@ import { basename, join, resolve } from 'node:path'
 import {
   ACTION_CATEGORIES, LIBRARY_VERSION, type ActionCategory, type ActionMetadata, type LibraryLicense,
   type MotionPackMetadata, type NormalizedManifest,
-} from './types.ts'
-import { ensureRegularFile, initializeLibrary, readJsonFile, safeChild, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store.ts'
+} from './types'
+import { ensureRegularFile, initializeLibrary, readJsonFile, safeChild, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[a-f0-9]{64}$/i

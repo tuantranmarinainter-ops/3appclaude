@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import {
   LIBRARY_VERSION, type CharacterMetadata, type LibraryConfig, type LibraryIndex,
   type MotionPackMetadata,
-} from './types.ts'
+} from './types'
 
 const LOCK_TIMEOUT_MS = 10_000
 const STALE_LOCK_MS = 5 * 60_000
