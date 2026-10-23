@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App 4 · VFX — Prototype UI/UX</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .prototype-banner{position:absolute;left:50%;transform:translateX(-50%);padding:5px 10px;border:1px solid #5c5036;border-radius:4px;background:#282318;color:#e7bd68;font-size:10px;letter-spacing:.04em}
+    .demo-warning{display:flex;flex-direction:column;gap:3px;margin:12px 13px 0;padding:9px;border-left:2px solid var(--warn);background:#29231a;color:var(--warn)}
+    .demo-warning span,.blocked-reason{color:var(--muted);font-size:9px}.package-actions button:disabled{cursor:not-allowed;opacity:.45}.blocked-reason{display:block;line-height:1.4;margin-top:5px}
+    .more-filters{margin:0 12px 8px;color:var(--muted);font-size:10px}.more-filters summary{cursor:pointer;padding:4px 0}.more-filters>div{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding-top:6px}.more-filters select{min-width:0;background:#10131a;border:1px solid #333947;border-radius:4px;padding:6px}.effect-visual.sprite-live{border:0;border-radius:0;box-shadow:none;background-repeat:no-repeat;image-rendering:auto;animation:none}.effect-visual.sprite-live:before,.effect-visual.sprite-live:after,.effect-visual.sprite-live i{display:none}.node-pills{display:flex;gap:4px;padding:9px 12px}.node-pills button{flex:1;border:1px solid #343b48;background:#171a21;border-radius:4px;padding:6px;color:var(--muted)}.node-pills button.active{border-color:#6874df;background:#222740;color:#fff}.advanced-note{margin:0 12px 8px;padding:8px;background:#24202b;border-left:2px solid #9b73d8;color:#bdb0cb;font:10px ui-monospace,monospace}
+    .form-section textarea,.revision-box input{width:100%;resize:vertical;background:#0f1218;border:1px solid #333a47;border-radius:4px;padding:7px;color:var(--text)}.revision-box{display:flex;gap:5px;padding:10px 13px;background:#11141a}.revision-box button{white-space:nowrap;border:0;border-radius:4px;background:#39405a;padding:6px}
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua đến nội dung chính</a>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark">V</span><div><strong>VFX Studio</strong><small>Dự án · Phim Verity / Cảnh 08</small></div></div>
+    <div class="prototype-banner">PROTOTYPE · Dữ liệu mô phỏng · Chưa nối backend</div>
+    <div class="header-status"><span class="status-dot"></span> Bản nháp cục bộ <button class="icon-button" aria-label="Mở trợ giúp phím tắt" id="helpButton">?</button></div>
+  </header>
+  <nav class="workspace-bar" aria-label="Chuyển workspace">
+    <button data-workspace="1"><b>1</b><span>Chuẩn hoá</span></button>
+    <button data-workspace="2"><b>2</b><span>Dựng cảnh</span></button>
+    <button data-workspace="3"><b>3</b><span>Animation</span></button>
+    <button class="active" data-workspace="4" aria-current="page"><b>4</b><span>VFX</span></button>
+    <button data-workspace="5"><b>5</b><span>Thư viện</span></button>
+  </nav>
+  <nav class="flow-tabs" aria-label="Luồng làm việc VFX">
+    <button class="active" data-view="library"><span>01</span> Thư viện</button>
+    <button data-view="preview"><span>02</span> Xem trước</button>
+    <button data-view="generate"><span>03</span> Tạo mô tả</button>
+    <button data-view="edit"><span>04</span> Chỉnh thông số</button>
+    <button data-view="package"><span>05</span> Kiểm tra & đóng gói</button>
+  </nav>
+
+  <main id="main" class="workbench" style="--left:280px;--right:310px;--bottom:190px">
+    <aside class="panel left-panel" aria-label="Thư viện hiệu ứng">
+      <div class="panel-title"><div><small>THƯ VIỆN</small><strong>Hiệu ứng</strong></div><button class="icon-button" aria-label="Thêm hiệu ứng">＋</button></div>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Tìm tên, màu, nguồn…" aria-label="Tìm hiệu ứng"></label>
+      <div class="filter-row">
+        <label><span class="sr-only">Loại</span><select id="typeFilter"><option value="">Mọi loại</option></select></label>
+        <label class="verified-toggle"><input id="verifiedFilter" type="checkbox"> Đã chạy game</label>
+      </div>
+      <details class="more-filters"><summary>Thêm bộ lọc</summary><div><select id="colorFilter" aria-label="Lọc theo màu"><option value="">Mọi màu</option></select><select id="durationFilter" aria-label="Lọc theo thời lượng"><option value="">Mọi thời lượng</option><option value="short">≤ 1,5 giây</option><option value="medium">1,5–3 giây</option><option value="long">≥ 3 giây</option></select><select id="loopFilter" aria-label="Lọc lặp"><option value="">Lặp / không lặp</option><option value="loop">Có lặp</option><option value="once">Không lặp</option></select><select id="sourceFilter" aria-label="Lọc theo nguồn"><option value="">Mọi nguồn</option></select><select id="licenseFilter" aria-label="Lọc theo license"><option value="">Mọi license</option></select></div></details>
+      <div class="library-count" id="libraryCount" aria-live="polite"></div>
+      <div id="effectList" class="effect-list" role="listbox" aria-label="Danh sách hiệu ứng"></div>
+      <div id="emptyState" class="empty-state" hidden><span>◇</span><strong>Chưa tìm thấy hiệu ứng</strong><p>Thử bỏ bớt bộ lọc hoặc tạo hiệu ứng mới.</p><button data-action="clear-filters">Xoá bộ lọc</button></div>
+    </aside>
+    <div class="divider vertical left-divider" role="separator" aria-orientation="vertical" aria-label="Đổi chiều rộng thư viện" tabindex="0" data-divider="left"></div>
+
+    <section class="center-column">
+      <section class="viewport" aria-label="Khung xem trước hiệu ứng 3D">
+        <div class="viewport-toolbar">
+          <div class="segmented" aria-label="Nền xem trước"><button data-bg="dark" class="active">Tối</button><button data-bg="light">Sáng</button><button data-bg="bbs">Như BBS</button></div>
+          <div class="renderer" id="rendererBadge"><i></i> Mô phỏng GPU · WebGL</div>
+          <button class="icon-button" data-action="fit" aria-label="Đưa hiệu ứng vừa khung, phím F">⛶</button>
+        </div>
+        <div class="scene scene-dark" id="scene" tabindex="0" aria-label="Mô phỏng vòng phép trong khung 3D; chuột trái xoay, chuột giữa kéo, lăn để thu phóng">
+          <div class="grid-floor"></div><div class="sample-character" aria-hidden="true"><i></i></div>
+          <div class="effect-visual" id="effectVisual" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="block-ruler"><span></span><b>1 block</b></div>
+          <div class="scene-label"><strong id="sceneTitle">Vòng phép Tinh Vân</strong><span id="sceneMeta">2,4 s · Lặp · 2,0 block</span></div>
+          <div class="mouse-hint">Trái: xoay · Giữa: kéo · Lăn: zoom</div>
+        </div>
+        <div class="transport" aria-label="Điều khiển phát">
+          <button data-action="previous" aria-label="Về đầu">|◀</button><button data-action="play" class="play" aria-label="Phát, phím cách">▶</button><button data-action="next" aria-label="Đến cuối">▶|</button>
+          <span id="timecode">00:00.77 / 00:02.40</span><input id="scrubber" type="range" min="0" max="100" value="32" aria-label="Vị trí phát"><button class="loop active" data-action="loop" aria-pressed="true">↻ Lặp</button><select id="speedSelect" aria-label="Tốc độ phát"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+        </div>
+      </section>
+      <div class="divider horizontal" role="separator" aria-orientation="horizontal" aria-label="Đổi chiều cao timeline" tabindex="0" data-divider="bottom"></div>
+      <section class="timeline" aria-label="Timeline hiệu ứng">
+        <div class="timeline-head"><div><small>TIMELINE</small><strong id="timelineTitle">Vòng phép Tinh Vân</strong></div><div><button data-action="add-layer">＋ Lớp</button><span>60 FPS</span></div></div>
+        <div class="tracks"><div class="track-labels"><span>✦ Lõi phép</span><span>◉ Quầng sáng</span><span>· Tia lửa</span></div><div class="track-area"><div class="ticks">0s <i></i> 1s <i></i> 2s</div><div class="clip c1">Lõi · 0–2,4s</div><div class="clip c2">Quầng · lặp</div><div class="clip c3">Tia lửa</div><div class="playhead" style="left:32%"></div></div></div>
+      </section>
+    </section>
+
+    <div class="divider vertical right-divider" role="separator" aria-orientation="vertical" aria-label="Đổi chiều rộng bảng thuộc tính" tabindex="0" data-divider="right"></div>
+    <aside class="panel inspector" aria-label="Bảng thuộc tính"><div id="inspectorContent"></div></aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="helpDialog"><form method="dialog"><div class="modal-title"><strong>Phím tắt</strong><button aria-label="Đóng">×</button></div><dl><dt>Space</dt><dd>Phát / tạm dừng</dd><dt>J / K / L</dt><dd>Lùi / dừng / tiến</dd><dt>F</dt><dd>Vừa khung</dd><dt>1–5</dt><dd>Chuyển workspace</dd><dt>← / →</dt><dd>Di chuyển vạch phát</dd></dl><button class="primary">Đã hiểu</button></form></dialog>
+  <script src="app.js"></script>
+</body>
+</html>

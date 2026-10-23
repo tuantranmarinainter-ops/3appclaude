@@ -308,13 +308,19 @@ export function StudioOverlay({
   useEffect(() => {
     if (source !== 'unified') return
     document.body.classList.add('wb-unified-open')
-    return () => document.body.classList.remove('wb-unified-open')
+    return () => {
+      document.body.classList.remove('wb-unified-open')
+      delete document.body.dataset.bbsWorkspace
+      window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: 'scene' } }))
+    }
   }, [source])
 
   useEffect(() => {
     if (source !== 'unified') return
     if (!mounted || !projectState) return
     try { window.localStorage.setItem(`bbs-workspace:${documentId}`, activeWorkspace) } catch { /* Private mode keeps the selection for this session. */ }
+    document.body.dataset.bbsWorkspace = activeWorkspace
+    window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: activeWorkspace } }))
   }, [activeWorkspace, documentId, mounted, projectState, source])
 
   useEffect(() => {
@@ -500,7 +506,7 @@ export function StudioOverlay({
       <div className="wb-unified-shell" role="dialog" aria-modal="true" aria-label={vi ? 'Dự án hợp nhất' : 'Unified project'}>
         <header className="wb-unified-topbar">
           <div className="wb-unified-brand"><strong id="wb-project-title">{project?.name ?? (vi ? 'Dự án' : 'Project')}</strong><span className={`wb-save-state is-${saveStatus}`} role="status" title={saveStatus === 'error' ? shellError ?? undefined : undefined}>{!projectState ? (vi ? 'Đang mở…' : 'Opening…') : assetBusy ? (vi ? 'Đang xử lý…' : 'Working…') : saveStatus === 'saving' ? (vi ? 'Đang lưu' : 'Saving') : saveStatus === 'error' ? (vi ? 'Lưu thất bại' : 'Save failed') : (vi ? 'Đã lưu' : 'Saved')}</span></div>
-          <nav className="wb-workspace-tabs" aria-label={vi ? 'Workspace' : 'Workspaces'}>
+          <nav className="wb-workspace-tabs" aria-label={vi ? 'Chế độ biên tập trong App 2' : 'Editing modes inside App 2'}>
             {WORKSPACES.map((workspace) => <button key={workspace.id} type="button" aria-current={activeWorkspace === workspace.id ? 'page' : undefined} className={activeWorkspace === workspace.id ? 'is-active' : ''} onClick={() => switchWorkspace(workspace.id)}><span>{workspace.number}</span>{vi ? workspace.vi : workspace.en}</button>)}
           </nav>
           <div className="wb-unified-actions">
@@ -522,6 +528,7 @@ export function StudioOverlay({
             <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
+        <div id="studio-workspace-navigation" className="workspace-navigation-host" />
         <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
