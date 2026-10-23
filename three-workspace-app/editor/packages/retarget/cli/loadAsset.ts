@@ -113,7 +113,7 @@ export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options:
     // Action libraries carry no `arm_bone` records; the rig comes from a separate armature file (--armature).
     const armature = options.bobjArmature ? new TextDecoder().decode(options.bobjArmature) : /^arm_bone /m.test(text) ? text : null
     if (!armature) throw new TypeError('This .bobj has no arm_bone records; pass its rig with --armature <armature.bobj>')
-    return loadBobj(text, armature)
+    return loadBobj(text, armature, options)
   }
   const manager = new LoadingManager()
   // Skeleton-only loads ignore textures, so external texture paths resolve to an empty data URL instead of failing.
