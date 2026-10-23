@@ -8,7 +8,8 @@ import { getAction, importPack, rebuildLibraryIndex } from '../../library/librar
 import { resolveCharacter } from '../../library/characters.ts'
 import { readJsonFile, resolveLibraryPath, safeChild, writeJsonAtomic } from '../../library/store.ts'
 import type { MotionPackMetadata } from '../../library/types.ts'
-import { bobjModelToGlb, parseBobjModel } from '../src/bobjModel.ts'
+import { bobjModelNodeName, bobjModelToGlb, parseBobjModel } from '../src/bobjModel.ts'
+import { parseBobjActions } from '../src/index.ts'
 import { decodeGlb, encodeGlb } from './glb.ts'
 import { exportMinecraft20 } from './toMinecraft20.ts'
 import { exportVerityOriginalArtifacts } from './verityOriginal.ts'
@@ -38,6 +39,15 @@ function oneAnimation(bytes: Uint8Array, animationIndex: number, name: string): 
   if (!animations?.[animationIndex]) throw new Error(`Animation ${animationIndex} is missing from the source GLB`)
   json.animations = [{ ...(animations[animationIndex] as Record<string, unknown>), name }]
   return encodeGlb(json, bin)
+}
+
+/** Library validation needs all twenty BOBJ joints, including global item joints outside the playable anchor tree. */
+function addBobjSkeletonSkin(bytes: Uint8Array, boneNames: string[]): Uint8Array {
+  const decoded = decodeGlb(bytes), nodes = (decoded.json.nodes ?? []) as Array<{ name?: string }>
+  const joints = boneNames.map((name) => nodes.findIndex((node) => node.name === bobjModelNodeName(name)))
+  if (joints.some((index) => index < 0)) throw new Error('Minecraft20 library GLB is missing a BOBJ joint node')
+  decoded.json.skins = [...((decoded.json.skins as unknown[] | undefined) ?? []), { joints }]
+  return encodeGlb(decoded.json, decoded.bin)
 }
 
 function buildInputPack(directory: string, bytes: Uint8Array, rig: string, name: string, sourceName: string, durationSeconds: number, fps: number) {
@@ -86,29 +96,26 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
           : character.character.rig === 'mixamo65' && hasOriginalRig ? originalModelPath
             : character.modelPath
         const sourceText = readFileSync(conversionModelPath, 'utf8')
-        let outputGlb: Uint8Array, sidecar: string, sidecarName: string
+        let outputGlb: Uint8Array, sidecar: string, sidecarName: string, originalGlb: Uint8Array | undefined
         if (conversionRig === 'minecraft20') {
           const exported = await exportMinecraft20(selectedGlb, sourceText)
           if (exported.report.status !== 'PASS') throw new Error(`Minecraft20 conversion failed: ${exported.report.status}`)
-          const parsed = parseBobjModel(`${sourceText}\n${exported.bobj}`)
-          const action = [...parsed.actions.values()][0]
+          const parsedModel = parseBobjModel(sourceText), actions = parseBobjActions(exported.bobj)
+          const action = [...actions.values()][0]
           if (!action) throw new Error('Minecraft20 conversion returned no Action')
-          parsed.actions = new Map([[action.name, action]])
-          outputGlb = bobjModelToGlb(parsed).bytes
+          parsedModel.actions = new Map([[action.name, action]])
+          outputGlb = addBobjSkeletonSkin(bobjModelToGlb(parsedModel).bytes, parsedModel.armature.bones.map((bone) => bone.name))
           sidecar = exported.bobj; sidecarName = 'anim.bobj'
         } else if (conversionRig === 'verity') {
           const exported = await exportVerityOriginalArtifacts({ sourceText, sourcePath: conversionModelPath, normalizedGlb: selectedGlb })
-          const original = parseBobjModel(sourceText), converted = parseBobjModel(exported.bobj)
-          const added = [...converted.actions].filter(([name]) => !original.actions.has(name))
-          if (added.length !== 1) throw new Error(`Verity conversion returned ${added.length} new Actions`)
-          converted.actions = new Map(added)
-          outputGlb = bobjModelToGlb(converted).bytes
+          outputGlb = selectedGlb
+          originalGlb = exported.glb
           sidecar = exported.bobj; sidecarName = 'anim.original.bbs.bobj'
         } else throw new TypeError(`Automatic assignment is not supported for rig ${character.character.rig}`)
 
         const directory = mkdtempSync(join(tmpdir(), 'w01-assign-'))
         try {
-          buildInputPack(directory, outputGlb, conversionRig, source.name, source.sourceName ?? source.name, source.durationSeconds, source.fps)
+          buildInputPack(directory, outputGlb, conversionRig === 'verity' ? sourcePack.rig : conversionRig, source.name, source.sourceName ?? source.name, source.durationSeconds, source.fps)
           const pack = importPack({ root: options.libraryRoot, sourceDirectory: directory, createdBy: 'app1', license: sourcePack.license, category: source.category, tags: source.tags, loop: source.loop })
           const rawAction = pack.metadata.actions[0]
           if (!rawAction) throw new Error('Converted Action pack is empty')
@@ -124,6 +131,7 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
           draftMetadata.tags = [...source.tags]; draftMetadata.category = source.category; draftMetadata.loop = source.loop; draftMetadata.inPlace = source.inPlace
           writeJsonAtomic(metadataPath, metadata)
           writeFileSync(join(draftPack, sidecarName), sidecar)
+          if (originalGlb) writeFileSync(join(draftPack, 'anim.original.glb'), originalGlb)
           rebuildLibraryIndex({ root })
           results.push({ actionUuid, status: 'ok', assignedUuid: draft.uuid, name: source.name })
         } finally { rmSync(directory, { recursive: true, force: true }) }

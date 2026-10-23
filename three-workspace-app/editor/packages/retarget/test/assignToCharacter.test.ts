@@ -128,7 +128,10 @@ test('legacy Minecraft20 skin and Mixamo65 original-rig assignments convert and 
   const mcPack = join(root, 'packs', minecraftDraft.packId)
   assert.equal(parseBobjActions(readFileSync(join(mcPack, 'anim.bobj'), 'utf8')).size, 1)
   assert.equal(readFileSync(join(mcPack, 'anim.bobj'), 'utf8').match(/^an ([^\r\n]+)/m)?.[1], 'Idle')
-  assert.equal(decodeGlb(readFileSync(join(mcPack, 'anim.glb'))).json.animations.length, 1)
+  const minecraftGlb = decodeGlb(readFileSync(join(mcPack, 'anim.glb'))).json
+  assert.equal(minecraftGlb.skins?.[0]?.joints?.length, 20, 'library GLB must contain a skinned Minecraft20 rig')
+  assert.equal(minecraftGlb.animations.length, 1)
+  assert.equal(minecraftGlb.animations[0]?.name, 'Idle')
   assert.equal(minecraftDraft.nameVi, 'Đứng yên')
   assert.deepEqual(minecraftDraft.tags, ['idle'])
   assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: 'minecraft-test', libraryRoot: root }))[0]?.status, 'already-exists')
@@ -136,10 +139,15 @@ test('legacy Minecraft20 skin and Mixamo65 original-rig assignments convert and 
   const verity = await assignToCharacter({ actionUuids: [actionUuid], charId: 'verity-test', libraryRoot: root })
   assert.equal(verity[0]?.status, 'ok', verity[0]?.reason)
   const verityDraft = listCharacterActions({ root, charId: 'verity-test' })[0]!
-  assert.equal(verityDraft.rig, 'verity')
+  assert.equal(verityDraft.rig, 'mixamo65', 'library GLB remains the normalized Mixamo65 action')
   const verityPack = join(root, 'packs', verityDraft.packId), originalBytes = Buffer.from(verityText)
   assert.deepEqual(readFileSync(join(verityPack, 'anim.original.bbs.bobj')).subarray(0, originalBytes.length), originalBytes)
-  assert.equal(decodeGlb(readFileSync(join(verityPack, 'anim.glb'))).json.animations.length, 1)
+  const verityLibraryGlb = decodeGlb(readFileSync(join(verityPack, 'anim.glb'))).json
+  assert.equal(verityLibraryGlb.skins?.[0]?.joints?.length, 65, 'library GLB remains the normalized Mixamo65 action')
+  assert.equal(verityLibraryGlb.animations.length, 1)
+  const verityOriginalGlb = decodeGlb(readFileSync(join(verityPack, 'anim.original.glb'))).json
+  assert.ok((verityOriginalGlb.skins?.[0]?.joints?.length ?? 0) > 20, 'original GLB must contain the native Verity rig')
+  assert.equal(verityOriginalGlb.animations.length, 2, 'original GLB preserves original actions and adds the assigned Action')
   assert.equal(verityDraft.nameVi, 'Đứng yên')
   assert.deepEqual(verityDraft.tags, ['idle'])
   assert.equal(parseBobjActions(readFileSync(join(verityPack, 'anim.original.bbs.bobj'), 'utf8')).size, 2)
