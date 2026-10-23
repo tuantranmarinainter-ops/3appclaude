@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AmbientLight, AxesHelper, BufferAttribute, BufferGeometry, DirectionalLight, Euler, GridHelper, LineBasicMaterial, LineSegments, LoadingManager, Matrix4, PerspectiveCamera, Quaternion, Scene, WebGLRenderer } from 'three'
+import { AmbientLight, AxesHelper, BufferAttribute, BufferGeometry, DirectionalLight, Euler, GridHelper, LineBasicMaterial, LineSegments, LoadingManager, Matrix4, MOUSE, PerspectiveCamera, Quaternion, Scene, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -226,6 +226,7 @@ export function NormalizationPreview({ projectId, project, sourceAssetId, target
       const scene = new Scene(), camera = new PerspectiveCamera(38, 1, 0.01, 100)
       camera.position.set(0, 1.3, 5.4); camera.lookAt(0, 0.9, 0)
       controls = new OrbitControls(camera, canvas); controls.target.set(0, 0.9, 0); controls.enableDamping = true
+      controls.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.PAN } // W01: left orbit, middle pan, wheel zoom
       scene.add(new AmbientLight(0xffffff, 1.6))
       const key = new DirectionalLight(0xffffff, 2); key.position.set(4, 7, 5); scene.add(key, new GridHelper(8, 24, 0x43505e, 0x26303a), new AxesHelper(0.35))
       sourceGeometry = new BufferGeometry(); targetGeometry = new BufferGeometry()

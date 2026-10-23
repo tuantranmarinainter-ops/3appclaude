@@ -102,8 +102,8 @@ function buildGroups(t: TranslateFn, mod: string): Array<{
       id: 'view',
       titleKey: 'topbar.shortcutView',
       rows: [
-        { labelKey: 'topbar.shortcutLookAround', keys: [[t('topbar.shortcutLeftDrag')]] },
-        { labelKey: 'topbar.shortcutOrbitRotate', keys: [[t('topbar.shortcutRightDrag')]] },
+        { labelKey: 'topbar.shortcutOrbitRotate', keys: [[t('topbar.shortcutLeftDrag')]] },
+        { labelKey: 'topbar.shortcutLookAround', keys: [[t('topbar.shortcutRightDrag')]] },
         { labelKey: 'topbar.shortcutOrbitPan', keys: [[t('topbar.shortcutMiddleDrag')], [t('topbar.shortcutSpaceLeftDrag')]] },
         { labelKey: 'topbar.shortcutOrbitZoom', keys: [[t('topbar.shortcutWheel')]] },
         { labelKey: 'topbar.shortcutFlyMove', keys: [['W', 'A', 'S', 'D']] },

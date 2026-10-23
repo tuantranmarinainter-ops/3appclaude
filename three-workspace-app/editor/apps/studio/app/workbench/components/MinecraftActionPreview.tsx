@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AmbientLight, AxesHelper, BufferAttribute, BufferGeometry, DirectionalLight, GridHelper, LineBasicMaterial, LineSegments, Matrix4, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three'
+import { AmbientLight, AxesHelper, BufferAttribute, BufferGeometry, DirectionalLight, GridHelper, LineBasicMaterial, LineSegments, Matrix4, MOUSE, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { evaluateBobjAction, parseBobjArmature, type BobjAction, type BobjArmature } from '@bbs/retarget'
 import { useStudioLocale } from '../../../src/devtools/localePreference'
@@ -47,6 +47,7 @@ export function MinecraftActionPreview({ action }: { action: BobjAction }) {
       const controls = new OrbitControls(camera, renderer.domElement)
       controls.target.set(0, 0.85, 0)
       controls.enableDamping = true
+      controls.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.PAN } // W01: left orbit, middle pan, wheel zoom
       scene.add(new AmbientLight(0xffffff, 1.6))
       const key = new DirectionalLight(0xffffff, 2.2)
       key.position.set(4, 7, 5)

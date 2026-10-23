@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AnimationMixer, AmbientLight, AxesHelper, Bone, BufferAttribute, BufferGeometry, DirectionalLight, GridHelper, Group, LineBasicMaterial, LineSegments, Matrix4, Mesh, PerspectiveCamera, Quaternion, Scene, Vector3, WebGLRenderer, type AnimationClip } from 'three'
+import { AnimationMixer, AmbientLight, AxesHelper, Bone, BufferAttribute, BufferGeometry, DirectionalLight, GridHelper, Group, LineBasicMaterial, LineSegments, Matrix4, Mesh, MOUSE, PerspectiveCamera, Quaternion, Scene, Vector3, WebGLRenderer, type AnimationClip } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { fbxSourceBones } from '@topview/3d-builder/evaluate'
@@ -164,6 +164,7 @@ export function RetargetPreview({ projectId, calibrationSettings, activeMapping,
       const controls = new OrbitControls(camera, renderer.domElement)
       controls.target.set(0, 0.85, 0)
       controls.enableDamping = true
+      controls.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.PAN } // W01: left orbit, middle pan, wheel zoom
       scene.add(new AmbientLight(0xffffff, 1.6))
       const key = new DirectionalLight(0xffffff, 2.2)
       key.position.set(4, 7, 5)

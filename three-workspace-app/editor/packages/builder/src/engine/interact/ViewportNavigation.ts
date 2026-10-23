@@ -199,6 +199,8 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     lastY: 0,
     moved: false,
     rightMoved: false,
+    /** 鼠标左键拖动＝环绕（W01 统一：左键环绕、中键平移、滚轮缩放；右键改为环视）。 */
+    leftOrbit: false,
   }
   const touchPointers = new Map<number, { x: number; y: number }>()
   let touchCount = 0
@@ -216,6 +218,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
 
   const cancelSingleFingerLook = () => {
     pointer.leftDown = false
+    pointer.leftOrbit = false
     pointer.moved = true
     camera.looking = false
     flushPendingLook()
@@ -307,7 +310,6 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
 
     if (e.button === 2) {
       e.preventDefault()
-      camera.beginOrbitGesture()
       pointer.rightDown = true
       pointer.rightMoved = false
       pointer.startX = e.clientX
@@ -361,12 +363,12 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     if (pointer.rightDown) {
       const dx = e.clientX - pointer.startX
       const dy = e.clientY - pointer.startY
-      if (!pointer.rightMoved && Math.hypot(dx, dy) >= STAGE_DRAG_THRESHOLD_PX) pointer.rightMoved = true
+      if (!pointer.rightMoved && Math.hypot(dx, dy) >= STAGE_DRAG_THRESHOLD_PX) { pointer.rightMoved = true; camera.looking = true }
       const stepX = e.clientX - pointer.lastX
       const stepY = e.clientY - pointer.lastY
       pointer.lastX = e.clientX
       pointer.lastY = e.clientY
-      if (pointer.rightMoved && (stepX !== 0 || stepY !== 0)) camera.applyOrbitDelta(stepX, stepY)
+      if (pointer.rightMoved && (stepX !== 0 || stepY !== 0)) camera.applyLookDelta(stepX, stepY)
       return
     }
 
@@ -389,6 +391,9 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
         // Space + drag = pan
       } else if (ctrl) {
         boxSelecting = true
+      } else if (e.pointerType === 'mouse') {
+        pointer.leftOrbit = true
+        camera.beginOrbitGesture()
       } else if (e.pointerType !== 'touch' || touchPointers.size === 1) {
         camera.looking = true
       }
@@ -405,6 +410,15 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
       pointer.lastX = e.clientX
       pointer.lastY = e.clientY
       camera.applyPanDelta(stepX, stepY)
+      return
+    }
+
+    if (pointer.leftOrbit) {
+      const stepX = e.clientX - pointer.lastX
+      const stepY = e.clientY - pointer.lastY
+      pointer.lastX = e.clientX
+      pointer.lastY = e.clientY
+      if (stepX !== 0 || stepY !== 0) camera.applyOrbitDelta(stepX, stepY)
       return
     }
 
@@ -438,6 +452,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     }
     if (e.button === 2) {
       pointer.rightDown = false
+      camera.looking = false
       return
     }
     if (e.button === 1) {
@@ -446,6 +461,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     }
     if (!pointer.leftDown) return
     pointer.leftDown = false
+    pointer.leftOrbit = false
     camera.looking = false
     flushPendingLook()
     const wasBox = boxSelecting
