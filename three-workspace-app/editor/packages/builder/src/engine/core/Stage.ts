@@ -298,8 +298,9 @@ export class Stage implements DirectorEngine, PathViewHost {
   /** 每次绘制前调用（求值会重设天空色）：开启时套剪影 / BBS 材质与背景，新加载的网格也会被换掉；关闭时无操作。 */
   syncSilhouette(): void {
     if (this.bbsLookWanted && !this.silhouetteWanted) {
+      this.scene.updateMatrixWorld(true)
       this.bbsLookView.apply(this.scene, [...[...this.characters.values()].map((ch) => ch.root), ...this.props.values(), ...this.primitives.values()],
-        this.doc?.content.environment.display?.groundHeight ?? 0)
+        this.doc?.content.environment.display?.groundHeight ?? 0, [...this.characters.values()].map((ch) => ch.motionRoot ?? ch.root))
     } else if (this.bbsLookView.enabled) this.bbsLookView.restore(this.scene)
     if (!this.silhouetteWanted) return
     this.silhouetteView.apply(this.scene, [...this.characters.values()].map((ch) => ch.root), [...this.props.values(), ...this.primitives.values()])

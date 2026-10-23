@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { CHARACTER_LABEL_KIND, GRID_NAME, GROUND_NAME } from '../objects/environment'
-import { BbsLookView, entityLight, grassTexture, skyBlend } from '../objects/bbsLook'
+import { BbsLookView, entityLight, grassTexture, shadowOpacity, skyBlend } from '../objects/bbsLook'
 
 function sceneWithCast() {
   const scene = new THREE.Scene()
@@ -67,5 +67,23 @@ describe('BBS look', () => {
     expect([ground.visible, grid.visible, label.visible]).toEqual([true, true, true])
     expect(scene.getObjectByName('t3d-bbs-floor')).toBeUndefined()
     expect(view.enabled).toBe(false)
+  })
+})
+
+describe('BBS look shadows', () => {
+  it('puts a fading disc on the floor under each caster and hides spare discs', () => {
+    expect(shadowOpacity(0)).toBe(0.5)
+    expect(shadowOpacity(1.5)).toBeCloseTo(0.25, 12)
+    expect(shadowOpacity(5)).toBe(0)
+    const scene = new THREE.Scene(), view = new BbsLookView()
+    const a = new THREE.Group(); a.position.set(2, 0, 3); const b = new THREE.Group(); b.position.set(-1, 1.5, 0)
+    scene.add(a, b); scene.updateMatrixWorld(true)
+    view.apply(scene, [], 0, [a, b])
+    const shadows = scene.children.filter((child) => child.name === 't3d-bbs-shadow')
+    expect(shadows.map((s) => [s.position.x, s.position.z, s.visible])).toEqual([[2, 3, true], [-1, 0, true]])
+    view.apply(scene, [], 0, [a])
+    expect(shadows[1]!.visible).toBe(false)
+    view.restore(scene)
+    expect(scene.children.some((child) => child.name === 't3d-bbs-shadow')).toBe(false)
   })
 })

@@ -138,6 +138,23 @@ export function grassTexture(seed = 15): THREE.DataTexture {
 
 type Materials = THREE.Material | THREE.Material[]
 
+/** Minecraft entity shadow: a soft dark disc of the replay's shadow size (0.5 m) under each actor, fading with height. */
+export const BBS_SHADOW_RADIUS = 0.5
+export function shadowOpacity(heightAboveGround: number): number {
+  return 0.5 * Math.max(0, Math.min(1, 1 - heightAboveGround / 3))
+}
+
+const SHADOW_FRAGMENT = /* glsl */ `
+uniform float opacity;
+varying vec2 vUv;
+void main() {
+  float r = length(vUv - 0.5) * 2.0;
+  gl_FragColor = vec4(0.0, 0.0, 0.0, opacity * (1.0 - smoothstep(0.55, 1.0, r)));
+}`
+const SHADOW_VERTEX = /* glsl */ `
+varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`
+
 function entityMaterial(source: THREE.Material): THREE.ShaderMaterial {
   const src = source as THREE.MeshStandardMaterial
   const map = src.map ?? null
@@ -190,7 +207,7 @@ export class BbsLookView {
    * Called before every render while enabled. Idempotent: meshes loaded after the toggle are swapped on the next frame,
    * and the sky/floor are re-pinned even if the environment was re-applied.
    */
-  apply(scene: THREE.Scene, actors: Iterable<THREE.Object3D>, groundHeight = 0): void {
+  apply(scene: THREE.Scene, actors: Iterable<THREE.Object3D>, groundHeight = 0, shadowCasters: Iterable<THREE.Object3D> = []): void {
     if (!this.active) {
       this.active = true
       this.background = scene.background as THREE.Color | THREE.Texture | null
@@ -203,6 +220,34 @@ export class BbsLookView {
     this.floor.position.y = groundHeight
     for (const child of scene.children) if (child.name === GROUND_NAME || child.name === GRID_NAME) this.hide(child)
     for (const root of actors) this.paint(root)
+    this.placeShadows(scene, shadowCasters, groundHeight)
+  }
+
+  private readonly shadows: THREE.Mesh[] = []
+  private readonly shadowGeometry = new THREE.PlaneGeometry(BBS_SHADOW_RADIUS * 2, BBS_SHADOW_RADIUS * 2).rotateX(-Math.PI / 2)
+
+  /** One shadow per caster at its world x/z on the floor; extra discs from earlier frames are hidden. */
+  private placeShadows(scene: THREE.Scene, casters: Iterable<THREE.Object3D>, groundHeight: number): void {
+    let index = 0
+    const position = new THREE.Vector3()
+    for (const caster of casters) {
+      position.setFromMatrixPosition(caster.matrixWorld)
+      let shadow = this.shadows[index]
+      if (!shadow) {
+        shadow = new THREE.Mesh(this.shadowGeometry, new THREE.ShaderMaterial({
+          name: 'bbs-shadow', vertexShader: SHADOW_VERTEX, fragmentShader: SHADOW_FRAGMENT, transparent: true, depthWrite: false,
+          uniforms: { opacity: { value: 0.5 } }, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+        }))
+        shadow.name = 't3d-bbs-shadow'; shadow.renderOrder = 5
+        this.shadows.push(shadow)
+      }
+      if (shadow.parent !== scene) scene.add(shadow)
+      shadow.position.set(position.x, groundHeight + 0.01, position.z)
+      ;(shadow.material as THREE.ShaderMaterial).uniforms.opacity!.value = shadowOpacity(position.y - groundHeight)
+      shadow.visible = true
+      index++
+    }
+    for (; index < this.shadows.length; index++) this.shadows[index]!.visible = false
   }
 
   restore(scene: THREE.Scene): void {
@@ -214,7 +259,7 @@ export class BbsLookView {
     for (const [object, visible] of this.visibility) object.visible = visible
     for (const [texture, [mag, min]] of this.filters) { texture.magFilter = mag; texture.minFilter = min; texture.needsUpdate = true }
     this.materials.clear(); this.visibility.clear(); this.filters.clear()
-    scene.remove(this.sky, this.floor)
+    scene.remove(this.sky, this.floor, ...this.shadows)
     scene.background = this.background
     scene.fog = this.fog
     this.background = null; this.fog = null
@@ -225,6 +270,8 @@ export class BbsLookView {
     this.grass.dispose()
     this.sky.geometry.dispose(); (this.sky.material as THREE.Material).dispose()
     this.floor.geometry.dispose(); (this.floor.material as THREE.Material).dispose()
+    this.shadowGeometry.dispose()
+    for (const shadow of this.shadows) (shadow.material as THREE.Material).dispose()
   }
 
   private hide(object: THREE.Object3D): void {

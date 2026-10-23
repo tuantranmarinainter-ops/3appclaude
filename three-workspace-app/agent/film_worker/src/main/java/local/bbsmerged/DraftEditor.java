@@ -132,6 +132,8 @@ public final class DraftEditor {
                     if(start>0) key(props,"restart","boolean",0,bool(false));
                     key(props,"restart","boolean",start,bool(true));
                     key(props,"restart","boolean",Math.min(duration,start+2),bool(false));
+                    // Hiding alone leaves spawned particles glowing in game (seen with "light"); pause at the end too.
+                    if(end<duration) { key(props,"paused","boolean",start,bool(false)); key(props,"paused","boolean",end,bool(true)); }
                 }
                 List<Node> actors=array(root,"replays"); actors.add(a); result=snapshot(a,draft,actors.size()-1,0);
             }

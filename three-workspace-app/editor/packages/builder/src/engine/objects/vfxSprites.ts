@@ -24,12 +24,19 @@ export interface VfxSpriteCue {
   scale: number
   attachNodeId?: string
   attachBone?: string
+  /** 'manual': BBS FS leaves the effect paused for the user to start, so the preview shows it frozen and faded. */
+  play?: 'auto' | 'manual'
 }
 
 export interface VfxSheet { url: string; meta: VfxSheetMeta }
 
 export const VFX_LAYER_NAME = 't3d-vfx-sprites'
 const PLACEHOLDER_SIZE = 1
+/** Depth test the billboard at most this far nearer the camera: enough for rings/domes on the floor, not past walls. */
+export const VFX_DEPTH_BIAS_MAX = 2
+/** A manual-play effect is previewed frozen on this fraction of its sheet, at this opacity. */
+export const VFX_MANUAL_CELL = 0.3
+export const VFX_MANUAL_OPACITY = 0.35
 
 export function validVfxSheetMeta(value: unknown): value is VfxSheetMeta {
   const meta = value as VfxSheetMeta
@@ -133,13 +140,15 @@ export class VfxSpriteLayer {
       const entry = this.entry(cue)
       if (!vfxCueActive(cue, frame)) { entry.sprite.visible = false; continue }
       const world = vfxCueWorld(cue, resolve)
-      const cell = entry.meta ? vfxSheetCell(entry.meta, frame - cue.frameStart, timelineFps) : 0
+      const manual = cue.play === 'manual'
+      const cell = !entry.meta ? 0 : manual ? Math.floor((entry.meta.frames - 1) * VFX_MANUAL_CELL) : vfxSheetCell(entry.meta, frame - cue.frameStart, timelineFps)
       if (!world || cell === null) { entry.sprite.visible = false; continue }
       entry.sprite.visible = true
       entry.sprite.position.copy(world.position)
       const size = (entry.meta?.sizeMeters ?? PLACEHOLDER_SIZE) * world.scale
       entry.sprite.scale.set(size, size, 1)
-      ;(entry.sprite.material.userData.depthBias as { value: number }).value = size / 2
+      ;(entry.sprite.material.userData.depthBias as { value: number }).value = Math.min(size / 2, VFX_DEPTH_BIAS_MAX)
+      entry.sprite.material.opacity = manual ? VFX_MANUAL_OPACITY : 1
       if (entry.meta && entry.texture) {
         const uv = vfxCellUv(entry.meta, cell)
         entry.texture.offset.set(...uv.offset)

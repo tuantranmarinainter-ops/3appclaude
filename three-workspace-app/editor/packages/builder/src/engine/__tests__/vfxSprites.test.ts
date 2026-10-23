@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as THREE from 'three'
-import { VfxSpriteLayer, findBoneByCanonicalName, validVfxSheetMeta, vfxCellUv, vfxCueActive, vfxCueWorld, vfxSheetCell, type VfxSheetMeta, type VfxSpriteCue } from '../objects/vfxSprites'
+import { VFX_DEPTH_BIAS_MAX, VFX_MANUAL_OPACITY, VfxSpriteLayer, findBoneByCanonicalName, validVfxSheetMeta, vfxCellUv, vfxCueActive, vfxCueWorld, vfxSheetCell, type VfxSheetMeta, type VfxSpriteCue } from '../objects/vfxSprites'
 
 const meta: VfxSheetMeta = { frames: 10, columns: 4, rows: 3, fps: 20, sizeMeters: 2, pivot: [0.5, 0], blend: 'add', loop: false }
 const cue = (patch: Partial<VfxSpriteCue> = {}): VfxSpriteCue => ({ id: 'c1', effect: 'aura01', frameStart: 30, frameEnd: 59, position: { x: 1, y: 0, z: 0 }, yaw: 0, scale: 0.5, ...patch })
@@ -68,5 +68,24 @@ describe('VFX sprite preview', () => {
     layer.setCues([], {})
     expect(layer.cueCount).toBe(0)
     layer.dispose()
+  })
+})
+
+describe('VFX sprite preview: manual play and depth bias', () => {
+  it('shows a manual-play effect frozen and faded, and caps the depth bias', () => {
+    // No DOM image loading under vitest: the sheet texture is a stand-in.
+    const load = vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture())
+    const layer = new VfxSpriteLayer()
+    const big = { ...meta, sizeMeters: 20 }
+    layer.setCues([{ id: 'm', effect: 'fx', frameStart: 0, frameEnd: 90, position: { x: 0, y: 0, z: 0 }, yaw: 0, scale: 1, play: 'manual' }], { fx: { url: 'data:,', meta: big } })
+    layer.update(10, 30, none)
+    const sprite = layer.group.getObjectByName('vfx:m') as THREE.Sprite
+    const offset = (sprite.material.map as THREE.Texture).offset.toArray()
+    layer.update(50, 30, none)
+    expect((sprite.material.map as THREE.Texture).offset.toArray()).toEqual(offset)
+    expect(sprite.material.opacity).toBe(VFX_MANUAL_OPACITY)
+    expect((sprite.material.userData.depthBias as { value: number }).value).toBe(VFX_DEPTH_BIAS_MAX)
+    layer.dispose()
+    load.mockRestore()
   })
 })
