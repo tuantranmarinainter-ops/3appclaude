@@ -310,6 +310,7 @@ export function StudioOverlay({
     document.body.classList.add('wb-unified-open')
     return () => {
       document.body.classList.remove('wb-unified-open')
+      delete document.body.dataset.bbsWorkspace
       window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: 'scene' } }))
     }
   }, [source])
@@ -318,6 +319,7 @@ export function StudioOverlay({
     if (source !== 'unified') return
     if (!mounted || !projectState) return
     try { window.localStorage.setItem(`bbs-workspace:${documentId}`, activeWorkspace) } catch { /* Private mode keeps the selection for this session. */ }
+    document.body.dataset.bbsWorkspace = activeWorkspace
     window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: activeWorkspace } }))
   }, [activeWorkspace, documentId, mounted, projectState, source])
 
@@ -526,6 +528,7 @@ export function StudioOverlay({
             <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
+        <div id="studio-workspace-navigation" className="workspace-navigation-host" />
         <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
