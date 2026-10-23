@@ -8,7 +8,7 @@ import { readUnifiedJobFile, storeApp3Artifact, discardApp3Artifact } from './un
 import { readStagedAssetUpload, removeStagedAssetUploads, resolveUnifiedAssetFile } from './unifiedAssetFiles'
 import { loadShotExport } from './shotExchange'
 import { unzipPackage, validateShot, validateResult, readPackageJson, sha256, type PackageFiles, type Shot } from './shotPackage'
-import { getAction } from '../../../packages/library/index'
+import { formatBilingual, getAction } from '../../../packages/library/index'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 
@@ -73,7 +73,7 @@ export async function executeApp3Artifacts(project:UnifiedProject,command:string
   const bytes=await readFile(action.glbPath),target=await resolveUnifiedAssetFile(project,characterAsset.id,'source')
   const glbSha256=createHash('sha256').update(bytes).digest('hex'),characterSha256=createHash('sha256').update(target.bytes).digest('hex')
   if(characterSha256!==characterAsset.source.sha256)fail('IDENTITY_MISMATCH')
-  const proof:App3LibraryActionProof={actionUuid:action.uuid,characterId:character.id,characterAssetId:characterAsset.id,characterSha256,packId:action.packId,glbSha256,glbAnimationIndex:action.glbAnimationIndex,name:action.name}
+  const proof:App3LibraryActionProof={actionUuid:action.uuid,characterId:character.id,characterAssetId:characterAsset.id,characterSha256,packId:action.packId,glbSha256,glbAnimationIndex:action.glbAnimationIndex,name:formatBilingual(action.name,action.nameVi)}
   return executeApp3Bridge(await freshProject(project,fresh),command,args,requestId,dryRun,expectedRevision,proof)
  }
  if(command==='app3.command.submit'&&args.tool==='shotOpen'){

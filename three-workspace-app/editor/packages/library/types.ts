@@ -50,6 +50,9 @@ export interface NormalizedManifest {
 export interface ActionMetadata {
   uuid: string
   name: string
+  /** Vietnamese display name. Missing on records created before bilingual metadata. */
+  nameVi?: string
+  nameViSource?: 'glossary' | 'words' | 'manual'
   durationSeconds: number
   fps: number
   category: ActionCategory

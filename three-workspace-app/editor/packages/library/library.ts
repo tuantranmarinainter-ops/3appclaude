@@ -13,13 +13,17 @@ export interface SearchResult {
   items: IndexedAction[]
 }
 
+function searchable(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLocaleLowerCase()
+}
+
 export function searchLibrary(options: LibraryOptions & SearchOptions = {}): SearchResult {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const index = writeIndex(root)
     const selectedCharacter = options.boundCharacter ? index.characters.find((character) => character.charId === options.boundCharacter) : undefined
-    const query = options.text?.trim().toLocaleLowerCase()
+    const query = options.text?.trim() ? searchable(options.text.trim()) : undefined
     const tags = options.tags?.map((tag) => tag.toLocaleLowerCase()) ?? []
     const matches = index.actions.filter((action) =>
       (!options.rig || action.rig === options.rig) &&
@@ -28,7 +32,7 @@ export function searchLibrary(options: LibraryOptions & SearchOptions = {}): Sea
       (!options.status || action.status === options.status) &&
       (!options.boundCharacter || (selectedCharacter?.actions ? selectedCharacter.actions.includes(action.uuid) : action.boundCharacter === options.boundCharacter)) &&
       tags.every((tag) => action.tags.some((candidate) => candidate.toLocaleLowerCase() === tag)) &&
-      (!query || [action.name, action.rig, action.category, ...action.tags].some((value) => value.toLocaleLowerCase().includes(query)))
+      (!query || [action.name, action.nameVi ?? '', action.rig, action.category, ...action.tags].some((value) => searchable(value).includes(query)))
     ).sort((a, b) => a.name.localeCompare(b.name) || a.uuid.localeCompare(b.uuid))
     const offset = Math.max(0, Math.floor(options.offset ?? 0))
     const limit = Math.max(1, Math.min(100, Math.floor(options.limit ?? 50)))

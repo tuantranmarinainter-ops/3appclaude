@@ -10,6 +10,7 @@ import {
   type NormalizedManifest, type RequiredAction,
 } from './types'
 import { validatePackGlbContract } from './importPack'
+import { translateActionName } from './actionNames'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -80,6 +81,10 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
   const packId = createHash('sha256').update(`${glbSha256}:${input.uuid}`).digest('hex').slice(0, 16)
   const destination = safeChild(root, 'packs', packId)
   if (existsSync(destination)) throw new Error(`Character action version already exists: ${input.uuid}`)
+  const generatedName = translateActionName(input.source.name)
+  const bilingual = input.source.nameVi
+    ? { nameVi: input.source.nameVi, nameViSource: input.source.nameViSource }
+    : generatedName.source === 'none' ? {} : { nameVi: generatedName.vi, nameViSource: generatedName.source }
   const metadata: MotionPackMetadata = {
     kind: 'motion-pack', libraryVersion: LIBRARY_VERSION, packId, glbSha256, rig: input.source.rig,
     createdBy: 'app3', createdAt: new Date().toISOString(),
@@ -87,6 +92,7 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
     boundCharacter: null, source: { file: input.source.name, sha256: null },
     actions: [{
       uuid: input.uuid, name: input.source.name, durationSeconds: input.durationSeconds ?? input.source.durationSeconds, fps: input.source.fps,
+      ...bilingual,
       category: input.source.category, tags: [...input.source.tags], loop: input.source.loop, inPlace: input.source.inPlace,
       parentUuid: input.parentUuid, cover: null,
       glbAnimationIndex: input.preserveAnimationIndex ? input.source.glbAnimationIndex : 0,

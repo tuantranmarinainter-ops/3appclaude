@@ -1,4 +1,4 @@
-import { addCharacterActions, removeCharacterActions, getAction, listLibraryCharacters, searchLibrary, type SearchResult } from './library'
+import { addCharacterActions, removeCharacterActions, getAction, listLibraryCharacters, searchLibrary, setActionMetadata, type SearchResult } from './library'
 import { addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction, saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile } from './characterActions'
 import type { CharacterActionStatus, CharacterCoverage, CharacterMetadata, IndexedAction, LibraryOptions, SearchOptions } from './types'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES } from './types'
@@ -22,6 +22,14 @@ export const LIBRARY_MCP_TOOLS = [
     name: 'library.get',
     description: 'Get an action record and paths to its immutable GLB and manifest.',
     inputSchema: { type: 'object', additionalProperties: false, required: ['actionUuid'], properties: { actionUuid: { type: 'string' } } },
+  },
+  {
+    name: 'library.action.metadata.set',
+    description: 'Edit searchable action metadata, including a manual Vietnamese display name.',
+    inputSchema: { type: 'object', additionalProperties: false, required: ['actionUuid'], properties: {
+      actionUuid: { type: 'string' }, nameVi: { type: 'string' }, category: { type: 'string', enum: ACTION_CATEGORIES },
+      tags: { type: 'array', items: { type: 'string' } }, loop: { type: 'boolean' }, parentUuid: { type: ['string', 'null'] },
+    } },
   },
   {
     name: 'library.characters',
@@ -65,6 +73,7 @@ function object(value: unknown): Record<string, unknown> {
 /** Stateless MCP-side adapter; the host/MCP transport can delegate these local calls. */
 export function callLibraryTool(name: 'library.search', input: unknown, options?: LibraryOptions): SearchResult
 export function callLibraryTool(name: 'library.get', input: unknown, options?: LibraryOptions): IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null }
+export function callLibraryTool(name: 'library.action.metadata.set', input: unknown, options?: LibraryOptions): IndexedAction
 export function callLibraryTool(name: 'library.characters', input: unknown, options?: LibraryOptions): CharacterMetadata[]
 export function callLibraryTool(name: 'library.character.actions.add' | 'library.character.actions.remove', input: unknown, options?: LibraryOptions): CharacterMetadata
 export function callLibraryTool(name: 'library.character.action.draft' | 'library.character.action.copy' | 'library.character.action.version.save' | 'library.character.action.status.set', input: unknown, options?: LibraryOptions): IndexedAction
@@ -99,6 +108,22 @@ export function callLibraryTool(name: string, input: unknown, options: LibraryOp
   }
   if (name === 'library.get') {
     if (typeof args.actionUuid !== 'string') throw new Error('actionUuid is required')
+    return getAction({ ...options, actionUuid: args.actionUuid })
+  }
+  if (name === 'library.action.metadata.set') {
+    if (typeof args.actionUuid !== 'string') throw new Error('actionUuid is required')
+    if (args.nameVi !== undefined && typeof args.nameVi !== 'string') throw new Error('nameVi must be a string')
+    if (args.category !== undefined && (typeof args.category !== 'string' || !(ACTION_CATEGORIES as readonly string[]).includes(args.category))) throw new Error('Invalid category')
+    if (args.tags !== undefined && (!Array.isArray(args.tags) || !args.tags.every((tag) => typeof tag === 'string'))) throw new Error('tags must be an array of strings')
+    if (args.loop !== undefined && typeof args.loop !== 'boolean') throw new Error('loop must be a boolean')
+    if (args.parentUuid !== undefined && args.parentUuid !== null && typeof args.parentUuid !== 'string') throw new Error('parentUuid must be a string or null')
+    setActionMetadata({ ...options, actionUuid: args.actionUuid,
+      ...(typeof args.nameVi === 'string' ? { nameVi: args.nameVi } : {}),
+      ...(typeof args.category === 'string' ? { category: args.category as SearchOptions['category'] } : {}),
+      ...(Array.isArray(args.tags) ? { tags: args.tags as string[] } : {}),
+      ...(typeof args.loop === 'boolean' ? { loop: args.loop } : {}),
+      ...(typeof args.parentUuid === 'string' || args.parentUuid === null ? { parentUuid: args.parentUuid } : {}),
+    })
     return getAction({ ...options, actionUuid: args.actionUuid })
   }
   if (name === 'library.characters') return listLibraryCharacters(options)

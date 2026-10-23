@@ -5,6 +5,7 @@ import {
   ACTION_CATEGORIES, LIBRARY_VERSION, type ActionCategory, type ActionMetadata, type LibraryLicense,
   type MotionPackMetadata, type NormalizedManifest,
 } from './types'
+import { translateActionName } from './actionNames'
 import { ensureRegularFile, initializeLibrary, readJsonFile, safeChild, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -254,8 +255,10 @@ function buildActions(manifest: NormalizedManifest, options: ImportPackOptions, 
     const tags = options.tags ?? []
     if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== 'string' || !tag.trim())) throw new Error('Tags must be non-empty strings')
     const cover = hasCover ? `covers/${action.uuid}.png` : null
+    const translated = translateActionName(action.name)
     return {
       uuid: action.uuid, name: action.name, durationSeconds: action.durationSeconds, fps: action.fps,
+      ...(translated.source === 'none' ? {} : { nameVi: translated.vi, nameViSource: translated.source }),
       category: category((action as NormalizedManifest['actions'][number] & { category?: unknown }).category, categoryDefault),
       tags: [...new Set(tags.map((tag) => tag.trim()))],
       loop: options.loop ?? false,
@@ -335,12 +338,13 @@ function registerRigUnlocked(root: string, rigId: string, bones: RigBone[]): voi
 
 /** Change searchable metadata only; immutable GLB and App 1 manifest bytes are preserved. */
 export function updateActionMetadata(options: {
-  libraryRoot: string; actionUuid: string; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null
+  libraryRoot: string; actionUuid: string; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; nameVi?: string
 }): MotionPackMetadata {
   if (!UUID.test(options.actionUuid)) throw new Error('Invalid action UUID')
   if (options.category !== undefined && !ACTION_CATEGORIES.includes(options.category)) throw new Error(`Unknown action category: ${options.category}`)
   if (options.tags?.some((tag) => typeof tag !== 'string' || !tag.trim())) throw new Error('Tags must be non-empty strings')
   if (options.parentUuid !== undefined && options.parentUuid !== null && !UUID.test(options.parentUuid)) throw new Error('Invalid parent action UUID')
+  if (options.nameVi !== undefined && typeof options.nameVi !== 'string') throw new Error('Vietnamese action name must be a string')
   return withLibraryLock(options.libraryRoot, () => {
     initializeLibrary(options.libraryRoot)
     const packsRoot = safeChild(options.libraryRoot, 'packs')
@@ -355,6 +359,11 @@ export function updateActionMetadata(options: {
       if (options.tags !== undefined) action.tags = [...new Set(options.tags.map((tag) => tag.trim()))]
       if (options.loop !== undefined) action.loop = options.loop
       if (options.parentUuid !== undefined) action.parentUuid = options.parentUuid
+      if (options.nameVi !== undefined) {
+        const nameVi = options.nameVi.trim()
+        if (nameVi) { action.nameVi = nameVi; action.nameViSource = 'manual' }
+        else { delete action.nameVi; delete action.nameViSource }
+      }
       writeJsonAtomic(metaPath, metadata)
       writeIndex(options.libraryRoot)
       return metadata
