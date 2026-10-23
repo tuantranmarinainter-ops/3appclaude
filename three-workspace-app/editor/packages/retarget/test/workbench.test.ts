@@ -57,6 +57,28 @@ function syntheticAnimatedMixamo(glbPath: string, animationName: string): Uint8A
   return encodeGlb(json, fullBin)
 }
 
+function syntheticMixamoAnimations(glbPath: string, actions: Array<{ name: string; duration: number }>): Uint8Array {
+  const { json, bin } = decodeGlb(readFileSync(glbPath))
+  const hips = json.nodes.findIndex((node: any) => /(^|:)Hips$/i.test(node.name ?? ''))
+  assert.ok(hips >= 0, 'fixture has a Hips joint')
+  const offset = Math.ceil(bin.length / 4) * 4
+  const extra = Buffer.alloc(offset - bin.length + actions.length * 40)
+  json.bufferViews ??= []; json.accessors ??= []; json.animations = []
+  actions.forEach(({ name, duration }, index) => {
+    const base = offset - bin.length + index * 40
+    extra.writeFloatLE(0, base); extra.writeFloatLE(duration, base + 4)
+    ;[0, 0, 0, 1, 0, 0.04, 0, Math.sqrt(1 - 0.04 ** 2)].forEach((value, valueIndex) => extra.writeFloatLE(value, base + 8 + valueIndex * 4))
+    const timeView = json.bufferViews.push({ buffer: 0, byteOffset: offset + index * 40, byteLength: 8 }) - 1
+    const rotationView = json.bufferViews.push({ buffer: 0, byteOffset: offset + index * 40 + 8, byteLength: 32 }) - 1
+    const timeAccessor = json.accessors.push({ bufferView: timeView, componentType: 5126, count: 2, type: 'SCALAR', min: [0], max: [duration] }) - 1
+    const rotationAccessor = json.accessors.push({ bufferView: rotationView, componentType: 5126, count: 2, type: 'VEC4' }) - 1
+    json.animations.push({ name, samplers: [{ input: timeAccessor, output: rotationAccessor, interpolation: 'LINEAR' }], channels: [{ sampler: 0, target: { node: hips, path: 'rotation' } }] })
+  })
+  const fullBin = Buffer.concat([Buffer.from(bin), extra])
+  json.buffers[0].byteLength = fullBin.length
+  return encodeGlb(json, fullBin)
+}
+
 let bench: Workbench
 // The server reads App 5 library characters at start: use an empty library so the user's own characters don't count.
 const emptyLibrary = mkdtempSync(join(tmpdir(), 'w01-wb-empty-library-')), startLibrary = process.env.W01_LIBRARY
@@ -120,6 +142,10 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(app, /renderBatchActionPicker/)
   assert.match(app, /selectedBatchGroups/)
   assert.match(app, /\/api\/batches/)
+  assert.match(app, /state\.batch && character\.rig === 'minecraft20'/)
+  assert.match(app, /function syncBatchDestinationOptions\(\)[\s\S]*?elements\.bobj\.checked = true/)
+  assert.match(app, /durationSeconds > 0/)
+  assert.match(app, /Tên Anh \$\{entry\.name\}/)
 })
 
 test('one-click transfer orchestrator uses the exact selection, supports shared-only, and retries only failures', async () => {
@@ -305,6 +331,36 @@ test('batch inspection walks folders recursively and isolates a corrupt file as 
     assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('../escape.glb') }, body: readFileSync(join(folder, 'broken.glb')) })).status, 400)
     const uploadedBatch = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: target.id, options: {} })
     assert.equal(uploadedBatch.status, 202)
+  } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-duration Take 001 clips', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'w01-batch-mixamo-names-'))
+  try {
+    const builtin = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const source = join(folder, 'Samba Dancing.glb')
+    writeFileSync(source, syntheticMixamoAnimations(builtin, [{ name: 'mixamo.com', duration: 1 }, { name: 'Take 001', duration: 0 }]))
+    const target = (await call('/api/targets')).json.targets[0]
+    const started = await post('/api/batches', { paths: [source], targetId: target.id, options: {} })
+    assert.equal(started.status, 202, started.text)
+    let batch = started.json
+    for (let attempt = 0; attempt < 200 && batch.state === 'running'; attempt++) {
+      await new Promise((ok) => setTimeout(ok, 20))
+      batch = (await call(`/api/batches/${started.json.batchId}`)).json
+    }
+    assert.equal(batch.state, 'done')
+    assert.equal(batch.entries[0].status, 'ready', batch.entries[0].error)
+    assert.deepEqual(batch.entries[0].inspect.actions.map((action: any) => action.name), ['Samba Dancing'])
+    assert.equal(batch.entries[0].inspect.actions[0].nameVi, 'Nhảy samba')
+    assert.equal(batch.entries[0].inspect.actions[0].displayName, 'Samba Dancing | Nhảy samba')
+    assert.equal(batch.entries[0].inspect.actions[0].sourceName, 'mixamo.com')
+    const sourceId = batch.entries[0].sourceId
+    const run = await post('/api/runs', { sourceId, targetId: target.id, options: { actions: [0], actionNames: { 0: { name: 'Samba Dancing', nameVi: 'Nhảy samba' } } } })
+    assert.equal(run.status, 200, run.text)
+    assert.equal(run.json.status, 'PASS', JSON.stringify(run.json.report))
+    assert.equal(run.json.manifest.actions[0].name, 'Samba Dancing')
+    assert.equal(run.json.manifest.actions[0].nameVi, 'Nhảy samba')
+    assert.equal(run.json.manifest.actions[0].sourceName, 'mixamo.com')
   } finally { rmSync(folder, { recursive: true, force: true }) }
 })
 

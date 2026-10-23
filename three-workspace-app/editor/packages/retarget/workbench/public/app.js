@@ -225,7 +225,26 @@ function renderBatchActionPicker(query) {
       const tag = h('select', { 'aria-label': `Thẻ ${entry.name}: ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.batchKeys.set(key, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
       tag.value = actionKey
       const edit = state.batchEdits.get(key) ?? { name: action.name, nameVi: action.nameVi ?? '' }
-      const nameCell = h('td', { class: 'name', ondblclick: (event) => { event.stopPropagation(); const english = h('input', { value: edit.name, 'aria-label': `Tên Anh ${entry.name} ${action.name}` }), vi = h('input', { value: edit.nameVi, placeholder: 'Tên tiếng Việt', 'aria-label': `Tên Việt ${entry.name} ${action.name}` }), save = h('button', { type: 'button', text: '✓', title: 'Lưu tên', onclick: (click) => { click.stopPropagation(); if (!english.value.trim()) { toast('Tên tiếng Anh không được để trống', 'err'); return } state.batchEdits.set(key, { name: english.value.trim(), nameVi: vi.value.trim() }); renderActionPicker() } }); clear(nameCell).append(english, vi, save); english.addEventListener('click', (click) => click.stopPropagation()); vi.addEventListener('click', (click) => click.stopPropagation()) } }, edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name)
+      const nameCell = h('td', { class: 'name' })
+      const startRename = (event) => {
+        event?.stopPropagation?.()
+        const english = h('input', { value: edit.name, 'aria-label': `Tên Anh ${entry.name} ${action.name}` })
+        const vi = h('input', { value: edit.nameVi, placeholder: 'Tên tiếng Việt', 'aria-label': `Tên Việt ${entry.name} ${action.name}` })
+        const save = () => {
+          if (!english.value.trim()) { toast('Tên tiếng Anh không được để trống', 'err'); return }
+          state.batchEdits.set(key, { name: english.value.trim(), nameVi: vi.value.trim() }); renderActionPicker()
+        }
+        const saveButton = h('button', { type: 'button', text: '✓', title: 'Lưu tên', 'aria-label': `Lưu tên ${entry.name} ${action.name}`, onclick: (click) => { click.stopPropagation(); save() } })
+        for (const input of [english, vi]) {
+          input.addEventListener('click', (click) => click.stopPropagation())
+          input.addEventListener('keydown', (key) => { key.stopPropagation(); if (key.key === 'Enter') save(); else if (key.key === 'Escape') renderActionPicker() })
+        }
+        clear(nameCell).append(english, vi, saveButton)
+        english.focus()
+      }
+      nameCell.addEventListener('dblclick', startRename)
+      nameCell.append(h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
+        h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }))
       tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
     }
     group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
@@ -723,7 +742,7 @@ $('cancelBtn').addEventListener('click', async () => {
 async function prepareTransfer() {
   if (!state.libraryCharacters) state.libraryCharacters = (await api('/api/library/characters')).characters
   const select = clear($('transferCharacter'))
-  const compatible = state.libraryCharacters.filter((character) => compatibleLibraryCharacter(character).enabled)
+  const compatible = state.libraryCharacters.filter((character) => (state.batch && character.rig === 'minecraft20') || compatibleLibraryCharacter(character).enabled)
   for (const character of compatible) select.append(h('option', { value: character.charId, text: `${character.name} · ${character.rig}` }))
   const targetCharacter = state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : ''
   if (compatible.some((character) => character.charId === targetCharacter)) select.value = targetCharacter
@@ -748,7 +767,12 @@ function renderTransferKeys() {
   $('transferCharacterPack').disabled = !character
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
-$('transferCharacter').addEventListener('change', () => { renderTransferKeys(); renderActionPicker() })
+function syncBatchDestinationOptions() {
+  const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
+  if (state.batch && character?.rig === 'minecraft20') $('optionsForm').elements.bobj.checked = true
+  state.requestBobj = !!$('optionsForm').elements.bobj.checked
+}
+$('transferCharacter').addEventListener('change', () => { syncBatchDestinationOptions(); renderTransferKeys(); renderActionPicker() })
 async function transferSelected(indices, retryConfig = null) {
   const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
   state.transferConfig = Object.freeze({ ...config })
@@ -791,6 +815,7 @@ async function transferBatch(groups, retryConfig = null) {
   const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value, licenseSource: $('transferLicenseSource').value.trim() }
   if (!config.toCharacter && !config.toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
   state.transferConfig = Object.freeze({ ...config }); state.transferRunning = true; state.batchFailedEntries = []; state.batchCancelRequested = false
+  syncBatchDestinationOptions()
   $('batchRetry').hidden = true
   $('batchCancel').hidden = false; $('batchCancel').textContent = 'Huỷ chuyển lô'
   for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
@@ -818,7 +843,10 @@ async function transferBatch(groups, retryConfig = null) {
       state.checked = new Set(actions.map((action) => action.index)); state.selected = actions[0]?.index ?? null
       state.batchProgress = { file: position + 1, files: groups.length, animationBase: completed, animations: totalActions }
       const names = {}
-      for (const action of actions) { const edit = state.batchEdits.get(batchKey(entry, action)); if (edit) names[action.index] = edit }
+      for (const action of actions) {
+        const edit = state.batchEdits.get(batchKey(entry, action)) ?? { name: action.name, nameVi: action.nameVi ?? '' }
+        names[action.index] = edit
+      }
       const result = await runNow(actions.map((action) => action.index), names)
       if (!result || result.status !== 'PASS') throw new Error(result?.report?.blocker?.message ?? `Chuẩn hoá trả ${result?.status ?? 'lỗi'}`)
       const byIndex = new Map((result.manifest?.actions ?? []).map((action) => [action.sourceActionIndex, action]))
@@ -828,7 +856,7 @@ async function transferBatch(groups, retryConfig = null) {
         const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: [config.charId], actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
-          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', ...(edit ? { name: action.name, nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.name }
+          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }) } })
         drafts += sent.drafts?.length ?? succeeded.length
       }
