@@ -127,5 +127,18 @@ test('Verity BOBJ normalization produces byte-prefix original BOBJ and full orig
   assert.ok('glb' in expectedExplicit)
   assert.equal(sha(readFileSync(join(cliOut, 'model.bbs.glb'))), sha(expectedExplicit.glb), 'explicit physical wrapper is applied exactly once')
   assert.ok(cliReport.originalRig.roundtripMaxPositionErrorUnits <= 1e-4)
+  // A preset label alone does not make canonical bone names a native Verity topology (K2 regression).
+  const nativeToCanonical = new Map(Object.entries(MIXAMO_TO_VERITY).map(([canonicalName, nativeName]) => [nativeName, canonicalName]))
+  const canonicalSource = sourceText.replace(/\b[A-Za-z_][A-Za-z_0-9]*\b/g, name => nativeToCanonical.get(name) ?? name)
+  const canonicalPath = join(dir, 'canonical.bbs.bobj'), canonicalOut = join(dir, 'canonical-out')
+  writeFileSync(canonicalPath, canonicalSource)
+  const canonicalRun = spawnSync(process.execPath, ['--import', 'tsx', cli, '--src', canonicalPath, '--target', targetPath, '--out', canonicalOut, '--action', '0', '--ground', 'off'],
+    { cwd: builder, encoding: 'utf8', timeout: 30_000 })
+  assert.equal(canonicalRun.status, 0, canonicalRun.stderr + canonicalRun.stdout)
+  assert.equal(existsSync(join(canonicalOut, 'canonical.bbs.original.bbs.bobj')), false)
+  const canonicalReport = JSON.parse(readFileSync(join(canonicalOut, 'canonical.bbs.report.json'), 'utf8'))
+  assert.equal(canonicalReport.input.bobjModel.unitSource, 'verity-preset')
+  assert.equal(canonicalReport.input.unitMeters, 1)
+  assert.equal(canonicalReport.input.bobjModel.unitMeters, VERITY_METRES_PER_UNIT)
   console.log('Verity CLI original measurements', JSON.stringify(artifact.report))
 })

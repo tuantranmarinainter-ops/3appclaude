@@ -56,7 +56,9 @@ try {
   const srcBytes = readFileSync(srcPath), targetBytes = readFileSync(targetPath)
   const sourceText = format === 'bobj' ? srcBytes.toString('utf8') : null
   const isBobjModel = !!sourceText && /^[\t \uFEFF]*arm_bone\s+/m.test(sourceText) && /^[\t ]*o\s+/m.test(sourceText) && /^[\t ]*v\s+/m.test(sourceText)
+  // The physical-unit preset name can also label canonical rigs; inverse projection needs native Verity bones.
   const isVerityModel = isBobjModel && /^[\t \uFEFF]*arm_name[\t ]+verity\.mdl[\t \r]*$/m.test(sourceText!)
+    && ['COG', 'Upper_Leg_L', 'Upper_Leg_R'].every(name => new RegExp(`^[\\t ]*arm_bone[\\t ]+${name}[\\t ]`, 'm').test(sourceText!))
   const sourceManifestPath = srcPath.replace(/\.[^.]+$/, '.manifest.json')
   const sourceExtraManifest = format === 'glb' && existsSync(sourceManifestPath)
     ? JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as { version?: unknown; rig?: unknown; extraBones?: unknown } : undefined
