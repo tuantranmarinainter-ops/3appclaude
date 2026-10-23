@@ -1,5 +1,6 @@
 import { useRef, type ReactElement } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
+import { CONTENT_WIDTH_DEFAULT, CONTENT_WIDTH_MAX, CONTENT_WIDTH_MIN } from '../../stores/EditorStore'
 import { useT } from '../../locale'
 import { cx } from '../common/cx'
 import { Tooltip } from '../common/Tooltip'
@@ -22,7 +23,18 @@ export function LeftRail(): ReactElement | null {
   const flash = useStore((s) => s.libraryFlash)
   const { toggleLibrary, setLibraryTab, setLibraryContentWidth } = useStore()
   const contentRef = useRef<HTMLDivElement>(null)
-  const { onPointerDown } = usePanelResize(contentRef, width, libraryOpen, setLibraryContentWidth)
+  const clampAvailableWidth = (value: number) => {
+    const body = contentRef.current?.closest('.t3d-body')
+    const inspector = body?.querySelector<HTMLElement>('.t3d-side')
+    const iconRail = contentRef.current?.previousElementSibling as HTMLElement | null
+    const available = (body?.clientWidth ?? window.innerWidth) - (inspector?.getBoundingClientRect().width ?? 0) - (iconRail?.getBoundingClientRect().width ?? 0) - 300
+    return Math.min(CONTENT_WIDTH_MAX, Math.max(CONTENT_WIDTH_MIN, Math.round(Math.min(value, available))))
+  }
+  const { onPointerDown, onDoubleClick } = usePanelResize(contentRef, width, libraryOpen, setLibraryContentWidth, {
+    clamp: clampAvailableWidth,
+    defaultValue: CONTENT_WIDTH_DEFAULT,
+    storageKey: 'topview.builder.panel.libraryWidth',
+  })
   useFlashOnChange(contentRef, flash)
 
   if (!doc) return null
@@ -55,6 +67,7 @@ export function LeftRail(): ReactElement | null {
               aria-orientation="vertical"
               aria-label={t('library.resizeLeftPanel')}
               onPointerDown={onPointerDown}
+              onDoubleClick={onDoubleClick}
             />
             <Tooltip label={t('library.collapseContent')} side="right">
               <button type="button" className="t3d-leftrail-collapse" onClick={toggleLibrary}>

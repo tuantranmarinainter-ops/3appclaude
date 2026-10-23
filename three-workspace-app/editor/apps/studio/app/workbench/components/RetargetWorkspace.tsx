@@ -8,6 +8,7 @@ import { RetargetPreview, type ActiveRetargetMapping, type RetargetReferencePose
 import { RetargetSessionPanel } from './RetargetSessionPanel'
 import { SkeletonMappingEditor } from './SkeletonMappingEditor'
 import { NormalizationPanel } from './normalization'
+import { useRetargetPanelLayout } from './hooks/useRetargetPanelLayout'
 
 interface ActionRow {
   name: string
@@ -68,6 +69,7 @@ export function RetargetWorkspace({ projectId, active = true }: { projectId: str
   const [calibrationSettings, setCalibrationSettings] = useState<ReverseRetargetSettings>(() => ({ ...defaultReverseRetargetSettings }))
   const [activeMapping, setActiveMapping] = useState<ActiveRetargetMapping | null>(null)
   const [sourceReferencePose, setSourceReferencePose] = useState<RetargetReferencePose | null>(null)
+  const panelLayout = useRetargetPanelLayout()
 
   useEffect(() => {
     const controller = new AbortController()
@@ -134,7 +136,7 @@ export function RetargetWorkspace({ projectId, active = true }: { projectId: str
         </div>
         <span className="wb-retarget-source">{vi ? 'Mixamo65 → Minecraft20' : 'Mixamo65 → Minecraft20'}</span>
       </header>
-      <div className="wb-retarget-workarea">
+      <div ref={panelLayout.workAreaRef} className="wb-retarget-workarea" style={panelLayout.style}>
           <section className="wb-retarget-library" aria-label={vi ? 'Thư viện animation BOBJ' : 'BOBJ animation library'}>
             <h2>{vi ? 'Thư viện BOBJ · 85' : 'BOBJ library · 85'}</h2>
             {catalogError ? <p className="wb-retarget-error" role="alert">{catalogError}</p> : !catalog ? <p role="status">{vi ? 'Đang đọc thư viện animation…' : 'Loading animation library…'}</p> : <>
@@ -154,9 +156,11 @@ export function RetargetWorkspace({ projectId, active = true }: { projectId: str
             </div>
             </>}
           </section>
+          <div className="wb-panel-divider" role="separator" aria-orientation="vertical" aria-label={vi ? 'Đổi độ rộng thư viện animation' : 'Resize animation library'} {...panelLayout.leftDivider} />
           <div className="wb-retarget-preview-column">
             <RetargetPreview projectId={projectId} calibrationSettings={calibrationSettings} active={active} activeMapping={activeMapping} sourceReferencePose={sourceReferencePose} onCalibrationChange={setCalibrationSettings} />
           </div>
+          <div className="wb-panel-divider" role="separator" aria-orientation="vertical" aria-label={vi ? 'Đổi độ rộng thiết lập' : 'Resize settings'} {...panelLayout.rightDivider} />
           <aside className="wb-retarget-settings" aria-label={vi ? 'Thiết lập nâng cao' : 'Advanced settings'}>
             <NormalizationPanel projectId={projectId} />
             <SkeletonMappingEditor projectId={projectId} calibrationSettings={calibrationSettings} onCalibrationLoad={setCalibrationSettings} onActiveMappingChange={setActiveMapping} />

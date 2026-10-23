@@ -132,12 +132,16 @@
       </section>
     </aside>
 
+    <div class="panel-divider panel-divider-vertical" data-resize-panel="steps" role="separator" aria-orientation="vertical" aria-label="Đổi độ rộng khung các bước" tabindex="0"></div>
+
     <!-- viewer 2 khung cùng đồng hồ -->
     <section class="stage" aria-label="Xem 3D">
       <div class="viewers">
         <figure class="pane"><figcaption id="leftCaption">Nguồn gốc</figcaption><div class="canvas" id="leftHost"></div><div class="overlay" id="leftMsg">Chọn file nguồn ở bước 1</div></figure>
+        <div class="panel-divider panel-divider-vertical" data-resize-panel="viewer" role="separator" aria-orientation="vertical" aria-label="Đổi độ rộng hai khung 3D" tabindex="0"></div>
         <figure class="pane"><figcaption id="rightCaption">Kết quả trên nhân vật đích</figcaption><div class="canvas" id="rightHost"></div><div class="overlay" id="rightMsg">Chọn nhân vật đích</div></figure>
       </div>
+      <div class="panel-divider panel-divider-horizontal" data-resize-panel="timeline" role="separator" aria-orientation="horizontal" aria-label="Đổi chiều cao timeline" tabindex="0"></div>
       <div class="transport">
         <div class="contacts" id="contacts" title="Frame chạm đất (từ report.quality): xanh = chân trái, cam = chân phải"><canvas id="contactCanvas" height="14"></canvas></div>
         <div class="row transport-row">
@@ -160,6 +164,8 @@
       </div>
     </section>
 
+    <div class="panel-divider panel-divider-vertical" data-resize-panel="results" role="separator" aria-orientation="vertical" aria-label="Đổi độ rộng khung kết quả" tabindex="0"></div>
+
     <!-- tab bên phải -->
     <aside class="panel" aria-label="Kết quả">
       <nav class="tabs" role="tablist" id="tabs">
@@ -178,6 +184,7 @@
   </main>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="module" src="/resizable-panels.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

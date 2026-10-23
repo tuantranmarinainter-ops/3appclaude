@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TrackProp } from '../../evaluate/curves/KeyframeTrack'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
-import { clampTimelineHeight } from '../../stores/EditorStore'
+import { clampTimelineHeight, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
 import { nodeIdsOf } from '../../stores/nodeSelection'
 import { cx } from '../common/cx'
 import { RangeSlider } from '../common/RangeSlider'
@@ -84,7 +84,14 @@ function SceneTimeline() {
     removeFcurveKeyframe,
     removeTransformKeysAtFrame,
   } = useStore()
-  const { onPointerDown } = useVerticalResize(timelineHeight, timelineOpen, setTimelineHeight, clampTimelineHeight)
+  const clampAvailableHeight = (value: number) => {
+    const available = Math.max(140, window.innerHeight - 44 - 180)
+    return clampTimelineHeight(Math.min(value, available))
+  }
+  const { onPointerDown, onDoubleClick } = useVerticalResize(timelineHeight, timelineOpen, setTimelineHeight, clampAvailableHeight, {
+    defaultValue: TIMELINE_HEIGHT_DEFAULT,
+    storageKey: 'topview.builder.panel.timelineHeight',
+  })
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -257,6 +264,7 @@ function SceneTimeline() {
           aria-orientation="horizontal"
           aria-label={t('timeline.resize')}
           onPointerDown={onPointerDown}
+          onDoubleClick={onDoubleClick}
         />
       ) : null}
       <div className="t3d-timeline-toolbar">
