@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { glbUsesDraco } from '../../../src/previewRenderUtils'
 
 declare global { interface Window { __libraryPreviewResult?: { data: string; mime: string; error?: string } } }
 
@@ -17,21 +18,39 @@ export default function PreviewRenderClient() {
       try {
         const THREE = await import('three')
         const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js')
-        const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js')
         const scene = new THREE.Scene(); scene.background = new THREE.Color('#171a20')
         scene.add(new THREE.HemisphereLight(0xffffff, 0x454b59, 2.1))
         const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(3, 5, 4); scene.add(key)
         const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 320
         renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
         renderer.setPixelRatio(1); renderer.setSize(320, 320, false)
-        const draco = new DRACOLoader().setDecoderPath('/draco/')
-        const loader = new GLTFLoader().setDRACOLoader(draco)
+        const loader = new GLTFLoader()
         const mannequin = query.get('mannequin') === '1'
-        const [character, action] = await Promise.all([
-          mannequin ? Promise.resolve(null) : loader.loadAsync(`/api/library/character/${encodeURIComponent(charId)}`),
-          loader.loadAsync(`/api/library/animation/${encodeURIComponent(actionUuid)}`),
+        const characterUrl = `/api/library/character/${encodeURIComponent(charId)}`
+        const actionUrl = `/api/library/animation/${encodeURIComponent(actionUuid)}`
+        const buffers = await Promise.all([
+          mannequin ? Promise.resolve(null) : fetch(characterUrl).then(async response => {
+            if (!response.ok) throw new Error(`Character GLB request failed (${response.status})`)
+            return response.arrayBuffer()
+          }),
+          fetch(actionUrl).then(async response => {
+            if (!response.ok) throw new Error(`Action GLB request failed (${response.status})`)
+            return response.arrayBuffer()
+          }),
         ])
-        draco.dispose()
+        const usesDraco = buffers.some(buffer => buffer !== null && glbUsesDraco(buffer))
+        let draco: import('three/addons/loaders/DRACOLoader.js').DRACOLoader | undefined
+        if (usesDraco) {
+          const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js')
+          draco = new DRACOLoader().setDecoderPath('/draco/')
+          loader.setDRACOLoader(draco)
+        }
+        const parse = (buffer: ArrayBuffer, url: string) => loader.parseAsync(buffer, new URL(url, window.location.href).href)
+        const [character, action] = await Promise.all([
+          buffers[0] ? parse(buffers[0], characterUrl) : Promise.resolve(null),
+          buffers[1] ? parse(buffers[1], actionUrl) : Promise.reject(new Error('Action GLB response was empty')),
+        ])
+        draco?.dispose()
         const clip = action.animations[Number(query.get('animationIndex') ?? 0)]
         if (!clip) throw new Error('Action animation clip is missing from its GLB')
         const modelScene = mannequin ? action.scene : character!.scene

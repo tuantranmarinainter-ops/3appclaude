@@ -5,12 +5,11 @@ import path from 'node:path'
 import { getAction, listLibraryCharacters, resolveLibraryPath, searchLibrary, setActionPreview, type ActionMetadata } from '../../../packages/library/index'
 import * as directorRenderer from '@topview/3d-director-cli/render.mjs'
 import { normalizeStudioOrigin } from './libraryPreviewUtils'
+import { getPreviewQueueState, type PreviewQueueJob } from './libraryPreviewQueueState'
 
-export type LibraryPreviewJob = { uuid: string; state: 'queued' | 'running' | 'complete' | 'failed'; message?: string; renderer?: string }
+export type LibraryPreviewJob = PreviewQueueJob
 const builtinCharacter = 'a3d_char_de37873a79244fbe8a0660ea08d1b4ab'
-const jobs = new Map<string, LibraryPreviewJob>()
-let active = false
-let appOrigin = ''
+const queueState = getPreviewQueueState()
 
 function runFfmpeg(input: string, output: string, seconds: number): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -22,10 +21,10 @@ function runFfmpeg(input: string, output: string, seconds: number): Promise<void
 }
 
 async function createPreview(uuid: string): Promise<void> {
-  const job = jobs.get(uuid)!; job.state = 'running'
+  const job = queueState.jobs.get(uuid)!; job.state = 'running'
   let rawPath = ''
   try {
-    if (!appOrigin) throw new Error('Library preview queue has no Studio origin')
+    if (!queueState.appOrigin) throw new Error('Library preview queue has no Studio origin')
     const action = getAction({ actionUuid: uuid })
     const characters = listLibraryCharacters()
     const character = action.ownerCharId ? characters.find(item => item.charId === action.ownerCharId) : undefined
@@ -41,10 +40,10 @@ async function createPreview(uuid: string): Promise<void> {
       job.renderer = renderer.kind === 'gpu' ? `GPU: ${renderer.name}` : `CPU: ${renderer.name}`
       if (renderer.kind !== 'gpu') throw new Error(`GPU rendering unavailable (${renderer.name}); showing the PNG cover instead. Set W01_RENDER_GPU=1 to request hardware rendering.`)
       await page.setViewportSize({ width: 320, height: 320 })
-      await page.goto(`${appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}) })}`, { waitUntil: 'load', timeout: 45_000 })
+      await page.goto(`${queueState.appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}) })}`, { waitUntil: 'load', timeout: 45_000 })
       await page.waitForFunction(() => Boolean((window as Window & { __libraryPreviewResult?: unknown }).__libraryPreviewResult), undefined, { timeout: 60_000 })
       return page.evaluate(() => (window as Window & { __libraryPreviewResult?: { data: string; mime: string; error?: string } }).__libraryPreviewResult!)
-    }, { allowedOrigins: [appOrigin] })
+    }, { allowedOrigins: [queueState.appOrigin] })
     if (result.error || !result.data) throw new Error(result.error || 'Browser produced an empty WebM preview')
     const raw = Buffer.from(result.data, 'base64')
     if (raw.length < 128 || !raw.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) throw new Error('Browser output is not a valid WebM file')
@@ -69,15 +68,15 @@ async function createPreview(uuid: string): Promise<void> {
 }
 
 async function drain(): Promise<void> {
-  if (active) return
-  active = true
+  if (queueState.active) return
+  queueState.active = true
   try {
-    for (const job of jobs.values()) if (job.state === 'queued') await createPreview(job.uuid)
-  } finally { active = false }
+    for (const job of queueState.jobs.values()) if (job.state === 'queued') await createPreview(job.uuid)
+  } finally { queueState.active = false }
 }
 
 export function queueLibraryPreviews(options: { origin: string; actionUuids?: string[]; regenerate?: boolean } ): LibraryPreviewJob[] {
-  appOrigin = normalizeStudioOrigin(options.origin)
+  queueState.appOrigin = normalizeStudioOrigin(options.origin)
   const all = []
   for (let offset = 0, total = 1; offset < total; offset += 100) {
     const page = searchLibrary({ limit: 100, offset }); total = page.total; all.push(...page.items)
@@ -85,13 +84,13 @@ export function queueLibraryPreviews(options: { origin: string; actionUuids?: st
   const requested = options.actionUuids ? new Set(options.actionUuids) : null
   const selected = all.filter(action => (!requested || requested.has(action.uuid)) && (options.regenerate || !action.preview))
   for (const action of selected) {
-    const existing = jobs.get(action.uuid)
+    const existing = queueState.jobs.get(action.uuid)
     if (existing?.state === 'queued' || existing?.state === 'running') continue
     const job: LibraryPreviewJob = { uuid: action.uuid, state: 'queued' }
-    jobs.set(action.uuid, job)
+    queueState.jobs.set(action.uuid, job)
   }
   void drain()
-  return [...jobs.values()]
+  return [...queueState.jobs.values()]
 }
 
-export function libraryPreviewJobs(): LibraryPreviewJob[] { return [...jobs.values()] }
+export function libraryPreviewJobs(): LibraryPreviewJob[] { return [...queueState.jobs.values()] }
