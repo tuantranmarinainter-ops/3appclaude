@@ -35,8 +35,9 @@ function memberships(root: string, character: CharacterMetadata, actions: Indexe
 }
 
 function compatibleRig(characterRig: string, actionRig: string): boolean {
-  const view = (rig: string) => rig === 'verity' || rig.startsWith('verity+') ? 'mixamo65' : rig.split('+', 1)[0]!
-  return view(characterRig) === view(actionRig)
+  return characterRig === actionRig ||
+    (characterRig === 'verity' && actionRig === 'mixamo65') ||
+    (characterRig === 'mixamo65' && actionRig === 'verity')
 }
 
 function status(value: unknown): CharacterActionStatus {

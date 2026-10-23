@@ -12,6 +12,7 @@ import { readJsonFile, writeIndex, writeJsonAtomic } from './store'
 import type { CharacterMetadata, MotionPackMetadata } from './types'
 
 const rawUuid = '10000000-0000-7000-8000-000000000001'
+const extendedUuid = '10000000-0000-8000-8000-000000000002'
 
 function editedGlb(duration: number, marker: string): Buffer {
   const json = Buffer.from(JSON.stringify({ asset: { version: '2.0', generator: marker }, accessors: [{ max: [duration] }],
@@ -82,6 +83,17 @@ test('copy enforces rig view, removal detaches only, and legacy profiles get twe
   const copy = copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'verity-b' })
   assert.equal(copy.parentUuid, draft.uuid); assert.equal(copy.ownerCharId, 'verity-b'); assert.equal(copy.status, 'draft')
   assert.throws(() => copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'steve' }), /Rig mismatch/)
+  const extendedPack: MotionPackMetadata = {
+    ...readJsonFile<MotionPackMetadata>(join(root, 'packs', 'a'.repeat(16), 'meta.json')),
+    packId: 'b'.repeat(16), glbSha256: 'b'.repeat(64), rig: 'mixamo65+tail',
+    actions: [{ ...readJsonFile<MotionPackMetadata>(join(root, 'packs', 'a'.repeat(16), 'meta.json')).actions[0]!, uuid: extendedUuid }],
+  }
+  mkdirSync(join(root, 'packs', extendedPack.packId)); writeFileSync(join(root, 'packs', extendedPack.packId, 'anim.glb'), 'extended glb')
+  writeJsonAtomic(join(root, 'packs', extendedPack.packId, 'meta.json'), extendedPack)
+  const wingCharacter: CharacterMetadata = { ...readJsonFile<CharacterMetadata>(join(root, 'characters', 'verity-b', 'meta.json')),
+    charId: 'wing', name: 'wing', rig: 'mixamo65+wing' }
+  mkdirSync(join(root, 'characters', wingCharacter.charId)); writeJsonAtomic(join(root, 'characters', wingCharacter.charId, 'meta.json'), wingCharacter)
+  assert.throws(() => copyActionToCharacter({ root, actionUuid: extendedUuid, toCharId: wingCharacter.charId }), /Rig mismatch/)
   const packPath = join(root, 'packs', copy.packId, 'anim.glb')
   removeCharacterAction({ root, charId: 'verity-b', actionUuid: copy.uuid })
   assert.equal(existsSync(packPath), true); assert.deepEqual(listCharacterActions({ root, charId: 'verity-b' }), [])
