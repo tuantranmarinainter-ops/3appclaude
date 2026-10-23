@@ -52,6 +52,8 @@ export const ACTION_NAME_GLOSSARY: Readonly<Record<string, string>> = Object.fre
   'nod': 'Gật đầu', 'shake head': 'Lắc đầu', 'shrug': 'Nhún vai', 'pray': 'Cầu nguyện', 'thinking': 'Suy nghĩ',
   'look around': 'Nhìn quanh', 'look left': 'Nhìn trái', 'look right': 'Nhìn phải', 'look up': 'Nhìn lên', 'look down': 'Nhìn xuống',
   'agree': 'Đồng ý',
+  't pose': 'Tư thế chữ T', 'tpose': 'Tư thế chữ T', 'a pose': 'Tư thế chữ A', 'head shake': 'Lắc đầu', 'head nod': 'Gật đầu',
+  'sad pose': 'Tư thế buồn', 'sneak pose': 'Tư thế đi lén',
   'pick up': 'Nhặt lên', 'put down': 'Đặt xuống', 'push': 'Đẩy', 'pull': 'Kéo', 'carry': 'Mang', 'carry heavy': 'Mang vật nặng',
   'open': 'Mở', 'close': 'Đóng', 'drink': 'Uống', 'eating': 'Đang ăn', 'dig': 'Đào', 'mining': 'Đào mỏ',
   'chop': 'Chặt', 'building': 'Đang xây', 'crafting': 'Đang chế tạo', 'fishing': 'Đang câu cá', 'rowing': 'Đang chèo thuyền',
@@ -66,6 +68,7 @@ export const ACTION_NAME_GLOSSARY: Readonly<Record<string, string>> = Object.fre
 })
 
 const WORDS: Readonly<Record<string, string>> = Object.freeze({
+  pose: 'tư thế', sneak: 'đi lén', sneaking: 'đang đi lén', head: 'đầu', shake: 'lắc',
   idle: 'đứng yên', stand: 'đứng', standing: 'đứng', walk: 'đi bộ', walking: 'đi bộ', run: 'chạy', running: 'chạy',
   sprint: 'chạy nước rút', sprinting: 'chạy nước rút', jump: 'nhảy lên', jumping: 'nhảy lên', attack: 'tấn công',
   slam: 'đập', spell: 'niệm phép', death: 'chết', dying: 'đang chết', dead: 'đã chết', hit: 'trúng đòn', reaction: 'phản ứng',

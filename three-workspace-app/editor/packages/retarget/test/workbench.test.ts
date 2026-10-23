@@ -637,8 +637,8 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
       assert.equal(drafts.length, 1)
       assert.equal(drafts[0]!.status, 'draft')
       assert.deepEqual(drafts[0]!.tags, ['legacy', 'walk'])
-      if (character.rig === 'mixamo65') assert.equal(drafts[0]!.parentUuid, selected.uuid)
-      else assert.match(drafts[0]!.parentUuid!, /^[0-9a-f-]{36}$/)
+      // Every draft points at the one shared raw Action; Minecraft20 conversions leave no extra shared pack.
+      assert.equal(drafts[0]!.parentUuid, selected.uuid)
       assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.glb')))
       if (character.rig === 'minecraft20') {
         const draftPath = join(library, 'packs', drafts[0]!.packId), bobjPath = join(draftPath, 'anim.bobj')
@@ -662,12 +662,15 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
             new Vector3().setFromMatrixPosition(bone.matrixWorld).distanceTo(new Vector3().fromArray(evaluated.get(name)!.slice(12, 15))))
         }
         assert.ok(maxEndpointError <= 1e-4, `Minecraft20 GLB vs evaluateBobjAction endpoints ${maxEndpointError}`)
-        const raw = getAction({ actionUuid: drafts[0]!.parentUuid! }), report = JSON.parse(readFileSync(join(library, 'packs', raw.packId, 'anim.report.json'), 'utf8'))
+        const report = JSON.parse(readFileSync(join(draftPath, 'anim.report.json'), 'utf8'))
         assert.equal(report.serializerRoundTrip.status, 'PASS'); assert.equal(report.serializerRoundTrip.joints, 20)
         assert.ok(report.serializerRoundTrip.sampledEndpoints >= 3)
         console.info('MC20 running serialized evaluator measurement', JSON.stringify({ maxEndpointError, ...report.serializerRoundTrip }))
       }
     }
+    const sharedPacks = readdirSync(join(library, 'packs')).filter((id) => !id.startsWith('.'))
+      .map((id) => JSON.parse(readFileSync(join(library, 'packs', id, 'meta.json'), 'utf8'))).filter((meta: any) => meta.actions.every((action: any) => !action.ownerCharId))
+    assert.deepEqual(sharedPacks.map((meta: any) => meta.rig), ['mixamo65'], 'one shared pack per source file, no Minecraft20 copy')
     const updatedCounts = (await call('/api/library/characters')).json.characters.filter((item: any) => [first.charId, second.charId, minecraft.charId].includes(item.charId))
     assert.ok(updatedCounts.every((item: any) => item.counts.draft === 1 && item.counts.edited === 0 && item.counts.approved === 0))
     assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [], actions: [{ uuid: selected.uuid, key: 'walk' }] })).status, 400)

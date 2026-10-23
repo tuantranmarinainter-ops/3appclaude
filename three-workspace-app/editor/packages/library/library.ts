@@ -127,4 +127,4 @@ export function importPack(options: Omit<ImportPackOptions, 'libraryRoot'> & Lib
 export type { ActionCategory }
 
 export { registerBaseModel, createCharacter, setCharacterSkin, addCharacterActions, removeCharacterActions, resolveCharacter } from './characters'
-export { addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction, saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile } from './characterActions'
+export { addConvertedDraftToCharacter, addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction, saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile } from './characterActions'
