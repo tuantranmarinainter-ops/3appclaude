@@ -3,7 +3,8 @@ import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } fro
 import { basename, extname } from 'node:path'
 import { importNormalizedPack, updateActionMetadata, type ImportPackOptions, type ImportPackResult } from './importPack'
 import { initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
-import { LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
+import { DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
+import { withCharacterDefaults } from './characterActions'
 
 export interface SearchResult {
   total: number
@@ -23,6 +24,8 @@ export function searchLibrary(options: LibraryOptions & SearchOptions = {}): Sea
     const matches = index.actions.filter((action) =>
       (!options.rig || action.rig === options.rig) &&
       (!options.category || action.category === options.category) &&
+      (!options.ownerCharId || action.ownerCharId === options.ownerCharId) &&
+      (!options.status || action.status === options.status) &&
       (!options.boundCharacter || (selectedCharacter?.actions ? selectedCharacter.actions.includes(action.uuid) : action.boundCharacter === options.boundCharacter)) &&
       tags.every((tag) => action.tags.some((candidate) => candidate.toLocaleLowerCase() === tag)) &&
       (!query || [action.name, action.rig, action.category, ...action.tags].some((value) => value.toLocaleLowerCase().includes(query)))
@@ -54,9 +57,13 @@ export function listLibraryCharacters(options: LibraryOptions = {}): CharacterMe
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const index = writeIndex(root)
-    return index.characters.map((character) => ({ ...character,
-      actions: character.actions ?? index.actions.filter((action) => action.boundCharacter === character.charId).map((action) => action.uuid),
-    }))
+    return index.characters.map((raw) => {
+      const character = withCharacterDefaults(raw)
+      return {
+        ...character,
+        actions: character.actions ?? index.actions.filter((action) => action.boundCharacter === character.charId).map((action) => action.uuid),
+      }
+    })
   })
 }
 
@@ -80,7 +87,8 @@ export function registerLibraryCharacter(options: LibraryOptions & {
   const metadata: CharacterMetadata = {
     kind: 'character', charId, libraryVersion: LIBRARY_VERSION, name: options.name.trim(), rig: options.rig,
     createdAt: new Date().toISOString(), license: { ...license }, fingerprint: options.fingerprint ?? null,
-    model: `model${extension}`,
+    model: `model${extension}`, personality: { summary: '', traits: [] },
+    requiredActions: DEFAULT_REQUIRED_ACTIONS.map(([key, label]) => ({ key, label })),
   }
   return withLibraryLock(root, () => {
     initializeLibrary(root)
@@ -115,3 +123,4 @@ export function importPack(options: Omit<ImportPackOptions, 'libraryRoot'> & Lib
 export type { ActionCategory }
 
 export { registerBaseModel, createCharacter, setCharacterSkin, addCharacterActions, removeCharacterActions, resolveCharacter } from './characters'
+export { addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction, saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile } from './characterActions'
