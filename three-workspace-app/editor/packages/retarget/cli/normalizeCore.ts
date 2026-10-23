@@ -171,7 +171,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
   const basis = sourceToScene(request.unitMeters ?? 1, request.upAxis ?? 'y')
   const jointNames = sourceJointNames(request.source)
   const sourceOptions = { fingerprint: request.sourceSha256, sourceToScene: basis, ...(jointNames ? { jointNames } : {}) }, targetOptions = { fingerprint: request.targetSha256 }
-  const input = { source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
+  const input = { ...(request.source.userData.bobjModel ? { bobjModel: request.source.userData.bobjModel, effectiveSourceUnitMeters: request.source.userData.bobjModel.unitMeters * (request.unitMeters ?? 1) } : {}), source: request.sourceLabel, sourceSha256: request.sourceSha256, target: request.targetLabel, targetSha256: request.targetSha256,
     actions: request.actions ? [...request.actions] : 'all' as const, ...(request.range ? { range: request.range } : {}), ...(request.actionRanges ? { actionRanges: request.actionRanges } : {}), unitMeters: request.unitMeters ?? 1, upAxis: request.upAxis ?? 'y', rootPolicy, rootScale,
     fps: CONTRACT_FPS, mapping: request.mappingPreset ? 'preset' : 'auto', calibrate: request.calibrate ?? 'limbs', swapSides: request.swapSides ?? 'auto', ground: request.ground ?? 'lift' }
 
