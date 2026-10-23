@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>W01 App 1 - Workbench chuẩn hoá Rig và Animation</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workspace-navigation.css">
   <script type="importmap">
     { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
   </script>
@@ -14,6 +15,8 @@
     <h1>W01 · App 1 <span>Chuẩn hoá Rig &amp; Animation → Mixamo65</span></h1>
     <div class="topbar-note" id="topNote">Chạy cục bộ 127.0.0.1 · file nguồn chỉ đọc, kết quả là bản mới trong thư mục tạm</div>
   </header>
+
+  <nav class="workspace-navigation" aria-label="5 workspace" data-active-workspace="normalize"></nav>
 
   <main class="layout">
     <!-- ① → ⑤ : luồng các bước -->
@@ -178,6 +181,7 @@
   </main>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="/workspace-navigation.js" defer></script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
