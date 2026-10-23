@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { MIXAMO65_BONE_PARENTS } from '../retarget/src/mixamo65'
 import {
   addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, listLibraryCharacters,
-  removeCharacterAction, saveCharacterActionVersion, searchLibrary, setCharacterActionStatus, setCharacterProfile,
+  importPack, removeCharacterAction, saveCharacterActionVersion, searchLibrary, setCharacterActionStatus, setCharacterProfile,
 } from './index'
 import { callLibraryTool } from './mcp'
 import { readJsonFile, writeIndex, writeJsonAtomic } from './store'
@@ -21,6 +23,41 @@ function editedGlb(duration: number, marker: string): Buffer {
   header.write('glTF'); header.writeUInt32LE(2, 4); header.writeUInt32LE(20 + padded.length, 8)
   header.writeUInt32LE(padded.length, 12); header.writeUInt32LE(0x4e4f534a, 16)
   return Buffer.concat([header, padded])
+}
+
+const sceneExtras = [
+  { name: 'X_Head_Jaw', parent: 'Head', rawSourceName: 'Jaw', rest: { position: [0, 0.1, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } },
+  { name: 'X_Spine2_Wing_Bone', parent: 'Spine2', rawSourceName: 'Wing_Bone', rest: { position: [0.2, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } },
+]
+
+function veritySceneGlb(): Buffer {
+  const byName = new Map(MIXAMO65_BONE_PARENTS.map(([name], index) => [name, index]))
+  const nodes = MIXAMO65_BONE_PARENTS.map(([name]) => ({ name, children: [] as number[], translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }))
+  for (const [name, parent] of MIXAMO65_BONE_PARENTS) if (parent) nodes[byName.get(parent)!]!.children.push(byName.get(name)!)
+  for (const extra of sceneExtras) {
+    const index = nodes.length
+    nodes.push({ name: extra.name, children: [], translation: extra.rest.position, rotation: extra.rest.rotation, scale: extra.rest.scale })
+    nodes[byName.get(extra.parent)!]!.children.push(index)
+  }
+  const jawIndex = nodes.findIndex((node) => node.name === 'X_Head_Jaw')
+  const gltf = { asset: { version: '2.0' }, nodes, skins: [{ joints: MIXAMO65_BONE_PARENTS.map((_, index) => index) }],
+    accessors: [{ max: [1.5] }], animations: [{ samplers: [{ input: 0 }, { input: 0 }], channels: [
+      { sampler: 0, target: { node: jawIndex, path: 'translation' } }, { sampler: 1, target: { node: jawIndex, path: 'rotation' } },
+    ] }] }
+  const json = Buffer.from(JSON.stringify(gltf)), padded = Buffer.concat([json, Buffer.alloc((4 - json.length % 4) % 4, 0x20)]), header = Buffer.alloc(20)
+  header.write('glTF'); header.writeUInt32LE(2, 4); header.writeUInt32LE(20 + padded.length, 8)
+  header.writeUInt32LE(padded.length, 12); header.writeUInt32LE(0x4e4f534a, 16)
+  return Buffer.concat([header, padded])
+}
+
+function normalizedVeritySource(parent: string, name: string, overrides: Record<string, unknown> = {}): string {
+  const directory = join(parent, name); mkdirSync(directory)
+  const glb = veritySceneGlb(), sha = createHash('sha256').update(glb).digest('hex')
+  writeFileSync(join(directory, `${name}.glb`), glb); writeJsonAtomic(join(directory, `${name}.report.json`), { status: 'PASS' })
+  writeJsonAtomic(join(directory, `${name}.manifest.json`), { version: '1.1.0', rig: 'mixamo65+verity', extraBoneMode: 'scene-nodes',
+    extraBones: sceneExtras, glbSha256: sha, actions: [{ uuid: '20000000-0000-7000-8000-000000000001', name: 'Verity idle', durationSeconds: 1.5, fps: 30, glbAnimationIndex: 0 }],
+    ...overrides })
+  return directory
 }
 
 function fixture(t: { after(fn: () => void): void }) {
@@ -117,4 +154,35 @@ test('profiles and coverage use the newest tagged chain version; MCP exposes L1 
     { summary: 'Patient', traits: ['calm'] })
   const mcp = callLibraryTool('library.character.actions.list', { charId: 'verity-a', latestOnly: true }, { root }) as unknown[]
   assert.equal(mcp.length, 1)
+})
+
+test('imports the explicit Verity scene-node contract and preserves it through draft, edit and copy', (t) => {
+  const { root, temporary } = fixture(t), source = normalizedVeritySource(temporary, 'verity-scene')
+  const imported = importPack({ root, sourceDirectory: source, tags: ['idle'] })
+  assert.equal(imported.rig, 'mixamo65+verity')
+  for (const charId of ['scene-a', 'scene-b']) {
+    const character: CharacterMetadata = { kind: 'character', charId, libraryVersion: '1.1.0', name: charId, rig: 'verity',
+      createdAt: '2026-10-23T00:00:00.000Z', license: { id: 'test', commitable: false }, model: 'model.glb' }
+    mkdirSync(join(root, 'characters', charId)); writeJsonAtomic(join(root, 'characters', charId, 'meta.json'), character)
+  }
+  const raw = imported.metadata.actions[0]!, draft = addDraftToCharacter({ root, charId: 'scene-a', actionUuid: raw.uuid })
+  const editedFile = join(temporary, 'verity-edited.glb'); writeFileSync(editedFile, editedGlb(1, 'missing scene nodes'))
+  assert.throws(() => saveCharacterActionVersion({ root, charId: 'scene-a', baseUuid: draft.uuid, glbFile: editedFile, status: 'edited' }), /skinned rig/)
+  writeFileSync(editedFile, veritySceneGlb())
+  const edited = saveCharacterActionVersion({ root, charId: 'scene-a', baseUuid: draft.uuid, glbFile: editedFile, status: 'edited' })
+  const copied = copyActionToCharacter({ root, actionUuid: edited.uuid, toCharId: 'scene-b' })
+  for (const action of [draft, edited, copied]) {
+    const manifest = readJsonFile<{ rig: string; extraBoneMode?: string; extraBones?: unknown[] }>(join(root, 'packs', action.packId, 'anim.manifest.json'))
+    assert.equal(manifest.rig, 'mixamo65+verity'); assert.equal(manifest.extraBoneMode, 'scene-nodes')
+    assert.deepEqual(manifest.extraBones, sceneExtras)
+  }
+
+  const legacy = normalizedVeritySource(temporary, 'verity-legacy', { extraBoneMode: undefined })
+  assert.throws(() => importPack({ root, sourceDirectory: legacy }), /Extended Mixamo manifest and GLB joint counts/)
+  const wrongMode = normalizedVeritySource(temporary, 'verity-wrong-mode', { extraBoneMode: 'skin-joints' })
+  assert.throws(() => importPack({ root, sourceDirectory: wrongMode }), /scene-nodes is only supported/)
+  const wrongRig = normalizedVeritySource(temporary, 'verity-wrong-rig', { rig: 'mixamo65+tail' })
+  assert.throws(() => importPack({ root, sourceDirectory: wrongRig }), /scene-nodes is only supported/)
+  const wrongDeclaration = normalizedVeritySource(temporary, 'verity-wrong-node', { extraBones: [{ ...sceneExtras[0], parent: 'Spine2' }, sceneExtras[1]] })
+  assert.throws(() => importPack({ root, sourceDirectory: wrongDeclaration }), /metadata|does not match GLB/)
 })

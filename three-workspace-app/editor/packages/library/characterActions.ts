@@ -6,8 +6,10 @@ import {
 import {
   CHARACTER_ACTION_STATUSES, DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION,
   type CharacterActionStatus, type CharacterCoverage, type CharacterMetadata,
-  type CharacterPersonality, type IndexedAction, type LibraryLicense, type LibraryOptions, type MotionPackMetadata, type RequiredAction,
+  type CharacterPersonality, type IndexedAction, type LibraryLicense, type LibraryOptions, type MotionPackMetadata,
+  type NormalizedManifest, type RequiredAction,
 } from './types'
+import { validatePackGlbContract } from './importPack'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -36,8 +38,8 @@ function memberships(root: string, character: CharacterMetadata, actions: Indexe
 
 function compatibleRig(characterRig: string, actionRig: string): boolean {
   return characterRig === actionRig ||
-    (characterRig === 'verity' && actionRig === 'mixamo65') ||
-    (characterRig === 'mixamo65' && actionRig === 'verity')
+    (characterRig === 'verity' && (actionRig === 'mixamo65' || actionRig === 'mixamo65+verity')) ||
+    ((characterRig === 'mixamo65' || characterRig === 'mixamo65+verity') && actionRig === 'verity')
 }
 
 function status(value: unknown): CharacterActionStatus {
@@ -69,6 +71,7 @@ interface NewVersion {
   preserveAnimationIndex: boolean
   durationSeconds?: number
   license: LibraryLicense
+  manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
 }
 
 function createVersionPack(root: string, input: NewVersion): IndexedAction {
@@ -96,7 +99,8 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
   try {
     copyFileSync(input.glbFile, safeChild(staging, 'anim.glb'))
     writeJsonAtomic(safeChild(staging, 'anim.manifest.json'), {
-      version: LIBRARY_VERSION, glbSha256, rig: input.source.rig,
+      version: input.manifestContract?.version ?? '1.0.0', glbSha256, rig: input.source.rig,
+      ...input.manifestContract,
       actions: metadata.actions.map(({ uuid, name, durationSeconds, fps, glbAnimationIndex }) => ({ uuid, name, durationSeconds, fps, glbAnimationIndex })),
     })
     writeJsonAtomic(safeChild(staging, 'meta.json'), metadata)
@@ -112,7 +116,14 @@ function sourceLicense(root: string, action: IndexedAction): LibraryLicense {
   return readJsonFile<MotionPackMetadata>(safeChild(root, 'packs', action.packId, 'meta.json')).license
 }
 
-function inspectEditedGlb(root: string, path: string, rig: string): { durationSeconds: number } {
+function sourceManifestContract(root: string, action: IndexedAction): NewVersion['manifestContract'] {
+  const manifest = readJsonFile<NormalizedManifest>(safeChild(root, 'packs', action.packId, 'anim.manifest.json'))
+  return manifest.extraBoneMode === 'scene-nodes'
+    ? { version: manifest.version, extraBoneMode: manifest.extraBoneMode, extraBones: manifest.extraBones }
+    : { version: manifest.version }
+}
+
+function inspectEditedGlb(root: string, path: string, rig: string, manifestContract?: NewVersion['manifestContract']): { durationSeconds: number } {
   const bytes = readFileSync(path)
   if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'glTF' || bytes.readUInt32LE(4) !== 2 || bytes.readUInt32LE(8) !== bytes.length || bytes.readUInt32LE(16) !== 0x4e4f534a) throw new Error('Edited action must be a valid GLB 2.0 file')
   const jsonLength = bytes.readUInt32LE(12)
@@ -127,6 +138,9 @@ function inspectEditedGlb(root: string, path: string, rig: string): { durationSe
   const inputs = gltf.animations[0]!.samplers?.map((sampler) => sampler.input).filter((index): index is number => Number.isInteger(index)) ?? []
   const durationSeconds = Math.max(...inputs.map((index) => gltf.accessors?.[index]?.max?.[0] ?? NaN))
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error('Edited action GLB has no positive animation duration')
+  if (manifestContract?.extraBoneMode === 'scene-nodes') {
+    validatePackGlbContract(path, { ...manifestContract, version: '1.1.0', rig, actions: [] })
+  }
   const rigPath = safeChild(root, 'rigs', `${rig.replace(/[+]/g, '-')}.json`)
   if (existsSync(rigPath) && gltf.skins?.length) {
     const expected = readJsonFile<{ bones?: Array<{ name: string }> }>(rigPath).bones?.map((bone) => bone.name).sort()
@@ -145,7 +159,8 @@ export function addDraftToCharacter(options: LibraryOptions & { charId: string; 
     if (!compatibleRig(character.rig, source.rig)) throw new Error(`Rig mismatch: character ${character.rig}, action ${source.rig}`)
     const uuid = randomUUID()
     const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: safeChild(root, 'packs', source.packId, 'anim.glb'), uuid,
-      status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true, license: sourceLicense(root, source) })
+      status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true,
+      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source) })
     character.actions = [...new Set([...memberships(root, character, index.actions), created.uuid])]
     writeCharacter(root, character); writeIndex(root)
     return created
@@ -163,12 +178,14 @@ export function saveCharacterActionVersion(options: LibraryOptions & {
     if (!member || source.ownerCharId !== character.charId || !source.variantOf || !source.version) throw new Error('Base action does not belong to this character')
     if (options.status !== 'edited') throw new Error('Saved character action versions must have edited status')
     if (!existsSync(options.glbFile)) throw new Error('Edited GLB file does not exist')
-    const inspected = inspectEditedGlb(root, options.glbFile, source.rig)
+    const manifestContract = sourceManifestContract(root, source)
+    const inspected = inspectEditedGlb(root, options.glbFile, source.rig, manifestContract)
     const chain = index.actions.filter((action) => action.ownerCharId === character.charId && action.variantOf === source.variantOf)
     const version = Math.max(...chain.map((action) => action.version ?? 0)) + 1
     const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: options.glbFile, uuid: randomUUID(),
       status: status(options.status), version, variantOf: source.variantOf, parentUuid: source.parentUuid ?? source.uuid,
-      notes: options.notes, preserveAnimationIndex: false, durationSeconds: inspected.durationSeconds, license: sourceLicense(root, source) })
+      notes: options.notes, preserveAnimationIndex: false, durationSeconds: inspected.durationSeconds,
+      license: sourceLicense(root, source), manifestContract })
     character.actions = [...memberships(root, character, index.actions), created.uuid]
     writeCharacter(root, character); writeIndex(root)
     return created
@@ -197,7 +214,8 @@ export function copyActionToCharacter(options: LibraryOptions & { actionUuid: st
     if (!compatibleRig(target.rig, source.rig)) throw new Error(`Rig mismatch: character ${target.rig}, action ${source.rig}`)
     const uuid = randomUUID()
     const created = createVersionPack(root, { source, ownerCharId: target.charId, glbFile: safeChild(root, 'packs', source.packId, 'anim.glb'), uuid,
-      status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true, license: sourceLicense(root, source) })
+      status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true,
+      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source) })
     target.actions = [...new Set([...memberships(root, target, index.actions), created.uuid])]
     writeCharacter(root, target); writeIndex(root)
     return created

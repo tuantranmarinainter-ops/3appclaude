@@ -43,6 +43,7 @@ export interface NormalizedManifest {
   fingerprint?: { boneLengthsMeters?: Record<string, number>; hipsHeightMeters?: number }
   rootPolicy?: { mode?: string; translationScale?: number; units?: string }
   rig?: string
+  extraBoneMode?: 'scene-nodes'
   extraBones?: unknown[]
 }
 

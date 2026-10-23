@@ -16,7 +16,14 @@ interface RigBone {
   rest: { position: number[]; rotation: number[]; scale: number[] }
 }
 
-function glbRigBones(path: string): RigBone[] {
+interface GlbRigInspection {
+  bones: RigBone[]
+  sceneNodes: RigBone[]
+  animatedProperties: Map<string, Set<string>>
+  animationProperties: Array<Map<string, Set<string>>>
+}
+
+function glbRigBones(path: string): GlbRigInspection {
   const bytes = readFileSync(path)
   if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'glTF' || bytes.readUInt32LE(4) !== 2) throw new Error('Normalized model must be a GLB 2.0 file')
   const jsonLength = bytes.readUInt32LE(12), jsonType = bytes.readUInt32LE(16)
@@ -24,39 +31,134 @@ function glbRigBones(path: string): RigBone[] {
   const gltf = JSON.parse(bytes.toString('utf8', 20, 20 + jsonLength)) as {
     nodes?: Array<{ name?: string; children?: number[]; translation?: number[]; rotation?: number[]; scale?: number[] }>
     skins?: Array<{ joints?: number[] }>
+    animations?: Array<{ channels?: Array<{ target?: { node?: number; path?: string } }> }>
   }
   const nodes = gltf.nodes ?? []
   const jointIndices = new Set((gltf.skins ?? []).flatMap((skin) => skin.joints ?? []))
   if (!jointIndices.size) throw new Error('Normalized GLB does not contain a skinned rig')
   const parents = new Map<number, number>()
-  for (const [parent, node] of nodes.entries()) for (const child of node.children ?? []) parents.set(child, parent)
+  for (const [parent, node] of nodes.entries()) for (const child of node.children ?? []) {
+    if (!nodes[child]) throw new Error(`GLB node ${parent} references an unknown child`)
+    if (parents.has(child)) throw new Error(`GLB node ${child} has multiple parents`)
+    parents.set(child, parent)
+  }
+  for (const start of nodes.keys()) {
+    const visited = new Set<number>(); let current: number | undefined = start
+    while (current !== undefined) {
+      if (visited.has(current)) throw new Error('GLB node hierarchy contains a cycle')
+      visited.add(current); current = parents.get(current)
+    }
+  }
   const indexToName = new Map<number, string>()
   for (const index of jointIndices) {
     const name = nodes[index]?.name
     if (!name) throw new Error(`GLB joint ${index} has no name`)
     indexToName.set(index, name)
   }
-  const seen = new Set<string>()
-  return [...jointIndices].map((index) => {
-    const node = nodes[index]!, name = indexToName.get(index)!
+  const boneAt = (index: number, skinnedOnly: boolean): RigBone => {
+    const node = nodes[index]!, name = node?.name
+    if (!name) throw new Error(`GLB node ${index} has no name`)
+    let parentIndex = parents.get(index)
+    if (skinnedOnly) while (parentIndex !== undefined && !indexToName.has(parentIndex)) parentIndex = parents.get(parentIndex)
+    return {
+      name, parent: parentIndex === undefined ? null : nodes[parentIndex]?.name ?? null,
+      rest: { position: node.translation ?? [0, 0, 0], rotation: node.rotation ?? [0, 0, 0, 1], scale: node.scale ?? [1, 1, 1] },
+    }
+  }
+  const seen = new Set<string>(), bones = [...jointIndices].map((index) => {
+    const result = boneAt(index, true), name = result.name
     if (seen.has(name)) throw new Error(`Rig has duplicate joint name: ${name}`)
     seen.add(name)
-    let parentIndex = parents.get(index)
-    while (parentIndex !== undefined && !indexToName.has(parentIndex)) parentIndex = parents.get(parentIndex)
-    return {
-      name,
-      parent: parentIndex === undefined ? null : indexToName.get(parentIndex)!,
-      rest: {
-        position: node.translation ?? [0, 0, 0],
-        rotation: node.rotation ?? [0, 0, 0, 1],
-        scale: node.scale ?? [1, 1, 1],
-      },
-    }
+    return result
   })
+  const namedIndices = nodes.flatMap((node, index) => node.name ? [index] : [])
+  const animatedProperties = new Map<string, Set<string>>()
+  const animationProperties = (gltf.animations ?? []).map((animation) => {
+    const result = new Map<string, Set<string>>()
+    for (const channel of animation.channels ?? []) {
+      const name = channel.target?.node === undefined ? undefined : nodes[channel.target.node]?.name
+      const property = channel.target?.path
+      if (name && property) {
+        for (const target of [result, animatedProperties]) {
+          const properties = target.get(name) ?? new Set<string>()
+          properties.add(property); target.set(name, properties)
+        }
+      }
+    }
+    return result
+  })
+  return { bones, sceneNodes: namedIndices.map((index) => boneAt(index, false)), animatedProperties, animationProperties }
 }
 
-function validateRig(rig: string, bones: RigBone[], manifest: NormalizedManifest): void {
+function mixamo65Parents(): Map<string, string | null> {
+  const result = new Map<string, string | null>([['Hips', null]])
+  for (const side of ['Left', 'Right']) {
+    result.set(`${side}UpLeg`, 'Hips'); result.set(`${side}Leg`, `${side}UpLeg`); result.set(`${side}Foot`, `${side}Leg`)
+    result.set(`${side}ToeBase`, `${side}Foot`); result.set(`${side}Toe_End`, `${side}ToeBase`)
+  }
+  result.set('Spine', 'Hips'); result.set('Spine1', 'Spine'); result.set('Spine2', 'Spine1')
+  result.set('Neck', 'Spine2'); result.set('Head', 'Neck'); result.set('HeadTop_End', 'Head')
+  for (const side of ['Left', 'Right']) {
+    result.set(`${side}Shoulder`, 'Spine2'); result.set(`${side}Arm`, `${side}Shoulder`)
+    result.set(`${side}ForeArm`, `${side}Arm`); result.set(`${side}Hand`, `${side}ForeArm`)
+    for (const finger of ['Index', 'Middle', 'Pinky', 'Ring', 'Thumb']) for (let index = 1; index <= 4; index++) {
+      result.set(`${side}Hand${finger}${index}`, index === 1 ? `${side}Hand` : `${side}Hand${finger}${index - 1}`)
+    }
+  }
+  return result
+}
+
+function finiteTuple(value: unknown, length: number): value is number[] {
+  return Array.isArray(value) && value.length === length && value.every((item) => typeof item === 'number' && Number.isFinite(item))
+}
+
+function validateSceneNodeVerity(inspection: GlbRigInspection, manifest: NormalizedManifest): void {
+  const canonical = mixamo65Parents(), byBone = new Map(inspection.bones.map((bone) => [bone.name, bone]))
+  if (inspection.bones.length !== 65 || canonical.size !== 65 || [...canonical].some(([name, parent]) => byBone.get(name)?.parent !== parent)) {
+    throw new Error('mixamo65+verity scene-node packs require the canonical 65-joint skinned rig')
+  }
+  if (!Array.isArray(manifest.extraBones) || !manifest.extraBones.length) throw new Error('scene-nodes requires declared extraBones')
+  const nodeNames = new Set<string>()
+  for (const node of inspection.sceneNodes) {
+    if (node.name.startsWith('X_')) {
+      if (nodeNames.has(node.name)) throw new Error(`GLB contains duplicate extra scene node name: ${node.name}`)
+      nodeNames.add(node.name)
+    }
+  }
+  const byNode = new Map(inspection.sceneNodes.map((node) => [node.name, node])), declared = new Set<string>()
+  for (const raw of manifest.extraBones) {
+    if (!raw || typeof raw !== 'object') throw new Error('Invalid scene-node extraBones entry')
+    const extra = raw as { name?: unknown; parent?: unknown; rest?: { position?: unknown; rotation?: unknown; scale?: unknown } }
+    if (typeof extra.name !== 'string' || !/^X_[A-Za-z0-9_]+_[A-Za-z0-9_]+$/.test(extra.name) || declared.has(extra.name) ||
+        typeof extra.parent !== 'string' || !canonical.has(extra.parent) || !extra.name.startsWith(`X_${extra.parent}_`) ||
+        !finiteTuple(extra.rest?.position, 3) || !finiteTuple(extra.rest.rotation, 4) || !finiteTuple(extra.rest.scale, 3)) {
+      throw new Error('Invalid scene-node extraBones metadata')
+    }
+    declared.add(extra.name)
+    const node = byNode.get(extra.name)
+    if (!node || node.parent !== extra.parent || JSON.stringify(node.rest) !== JSON.stringify(extra.rest)) throw new Error(`Declared extra scene node does not match GLB: ${extra.name}`)
+    if (byBone.has(extra.name)) throw new Error(`Extra scene node must not be a skin joint: ${extra.name}`)
+  }
+  if (!declared.has('X_Head_Jaw') || byNode.get('X_Head_Jaw')?.parent !== 'Head') throw new Error('Verity scene-node packs require X_Head_Jaw parented to Head')
+  const undeclared = inspection.sceneNodes.filter((node) => node.name.startsWith('X_') && !declared.has(node.name))
+  if (undeclared.length) throw new Error(`Undeclared extra scene node: ${undeclared[0]!.name}`)
+  if (!inspection.animationProperties.length || inspection.animationProperties.some((animation) => {
+    const jaw = animation.get('X_Head_Jaw')
+    return !jaw?.has('translation') || !jaw.has('rotation')
+  })) throw new Error('X_Head_Jaw requires translation and rotation channels in every animation')
+  for (const name of declared) if (name !== 'X_Head_Jaw' && inspection.animatedProperties.has(name)) throw new Error(`Rest-only extra scene node must not be animated: ${name}`)
+}
+
+function validateRig(rig: string, inspection: GlbRigInspection, manifest: NormalizedManifest): void {
+  const { bones } = inspection
   const names = new Set(bones.map((bone) => bone.name))
+  if (manifest.extraBoneMode !== undefined && (manifest.extraBoneMode !== 'scene-nodes' || rig !== 'mixamo65+verity' || manifest.version !== '1.1.0')) {
+    throw new Error('extraBoneMode scene-nodes is only supported by mixamo65+verity manifest v1.1.0')
+  }
+  if (rig === 'mixamo65+verity' && manifest.extraBoneMode === 'scene-nodes') {
+    validateSceneNodeVerity(inspection, manifest)
+    return
+  }
   if (rig === 'mixamo65' || rig.startsWith('mixamo65+')) {
     const required = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand',
       'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']
@@ -73,6 +175,12 @@ function validateRig(rig: string, bones: RigBone[], manifest: NormalizedManifest
   } else if (rig === 'minecraft20' && bones.length !== 20) {
     throw new Error(`minecraft20 packs must contain 20 joints, found ${bones.length}`)
   }
+}
+
+/** Validate a GLB against the library's rig contract without importing it. */
+export function validatePackGlbContract(path: string, manifest: NormalizedManifest): void {
+  if (typeof manifest.rig !== 'string') throw new Error('Manifest rig is required for GLB validation')
+  validateRig(manifest.rig, glbRigBones(path), manifest)
 }
 
 export interface ImportPackOptions {
@@ -162,7 +270,7 @@ function buildActions(manifest: NormalizedManifest, options: ImportPackOptions, 
 /** Import a normalize.ts/normalizeBatch.ts output as one immutable content-addressed pack. */
 export function importNormalizedPack(options: ImportPackOptions): ImportPackResult {
   const input = readNormalizedInput(options.sourceDirectory)
-  const bones = glbRigBones(input.glbPath)
+  const inspection = glbRigBones(input.glbPath)
   const packId = input.glbSha256.slice(0, 16)
   const destination = safeChild(options.libraryRoot, 'packs', packId)
   const coverPath = input.artifact('.preview.png')
@@ -171,7 +279,7 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
   const actions = buildActions(input.manifest, options, hasCover)
   const rig = input.manifest.rig || (input.manifest.version === '1.0.0' ? 'mixamo65' : '')
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\+[A-Za-z0-9][A-Za-z0-9_-]*)?$/.test(rig)) throw new Error('Normalized manifest has no supported rig id')
-  validateRig(rig, bones, input.manifest)
+  validateRig(rig, inspection, input.manifest)
   const license = validateLicense(options.license, input.manifest.source?.file)
   const metadata: MotionPackMetadata = {
     kind: 'motion-pack', libraryVersion: LIBRARY_VERSION, packId, glbSha256: input.glbSha256, rig,
@@ -202,7 +310,7 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
         for (const action of actions) copyFileSync(coverPath, safeChild(staging, 'covers', `${action.uuid}.png`))
       }
       writeJsonAtomic(safeChild(staging, 'meta.json'), metadata)
-      registerRigUnlocked(options.libraryRoot, rig, bones)
+      registerRigUnlocked(options.libraryRoot, rig, inspection.bones)
       renameSync(staging, destination)
       writeIndex(options.libraryRoot)
       return { packId, rig, actions: actions.length, created: true, metadata }
