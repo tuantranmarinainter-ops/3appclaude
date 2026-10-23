@@ -1,4 +1,4 @@
-import { getAction, listLibraryCharacters, searchLibrary, type SearchResult } from './library'
+import { addCharacterActions, removeCharacterActions, getAction, listLibraryCharacters, searchLibrary, type SearchResult } from './library'
 import type { CharacterMetadata, IndexedAction, LibraryOptions, SearchOptions } from './types'
 import { ACTION_CATEGORIES } from './types'
 
@@ -26,6 +26,15 @@ export const LIBRARY_MCP_TOOLS = [
     description: 'List registered character models and their rig identifiers.',
     inputSchema: { type: 'object', additionalProperties: false, properties: {} },
   },
+  ...(['add', 'remove'] as const).map((operation) => ({
+    name: `library.character.actions.${operation}`,
+    description: `${operation} action UUIDs in a character's action set.`,
+    inputSchema: {
+      type: 'object', additionalProperties: false, required: ['charId', 'actions'],
+      properties: { charId: { type: 'string' }, actions: { type: 'array', items: { type: 'string' } },
+        ...(operation === 'add' ? { defaultAction: { type: 'string' } } : {}) },
+    },
+  })),
 ] as const
 
 function object(value: unknown): Record<string, unknown> {
@@ -37,7 +46,8 @@ function object(value: unknown): Record<string, unknown> {
 export function callLibraryTool(name: 'library.search', input: unknown, options?: LibraryOptions): SearchResult
 export function callLibraryTool(name: 'library.get', input: unknown, options?: LibraryOptions): IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null }
 export function callLibraryTool(name: 'library.characters', input: unknown, options?: LibraryOptions): CharacterMetadata[]
-export function callLibraryTool(name: string, input: unknown, options?: LibraryOptions): SearchResult | CharacterMetadata[] | (IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null })
+export function callLibraryTool(name: 'library.character.actions.add' | 'library.character.actions.remove', input: unknown, options?: LibraryOptions): CharacterMetadata
+export function callLibraryTool(name: string, input: unknown, options?: LibraryOptions): CharacterMetadata | SearchResult | CharacterMetadata[] | (IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null })
 export function callLibraryTool(name: string, input: unknown, options: LibraryOptions = {}) {
   const args = object(input)
   if (name === 'library.search') {
@@ -64,5 +74,14 @@ export function callLibraryTool(name: string, input: unknown, options: LibraryOp
     return getAction({ ...options, actionUuid: args.actionUuid })
   }
   if (name === 'library.characters') return listLibraryCharacters(options)
+  if (name === 'library.character.actions.add' || name === 'library.character.actions.remove') {
+    if (typeof args.charId !== 'string') throw new Error('charId is required')
+    if (!Array.isArray(args.actions) || !args.actions.every((uuid) => typeof uuid === 'string')) throw new Error('actions must be an array of UUID strings')
+    if (args.defaultAction !== undefined && typeof args.defaultAction !== 'string') throw new Error('defaultAction must be a string')
+    const request = { ...options, charId: args.charId, actions: args.actions as string[] }
+    return name === 'library.character.actions.add'
+      ? addCharacterActions({ ...request, ...(typeof args.defaultAction === 'string' ? { defaultAction: args.defaultAction } : {}) })
+      : removeCharacterActions(request)
+  }
   throw new Error(`Unknown library tool: ${name}`)
 }

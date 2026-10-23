@@ -115,7 +115,7 @@ export function withLibraryLock<T>(root: string, operation: () => T): T {
 
 export function initializeLibrary(root: string): LibraryConfig {
   mkdirSync(root, { recursive: true })
-  for (const folder of ['packs', 'rigs', 'characters']) mkdirSync(safeChild(root, folder), { recursive: true })
+  for (const folder of ['packs', 'rigs', 'characters', 'models']) mkdirSync(safeChild(root, folder), { recursive: true })
   const configPath = safeChild(root, 'library.json')
   if (!existsSync(configPath)) writeJsonAtomic(configPath, { version: LIBRARY_VERSION, rigs: [] } satisfies LibraryConfig)
   const config = readJsonFile<LibraryConfig>(configPath)
@@ -142,7 +142,7 @@ export function writeIndex(root: string): LibraryIndex {
     packs: packs.map(({ packId, rig, createdAt, license, boundCharacter }) => ({ packId, rig, createdAt, license, boundCharacter })),
     actions: packs.flatMap((pack) => pack.actions.map((action) => ({ ...action, packId: pack.packId, rig: pack.rig,
       createdAt: pack.createdAt, licenseId: pack.license.id, boundCharacter: pack.boundCharacter }))),
-    characters,
+    characters: characters.map((character) => ({ ...character, actionCount: character.actions?.length ?? packs.reduce((count, pack) => count + (pack.boundCharacter === character.charId ? pack.actions.length : 0), 0) })),
   }
   writeJsonAtomic(safeChild(root, 'index.json'), index)
   return index

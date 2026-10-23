@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs'
 import { basename, extname } from 'node:path'
 import { importNormalizedPack, updateActionMetadata, type ImportPackOptions, type ImportPackResult } from './importPack'
-import { initializeLibrary, readCharacters, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
+import { initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
 import { LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
 
 export interface SearchResult {
@@ -17,12 +17,13 @@ export function searchLibrary(options: LibraryOptions & SearchOptions = {}): Sea
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const index = writeIndex(root)
+    const selectedCharacter = options.boundCharacter ? index.characters.find((character) => character.charId === options.boundCharacter) : undefined
     const query = options.text?.trim().toLocaleLowerCase()
     const tags = options.tags?.map((tag) => tag.toLocaleLowerCase()) ?? []
     const matches = index.actions.filter((action) =>
       (!options.rig || action.rig === options.rig) &&
       (!options.category || action.category === options.category) &&
-      (!options.boundCharacter || action.boundCharacter === options.boundCharacter) &&
+      (!options.boundCharacter || (selectedCharacter?.actions ? selectedCharacter.actions.includes(action.uuid) : action.boundCharacter === options.boundCharacter)) &&
       tags.every((tag) => action.tags.some((candidate) => candidate.toLocaleLowerCase() === tag)) &&
       (!query || [action.name, action.rig, action.category, ...action.tags].some((value) => value.toLocaleLowerCase().includes(query)))
     ).sort((a, b) => a.name.localeCompare(b.name) || a.uuid.localeCompare(b.uuid))
@@ -50,7 +51,13 @@ export function getAction(options: LibraryOptions & { actionUuid: string }): Ind
 
 export function listLibraryCharacters(options: LibraryOptions = {}): CharacterMetadata[] {
   const root = resolveLibraryPath(options)
-  return withLibraryLock(root, () => { initializeLibrary(root); return readCharacters(root) })
+  return withLibraryLock(root, () => {
+    initializeLibrary(root)
+    const index = writeIndex(root)
+    return index.characters.map((character) => ({ ...character,
+      actions: character.actions ?? index.actions.filter((action) => action.boundCharacter === character.charId).map((action) => action.uuid),
+    }))
+  })
 }
 
 export function registerLibraryCharacter(options: LibraryOptions & {
@@ -106,3 +113,5 @@ export function importPack(options: Omit<ImportPackOptions, 'libraryRoot'> & Lib
 }
 
 export type { ActionCategory }
+
+export { registerBaseModel, createCharacter, setCharacterSkin, addCharacterActions, removeCharacterActions, resolveCharacter } from './characters'
