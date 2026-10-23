@@ -8,9 +8,8 @@ import test from 'node:test'
 import { Matrix4, Vector3 } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { assignToCharacter } from '../cli/assignToCharacter.ts'
-import { createCharacter, registerBaseModel } from '../../library/characters.ts'
 import { listCharacterActions } from '../../library/characterActions.ts'
-import { importPack } from '../../library/library.ts'
+import { getAction, importPack } from '../../library/library.ts'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { runNormalize } from '../cli/normalizeCore.ts'
 import { decodeGlb } from '../cli/glb.ts'
@@ -32,13 +31,28 @@ function makeGlb(): Buffer {
   return Buffer.concat([header, padded])
 }
 
+function makeLegacyCharacter(root: string, charId: string, rig: string, model: string, modelBytes: Uint8Array, options: { skin?: boolean; original?: string } = {}) {
+  const directory = join(root, 'characters', charId)
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(join(directory, 'meta.json'), JSON.stringify({
+    kind: 'character', libraryVersion: '1.1.0', charId, name: charId, rig, createdAt: new Date(0).toISOString(),
+    license: { id: 'internal-only', commitable: false }, model, actions: [],
+  }))
+  writeFileSync(join(directory, model), modelBytes)
+  if (options.skin) writeFileSync(join(directory, 'skin.png'), Buffer.from('synthetic skin'))
+  if (options.original) {
+    const original = join(directory, 'original')
+    mkdirSync(original, { recursive: true })
+    writeFileSync(join(original, 'model.bbs.bobj'), options.original)
+  }
+}
+
 test('Mixamo65 assignment creates one character draft and reports repeat assignment without duplication', async (t) => {
   const workspace = mkdtempSync(join(tmpdir(), 'assign-character-test-'))
   t.after(() => rmSync(workspace, { recursive: true, force: true }))
   const root = join(workspace, 'library'), bytes = makeGlb(), model = join(workspace, 'character.glb')
   writeFileSync(model, bytes)
-  const base = registerBaseModel({ root, name: 'Synthetic Mixamo', rig: 'mixamo65', modelFile: model })
-  const character = createCharacter({ root, charId: 'mixamo-test', name: 'Mixamo test', baseModelId: base.modelId })
+  makeLegacyCharacter(root, 'mixamo-test', 'mixamo65', 'model.glb', bytes)
   const source = join(workspace, 'source')
   mkdirSync(source)
   const sourceUuid = randomUUID(), digest = createHash('sha256').update(bytes).digest('hex')
@@ -48,12 +62,15 @@ test('Mixamo65 assignment creates one character draft and reports repeat assignm
   writeFileSync(join(source, 'source.report.json'), JSON.stringify({ status: 'PASS' }))
   importPack({ root, sourceDirectory: source })
 
-  const [first] = await assignToCharacter({ actionUuids: [sourceUuid], charId: character.charId, libraryRoot: root })
+  const [first] = await assignToCharacter({ actionUuids: [sourceUuid], charId: 'mixamo-test', libraryRoot: root })
   assert.equal(first?.status, 'ok')
-  assert.equal(listCharacterActions({ root, charId: character.charId }).length, 1)
-  const [again] = await assignToCharacter({ actionUuids: [sourceUuid], charId: character.charId, libraryRoot: root })
+  const directDraft = getAction({ root, actionUuid: first!.assignedUuid! })
+  assert.equal(directDraft.rig, 'mixamo65')
+  assert.deepEqual(readFileSync(directDraft.glbPath), bytes)
+  assert.equal(listCharacterActions({ root, charId: 'mixamo-test' }).length, 1)
+  const [again] = await assignToCharacter({ actionUuids: [sourceUuid], charId: 'mixamo-test', libraryRoot: root })
   assert.equal(again?.status, 'already-exists')
-  assert.equal(listCharacterActions({ root, charId: character.charId }).length, 1)
+  assert.equal(listCharacterActions({ root, charId: 'mixamo-test' }).length, 1)
 })
 
 function syntheticVerity(): string {
@@ -75,7 +92,7 @@ function syntheticVerity(): string {
   return `${lines.join('\n')}\n`
 }
 
-test('native Minecraft20 and Verity assignments write the per-character sidecars', async (t) => {
+test('legacy Minecraft20 skin and Mixamo65 original-rig assignments convert and deduplicate', async (t) => {
   const workspace = mkdtempSync(join(tmpdir(), 'assign-native-'))
   t.after(() => rmSync(workspace, { recursive: true, force: true }))
   const root = join(workspace, 'library'), modelDir = join(workspace, 'models')
@@ -83,12 +100,10 @@ test('native Minecraft20 and Verity assignments write the per-character sidecars
   const mcArmature = readFileSync(join(editor, 'apps/studio/public/retarget/v9.12/minecraft20-armature.bobj'), 'utf8')
   const mcModelPath = join(modelDir, 'minecraft.bobj')
   writeFileSync(mcModelPath, `${mcArmature}\no Body\n`)
-  const mcBase = registerBaseModel({ root, name: 'Synthetic Minecraft20', rig: 'minecraft20', modelFile: mcModelPath })
-  const mcCharacter = createCharacter({ root, charId: 'minecraft-test', name: 'Minecraft test', baseModelId: mcBase.modelId })
   const verityText = syntheticVerity(), verityModelPath = join(modelDir, 'verity.bobj')
   writeFileSync(verityModelPath, verityText)
-  const verityBase = registerBaseModel({ root, name: 'Synthetic Verity', rig: 'verity', modelFile: verityModelPath })
-  const verityCharacter = createCharacter({ root, charId: 'verity-test', name: 'Verity test', baseModelId: verityBase.modelId })
+  makeLegacyCharacter(root, 'minecraft-test', 'minecraft20', 'model.bbs.bobj', readFileSync(mcModelPath), { skin: true })
+  makeLegacyCharacter(root, 'verity-test', 'mixamo65', 'model.glb', makeGlb(), { original: verityText })
 
   const armaturePath = join(editor, 'apps/studio/public/retarget/v9.12/minecraft20-armature.bobj')
   const actionsPath = join(editor, 'apps/studio/public/retarget/v9.12/minecraft-actions.bobj')
@@ -106,25 +121,27 @@ test('native Minecraft20 and Verity assignments write the per-character sidecars
   writeFileSync(join(sourceDirectory, 'source.report.json'), JSON.stringify({ status: 'PASS' }))
   importPack({ root, sourceDirectory, tags: ['idle'] })
 
-  const minecraft = await assignToCharacter({ actionUuids: [actionUuid], charId: mcCharacter.charId, libraryRoot: root })
+  const minecraft = await assignToCharacter({ actionUuids: [actionUuid], charId: 'minecraft-test', libraryRoot: root })
   assert.equal(minecraft[0]?.status, 'ok', minecraft[0]?.reason)
-  const minecraftDraft = listCharacterActions({ root, charId: mcCharacter.charId })[0]!
+  const minecraftDraft = listCharacterActions({ root, charId: 'minecraft-test' })[0]!
+  assert.equal(minecraftDraft.rig, 'minecraft20')
   const mcPack = join(root, 'packs', minecraftDraft.packId)
   assert.equal(parseBobjActions(readFileSync(join(mcPack, 'anim.bobj'), 'utf8')).size, 1)
   assert.equal(readFileSync(join(mcPack, 'anim.bobj'), 'utf8').match(/^an ([^\r\n]+)/m)?.[1], 'Idle')
   assert.equal(decodeGlb(readFileSync(join(mcPack, 'anim.glb'))).json.animations.length, 1)
   assert.equal(minecraftDraft.nameVi, 'Đứng yên')
   assert.deepEqual(minecraftDraft.tags, ['idle'])
-  assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: mcCharacter.charId, libraryRoot: root }))[0]?.status, 'already-exists')
+  assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: 'minecraft-test', libraryRoot: root }))[0]?.status, 'already-exists')
 
-  const verity = await assignToCharacter({ actionUuids: [actionUuid], charId: verityCharacter.charId, libraryRoot: root })
+  const verity = await assignToCharacter({ actionUuids: [actionUuid], charId: 'verity-test', libraryRoot: root })
   assert.equal(verity[0]?.status, 'ok', verity[0]?.reason)
-  const verityDraft = listCharacterActions({ root, charId: verityCharacter.charId })[0]!
-  const verityPack = join(root, 'packs', verityDraft.packId), originalBytes = readFileSync(verityModelPath)
+  const verityDraft = listCharacterActions({ root, charId: 'verity-test' })[0]!
+  assert.equal(verityDraft.rig, 'verity')
+  const verityPack = join(root, 'packs', verityDraft.packId), originalBytes = Buffer.from(verityText)
   assert.deepEqual(readFileSync(join(verityPack, 'anim.original.bbs.bobj')).subarray(0, originalBytes.length), originalBytes)
   assert.equal(decodeGlb(readFileSync(join(verityPack, 'anim.glb'))).json.animations.length, 1)
   assert.equal(verityDraft.nameVi, 'Đứng yên')
   assert.deepEqual(verityDraft.tags, ['idle'])
   assert.equal(parseBobjActions(readFileSync(join(verityPack, 'anim.original.bbs.bobj'), 'utf8')).size, 2)
-  assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: verityCharacter.charId, libraryRoot: root }))[0]?.status, 'already-exists')
+  assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: 'verity-test', libraryRoot: root }))[0]?.status, 'already-exists')
 })
