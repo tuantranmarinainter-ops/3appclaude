@@ -1,7 +1,7 @@
 import { useRef, type ReactNode, type SyntheticEvent } from 'react'
 import { useDirector } from '../bridge/DirectorContext'
 import { useT } from '../locale'
-import { clampInspectorWidth } from '../stores/EditorStore'
+import { clampInspectorWidth, INSPECTOR_WIDTH_DEFAULT, INSPECTOR_WIDTH_MAX, INSPECTOR_WIDTH_MIN } from '../stores/EditorStore'
 import { cx } from './common/cx'
 import { Tooltip } from './common/Tooltip'
 import { FilmInspector } from './film/FilmInspector'
@@ -24,9 +24,17 @@ export function Layout() {
   const toggleInspector = useStore((s) => s.toggleInspector)
   const setInspectorContentWidth = useStore((s) => s.setInspectorContentWidth)
   const sideRef = useRef<HTMLElement>(null)
-  const { onPointerDown } = usePanelResize(sideRef, inspectorWidth, inspectorOpen, setInspectorContentWidth, {
+  const clampAvailableInspectorWidth = (value: number) => {
+    const body = sideRef.current?.closest('.t3d-body')
+    const library = body?.querySelector<HTMLElement>('.t3d-leftrail-slot')
+    const available = (body?.clientWidth ?? window.innerWidth) - (library?.getBoundingClientRect().width ?? 0) - 300
+    return Math.min(INSPECTOR_WIDTH_MAX, Math.max(INSPECTOR_WIDTH_MIN, Math.round(Math.min(value, available))))
+  }
+  const { onPointerDown, onDoubleClick } = usePanelResize(sideRef, inspectorWidth, inspectorOpen, setInspectorContentWidth, {
     invert: true,
-    clamp: clampInspectorWidth,
+    clamp: (value) => clampAvailableInspectorWidth(clampInspectorWidth(value)),
+    defaultValue: INSPECTOR_WIDTH_DEFAULT,
+    storageKey: 'topview.builder.panel.inspectorWidth',
   })
 
   return (
@@ -54,6 +62,7 @@ export function Layout() {
               aria-orientation="vertical"
               aria-label={t('inspector.resizeRightPanel')}
               onPointerDown={onPointerDown}
+              onDoubleClick={onDoubleClick}
             />
           ) : null}
           <Tooltip label={inspectorOpen ? t('inspector.collapsePanel') : t('inspector.expandPanel')} side="left">

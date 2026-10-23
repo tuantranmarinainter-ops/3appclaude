@@ -1,7 +1,7 @@
 import { getActiveEditSequence, findEditClip, getEditorial, playbackIssues } from '../../evaluate'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
-import { clampFilmTimelineHeight } from '../../stores/EditorStore'
+import { clampFilmTimelineHeight, FILM_TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
 import { cx } from '../common/cx'
 import { Tooltip } from '../common/Tooltip'
 import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
@@ -25,7 +25,14 @@ export function FilmPanel() {
   const exporting = useStore((s) => s.exporting)
   const exportOpen = useStore((s) => s.filmExportOpen)
   const { toggleTimeline, setFilmTimelineHeight, setFilmExportOpen } = useStore()
-  const { onPointerDown } = useVerticalResize(height, open, setFilmTimelineHeight, clampFilmTimelineHeight)
+  const clampAvailableHeight = (value: number) => {
+    const available = Math.max(390, window.innerHeight - 44 - 180)
+    return clampFilmTimelineHeight(Math.min(value, available))
+  }
+  const { onPointerDown, onDoubleClick } = useVerticalResize(height, open, setFilmTimelineHeight, clampAvailableHeight, {
+    defaultValue: FILM_TIMELINE_HEIGHT_DEFAULT,
+    storageKey: 'topview.builder.panel.filmTimelineHeight',
+  })
   const sequence = doc ? getActiveEditSequence(doc) : null
   const editorial = doc ? getEditorial(doc) : null
   const selected = doc && selection ? findEditClip(getEditorial(doc), selection.clipId) : null
@@ -55,6 +62,7 @@ export function FilmPanel() {
           aria-orientation="horizontal"
           aria-label={t('timeline.resize')}
           onPointerDown={onPointerDown}
+          onDoubleClick={onDoubleClick}
         />
       ) : null}
       <FilmToolbar disabled={exporting} />

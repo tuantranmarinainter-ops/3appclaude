@@ -931,7 +931,10 @@
 .wb-retarget-header h1 { font-size: 17px; font-weight: 600; }
 .wb-retarget-header p { margin-top: 3px; color: var(--wb-muted); }
 .wb-retarget-source { border-color: #3c374a; color: #c8baff; white-space: nowrap; }
-.wb-retarget-workarea { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(200px, 240px) minmax(360px, 1fr) minmax(260px, 300px); gap: 12px; }
+.wb-retarget-workarea { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(180px, var(--wb-retarget-left-width, 240px)) 6px minmax(360px, 1fr) 6px minmax(240px, var(--wb-retarget-right-width, 300px)); gap: 3px; }
+.wb-panel-divider { position: relative; z-index: 4; min-width: 6px; cursor: col-resize; touch-action: none; }
+.wb-panel-divider::after { content: ''; position: absolute; inset: 0 2px; width: 2px; background: var(--wb-border); }
+.wb-panel-divider:hover::after,.wb-panel-divider.is-dragging::after { background: var(--wb-accent); }
 .wb-retarget-library,.wb-retarget-settings,.wb-retarget-preview-column { min-width: 0; min-height: 0; overflow: auto; }
 .wb-retarget-library { padding: 10px; border-color: var(--wb-border); border-radius: 8px; background: #15171b; }
 .wb-retarget-library h2 { margin: 0 0 10px; font-size: 14px; }
@@ -1007,7 +1010,7 @@
   .wb-workspace-tabs { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
   .wb-unified-actions { grid-column: 2; grid-row: 1; }
   .wb-drawer { top: 132px; height: calc(100dvh - 132px); }
-  .wb-retarget-workarea { grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(240px, 270px); gap: 8px; }
+  .wb-retarget-workarea { grid-template-columns: minmax(180px, var(--wb-retarget-left-width, 220px)) 6px minmax(280px, 1fr) 6px minmax(240px, var(--wb-retarget-right-width, 270px)); gap: 3px; }
 }
 @media (max-width: 900px) {
   .wb-unified-topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 52px 40px; height: 92px; }
@@ -1017,6 +1020,7 @@
   .wb-unified-actions .wb-host-secondary kbd { display: none; }
   .wb-drawer { top: 128px; height: calc(100dvh - 128px); }
   .wb-retarget-workarea { grid-template-columns: minmax(160px, 0.8fr) minmax(260px, 1.2fr); grid-template-rows: minmax(340px, 1fr) auto; overflow: auto; }
+  .wb-retarget-workarea > .wb-panel-divider { display: none; }
   .wb-retarget-library { grid-column: 1; grid-row: 1; }
   .wb-retarget-preview-column { grid-column: 2; grid-row: 1; }
   .wb-retarget-settings { grid-column: 1 / -1; grid-row: 2; overflow: visible; }
