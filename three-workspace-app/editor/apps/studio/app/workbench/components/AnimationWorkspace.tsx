@@ -177,6 +177,16 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
     finally { setBusy(false) }
   }
 
+  async function cancelLibraryAssignment() {
+    if (!libraryJob?.jobId) return
+    try {
+      const response = await fetch(`/api/library/assign?jobId=${encodeURIComponent(libraryJob.jobId)}`, { method: 'DELETE' })
+      const body = await response.json() as { job?: typeof libraryJob; error?: string }
+      if (!response.ok || !body.job) throw new Error(body.error ?? `Cancellation failed (${response.status})`)
+      setLibraryJob(body.job)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+  }
+
   const clips = project?.scene.content.timeline.animation.motionClips ?? []
   function editClip(clipId: string) {
     const binding = project?.bindings[clipId]
@@ -246,7 +256,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
         <button type="button" onClick={() => void openLibraryPicker()}>{vi ? 'Tìm' : 'Search'}</button>
         <div style={{ maxHeight: '50vh', overflow: 'auto' }}>{libraryActions.map(action => <label key={action.uuid} style={{ display: 'block', padding: 5 }}><input type="checkbox" checked={librarySelected.includes(action.uuid)} onChange={event => setLibrarySelected(current => event.target.checked ? [...current, action.uuid] : current.filter(id => id !== action.uuid))} /> {action.name}{action.nameVi ? ` | ${action.nameVi}` : ''} · {action.rig} · {action.tags.join(', ')}</label>)}{!libraryActions.length && <p>{vi ? 'Kho chưa có động tác phù hợp.' : 'No shared Actions found.'}</p>}</div>
         <label><input type="checkbox" checked={libraryCreateNew} onChange={event => setLibraryCreateNew(event.target.checked)} /> {vi ? 'Tạo bản mới dù đã có' : 'Create a new copy if already assigned'}</label>
-        <p><button type="button" disabled={busy || !librarySelected.length} onClick={() => void assignLibraryActions()}>{busy ? `${libraryJob?.completed ?? 0}/${libraryJob?.total ?? librarySelected.length}` : vi ? `Gán ${librarySelected.length} động tác` : `Assign ${librarySelected.length} Actions`}</button> <button type="button" disabled={busy} onClick={() => setLibraryOpen(false)}>{vi ? 'Đóng' : 'Close'}</button></p>
+        <p><button type="button" disabled={busy || !librarySelected.length} onClick={() => void assignLibraryActions()}>{busy ? `${libraryJob?.completed ?? 0}/${libraryJob?.total ?? librarySelected.length}` : vi ? `Gán ${librarySelected.length} động tác` : `Assign ${librarySelected.length} Actions`}</button> {busy && libraryJob && <button type="button" onClick={() => void cancelLibraryAssignment()}>{vi ? 'Hủy job' : 'Cancel job'}</button>} <button type="button" disabled={busy} onClick={() => setLibraryOpen(false)}>{vi ? 'Đóng' : 'Close'}</button></p>
       </section>
     </div>}
   </div>
