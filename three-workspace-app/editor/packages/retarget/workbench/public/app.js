@@ -150,7 +150,18 @@ function fillActionSelect() {
 
 // ---------------------------------------------------------------- pinned source Action picker
 const picker = $('actionPicker'), pickerStorageKey = 'w01.actionPicker.v1'
-function openActionPicker() { picker.hidden = false; $('actionPickerBtn').setAttribute('aria-expanded', 'true'); renderActionPicker() }
+function openActionPicker() {
+  picker.hidden = false; $('actionPickerBtn').setAttribute('aria-expanded', 'true'); renderActionPicker()
+  // Tag suggestions need the character's required actions: load the library list once, then render again.
+  if (!state.libraryCharacters) api('/api/library/characters').then((body) => { state.libraryCharacters = body.characters; renderActionPicker() }).catch(() => { /* defaults stay */ })
+}
+/** Library defaults (`requiredActions`) used before a character is chosen. */
+const DEFAULT_REQUIRED_ACTIONS = ['idle', 'walk', 'run', 'talk', 'happy', 'sad', 'surprised', 'angry', 'attack', 'hit', 'fall', 'jump'].map((key) => ({ key, label: key[0].toUpperCase() + key.slice(1) }))
+function pickerRequiredActions() {
+  const charId = $('transferCharacter')?.value || (state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : '')
+  const required = state.libraryCharacters?.find((item) => item.charId === charId)?.requiredActions
+  return required?.length ? required : DEFAULT_REQUIRED_ACTIONS
+}
 function closeActionPicker() { picker.hidden = true; $('actionPickerBtn').setAttribute('aria-expanded', 'false') }
 function savePickerBounds() {
   if (picker.hidden || picker.offsetWidth < 100 || picker.offsetHeight < 100) return
@@ -183,8 +194,28 @@ function renderActionPicker() {
     } }); check.checked = state.checked.has(action.index)
     const quality = actionQuality(action)
     const edit = state.actionEdits.get(action.index) ?? { name: action.name, nameVi: action.nameVi ?? '' }
-    const name = h('td', { class: 'name', text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name, ondblclick: (event) => { event.stopPropagation(); const english = prompt('Tên tiếng Anh', edit.name); if (english === null) return; const trimmed = english.trim(); if (!trimmed) { toast('Tên tiếng Anh không được để trống', 'err'); return } const vietnamese = prompt('Tên tiếng Việt', edit.nameVi) ?? edit.nameVi; state.actionEdits.set(action.index, { name: trimmed, nameVi: vietnamese.trim() }); renderActionPicker() } })
-    const required = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter')?.value)?.requiredActions ?? []
+    const startRename = (event) => { event.stopPropagation(); state.renamingAction = action.index; renderActionPicker() }
+    let name
+    if (state.renamingAction === action.index) {
+      const english = h('input', { type: 'text', class: 'rename', value: edit.name, 'aria-label': `Tên tiếng Anh ${action.name}`, onclick: (event) => event.stopPropagation() })
+      const vietnamese = h('input', { type: 'text', class: 'rename', value: edit.nameVi, placeholder: 'Tên tiếng Việt', 'aria-label': `Tên tiếng Việt ${action.name}`, onclick: (event) => event.stopPropagation() })
+      const save = () => {
+        const trimmed = english.value.trim()
+        if (!trimmed) { toast('Tên tiếng Anh không được để trống', 'err'); english.focus(); return }
+        state.actionEdits.set(action.index, { name: trimmed, nameVi: vietnamese.value.trim() }); state.renamingAction = null; renderActionPicker()
+      }
+      const cancel = () => { state.renamingAction = null; renderActionPicker() }
+      const keys = (event) => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); save() } else if (event.key === 'Escape') { event.preventDefault(); cancel() } }
+      english.addEventListener('keydown', keys); vietnamese.addEventListener('keydown', keys)
+      name = h('td', { class: 'name renaming' }, english, h('span', { text: ' | ' }), vietnamese,
+        h('button', { type: 'button', class: 'icon', title: 'Lưu tên (Enter)', text: '✓', onclick: (event) => { event.stopPropagation(); save() } }),
+        h('button', { type: 'button', class: 'icon', title: 'Huỷ (Esc)', text: '✕', onclick: (event) => { event.stopPropagation(); cancel() } }))
+      queueMicrotask(() => english.focus())
+    } else {
+      name = h('td', { class: 'name', ondblclick: startRename }, h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
+        h('button', { type: 'button', class: 'icon rename-btn', title: 'Đổi tên (nhấp đúp vào tên)', 'aria-label': `Đổi tên ${edit.name}`, text: '✎', onclick: startRename }))
+    }
+    const required = pickerRequiredActions()
     const keySelect = h('select', { 'aria-label': `Thẻ động tác ${edit.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.actionKeys.set(action.index, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
     if (required.length) { keySelect.value = state.actionKeys.get(action.index) ?? suggestActionKey(required, [edit.name]) ?? ''; if (keySelect.value) state.actionKeys.set(action.index, keySelect.value) }
     body.append(h('tr', { class: `clickable${state.selected === action.index ? ' active' : ''}`, dataset: { index: String(action.index) }, onclick: () => selectAction(action.index) },

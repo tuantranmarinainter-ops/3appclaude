@@ -185,3 +185,9 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
   .steps, .panel { max-height: none; }
   .action-picker { left: 3vw; top: 8vh; width: 94vw; }
 }
+
+/* Action picker: inline rename */
+.action-picker td.name .rename-btn { margin-left: 6px; opacity: .45; padding: 0 4px; }
+.action-picker tr:hover td.name .rename-btn { opacity: 1; }
+.action-picker td.renaming input.rename { width: 42%; min-width: 80px; }
+.action-picker td.renaming button.icon { padding: 0 6px; margin-left: 4px; }
