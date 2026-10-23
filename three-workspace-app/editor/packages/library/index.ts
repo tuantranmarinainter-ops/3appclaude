@@ -1,4 +1,6 @@
 export { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION } from './types'
+export { ACTION_NAME_GLOSSARY, formatBilingual, translateActionName } from './actionNames'
+export type { ActionNameTranslationSource } from './actionNames'
 export type {
   ActionCategory, ActionMetadata, CharacterActionStatus, CharacterCoverage, CharacterMetadata, CharacterPersonality,
   CoverageCell, IndexedAction, LibraryConfig, LibraryIndex, LibraryLicense, LibraryOptions, MotionPackMetadata,

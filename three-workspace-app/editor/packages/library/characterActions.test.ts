@@ -14,6 +14,7 @@ import { readJsonFile, writeIndex, writeJsonAtomic } from './store'
 import type { CharacterMetadata, MotionPackMetadata } from './types'
 
 const rawUuid = '10000000-0000-7000-8000-000000000001'
+const legacyRawUuid = '10000000-0000-7000-8000-000000000003'
 const extendedUuid = '10000000-0000-8000-8000-000000000002'
 
 function editedGlb(duration: number, marker: string): Buffer {
@@ -70,9 +71,10 @@ function fixture(t: { after(fn: () => void): void }) {
   const pack: MotionPackMetadata = {
     kind: 'motion-pack', libraryVersion: '1.1.0', packId: 'a'.repeat(16), glbSha256: 'a'.repeat(64), rig: 'mixamo65',
     createdBy: 'app1', createdAt: '2026-10-23T00:00:00.000Z', license: { id: 'test', commitable: true, source: 'fixture' },
-    boundCharacter: null, source: { file: null, sha256: null }, actions: [{ uuid: rawUuid, name: 'Idle source',
+    boundCharacter: null, source: { file: null, sha256: null }, actions: [{ uuid: rawUuid, name: 'Idle source', nameVi: 'Nguồn đứng yên', nameViSource: 'manual',
       durationSeconds: 1, fps: 30, category: 'idle', tags: ['idle'], loop: true, inPlace: true, parentUuid: null,
-      cover: null, glbAnimationIndex: 4 }],
+      cover: null, glbAnimationIndex: 4 }, { uuid: legacyRawUuid, name: 'Walking', durationSeconds: 1, fps: 30,
+      category: 'locomotion', tags: ['walk'], loop: true, inPlace: true, parentUuid: null, cover: null, glbAnimationIndex: 5 }],
   }
   mkdirSync(join(root, 'packs', pack.packId)); writeFileSync(join(root, 'packs', pack.packId, 'anim.glb'), 'raw immutable glb')
   writeJsonAtomic(join(root, 'packs', pack.packId, 'anim.manifest.json'), { version: '1.0.0', actions: [] })
@@ -93,6 +95,9 @@ test('raw to draft to immutable edited versions preserves ancestry and latest se
   const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid })
   assert.equal(draft.status, 'draft'); assert.equal(draft.version, 1); assert.equal(draft.variantOf, draft.uuid)
   assert.equal(draft.parentUuid, rawUuid); assert.equal(draft.glbAnimationIndex, 4)
+  assert.deepEqual([draft.nameVi, draft.nameViSource], ['Nguồn đứng yên', 'manual'])
+  const legacyDraft = addDraftToCharacter({ root, charId: 'verity-b', actionUuid: legacyRawUuid })
+  assert.deepEqual([legacyDraft.nameVi, legacyDraft.nameViSource], ['Đi bộ', 'glossary'], 'legacy raw records gain a translation when drafted')
   assert.deepEqual(readJsonFile<MotionPackMetadata>(join(root, 'packs', draft.packId, 'meta.json')).license,
     { id: 'test', commitable: true, source: 'fixture' })
   const editedFile = join(temporary, 'edited.glb'); writeFileSync(editedFile, 'not a glb')
@@ -103,6 +108,7 @@ test('raw to draft to immutable edited versions preserves ancestry and latest se
   writeFileSync(editedFile, editedGlb(3, 'edited version 3'))
   const v3 = saveCharacterActionVersion({ root, charId: 'verity-a', baseUuid: v2.uuid, glbFile: editedFile, status: 'edited', notes: 'second pass' })
   assert.deepEqual([v2.version, v3.version], [2, 3]); assert.equal(v3.variantOf, draft.uuid); assert.equal(v3.parentUuid, rawUuid)
+  assert.deepEqual([v2.nameVi, v3.nameVi], ['Nguồn đứng yên', 'Nguồn đứng yên'])
   assert.deepEqual(readFileSync(join(root, 'packs', v2.packId, 'anim.glb')), editedGlb(2, 'edited version 2'))
   assert.equal(v2.durationSeconds, 2); assert.equal(v3.durationSeconds, 3)
   assert.deepEqual(listCharacterActions({ root, charId: 'verity-a' }).map((action) => action.version), [1, 2, 3])
@@ -121,6 +127,7 @@ test('copy enforces rig view, removal detaches only, and legacy profiles get twe
   const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid })
   const copy = copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'verity-b' })
   assert.equal(copy.parentUuid, draft.uuid); assert.equal(copy.ownerCharId, 'verity-b'); assert.equal(copy.status, 'draft')
+  assert.deepEqual([copy.nameVi, copy.nameViSource], ['Nguồn đứng yên', 'manual'])
   assert.throws(() => copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'steve' }), /Rig mismatch/)
   const extendedPack: MotionPackMetadata = {
     ...readJsonFile<MotionPackMetadata>(join(root, 'packs', 'a'.repeat(16), 'meta.json')),
