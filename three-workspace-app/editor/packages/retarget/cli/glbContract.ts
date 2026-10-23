@@ -47,13 +47,17 @@ export function glbNodeNames(glb: Uint8Array): string[] {
 
 /** Validate skin names, extra topology and rest metadata in the serialized GLB. */
 export function validateGlbContract(glb: Uint8Array, manifest: Parameters<typeof validateExtraBones>[0]): void {
+  const mode = (manifest as { extraBoneMode?: unknown }).extraBoneMode
+  if (mode !== undefined && (mode !== 'scene-nodes' || (manifest as { version?: unknown }).version !== '1.1.0' || (manifest as { rig?: unknown }).rig !== 'mixamo65+verity')) throw new TypeError('Unsupported extraBoneMode')
   const extras = validateExtraBones(manifest), json = decodeGlb(glb).json
   const nodes = json.nodes ?? [], joints: number[] = json.skins?.[0]?.joints ?? []
-  const expected = [...MIXAMO65_BONE_PARENTS.map(([name]) => name), ...extras.map((bone) => bone.name)]
+  const sceneExtras = (manifest as { extraBoneMode?: unknown }).extraBoneMode === 'scene-nodes'
+  const expected = [...MIXAMO65_BONE_PARENTS.map(([name]) => name), ...(!sceneExtras ? extras.map((bone) => bone.name) : [])]
   const names = joints.map((index) => nodes[index]?.name)
   if (names.length !== expected.length || new Set(names).size !== names.length || expected.some((name) => !names.includes(name))) throw new TypeError('GLB joints do not match contract rig')
   for (const bone of extras) {
-    const index = joints.find((joint) => nodes[joint]?.name === bone.name)!
+    const index = sceneExtras ? nodes.findIndex((node: { name?: string }) => node.name === bone.name) : joints.find((joint) => nodes[joint]?.name === bone.name)!
+    if (index < 0) throw new TypeError('GLB extra node is missing')
     const parents = nodes.filter((node: { children?: number[] }) => node.children?.includes(index))
     if (parents.length !== 1 || parents[0].name !== bone.parent) throw new TypeError('GLB extra parent differs from manifest')
     for (const [field, key, fallback] of [['translation', 'position', [0, 0, 0]], ['rotation', 'rotation', [0, 0, 0, 1]], ['scale', 'scale', [1, 1, 1]]] as const) {
@@ -63,15 +67,24 @@ export function validateGlbContract(glb: Uint8Array, manifest: Parameters<typeof
   }
 }
 
+export interface SceneExtraAnimation {
+  animationIndex: number
+  extras: Array<{ name: string; times: number[]; translations: number[]; rotations: number[] }>
+}
+
 /** Validates source v1.1 extras, then appends their declared rest hierarchy to the normalized core GLB. */
-export function preserveExtraBones(glb: Uint8Array, sourceGlb: Uint8Array, manifest: { version?: unknown; rig?: unknown; extraBones?: unknown }): { glb: Uint8Array; extras: ExtraBone[] } {
+export function preserveExtraBones(glb: Uint8Array, sourceGlb: Uint8Array | undefined, manifest: { version?: unknown; rig?: unknown; extraBones?: unknown; extraBoneMode?: unknown },
+  options: { animations?: readonly SceneExtraAnimation[] } = {}): { glb: Uint8Array; extras: ExtraBone[] } {
+  if (manifest.extraBoneMode !== undefined && (manifest.extraBoneMode !== 'scene-nodes' || manifest.version !== '1.1.0' || manifest.rig !== 'mixamo65+verity')) throw new TypeError('Unsupported extraBoneMode')
   const extras = validateExtraBones(manifest)
   if (!extras.length) return { glb, extras }
-  const source = decodeGlb(sourceGlb).json as any, nodes = source.nodes ?? [], joints: number[] = source.skins?.[0]?.joints ?? []
+  const sceneExtras = manifest.extraBoneMode === 'scene-nodes'
+  if (!sceneExtras && !sourceGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
+  const source = sourceGlb ? decodeGlb(sourceGlb).json as any : null, nodes = source?.nodes ?? [], joints: number[] = source?.skins?.[0]?.joints ?? []
   const depth = (bone: ExtraBone) => { let result = 0, parent = bone.parent; while (extras.some((candidate) => candidate.name === parent)) { result++; parent = extras.find((candidate) => candidate.name === parent)!.parent } return result }
-  for (const bone of extras) {
+  for (const bone of source ? extras : []) {
     const index = nodes.findIndex((node: any) => node.name === bone.name)
-    if (index < 0 || !joints.includes(index)) throw new TypeError(`Declared extra bone is not a skin joint: ${bone.name}`)
+    if (index < 0 || !sceneExtras && !joints.includes(index)) throw new TypeError(`Declared extra bone is not a ${sceneExtras ? 'scene node' : 'skin joint'}: ${bone.name}`)
     const parent = nodes.find((node: any) => (node.children ?? []).includes(index))
     if (parent?.name !== bone.parent) throw new TypeError(`Extra bone parent differs from manifest: ${bone.name}`)
     const node = nodes[index]
@@ -89,9 +102,43 @@ export function preserveExtraBones(glb: Uint8Array, sourceGlb: Uint8Array, manif
     const index = outNodes.length
     outNodes.push({ name: bone.name, translation: [...bone.rest.position], rotation: [...bone.rest.rotation], scale: [...bone.rest.scale] })
     outNodes[parentIndex]!.children = [...(outNodes[parentIndex]!.children ?? []), index]
-    outJoints.push(index); byName.set(bone.name, index)
-    // Exact-name extra animation is deliberately omitted here; normalize reports it as dropped.
+    if (!sceneExtras) outJoints.push(index)
+    byName.set(bone.name, index)
   }
   output.skins[0].joints = outJoints
-  return { glb: encodeGlb(output, decoded.bin), extras }
+  if (!sceneExtras || !options.animations?.length) return { glb: encodeGlb(output, decoded.bin), extras }
+
+  const chunks: Uint8Array[] = [decoded.bin]
+  let byteLength = decoded.bin.length
+  const accessor = (values: number[], type: 'SCALAR' | 'VEC3' | 'VEC4') => {
+    const pad = (4 - byteLength % 4) % 4
+    if (pad) { chunks.push(new Uint8Array(pad)); byteLength += pad }
+    const bytes = new Uint8Array(new Float32Array(values).buffer)
+    const view = output.bufferViews.length
+    output.bufferViews.push({ buffer: 0, byteOffset: byteLength, byteLength: bytes.length })
+    chunks.push(bytes); byteLength += bytes.length
+    const index = output.accessors.length
+    const item: any = { bufferView: view, componentType: 5126, count: values.length / (type === 'SCALAR' ? 1 : type === 'VEC3' ? 3 : 4), type }
+    if (type === 'SCALAR') { item.min = [Math.min(...values)]; item.max = [Math.max(...values)] }
+    output.accessors.push(item)
+    return index
+  }
+  for (const animation of options.animations) {
+    const target = output.animations[animation.animationIndex]
+    if (!target) continue
+    for (const extra of animation.extras) {
+      const node = byName.get(extra.name)
+      if (node === undefined || !extra.times.length) continue
+      const input = accessor(extra.times, 'SCALAR')
+      for (const [path, values, type] of [['translation', extra.translations, 'VEC3'], ['rotation', extra.rotations, 'VEC4']] as const) {
+        const sampler = target.samplers.length
+        target.samplers.push({ input, output: accessor(values, type), interpolation: 'LINEAR' })
+        target.channels.push({ sampler, target: { node, path } })
+      }
+    }
+  }
+  const bin = new Uint8Array(byteLength); let cursor = 0
+  for (const chunk of chunks) { bin.set(chunk, cursor); cursor += chunk.length }
+  output.buffers = [{ byteLength }]
+  return { glb: encodeGlb(output, bin), extras }
 }

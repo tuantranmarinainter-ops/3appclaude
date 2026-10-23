@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { AnimationClip, Matrix4, PropertyBinding, type Bone, type Object3D, type SkinnedMesh } from 'three'
+import { AnimationClip, AnimationMixer, Euler, Matrix4, PropertyBinding, Quaternion, Vector3, type Bone, type Object3D, type SkinnedMesh } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import type { GroundMode } from '../src/groundAdjust.ts'
@@ -7,11 +7,13 @@ import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
 import { resolveSides, turnRig, type SwapSidesMode } from './sides.ts'
-import { glbNodeNames, mergeAnimationGlbs, preserveExtraBones } from './glbContract.ts'
+import { glbNodeNames, mergeAnimationGlbs, preserveExtraBones, type SceneExtraAnimation } from './glbContract.ts'
 import { validateExtraBones } from '../src/extraBones.ts'
 import { loadAsset } from './loadAsset.ts'
 import { QualityMeter, summarizeQuality } from './quality.ts'
 import { renderContactSheet, type PreviewFrame } from './previewPng.ts'
+import { decodeGlb } from './glb.ts'
+import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
 
 export const CONTRACT_VERSION = '1.0.0'
 export const CONTRACT_FPS = 30
@@ -23,7 +25,7 @@ export type GateStatus = 'NOT_RUN' | 'BLOCKED' | 'FAIL' | 'PASS'
 export interface NormalizeRequest {
   source: Object3D; sourceLabel: string; sourceSha256: string
   target: Object3D; targetLabel: string; targetSha256: string
-  sourceExtraManifest?: { version?: unknown; rig?: unknown; extraBones?: unknown }
+  sourceExtraManifest?: { version?: unknown; rig?: unknown; extraBones?: unknown; extraBoneMode?: unknown }
   sourceExtraGlb?: Uint8Array
   /** Source Action indices to export into the one GLB (default: every Action). */
   actions?: readonly number[]
@@ -56,6 +58,79 @@ export interface NormalizeRequest {
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex')
 const mixamoName = (name: string) => MIXAMO65_BONE_PARENTS.find(([joint]) => canonical(joint) === canonical(name))?.[0]
+
+function veritySceneExtras(root: Object3D, unitMeters: number) {
+  const clips = [...root.animations]
+  root.updateMatrixWorld(true)
+  const nodes: Object3D[] = []; root.traverse((node) => nodes.push(node))
+  const byCanonical = new Map(nodes.filter((node) => node.name).map((node) => [canonical(node.name), node]))
+  if (!byCanonical.has('cog') || !byCanonical.has('pelvis') || !byCanonical.has('jaw')) return null
+  const jaw = byCanonical.get('jaw')!, head = byCanonical.get('head')
+  if (!head) return null
+  const mapped = new Map(nodes.flatMap((node) => VERITY_TO_MIXAMO[node.name] ? [[node, VERITY_TO_MIXAMO[node.name]!] as const] : []))
+  const definitionFor = (source: Object3D) => {
+    let ancestor: Object3D | null = source.parent
+    while (ancestor && !mapped.has(ancestor)) ancestor = ancestor.parent
+    const sourceParent = ancestor ?? byCanonical.get('cog')
+    if (!sourceParent) return null
+    const parent = mapped.get(sourceParent) ?? 'Hips'
+    return { source, sourceParent, name: `X_${parent}_${source.name.replace(/[^A-Za-z0-9_]/g, '_')}`, parent }
+  }
+  const definitions = nodes.filter((node) => (node as Bone).isBone && node.name && !mapped.has(node)).map(definitionFor)
+    .filter((item): item is NonNullable<typeof item> => !!item)
+  const jawDefinition = definitions.find((item) => item.source === jaw)
+  if (!jawDefinition) return null
+  const relative = (item: (typeof definitions)[number]) => item.sourceParent.matrixWorld.clone().invert().multiply(item.source.matrixWorld)
+  const rest = new Map(definitions.map((item) => [item.name, relative(item)]))
+  const sourceParentFrame = new Map(definitions.map((item) => {
+    const rotation = new Quaternion(), scale = new Vector3()
+    item.sourceParent.matrixWorld.decompose(new Vector3(), rotation, scale)
+    return [item.name, { rotation, scale: (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3 }] as const
+  }))
+  const basis = (item: (typeof definitions)[number], targetParentRest: Matrix4, sourceAlignment: Quaternion) => {
+    const target = new Quaternion(); targetParentRest.decompose(new Vector3(), target, new Vector3())
+    return target.invert().multiply(sourceAlignment).multiply(sourceParentFrame.get(item.name)!.rotation).normalize()
+  }
+  const outputRest = (item: (typeof definitions)[number], targetParentRest: Matrix4, sourceAlignment: Quaternion) => {
+    const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3()
+    rest.get(item.name)!.decompose(position, rotation, scale)
+    const transform = basis(item, targetParentRest, sourceAlignment), effectiveUnit = unitMeters * sourceParentFrame.get(item.name)!.scale
+    return { position: position.multiplyScalar(effectiveUnit).applyQuaternion(transform), rotation: transform.multiply(rotation).normalize(), scale }
+  }
+  return {
+    manifest(targetParents: ReadonlyMap<string, Matrix4>, sourceAlignment: Quaternion) {
+      const extraBones = definitions.map((item) => {
+        const value = outputRest(item, targetParents.get(item.parent)!, sourceAlignment)
+        return { name: item.name, parent: item.parent, rest: { position: value.position.toArray(), rotation: value.rotation.toArray(), scale: value.scale.toArray() } }
+      })
+      return { version: '1.1.0', rig: 'mixamo65+verity', extraBoneMode: 'scene-nodes', extraBones }
+    },
+    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number, targetHeadRest: Matrix4, sourceAlignment: Quaternion): SceneExtraAnimation {
+      const clip = clips[sourceActionIndex]!
+      const saved = nodes.map((node) => ({ node, position: node.position.clone(), quaternion: node.quaternion.clone(), scale: node.scale.clone() }))
+      const start = range?.[0] ?? 0, mixer = new AnimationMixer(root), action = mixer.clipAction(clip).play()
+      const frameCount = Math.round(duration * CONTRACT_FPS), times: number[] = [], translations: number[] = [], rotations: number[] = []
+      for (let frame = 0; frame <= frameCount; frame++) {
+        const time = Math.min(duration, frame / CONTRACT_FPS)
+        mixer.setTime(start + time); root.updateMatrixWorld(true)
+        const sourceLocal = relative(jawDefinition)
+        const sourcePosition = new Vector3(), sourceRotation = new Quaternion(), sourceScale = new Vector3()
+        const restPosition = new Vector3(), restRotation = new Quaternion()
+        sourceLocal.decompose(sourcePosition, sourceRotation, sourceScale)
+        rest.get('X_Head_Jaw')!.decompose(restPosition, restRotation, new Vector3())
+        const restOut = outputRest(jawDefinition, targetHeadRest, sourceAlignment), transform = basis(jawDefinition, targetHeadRest, sourceAlignment)
+        const effectiveUnit = unitMeters * sourceParentFrame.get(jawDefinition.name)!.scale
+        const position = restOut.position.clone().add(sourcePosition.sub(restPosition).multiplyScalar(effectiveUnit).applyQuaternion(transform))
+        const rotation = restOut.rotation.clone().multiply(restRotation.invert().multiply(sourceRotation)).normalize()
+        times.push(time); translations.push(...position.toArray()); rotations.push(...rotation.normalize().toArray())
+      }
+      action.stop(); mixer.uncacheRoot(root)
+      for (const item of saved) { item.node.position.copy(item.position); item.node.quaternion.copy(item.quaternion); item.node.scale.copy(item.scale) }
+      root.updateMatrixWorld(true)
+      return { animationIndex, extras: [{ name: jawDefinition.name, times, translations, rotations }] }
+    },
+  }
+}
 
 /** Deterministic UUID (RFC 9562 v8 layout) so re-running the same source keeps Action identity stable. */
 export function actionUuid(sourceSha256: string, actionIndex: number, actionName: string): string {
@@ -236,6 +311,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
 
 export async function runNormalize(request: NormalizeRequest) {
   request.signal?.throwIfAborted()
+  const inferredVerity = request.sourceExtraManifest ? null : veritySceneExtras(request.source, request.unitMeters ?? 1)
   const started = Date.now()
   const rootPolicy = request.rootPolicy ?? 'preserve'
   await request.onProgress?.('inspect', 0, 1)
@@ -274,9 +350,19 @@ export async function runNormalize(request: NormalizeRequest) {
   request.signal?.throwIfAborted()
   await request.onProgress?.('roundtrip', 0, exported.length)
   const mergedGlb = mergeAnimationGlbs(exported.map((item) => item.bytes))
-  const extras = request.sourceExtraManifest ? validateExtraBones(request.sourceExtraManifest) : []
-  if (extras.length && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
-  const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb!, request.sourceExtraManifest!).glb : mergedGlb
+  const inferredVerityEnabled = mapping.family === 'verity' ? inferredVerity : null
+  const targetParentRests = new Map(MIXAMO65_BONE_PARENTS.map(([name]) => [name, new Matrix4().fromArray(targetRest.get(name)!)]))
+  const targetHeadRest = targetParentRests.get('Head')!
+  const sourceUp = new Quaternion().setFromEuler(new Euler(request.upAxis === 'z' ? -Math.PI / 2 : 0, 0, 0))
+  const sourceFacing = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), calibration.facingYawDegrees * Math.PI / 180)
+  const sourceAlignment = sourceFacing.multiply(sourceUp)
+  const sourceExtraManifest = request.sourceExtraManifest ?? inferredVerityEnabled?.manifest(targetParentRests, sourceAlignment)
+  const extras = sourceExtraManifest ? validateExtraBones(sourceExtraManifest) : []
+  const sceneExtraMode = sourceExtraManifest?.extraBoneMode === 'scene-nodes'
+  if (extras.length && !sceneExtraMode && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
+  const extraAnimations = inferredVerityEnabled ? exported.map((item, animationIndex) => inferredVerityEnabled.sample(item.action.index,
+    request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment)) : []
+  const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb, sourceExtraManifest!, { animations: extraAnimations }).glb : mergedGlb
   const extraNames = new Set(extras.map((bone) => bone.name))
   const droppedExtraTracks = [...new Set(request.source.animations.flatMap((clip) => clip.tracks
     .filter((track) => extraNames.has(PropertyBinding.parseTrackName(track.name).nodeName)).map((track) => PropertyBinding.parseTrackName(track.name).nodeName)))].sort()
@@ -284,7 +370,8 @@ export async function runNormalize(request: NormalizeRequest) {
 
   // Roundtrip: reload the written bytes with GLTFLoader and sample every Action, instead of trusting in-memory frames.
   const previewIndex = Math.max(0, exported.findIndex((item) => item.action.index === request.previewAction))
-  const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256 })
+  const reloaded = createThreeRigAdapter(await loadAsset(glb, 'glb'), { fingerprint: glbSha256,
+    ...(sceneExtraMode ? { jointNames: [...MIXAMO65_BONE_PARENTS.map(([name]) => name), ...extras.map((bone) => bone.name)] } : {}) })
   const animationCount = reloaded.actions.length
   let perAction, previewFrames: PreviewFrame[] = [], jointCount: number, mixamoJoints: number
   try {
@@ -322,9 +409,14 @@ export async function runNormalize(request: NormalizeRequest) {
     perAction = rows
   } finally { reloaded.dispose() }
   const prefixedJointNames = glbNodeNames(glb).filter((name) => /^mixamorig/i.test(name)).length
+  const serialized = decodeGlb(glb).json as any
+  const serializedSkinJointCount = serialized.skins?.[0]?.joints?.length ?? 0
+  const serializedNodeNames = new Set((serialized.nodes ?? []).map((node: { name?: string }) => node.name ?? ''))
+  const sceneExtraNodesValid = !sceneExtraMode || extras.every((bone) => serializedNodeNames.has(bone.name))
   // Top level = the preview Action's numbers, but `status` is the gate over every Action (spread first so it cannot win).
   const roundtrip = { ...perAction[previewIndex]!, primaryAction: exported[previewIndex]!.action.index, jointCount, animationCount, prefixedJointNames, perAction,
-    status: (mixamoJoints === 65 && jointCount === 65 + extras.length && animationCount === exported.length && perAction.every((item) => item.status === 'PASS') ? 'PASS' : 'FAIL') as GateStatus }
+    status: (mixamoJoints === 65 && (sceneExtraMode ? serializedSkinJointCount === 65 && sceneExtraNodesValid : jointCount === 65 + extras.length) &&
+      animationCount === exported.length && perAction.every((item) => item.status === 'PASS') ? 'PASS' : 'FAIL') as GateStatus }
 
   const boneLengthsMeters = Object.fromEntries(MIXAMO65_BONE_PARENTS.flatMap(([name, parent]) => {
     if (!parent) return []
@@ -333,7 +425,8 @@ export async function runNormalize(request: NormalizeRequest) {
   }))
   const manifest = {
     version: extras.length ? '1.1.0' : CONTRACT_VERSION,
-    ...(extras.length ? { rig: request.sourceExtraManifest!.rig, extraBones: extras } : {}),
+    ...(extras.length ? { rig: sourceExtraManifest!.rig, extraBones: extras,
+      ...(sceneExtraMode ? { extraBoneMode: 'scene-nodes' as const } : {}) } : {}),
     glb: { bytes: glb.length, mode: 'animation-only' as const },
     glbSha256,
     actions: exported.map(({ action }, glbAnimationIndex) => ({ uuid: actionUuid(request.sourceSha256, action.index, (request.actionRanges?.[action.index] ?? request.range) ? `${action.name}:${(request.actionRanges?.[action.index] ?? request.range)!.join(':')}` : action.name), name: action.name,
@@ -346,7 +439,7 @@ export async function runNormalize(request: NormalizeRequest) {
   const failedActions = skippedActions.filter((item) => item.code === 'ACTION_FAILED')
   const gates = { mapping: 'PASS' as GateStatus, actions: (failedActions.length ? 'FAIL' : 'PASS') as GateStatus, roundtrip: roundtrip.status }
   const contract = {
-    joints65: jointCount === 65 + extras.length ? 'PASS' : 'FAIL',
+    joints65: (sceneExtraMode ? serializedSkinJointCount === 65 && sceneExtraNodesValid : jointCount === 65 + extras.length) ? 'PASS' : 'FAIL',
     noNamePrefix: prefixedJointNames === 0 ? 'PASS' : 'FAIL',
     fps30: 'PASS',
     multiActionInOneGlb: animationCount === exported.length ? 'PASS' : 'FAIL',
