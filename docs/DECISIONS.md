@@ -45,6 +45,12 @@ App 1 Chuẩn hóa ──GLB Mixamo65 + manifest──► App 2 Scene: dựng c�
   sang App 3 rồi trả Action về App 2. Được phép nối App 4 vào App 2 để xem hiệu ứng (bảng sprite nướng từ Effekseer) và
   thêm làn VFX vào project. Xuất film có 3 chế độ: chỉ nhân vật / chỉ hậu cảnh / cả hai. Việc giao: `docs/BBS-PREVIEW-TASKS-2026-10-22.md`
   (Codex B1–B9 code có test, không runtime; Claude C1–C6 phần chạy thật).
+- **Nhân vật chính và bộ animation riêng (người dùng chốt 2026-10-23):** nhóm Verity (Gỗ Xưa, Tiểu Nhị, Chirity) **giữ
+  nguyên bộ xương gốc** (cả Jaw, đứng yên; cánh Chirity lặp action gốc); animation mới tự áp về xương gốc, nối vào `.bobj`
+  gốc. Nhóm Minecraft 20 (Gà, Người bí ẩn, Chi Chi, Đen, Hero) cùng xương, skin do Codex vẽ. Thư viện hai tầng: kho thô
+  (App 1) → bộ của nhân vật (Nháp → Đã chỉnh ở App 3, mỗi lần lưu một phiên bản → Đã duyệt); bản chỉnh thuộc một nhân vật,
+  dùng cho nhân vật khác bằng sao chép; mỗi nhân vật có hồ sơ tính cách + danh sách động tác cần có. Chuột mọi khung 3D:
+  trái xoay, giữa kéo, lăn zoom. Việc giao: `docs/ANIM-LIBRARY-TASKS-2026-10-23.md`.
 
 ## Input/Output
 | App | Vào | Ra |
