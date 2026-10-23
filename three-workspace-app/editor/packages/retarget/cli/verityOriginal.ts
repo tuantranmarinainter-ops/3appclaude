@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
-import { AnimationMixer, Matrix4, Quaternion, Vector3, type Object3D } from 'three'
+import { AnimationMixer, LoopOnce, Matrix4, Quaternion, Vector3, type Object3D } from 'three'
 import { bobjModelToGlb, parseBobjModel } from '../src/bobjModel.ts'
 import { evaluateBobjAction, parseBobjActions, type BobjAction } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
@@ -61,7 +61,7 @@ export async function exportVerityOriginalArtifacts(options: {
   unitMeters?: number
   wingActionName?: string
 }): Promise<VerityOriginalArtifacts> {
-  const parsedModel = parseBobjModel(options.sourceText, options.unitMeters === undefined ? {} : { unitMeters: options.unitMeters })
+  const parsedModel = parseBobjModel(options.sourceText.replace(/^[\t \uFEFF]+(?=arm_name\s)/gm, ''), options.unitMeters === undefined ? {} : { unitMeters: options.unitMeters })
   if (parsedModel.armatureName !== 'verity.mdl') throw new TypeError(`Original-rig export requires arm_name verity.mdl, got ${parsedModel.armatureName || '(missing)'}`)
   const armature = parsedModel.armature, actions = parsedModel.actions
   const imported = bobjModelToGlb(parsedModel).report
@@ -91,7 +91,8 @@ export async function exportVerityOriginalArtifacts(options: {
     const base = name
     for (let suffix = 2; used.has(name); suffix++) name = `${base}_${suffix}`
     used.add(name)
-    const mixer = new AnimationMixer(normalized), playing = mixer.clipAction(clip).play()
+    const mixer = new AnimationMixer(normalized), playing = mixer.clipAction(clip)
+    playing.setLoop(LoopOnce, 1); playing.clampWhenFinished = true; playing.play()
     const ticks = Math.max(1, Math.round(clip.duration * TICKS_PER_SECOND)), frames = []
     for (let tick = 0; tick <= ticks; tick++) {
       mixer.setTime(Math.min(tick / TICKS_PER_SECOND, clip.duration)); normalized.updateMatrixWorld(true)
@@ -120,10 +121,10 @@ export async function exportVerityOriginalArtifacts(options: {
     maxHipAngle = Math.max(maxHipAngle, hipDirection(actual).angleTo(hipDirection(expected)))
     const actualHead = new Quaternion(), expectedHead = new Quaternion()
     actual.get('Head')!.decompose(new Vector3(), actualHead, new Vector3()); expected.get('Head')!.decompose(new Vector3(), expectedHead, new Vector3())
-    maxHeadAngle = Math.max(maxHeadAngle, actualHead.angleTo(expectedHead))
+    maxHeadAngle = Math.max(maxHeadAngle, actualHead.normalize().angleTo(expectedHead.normalize()))
     sampledTimestamps++
   }
-  const outputModel = parseBobjModel(bobj, { unitMeters: parsedModel.unitMeters })
+  const outputModel = parseBobjModel(bobj.replace(/^[\t \uFEFF]+(?=arm_name\s)/gm, ''), { unitMeters: parsedModel.unitMeters })
   const { bytes: glb } = bobjModelToGlb(outputModel, { unitMeters: parsedModel.unitMeters, readTexture: safeTextureReader(dirname(options.sourcePath)) })
   return { bobj, glb, report: { bones: armature.bones.length, originalActions: actions.size, addedActions: added.length,
     selectedWingAction: wingAction?.name ?? null, unitMeters: parsedModel.unitMeters, unitSource: parsedModel.unitSource,

@@ -54,9 +54,9 @@ mkdirSync(outDir, { recursive: true })
 try {
   const format = formatFromPath(srcPath)
   const srcBytes = readFileSync(srcPath), targetBytes = readFileSync(targetPath)
-  const sourceText = format === 'bobj' ? new TextDecoder().decode(srcBytes) : null
-  const isBobjModel = !!sourceText && /^arm_bone\s+/m.test(sourceText) && /^o\s+/m.test(sourceText) && /^v\s+/m.test(sourceText)
-  const isVerityModel = isBobjModel && /^arm_name\s+verity\.mdl\s*$/m.test(sourceText!)
+  const sourceText = format === 'bobj' ? srcBytes.toString('utf8') : null
+  const isBobjModel = !!sourceText && /^[\t \uFEFF]*arm_bone\s+/m.test(sourceText) && /^[\t ]*o\s+/m.test(sourceText) && /^[\t ]*v\s+/m.test(sourceText)
+  const isVerityModel = isBobjModel && /^[\t \uFEFF]*arm_name[\t ]+verity\.mdl[\t \r]*$/m.test(sourceText!)
   const sourceManifestPath = srcPath.replace(/\.[^.]+$/, '.manifest.json')
   const sourceExtraManifest = format === 'glb' && existsSync(sourceManifestPath)
     ? JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as { version?: unknown; rig?: unknown; extraBones?: unknown } : undefined
