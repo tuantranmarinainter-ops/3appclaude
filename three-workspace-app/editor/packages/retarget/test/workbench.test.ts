@@ -1,19 +1,41 @@
 import assert from 'node:assert/strict'
 import test, { after, before } from 'node:test'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { request } from 'node:http'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
+import { loadBobj } from '../cli/loadBobj.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
-import { listCharacterActions, registerLibraryCharacter } from '../../library/index.ts'
+import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter } from '../../library/index.ts'
+import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
+import { parseBobjArmature } from '../src/reverse.ts'
+import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
+import { decodeGlb } from '../cli/glb.ts'
+import { AnimationMixer, LoopOnce, Vector3 } from 'three'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
 const characters = resolve(here, '../../../../builtin-assets/characters')
 const xbot = 'C:/w01-samples/Xbot.glb'
 const haveXbot = existsSync(xbot)
+
+function syntheticVerity(helperCount: number, wingCount: number): string {
+  const matrix = (x: number, y: number, z: number) => `1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
+  const bone = (name: string, parent: string | null, x = 0, y = 1, z = 0) => `arm_bone ${name}${parent ? ` ${parent}` : ''} ${x} ${y + .1} ${z} ${matrix(x, y, z)}`
+  const mapped = Object.keys(VERITY_TO_MIXAMO).filter((name) => name !== 'COG').map((name, index) => bone(name,
+    name === 'Upper_Leg_L' || name === 'Upper_Leg_R' ? 'Pelvis' : name === 'Head' ? 'COG' : 'Root',
+    name === 'Upper_Leg_L' ? -.2 : name === 'Upper_Leg_R' ? .2 : index * .001, name === 'Head' ? 2 : 1.2))
+  const actions = ['idle', 'crouching', 'crouching_idle', 'dead', 'dying', 'running', 'sprinting', 'swipe'].flatMap((name) => [
+    `an ${name}`, 'ao Root', 'ag rotation 1', 'kf 0 1.5707963267948966 LINEAR 0 1.5707963267948966 0 1.5707963267948966',
+    ...(name === 'idle' ? Array.from({ length: wingCount }, (_, index) => [`ao Wing_Bone_${index}`, 'ag rotation 2', 'kf 0 0 LINEAR 0 0 0 0', 'kf 2 .4 LINEAR 2 .4 2 .4']).flat() : []),
+  ])
+  return ['arm_name verity.mdl', bone('Root', null, 0, 0, 0), bone('COG', 'Root', 0, 1, 0), bone('Pelvis', 'COG', 0, 1.1, 0), ...mapped,
+    bone('Jaw', 'Head', 0, 1.9, .1), ...Array.from({ length: wingCount }, (_, index) => bone(`Wing_Bone_${index}`, 'COG', -.4 - index * .1, 1.5, 0)),
+    bone('camera', 'Root', 0, -2, 0), bone('Jaw_end_end', 'Jaw', 0, 1.8, .1), ...Array.from({ length: helperCount }, (_, index) => bone(`Helper_${index}`, 'Root', 0, 0, index * .01)),
+    'o body', 'v 0 0 0', 'vw COG 1', ...actions].join('\n') + '\n'
+}
 
 let bench: Workbench
 // The server reads App 5 library characters at start: use an empty library so the user's own characters don't count.
@@ -299,9 +321,11 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
 
     const target = (await call('/api/targets')).json.targets[0]
     const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
-    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, 1], bobj: true } })
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, [...parseBobjActions(readFileSync(join(bobjDir, 'minecraft-actions.bobj'), 'utf8')).keys()].indexOf('running')], bobj: true } })
     assert.equal(run.status, 200, run.text)
-    const selected = run.json.manifest.actions[0]
+    const rawImport = await post(`/api/runs/${run.json.runId}/library`, { tags: ['legacy'] })
+    assert.equal(rawImport.status, 200, rawImport.text)
+    const selected = run.json.manifest.actions[1]
     const sent = await post(`/api/runs/${run.json.runId}/character-library`, {
       charIds: [first.charId, second.charId, minecraft.charId], actions: [{ uuid: selected.uuid, key: 'walk' }],
     })
@@ -311,17 +335,90 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
       const drafts = listCharacterActions({ charId: character.charId, latestOnly: true })
       assert.equal(drafts.length, 1)
       assert.equal(drafts[0]!.status, 'draft')
-      assert.deepEqual(drafts[0]!.tags, ['walk'])
+      assert.deepEqual(drafts[0]!.tags, ['legacy', 'walk'])
       if (character.rig === 'mixamo65') assert.equal(drafts[0]!.parentUuid, selected.uuid)
       else assert.match(drafts[0]!.parentUuid!, /^[0-9a-f-]{36}$/)
       assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.glb')))
-      if (character.rig === 'minecraft20') assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.bobj')))
+      if (character.rig === 'minecraft20') {
+        const draftPath = join(library, 'packs', drafts[0]!.packId), bobjPath = join(draftPath, 'anim.bobj')
+        assert.ok(existsSync(bobjPath))
+        const glb = await loadAsset(readFileSync(join(draftPath, 'anim.glb')), 'glb', { skeletonOnly: true })
+        const bobj = loadBobj(readFileSync(bobjPath, 'utf8'), readFileSync(join(bobjDir, 'minecraft20-armature.bobj'), 'utf8'))
+        const glbBones = new Map<string, any>(), bobjBones = new Map<string, any>()
+        glb.traverse((object: any) => { if (object.isBone) glbBones.set(object.name, object) }); bobj.traverse((object: any) => { if (object.isBone) bobjBones.set(object.name, object) })
+        assert.equal(glbBones.size, 20); assert.equal(bobjBones.size, 20)
+        const clip = glb.animations[drafts[0]!.glbAnimationIndex], reference = bobj.animations[0]!
+        assert.ok(clip && reference && clip.name === reference.name)
+        const a = new AnimationMixer(glb), b = new AnimationMixer(bobj), aa = a.clipAction(clip), bb = b.clipAction(reference)
+        aa.clampWhenFinished = true; bb.clampWhenFinished = true
+        aa.setLoop(LoopOnce, 1).play(); bb.setLoop(LoopOnce, 1).play()
+        const armature = parseBobjArmature(readFileSync(join(bobjDir, 'minecraft20-armature.bobj'), 'utf8')), action = [...parseBobjActions(readFileSync(bobjPath, 'utf8')).values()][0]!
+        let maxEndpointError = 0
+        for (const time of [0, clip.duration / 2, clip.duration]) {
+          a.setTime(time); b.setTime(time); glb.updateMatrixWorld(true); bobj.updateMatrixWorld(true)
+          const evaluated = new Map(evaluateBobjAction(armature, action, time * 20).map((bone) => [bone.name.replace(/\./g, '_'), bone.worldMatrix]))
+          for (const [name, bone] of glbBones) maxEndpointError = Math.max(maxEndpointError,
+            new Vector3().setFromMatrixPosition(bone.matrixWorld).distanceTo(new Vector3().fromArray(evaluated.get(name)!.slice(12, 15))))
+        }
+        assert.ok(maxEndpointError <= 1e-4, `Minecraft20 GLB vs evaluateBobjAction endpoints ${maxEndpointError}`)
+        const raw = getAction({ actionUuid: drafts[0]!.parentUuid! }), report = JSON.parse(readFileSync(join(library, 'packs', raw.packId, 'anim.report.json'), 'utf8'))
+        assert.equal(report.serializerRoundTrip.status, 'PASS'); assert.equal(report.serializerRoundTrip.joints, 20)
+        assert.ok(report.serializerRoundTrip.sampledEndpoints >= 3)
+        console.info('MC20 running serialized evaluator measurement', JSON.stringify({ maxEndpointError, ...report.serializerRoundTrip }))
+      }
     }
+    const updatedCounts = (await call('/api/library/characters')).json.characters.filter((item: any) => [first.charId, second.charId, minecraft.charId].includes(item.charId))
+    assert.ok(updatedCounts.every((item: any) => item.counts.draft === 1 && item.counts.edited === 0 && item.counts.approved === 0))
     assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [], actions: [{ uuid: selected.uuid, key: 'walk' }] })).status, 400)
   } finally {
     if (priorLibrary === undefined) delete process.env.W01_LIBRARY
     else process.env.W01_LIBRARY = priorLibrary
     rmSync(library, { recursive: true, force: true })
+  }
+})
+
+test('selected Action is rebuilt against each Verity destination base without leaking other new Actions', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-verity-library-')), fixtures = mkdtempSync(join(tmpdir(), 'w01-verity-models-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const path84 = join(fixtures, 'verity84.bobj'), path101 = join(fixtures, 'verity101.bobj')
+    const source84 = syntheticVerity(13, 1), source101 = syntheticVerity(29, 2)
+    writeFileSync(path84, source84); writeFileSync(path101, source101)
+    const base84 = registerBaseModel({ name: 'Verity 84', rig: 'verity', modelFile: path84 })
+    const base101 = registerBaseModel({ name: 'Verity 101', rig: 'verity', modelFile: path101 })
+    const char84 = createCharacter({ name: 'Gỗ 84', baseModelId: base84.modelId })
+    const char101 = createCharacter({ name: 'Cánh 101', baseModelId: base101.modelId })
+    const custom = registerLibraryCharacter({ name: 'Sai rig', rig: 'custom', modelFile: join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!) })
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, 1] } })
+    assert.equal(run.status, 200, run.text)
+    const selected = run.json.manifest.actions[0]
+    const rejected = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [char84.charId, custom.charId], actions: [{ uuid: selected.uuid, key: 'walk' }] })
+    assert.equal(rejected.status, 409, rejected.text)
+    assert.equal(listCharacterActions({ charId: char84.charId }).length, 0, 'prevalidation prevents a partial valid-character draft')
+
+    const sent = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [char84.charId, char101.charId], actions: [{ uuid: selected.uuid, key: 'walk' }] })
+    assert.equal(sent.status, 200, sent.text); assert.equal(sent.json.drafts.length, 2)
+    for (const [character, original, bones, wings] of [[char84, source84, 84, 1], [char101, source101, 101, 2]] as const) {
+      const draft = listCharacterActions({ charId: character.charId, latestOnly: true })[0]!
+      const pack = join(library, 'packs', draft.packId), bobj = readFileSync(join(pack, 'anim.original.bbs.bobj'), 'utf8')
+      assert.equal(bobj.slice(0, original.length), original, 'destination-specific original prefix is byte-preserved')
+      assert.equal(parseBobjArmature(bobj).bones.length, bones)
+      assert.equal(parseBobjArmature(bobj).bones.filter((bone) => bone.name.startsWith('Wing')).length, wings)
+      const actions = [...parseBobjActions(bobj).keys()]
+      assert.deepEqual(actions.slice(0, 8), ['idle', 'crouching', 'crouching_idle', 'dead', 'dying', 'running', 'sprinting', 'swipe'])
+      assert.equal(actions.length, 9, 'eight built-ins plus only the one selected new Action')
+      const glb = decodeGlb(readFileSync(join(pack, 'anim.original.glb'))).json
+      assert.equal(glb.skins[0].joints.length, bones)
+      assert.equal(glb.animations.length, 9)
+      assert.equal(glb.animations.at(-1).name, actions.at(-1))
+    }
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true }); rmSync(fixtures, { recursive: true, force: true })
   }
 })
 

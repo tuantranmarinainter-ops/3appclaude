@@ -18,15 +18,19 @@ import { loadBobj } from '../cli/loadBobj.ts'
 import { actionsGlb } from '../cli/minecraftBlockCharacters.ts'
 import { decodeGlb, encodeGlb } from '../cli/glb.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
+import { AnimationMixer, LoopOnce, Vector3 } from 'three'
+import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
+import { parseBobjArmature } from '../src/reverse.ts'
 import {
   buildPreset, DEFAULT_ARMATURE, describeSource, inspect, parseFamily, parseOptions, runPipeline, sha256, UserError,
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
 import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
 import {
-  addDraftToCharacter, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
-  resolveLibraryPath, setActionMetadata,
+  addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
+  resolveCharacter, resolveLibraryPath, setActionMetadata,
 } from '../../library/index.ts'
+import { loadVerityModel, type VerityModel } from './verity.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
@@ -60,6 +64,59 @@ function minecraft20LibraryGlb(root: ReturnType<typeof loadBobj> & { animations:
     anchor.name = 'anchor'
     for (const item of changed) item.track.name = item.name
   }
+}
+
+async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<typeof loadBobj> & { animations: any[] }, bobjText: string) {
+  const loaded = await loadAsset(glb, 'glb', { skeletonOnly: true })
+  const sourceBones = new Map<string, any>(), loadedBones = new Map<string, any>()
+  reference.traverse((object: any) => { if (object.isBone) sourceBones.set(object.name, object) })
+  loaded.traverse((object: any) => { if (object.isBone) loadedBones.set(object.name, object) })
+  if (loadedBones.size !== 20 || sourceBones.size !== 20) throw new Error(`Minecraft20 library GLB must have 20 joints (source ${sourceBones.size}, reload ${loadedBones.size})`)
+  if (loaded.animations.length !== reference.animations.length) throw new Error('Minecraft20 library GLB lost animations on reload')
+  const armature = parseBobjArmature(readFileSync(DEFAULT_ARMATURE, 'utf8')), actions = parseBobjActions(bobjText)
+  let maxTrackError = 0, maxEndpointPositionError = 0, sampledEndpoints = 0
+  for (let index = 0; index < reference.animations.length; index++) {
+    const expected = reference.animations[index]!, actual = loaded.animations[index]!
+    if (actual.name !== expected.name || actual.tracks.length !== expected.tracks.length) throw new Error(`Minecraft20 animation ${index} changed tracks on reload`)
+    const actualTracks = new Map(actual.tracks.map((track: any) => [track.name, track]))
+    for (const track of expected.tracks) {
+      const other: any = actualTracks.get(track.name)
+      if (!other || other.times.length !== track.times.length || other.values.length !== track.values.length) throw new Error(`Minecraft20 track changed shape: ${track.name}`)
+      for (let i = 0; i < track.times.length; i++) maxTrackError = Math.max(maxTrackError, Math.abs(track.times[i]! - other.times[i]!))
+      for (let i = 0; i < track.values.length; i++) maxTrackError = Math.max(maxTrackError, Math.abs(track.values[i]! - other.values[i]!))
+    }
+    const sourceMixer = new AnimationMixer(reference), loadedMixer = new AnimationMixer(loaded)
+    const sourceAction = sourceMixer.clipAction(expected), loadedAction = loadedMixer.clipAction(actual)
+    sourceAction.clampWhenFinished = true; loadedAction.clampWhenFinished = true
+    sourceAction.setLoop(LoopOnce, 1).play(); loadedAction.setLoop(LoopOnce, 1).play()
+    for (const time of [0, expected.duration / 2, expected.duration]) {
+      sourceMixer.setTime(time); loadedMixer.setTime(time); reference.updateMatrixWorld(true); loaded.updateMatrixWorld(true); sampledEndpoints++
+      const evaluated = new Map(evaluateBobjAction(armature, actions.get(expected.name)!, time * 20).map((bone) => [bone.name.replace(/\./g, '_'), bone.worldMatrix]))
+      for (const [name] of sourceBones) {
+        const target = loadedBones.get(name)
+        if (!target) throw new Error(`Minecraft20 reload is missing joint ${name}`)
+        maxEndpointPositionError = Math.max(maxEndpointPositionError,
+          new Vector3().fromArray(evaluated.get(name)!.slice(12, 15)).distanceTo(new Vector3().setFromMatrixPosition(target.matrixWorld)))
+      }
+    }
+    sourceMixer.uncacheRoot(reference); loadedMixer.uncacheRoot(loaded)
+  }
+  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-4 ? 'PASS' : 'FAIL'
+  return { status, joints: loadedBones.size, animations: loaded.animations.length, sampledEndpoints, maxTrackError, maxEndpointPositionError }
+}
+
+function selectGlbAnimation(glb: Uint8Array, index: number): Uint8Array {
+  const decoded = decodeGlb(glb), animations = decoded.json.animations as unknown[] | undefined
+  if (!animations?.[index]) throw new UserError(`Normalized GLB has no animation ${index}`)
+  decoded.json.animations = [animations[index]]
+  return encodeGlb(decoded.json, decoded.bin)
+}
+
+function selectBobjActions(text: string, names: Set<string>): string {
+  const lines = text.split(/(?=^an\s+)/m), prefix = lines.shift() ?? ''
+  const selected = lines.filter((block) => names.has(block.match(/^an\s+([^\r\n]+)/)?.[1]?.trim() ?? ''))
+  if (selected.length !== names.size) throw new Error('Minecraft20 BOBJ does not contain every selected Action')
+  return prefix + selected.join('')
 }
 
 export interface Workbench { server: Server; url: string; port: number; sessionDir: string; close(): Promise<void> }
@@ -379,22 +436,45 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (invalid) throw new UserError(`Character ${character.name} does not require Action key: ${invalid.key}`)
       }
       const selectedCharacters = charIds.map((charId) => characters.get(charId)!)
+      const supportedRigs = new Set(['mixamo65', 'verity', 'minecraft20'])
+      const unsupported = selectedCharacters.find((character) => !supportedRigs.has(character.rig))
+      if (unsupported) throw new UserError(`Character ${unsupported.name} has unsupported rig ${unsupported.rig}`, 409)
       const needsMixamo = selectedCharacters.some((character) => character.rig !== 'minecraft20')
       const needsMinecraft = selectedCharacters.some((character) => character.rig === 'minecraft20')
-      if (selectedCharacters.some((character) => character.rig === 'verity') && (!state.result.files.some((file) => file.kind === 'originalBobj') || !state.result.files.some((file) => file.kind === 'originalGlb'))) {
-        throw new UserError('A Verity destination requires a run against its original-skeleton target', 409)
+      const normalizedFile = state.result.files.find((file) => file.kind === 'glb')
+      if (!normalizedFile) throw new UserError('Run has no normalized GLB', 409)
+      const normalizedGlb = readFileSync(join(state.dir, normalizedFile.name))
+      // Resolve and parse every destination before importing or creating any draft. A bad mixed selection leaves no partial drafts.
+      const verityModels = new Map<string, { resolved: ReturnType<typeof resolveCharacter>; model: VerityModel }>()
+      for (const character of selectedCharacters) if (character.rig === 'verity') {
+        const resolved = resolveCharacter(character.charId)
+        if (!resolved.modelPath.endsWith('.bobj')) throw new UserError(`Verity character ${character.name} has no original .bobj model`, 409)
+        try { verityModels.set(character.charId, { resolved, model: loadVerityModel(resolved.modelPath) }) }
+        catch (error) { throw new UserError(`Cannot load original Verity model for ${character.name}: ${error instanceof Error ? error.message : error}`, 409) }
       }
-      const mixamoPack = needsMixamo ? importPack({ sourceDirectory: state.dir, createdBy: 'app1' }) : null
+      const verityArtifacts = new Map<string, { bobj: string; glb: Uint8Array }>()
+      for (const action of selected) for (const character of selectedCharacters) if (character.rig === 'verity') {
+        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        const entry = byUuid.get(action.uuid) as any, selectedGlb = selectGlbAnimation(normalizedGlb, entry.glbAnimationIndex ?? sourceIndex)
+        const destination = verityModels.get(character.charId)!, added = await destination.model.convertNormalized(selectedGlb)
+        const bobj = destination.model.appendBobj(added), error = destination.model.roundTripError(bobj, added)
+        if (added.length !== 1 || error > 1e-4) throw new UserError(`Verity conversion failed for ${character.name}`, 409)
+        verityArtifacts.set(`${character.charId}:${action.uuid}`, { bobj, glb: destination.model.buildGlb(added, dirname(destination.resolved.modelPath)) })
+      }
+      let mixamoPack: ReturnType<typeof importPack> | null = null
       let minecraftPack: ReturnType<typeof importPack> | null = null
+      let minecraftBobj = ''
       if (needsMinecraft) {
         const bobj = state.result.files.find((file) => file.kind === 'bobj')
         if (!bobj) throw new UserError('Minecraft20 destinations require a run with .bobj output enabled', 409)
         const directory = join(state.dir, 'library-minecraft20'), stem = 'minecraft20'
         mkdirSync(directory, { recursive: true })
-        const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8')
+        const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8'); minecraftBobj = bobjText
         const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8')) as ReturnType<typeof loadBobj> & { animations: any[] }
         root.updateMatrixWorld(true)
         const glb = minecraft20LibraryGlb(root), manifestActions = (state.result.manifest as any).actions ?? []
+        const measurement = await measureMinecraft20Glb(glb, root, bobjText)
+        if (measurement.status !== 'PASS' || state.result.report.minecraft20?.status !== 'PASS') throw new UserError('Minecraft20 library artifact failed round-trip validation', 409)
         writeFileSync(join(directory, `${stem}.glb`), glb)
         writeFileSync(join(directory, `${stem}.minecraft20.bobj`), bobjText)
         const stableUuid = (uuid: string) => {
@@ -406,12 +486,18 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           ...(state.result.manifest as any), version: '1.0.0', rig: 'minecraft20', glbSha256: sha256(glb),
           actions: manifestActions.map((action: any, index: number) => ({ ...action, uuid: stableUuid(action.uuid), glbAnimationIndex: index })),
         }, null, 2))
-        writeFileSync(join(directory, `${stem}.report.json`), JSON.stringify({ status: 'PASS', sourceRunId: state.id, artifact: 'minecraft20' }, null, 2))
+        writeFileSync(join(directory, `${stem}.report.json`), JSON.stringify({ status: 'PASS', sourceRunId: state.id, artifact: 'minecraft20', sourceBobjStatus: state.result.report.minecraft20.status, serializerRoundTrip: measurement }, null, 2))
         minecraftPack = importPack({ sourceDirectory: directory, createdBy: 'app1' })
       }
+      mixamoPack = needsMixamo ? importPack({ sourceDirectory: state.dir, createdBy: 'app1' }) : null
+      const minecraftNames = new Map<string, string>()
+      if (needsMinecraft) for (const action of selected) {
+        const manifestAction = byUuid.get(action.uuid) as any
+        const bobjName = state.result.report.minecraft20.actions.find((item: any) => item.glbName === manifestAction.name)?.name
+        if (!bobjName) throw new UserError(`Minecraft20 output has no Action for ${manifestAction.name}`, 409)
+        minecraftNames.set(action.uuid, bobjName)
+      }
       const drafts: Array<{ charId: string; actionUuid: string; packId: string; key: string }> = []
-      const originalBobj = state.result.files.find((file) => file.kind === 'originalBobj')
-      const originalGlb = state.result.files.find((file) => file.kind === 'originalGlb')
       for (const action of selected) {
         for (const charId of charIds) {
           const character = characters.get(charId)!
@@ -419,17 +505,18 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
           const source = pack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
           if (!source) throw new UserError(`Selected Action is not in the ${character.rig} pack: ${action.uuid}`)
-          setActionMetadata({ actionUuid: source.uuid, tags: [action.key] })
+          const existing = getAction({ actionUuid: source.uuid })
+          const normalizedTags = mixamoPack ? getAction({ actionUuid: action.uuid }).tags : []
+          setActionMetadata({ actionUuid: source.uuid, tags: [...new Set([...existing.tags, ...normalizedTags, action.key])] })
           const draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
           const draftPath = join(resolveLibraryPath(), 'packs', draft.packId)
           if (character.rig === 'minecraft20') {
-            const bobj = state.result.files.find((file) => file.kind === 'bobj')!
-            copyFileSync(join(state.dir, bobj.name), join(draftPath, 'anim.bobj'))
+            writeFileSync(join(draftPath, 'anim.bobj'), selectBobjActions(minecraftBobj, new Set([minecraftNames.get(action.uuid)!])))
           }
           if (character.rig === 'verity') {
-            if (!originalBobj || !originalGlb) throw new UserError(`Run has no original-skeleton artifacts for Verity character ${character.name}`, 409)
-            copyFileSync(join(state.dir, originalBobj.name), join(draftPath, 'anim.original.bbs.bobj'))
-            copyFileSync(join(state.dir, originalGlb.name), join(draftPath, 'anim.original.glb'))
+            const artifact = verityArtifacts.get(`${charId}:${action.uuid}`)!
+            writeFileSync(join(draftPath, 'anim.original.bbs.bobj'), artifact.bobj)
+            writeFileSync(join(draftPath, 'anim.original.glb'), artifact.glb)
           }
           drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key })
         }

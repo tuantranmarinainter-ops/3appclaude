@@ -854,7 +854,7 @@ async function renderCharacterLibrary(host) {
       } catch (error) { status.textContent = `Không đưa được vào thư viện: ${error.message}`; send.disabled = false }
     })
     host.append(cards, h('h4', { text: 'Action và thẻ động tác' }), actionTools,
-      h('table', { class: 'library-actions' }, h('thead', {}, h('tr', {}, h('th'), h('th', { text: 'Action' }), h('th', { text: 'requiredActions.key' }), h('th', { text: 'Xem thử' }))), rows),
+      h('table', { class: 'library-actions' }, h('thead', {}, h('tr', {}, h('th'), h('th', { text: 'Action' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Xem thử' }))), rows),
       h('div', { class: 'send-app2' }, send, status))
   } catch (error) { clear(host).append(h('div', { class: 'note bad', text: `Không đọc được thư viện: ${error.message}` })) }
 }
