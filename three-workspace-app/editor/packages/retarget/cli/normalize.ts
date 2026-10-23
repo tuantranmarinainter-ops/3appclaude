@@ -19,6 +19,7 @@ import { applyModelMode, ModelBlockedError, readModelSourceFiles, type PipelineR
 import { runNormalize } from './normalizeCore.ts'
 import { renderContactSheet } from './previewPng.ts'
 import { exportMinecraft20 } from './toMinecraft20.ts'
+import { exportVerityOriginalArtifacts } from './verityOriginal.ts'
 
 const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
@@ -53,11 +54,19 @@ mkdirSync(outDir, { recursive: true })
 try {
   const format = formatFromPath(srcPath)
   const srcBytes = readFileSync(srcPath), targetBytes = readFileSync(targetPath)
+  const sourceText = format === 'bobj' ? srcBytes.toString('utf8') : null
+  const isBobjModel = !!sourceText && /^[\t \uFEFF]*arm_bone\s+/m.test(sourceText) && /^[\t ]*o\s+/m.test(sourceText) && /^[\t ]*v\s+/m.test(sourceText)
+  // The physical-unit preset name can also label canonical rigs; inverse projection needs native Verity bones.
+  const isVerityModel = isBobjModel && /^[\t \uFEFF]*arm_name[\t ]+verity\.mdl[\t \r]*$/m.test(sourceText!)
+    && ['COG', 'Upper_Leg_L', 'Upper_Leg_R'].every(name => new RegExp(`^[\\t ]*arm_bone[\\t ]+${name}[\\t ]`, 'm').test(sourceText!))
   const sourceManifestPath = srcPath.replace(/\.[^.]+$/, '.manifest.json')
   const sourceExtraManifest = format === 'glb' && existsSync(sourceManifestPath)
     ? JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as { version?: unknown; rig?: unknown; extraBones?: unknown } : undefined
   const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-  const unitMeters = values['unit-meters'] ? Number(values['unit-meters']) : format === 'fbx' ? 0.01 : 1
+  const requestedUnitMeters = values['unit-meters'] ? Number(values['unit-meters']) : format === 'fbx' ? 0.01 : undefined
+  if (requestedUnitMeters !== undefined && (!(requestedUnitMeters > 0) || !Number.isFinite(requestedUnitMeters))) fail('--unit-meters must be finite and positive')
+  // Full BOBJ models carry their physical unit on a scale/floor wrapper. The solver sees that metre-space wrapper once.
+  const unitMeters = isBobjModel ? 1 : requestedUnitMeters ?? 1
   // Model mode: Draco/meshopt sources are refused before any work is done.
   let modelFiles: ReturnType<typeof readModelSourceFiles> | undefined
   let early: PipelineResult | undefined
@@ -68,7 +77,9 @@ try {
     }
   }
   let result: PipelineResult = early ?? await runNormalize({
-    source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath), ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
+    source: await loadAsset(srcBytes, format, { skeletonOnly: true, resourceDir: dirname(srcPath),
+      ...(isBobjModel && requestedUnitMeters !== undefined ? { unitMeters: requestedUnitMeters } : {}),
+      ...(values.armature ? { bobjArmature: readFileSync(resolve(values.armature)) } : {}) }), sourceLabel: basename(srcPath), sourceSha256: sha(srcBytes),
     ...(sourceExtraManifest ? { sourceExtraManifest, sourceExtraGlb: srcBytes } : {}),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
     footLock: values['foot-lock'] as 'on' | 'off', range: range as [number, number] | undefined, actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
@@ -94,6 +105,16 @@ try {
       if (values.preview) written.push(write('.minecraft20.preview.png', renderContactSheet(minecraft.previewFrames, minecraft.previewParents)))
       if (minecraft.report.status !== 'PASS' && status === 'PASS') status = 'FAIL'
     }
+    if (isVerityModel) {
+      const original = await exportVerityOriginalArtifacts({ sourceText: sourceText!, sourcePath: srcPath, normalizedGlb: result.glb,
+        ...(requestedUnitMeters !== undefined ? { unitMeters: requestedUnitMeters } : {}) })
+      const originalPrefixSha256 = sha(Buffer.from(original.bobj).subarray(0, srcBytes.length))
+      if (originalPrefixSha256 !== sha(srcBytes)) throw new Error('Original-rig BOBJ prefix differs from the source bytes')
+      report.originalRig = { ...original.report, sourceSha256: sha(srcBytes), originalPrefixSha256,
+        bobj: `${stem}.original.bbs.bobj`, glb: `${stem}.original.glb` }
+      written.push(write('.original.bbs.bobj', original.bobj), write('.original.glb', original.glb))
+      if ((original.report.roundtripMaxPositionErrorUnits > 1e-4 || original.report.maxHipAngleDegrees > 2 || original.report.maxHeadAngleDegrees > 2) && status === 'PASS') status = 'FAIL'
+    }
   }
   // The written report states the final status (a failed .bobj export fails the run), same as the Workbench.
   report.status = status
@@ -111,6 +132,7 @@ try {
   if (report.quality) console.log(`quality warnings ${report.quality.warnings.length ? report.quality.warnings.map((w: { code: string; actions: number }) => `${w.code}x${w.actions}`).join(' ') : '-'}`)
   if (report.model) console.log(`model ${report.model.status} meshes=${report.model.meshes} vertices=${report.model.vertices} influences ${report.model.maxInfluencesBefore}->${report.model.maxInfluencesAfter} images=${report.model.images.count} restError=${(report.model.restMaxErrorMeters * 1000).toFixed(4)}mm jointFit max=${report.model.jointFit.maxMeters.toFixed(3)}m checks=${JSON.stringify(report.model.checks)}${report.model.warnings.length ? ` warnings=${report.model.warnings.map((w: { code: string }) => w.code).join(',')}` : ''}`)
   if (report.minecraft20) console.log(`minecraft20 ${report.minecraft20.status} actions=${report.minecraft20.actions.length} roundtripError=${report.minecraft20.roundtripMaxErrorBlocks.toExponential(1)} blocks`)
+  if (report.originalRig) console.log(`originalRig bones=${report.originalRig.bones} oldActions=${report.originalRig.originalActions} added=${report.originalRig.addedActions} roundtripError=${report.originalRig.roundtripMaxPositionErrorUnits.toExponential(1)} units`)
   for (const path of written) console.log(`wrote ${path}`)
   process.exit(status === 'PASS' ? 0 : status === 'BLOCKED' ? 2 : 1)
 } catch (error) {

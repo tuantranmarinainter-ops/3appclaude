@@ -107,9 +107,9 @@ export function packGltf(json: Record<string, any>, resourceDir: string | undefi
 }
 
 /** Node-side loading: external resources are refused (except .gltf buffers in `resourceDir`), so files must be self-contained. */
-export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; keepMeshes?: boolean; resourceDir?: string; bobjArmature?: Uint8Array } = {}): Promise<Object3D> {
+export async function loadAsset(bytes: Uint8Array, format: AssetFormat, options: { skeletonOnly?: boolean; keepMeshes?: boolean; resourceDir?: string; bobjArmature?: Uint8Array; unitMeters?: number } = {}): Promise<Object3D> {
   if (format === 'bobj') {
-    const text = new TextDecoder().decode(bytes)
+    const text = new TextDecoder().decode(bytes).replace(/^[\t \uFEFF]+(?=arm_name\s)/gm, '')
     // Action libraries carry no `arm_bone` records; the rig comes from a separate armature file (--armature).
     const armature = options.bobjArmature ? new TextDecoder().decode(options.bobjArmature) : /^arm_bone /m.test(text) ? text : null
     if (!armature) throw new TypeError('This .bobj has no arm_bone records; pass its rig with --armature <armature.bobj>')
