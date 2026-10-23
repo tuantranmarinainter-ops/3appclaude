@@ -429,6 +429,26 @@ export function StudioOverlay({
       notifyProjectCommit(documentId)
     } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
   }, [documentId, project, reviewSequence?.id])
+  // C4: review stills rendered by Studio with the BBS look, kept per clip for this session.
+  const [reviewImages, setReviewImages] = useState<Record<string, string[]>>({})
+  const [reviewCapturing, setReviewCapturing] = useState<string | null>(null)
+  const captureReview = useCallback(async (clipId: string, frames: number[]) => {
+    if (!reviewSequence) return
+    setReviewCapturing(clipId)
+    try {
+      const response = await fetch(`/api/unified/projects/${documentId}/review-capture`, { method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sequenceId: reviewSequence.id, clipId, frames }) })
+      const body = await response.json() as { images?: string[]; error?: { message?: string } }
+      if (!response.ok || !body.images) throw new Error(body.error?.message ?? `Capture failed (${response.status})`)
+      setReviewImages((current) => ({ ...current, [clipId]: body.images! }))
+    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+    finally { setReviewCapturing(null) }
+  }, [documentId, reviewSequence])
+  const reviewClipsRef = useRef(reviewClips)
+  reviewClipsRef.current = reviewClips
+  const captureAllReview = useCallback(async () => {
+    for (const clip of reviewClipsRef.current) if (!reviewImages[clip.id]?.length && clip.frames.length) await captureReview(clip.id, clip.frames)
+  }, [captureReview, reviewImages])
   const playReviewClip = useCallback((clipId: string) => {
     const clip = reviewSequence?.clips.find((item) => item.id === clipId)
     const stage = getLiveStudio()?.stage
@@ -537,7 +557,7 @@ export function StudioOverlay({
             <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} /></details></div>
           </HostDrawer>
           <HostDrawer open={drawer === 'review'} title={vi ? 'Duyệt cảnh' : 'Scene review'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
-            {reviewSequence ? <SceneReviewPanel clips={reviewClips} images={{}} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} /> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
+            {reviewSequence ? <><p className="wb-review-capture"><button type="button" disabled={reviewCapturing !== null} onClick={() => void captureAllReview()}>{reviewCapturing ? (vi ? 'Đang chụp…' : 'Capturing…') : (vi ? 'Chụp tất cả cảnh chưa có ảnh (Xem như BBS)' : 'Capture all shots without stills (BBS look)')}</button></p><SceneReviewPanel clips={reviewClips} images={reviewImages} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} onCapture={(clipId, frames) => void captureReview(clipId, frames)} /></> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
           </HostDrawer>
           <HostDrawer open={drawer === 'vfx'} title={vi ? 'Hiệu ứng' : 'Effects'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             <VfxCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'vfx'} />
