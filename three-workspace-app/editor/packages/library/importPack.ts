@@ -321,13 +321,19 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
   })
 }
 
+/** Same joints with the same parents, whatever order the GLB lists them in (characters list joints differently). */
+export function sameRigTopology(a: ReadonlyArray<Pick<RigBone, 'name' | 'parent'>>, b: ReadonlyArray<Pick<RigBone, 'name' | 'parent'>>): boolean {
+  const key = (bones: ReadonlyArray<Pick<RigBone, 'name' | 'parent'>>) => JSON.stringify(bones.map(({ name, parent }) => [name, parent ?? null]).sort())
+  return key(a) === key(b)
+}
+
 function registerRigUnlocked(root: string, rigId: string, bones: RigBone[]): void {
   const configPath = safeChild(root, 'library.json')
   const config = readJsonFile<{ version: string; rigs: string[] }>(configPath)
   const rigFile = safeChild(root, 'rigs', `${rigId.replace(/[+]/g, '-')}.json`)
   if (existsSync(rigFile)) {
     const existing = readJsonFile<{ bones?: RigBone[] }>(rigFile)
-    if (JSON.stringify(existing.bones?.map(({ name, parent }) => [name, parent])) !== JSON.stringify(bones.map(({ name, parent }) => [name, parent]))) {
+    if (!sameRigTopology(existing.bones ?? [], bones)) {
       throw new Error(`Rig topology does not match registered rig ${rigId}`)
     }
   } else {
