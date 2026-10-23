@@ -110,3 +110,11 @@ test('path and platform defaults reject unsafe locations', () => {
   assert.equal(validateRelativeAssetPath('covers/action.png'), 'covers/action.png')
   for (const value of ['../secret', 'covers\\secret', '/absolute/file', 'C:/secret']) assert.throws(() => validateRelativeAssetPath(value))
 })
+
+test('rig topology comparison ignores joint order but not parents', async () => {
+  const { sameRigTopology } = await import('./importPack')
+  const a = [{ name: 'Hips', parent: null }, { name: 'Spine', parent: 'Hips' }, { name: 'LeftUpLeg', parent: 'Hips' }]
+  assert.equal(sameRigTopology(a, [a[2]!, a[0]!, a[1]!]), true)
+  assert.equal(sameRigTopology(a, [a[0]!, a[1]!, { name: 'LeftUpLeg', parent: 'Spine' }]), false)
+  assert.equal(sameRigTopology(a, a.slice(0, 2)), false)
+})
