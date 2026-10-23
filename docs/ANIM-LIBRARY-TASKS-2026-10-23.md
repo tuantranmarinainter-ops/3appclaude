@@ -89,11 +89,23 @@ xương gốc; test cũ PASS.
 **Đạt khi:** test Studio: lọc theo nhân vật đúng; Duyệt đổi trạng thái; sao chép tạo bản mới; bảng động tác đúng ô;
 test cũ PASS (`filmManifest`, `filmSeries`, `sceneBbsFilm`, library).
 
+## Bổ sung 2026-10-23 (người dùng yêu cầu thêm)
+- **L2 (ghi rõ):** nguồn có nhiều animation → người dùng **tick chọn vài Action** (danh sách có ô chọn, nút "Chọn hết / Bỏ
+  hết", xem thử từng Action trên nguồn + đích), bấm **"Đưa vào thư viện của <nhân vật>"** → chỉ các Action đã chọn vào
+  **thư mục của nhân vật** (bộ của nhân vật, trạng thái Nháp). App 2 tìm theo thư mục nhân vật, ép lên nhân vật; App 3 sửa tiếp.
+
+| Mã | Việc | Vùng file | Đợt |
+| --- | --- | --- | --- |
+| W1 | **Thanh 5 workspace** kiểu DaVinci Resolve: hàng nút ngay dưới header, cùng một kiểu ở mọi app: **1 Chuẩn hoá** (Workbench App 1), **2 Dựng cảnh** (App 2), **3 Animation** (App 3), **4 VFX** (App 4 particle), **5 Thư viện** (App 5). Nút đang mở được tô; bấm chuyển app (cùng tab, giữ project đang mở qua query `?unified=<id>` khi có). App 1/3/4 chạy ở cổng/khung riêng → cấu hình URL qua biến môi trường, thiếu thì nút mờ kèm gợi ý | `apps/studio/app/workbench/components/feature-navigation/` (+ layout Studio), `packages/retarget/workbench/public/` (chỉ thêm thanh), test | 2 (song song) |
+| W2 | **Kéo viền giữa các khung**: mọi đường chia dọc/ngang giữa các panel (khung trái/phải/dưới, timeline, khung xem 3D) kéo được bằng chuột để đổi kích thước, giới hạn min/max, nhớ kích thước (localStorage), nhấp đúp viền → về mặc định. Viewport 3D resize theo | App 2 Studio layout + `packages/builder` panel layout (không đụng engine), Workbench App 1 `public/` (CSS/JS), test | 2 (song song) |
+| W3 | **Render bằng GPU**: render headless (Duyệt cảnh, xuất video) hiện dùng `--use-angle=swiftshader` = **CPU** (ăn ~13 lõi). Thêm tuỳ chọn `W01_RENDER_GPU=1` (mặc định bật trên Windows có GPU): Chromium dùng `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist`; kiểm tra WebGL renderer thật (`WEBGL_debug_renderer_info`), nếu là SwiftShader/không có GPU thì tự quay về SwiftShader và ghi cảnh báo vào report job. Hiện renderer đang dùng trong UI (dòng nhỏ "GPU: NVIDIA RTX 3060" / "CPU") | `packages/director-cli/render.mjs` (+ browser.mjs), `apps/studio/src/unifiedJobs.ts` (chỉ phần truyền tuỳ chọn), test | 1 (song song, nhỏ) |
+Ghi chú: W2 và L3 cùng sửa layout App 2 → W2 làm **sau khi L3 merge**, hoặc chia rõ file với agent chính trước khi chạy song song.
+
 ---
 
 ## Lệnh tổng gửi Codex (người dùng dán)
 > Đọc `docs/ANIM-LIBRARY-TASKS-2026-10-23.md` và `docs/CHARACTER-TASKS-2026-10-23.md` trên `main` mới nhất. Bạn là agent
-> điều phối: **mỗi mã việc giao một subagent**, subagent dùng **model sol 5.6 bản nhẹ**. **Đợt 1 chạy song song 3 subagent:
-> K2b (đẩy thêm vào PR #68), K3, L1.** Đợt 2 (L2, L3, K5 song song) chỉ bắt đầu khi PR đợt 1 mà nó cần đã được merge. Mỗi
+> điều phối: **mỗi mã việc giao một subagent**, subagent dùng **model sol 5.6 bản nhẹ**. **Đợt 1 chạy song song: K2b (đẩy
+> thêm vào PR #68), K3, L1, W3.** Đợt 2 (L2, L3, K5, W1 song song; W2 sau L3) chỉ bắt đầu khi PR đợt 1 mà nó cần đã được merge. Mỗi
 > việc một nhánh `ai1/<mã>-…` + một PR, không sửa file ngoài vùng của việc, chạy build/typecheck/test trước PR, ghi kết quả
 > thật vào mô tả PR, **không tự merge**. Xong mỗi PR báo mã việc + số PR.

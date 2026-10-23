@@ -6,6 +6,7 @@
  *
  *   node --import tsx ../retarget/cli/minecraftBlockCharacters.ts --out <dir>      (from packages/builder)
  * writes `<role>.mc20.glb` per role and `minecraft20-actions.glb` (the 85 V9.12 Actions, GPL-3.0 like their source).
+ * `--skin ga=ga.png,den=den.png [--staff hero]` instead writes characters wearing 64x64 Minecraft player skins.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -42,6 +43,11 @@ function humanoid(c: { head: string; hair?: string; eyes: string; eyeWhite?: str
   return boxes
 }
 
+/** Rainbow staff of episode 15: seven 1x1 px segments held in the right hand, pointing forward. */
+function rainbowStaff(): Box[] {
+  return ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7FF', '#3A5BFF', '#AF52DE'].map((color, i) => box('low_right_arm', [-6.5, 12, -3 + i * 3], [-5.5, 13, i * 3], color))
+}
+
 const den = humanoid({ head: '#202024', eyes: '#3FA9FF', shirt: '#141418', sleeve: '#141418', hand: '#26262A', pants: '#141418', shoes: '#0E0E10' })
 const ga = humanoid({ head: '#F2D65C', eyes: '#151515', shirt: '#EFE6CC', sleeve: '#F2D65C', hand: '#F2D65C', pants: '#6B3E26', shoes: '#4A2A18' })
 const mystery = humanoid({ head: '#141414', eyes: '#141414', shirt: '#1A1A1A', sleeve: '#1A1A1A', hand: '#1A1A1A', pants: '#1A1A1A', shoes: '#101010' })
@@ -53,9 +59,7 @@ export const ROLES: Role[] = [
     box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8')] },
   // Herobrine with the rainbow staff of Tập 15: seven 1x1 px segments held in the right hand, pointing forward.
   { name: 'herobrine_staff', boxes: [...humanoid({ head: '#C9C9C9', hair: '#1F1F1F', eyes: '#FFFFFF', shirt: '#BEBEBE', sleeve: '#BEBEBE', hand: '#C9C9C9', pants: '#4A4A4A', shoes: '#333333' }),
-    box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8'),
-    ...['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7FF', '#3A5BFF', '#AF52DE'].map((color, i) =>
-      box('low_right_arm', [-6.5, 12, -3 + i * 3], [-5.5, 13, i * 3], color))] },
+    box('head', [-3, 26, 4], [-1, 27, 4.05], '#E86BB8'), box('head', [1, 26, 4], [3, 27, 4.05], '#E86BB8'), ...rainbowStaff()] },
   { name: 'steve', boxes: humanoid({ head: '#B98A68', hair: '#3B2A1E', eyes: '#4B3A8A', eyeWhite: '#F4F4F4', shirt: '#2C9AA0', sleeve: '#2C9AA0', hand: '#B98A68', pants: '#3542A0', shoes: '#4A4A4A' }) },
   { name: 'enderman', boxes: humanoid({ head: '#151515', eyes: '#C04BFF', shirt: '#151515', sleeve: '#151515', hand: '#151515', pants: '#151515', shoes: '#151515' }, 2, 8) },
   // Đen: charcoal body, blue eyes, black coat with a red scarf, red front trim and gold studs.
@@ -95,7 +99,7 @@ export class Writer {
     return this.json.bufferViews.length - 1
   }
   accessor(data: Float32Array | Uint16Array, type: string, componentType: number, target?: number, bounds = false) {
-    const size = { SCALAR: 1, VEC3: 3, VEC4: 4, MAT4: 16 }[type]!, count = data.length / size, extra: Record<string, unknown> = {}
+    const size = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }[type]!, count = data.length / size, extra: Record<string, unknown> = {}
     if (bounds) {
       const min = Array(size).fill(Infinity), max = Array(size).fill(-Infinity)
       for (let i = 0; i < data.length; i++) { min[i % size] = Math.min(min[i % size], data[i]!); max[i % size] = Math.max(max[i % size], data[i]!) }
@@ -184,6 +188,68 @@ export function characterGlb(root: Object3D, role: Role, size = 1): Uint8Array {
   return w.glb()
 }
 
+/**
+ * Minecraft skin layout (64x64 player skin, classic 4 px arms): part texture origin (u, v), size w x h x d px and the top of
+ * the whole limb in px, so each rig segment (upper/lower arm, upper/lower leg, torso halves) takes its own rows of the sides.
+ */
+const SKIN_PARTS = {
+  head: { u: 0, v: 0, w: 8, h: 8, d: 8, top: 32 }, body: { u: 16, v: 16, w: 8, h: 12, d: 4, top: 24 },
+  rarm: { u: 40, v: 16, w: 4, h: 12, d: 4, top: 24 }, larm: { u: 32, v: 48, w: 4, h: 12, d: 4, top: 24 },
+  rleg: { u: 0, v: 16, w: 4, h: 12, d: 4, top: 12 }, lleg: { u: 16, v: 48, w: 4, h: 12, d: 4, top: 12 },
+} as const
+const SKIN_BOXES: ReadonlyArray<readonly [string, keyof typeof SKIN_PARTS, [number, number, number], [number, number, number]]> = [
+  ['head', 'head', [-4, 24, -4], [4, 32, 4]], ['low_body', 'body', [-4, 18, -2], [4, 24, 2]], ['body', 'body', [-4, 12, -2], [4, 18, 2]],
+  ['left_arm', 'larm', [4, 18, -2], [8, 24, 2]], ['low_left_arm', 'larm', [4, 12, -2], [8, 18, 2]],
+  ['right_arm', 'rarm', [-8, 18, -2], [-4, 24, 2]], ['low_right_arm', 'rarm', [-8, 12, -2], [-4, 18, 2]],
+  ['left_leg', 'lleg', [0, 6, -2], [4, 12, 2]], ['low_left_leg', 'lleg', [0, 0, -2], [4, 6, 2]],
+  ['right_leg', 'rleg', [-4, 6, -2], [0, 12, 2]], ['low_leg_right', 'rleg', [-4, 0, -2], [0, 6, 2]],
+]
+
+/**
+ * Block character wearing a 64x64 Minecraft player skin (base layer, nearest filtering) on the same Minecraft20 skeleton as
+ * `characterGlb`, so Actions bound to these node names keep working. `extras` are flat-coloured boxes (e.g. the staff).
+ */
+export function skinnedCharacterGlb(root: Object3D, name: string, skinPng: Uint8Array, extras: readonly Box[] = [], size = 1): Uint8Array {
+  const w = new Writer(), { bones, index } = writeSkeleton(w, root, 'minecraft20', size)
+  const jointOf = new Map(bones.map((bone, i) => [bone.name, i]))
+  const ibm = new Float32Array(bones.length * 16)
+  bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
+  const position: number[] = [], normal: number[] = [], uv: number[] = [], joints: number[] = [], weights: number[] = [], indices: number[] = []
+  for (const [bone, part, [x0, y0, z0], [x1, y1, z1]] of SKIN_BOXES) {
+    const joint = jointOf.get(bone)
+    if (joint === undefined) throw new TypeError(`Unknown Minecraft20 bone ${bone}`)
+    const p = SKIN_PARTS[part], row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
+    // [normal, corners TL TR BR BL seen from outside, uv rect u0 v0 u1 v1 in skin px]; front +Z, character left +X
+    const faces: Array<[number[], number[][], number[]]> = [
+      [[0, 0, 1], [[x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]], [p.u + p.d, row0, p.u + p.d + p.w, row1]],
+      [[0, 0, -1], [[x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]], [p.u + 2 * p.d + p.w, row0, p.u + 2 * p.d + 2 * p.w, row1]],
+      [[-1, 0, 0], [[x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]], [p.u, row0, p.u + p.d, row1]],
+      [[1, 0, 0], [[x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]], [p.u + p.d + p.w, row0, p.u + 2 * p.d + p.w, row1]],
+      [[0, 1, 0], [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [p.u + p.d, p.v, p.u + p.d + p.w, p.v + p.d]],
+      [[0, -1, 0], [[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], [p.u + p.d + p.w, p.v, p.u + p.d + 2 * p.w, p.v + p.d]],
+    ]
+    for (const [n, corners, [u0, v0, u1, v1]] of faces) {
+      const base = position.length / 3, coords = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+      corners.forEach((corner, i) => { position.push(...corner.map((v) => v * PX)); normal.push(...n); uv.push(coords[i]![0]! / 64, coords[i]![1]! / 64); joints.push(joint, 0, 0, 0); weights.push(1, 0, 0, 0) })
+      indices.push(base, base + 3, base + 2, base, base + 2, base + 1)
+    }
+  }
+  w.json.images = [{ bufferView: w.view(skinPng), mimeType: 'image/png', name: `${name}_skin` }]
+  w.json.samplers = [{ magFilter: 9728, minFilter: 9728 }]
+  w.json.textures = [{ source: 0, sampler: 0 }]
+  w.json.materials = [{ name: `${name}_skin`, pbrMetallicRoughness: { baseColorTexture: { index: 0 }, metallicFactor: 0, roughnessFactor: 0.9 }, alphaMode: 'MASK', alphaCutoff: 0.5 }]
+  const primitives: any[] = [{ attributes: {
+    POSITION: w.accessor(new Float32Array(position), 'VEC3', 5126, 34962, true), NORMAL: w.accessor(new Float32Array(normal), 'VEC3', 5126, 34962),
+    TEXCOORD_0: w.accessor(new Float32Array(uv), 'VEC2', 5126, 34962), JOINTS_0: w.accessor(new Uint16Array(joints), 'VEC4', 5123, 34962),
+    WEIGHTS_0: w.accessor(new Float32Array(weights), 'VEC4', 5126, 34962) }, indices: w.accessor(new Uint16Array(indices), 'SCALAR', 5123, 34963), material: 0 }]
+  for (const item of extras) if (!jointOf.has(item.bone)) throw new TypeError(`Unknown Minecraft20 bone ${item.bone}`)
+  if (extras.length) primitives.push(...boxPrimitives(w, extras.map((item) => ({ ...item, joint: jointOf.get(item.bone)! })), PX))
+  w.json.meshes = [{ name, primitives }]
+  w.json.skins = [{ joints: bones.map((bone) => index.get(bone)!), inverseBindMatrices: w.accessor(ibm, 'MAT4', 5126) }]
+  w.json.nodes.push({ name: `${name}_mesh`, mesh: 0, skin: 0 }); w.json.scenes[0].nodes.push(w.json.nodes.length - 1)
+  return w.glb()
+}
+
 /** Skeleton (with a mesh-less skin) plus every Action (bone-local translation/rotation tracks, linear) on the same Minecraft20 node names. */
 export function actionsGlb(root: Object3D & { animations: AnimationClip[] }, size = 1): Uint8Array {
   const w = new Writer(), { bones, index } = writeSkeleton(w, root, 'minecraft20', size), byName = new Map(bones.map((bone) => [bone.name, index.get(bone)!]))
@@ -212,6 +278,18 @@ async function main(out: string, size = 1) {
   const actions = actionsGlb(root, size); writeFileSync(join(out, 'minecraft20-actions.glb'), actions); console.log(`wrote minecraft20-actions.glb ${actions.length} B, ${root.animations.length} Actions`)
 }
 
+/** `--skin name=skin.png,...` (`--staff name` adds the rainbow staff): `<name>.mc20.glb` wearing each 64x64 skin. */
+async function packSkins(out: string, skins: string, staff: string | undefined, size = 1) {
+  mkdirSync(out, { recursive: true })
+  const root = await loadMinecraft20()
+  for (const entry of skins.split(',')) {
+    const [name, png] = entry.split('=') as [string, string]
+    if (!name || !png) throw new TypeError('--skin expects name=skin.png[,name=skin.png]')
+    const bytes = skinnedCharacterGlb(root, name, readFileSync(png), name === staff ? rainbowStaff() : [], size)
+    writeFileSync(join(out, `${name}.mc20.glb`), bytes); console.log(`wrote ${name}.mc20.glb ${bytes.length} B`)
+  }
+}
+
 /** `--actions <file.bobj> --name <stem>`: pack another Minecraft20 Action library as `<stem>.mc20-actions.glb`. */
 async function packActions(out: string, file: string, name: string, size = 1) {
   mkdirSync(out, { recursive: true })
@@ -220,8 +298,8 @@ async function packActions(out: string, file: string, name: string, size = 1) {
 }
 
 if (process.argv[1]?.endsWith('minecraftBlockCharacters.ts')) {
-  const { values } = parseArgs({ options: { out: { type: 'string' }, actions: { type: 'string' }, name: { type: 'string' }, size: { type: 'string' } } })
+  const { values } = parseArgs({ options: { out: { type: 'string' }, actions: { type: 'string' }, name: { type: 'string' }, size: { type: 'string' }, skin: { type: 'string' }, staff: { type: 'string' } } })
   if (!values.out) throw new TypeError('--out <dir> is required')
   const size = Number(values.size ?? 1)
-  void (values.actions ? packActions(values.out, values.actions, values.name ?? 'library', size) : main(values.out, size))
+  void (values.skin ? packSkins(values.out, values.skin, values.staff, size) : values.actions ? packActions(values.out, values.actions, values.name ?? 'library', size) : main(values.out, size))
 }
