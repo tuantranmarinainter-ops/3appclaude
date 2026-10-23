@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { safeWorkspaceUrl, workspaceHref, withUnified } from './workspaceNavigation.ts'
+import { safeWorkspaceUrl, workspaceHref, withUnified } from './workspaceNavigationModel.ts'
 
 test('keeps the unified project when moving between local and external workspaces', () => {
   assert.equal(workspaceHref('scene', {}, 'project 1'), '/?unified=project+1')

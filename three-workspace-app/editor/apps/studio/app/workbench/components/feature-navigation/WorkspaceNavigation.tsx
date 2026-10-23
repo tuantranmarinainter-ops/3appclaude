@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { WORKSPACES, workspaceHref, type WorkspaceId, type WorkspaceUrls } from './workspaceNavigation'
+import { WORKSPACES, workspaceHref, type WorkspaceId, type WorkspaceUrls } from './workspaceNavigationModel'
 import './workspace-navigation.css'
 
 const missingHint: Record<Exclude<WorkspaceId, 'scene' | 'library'>, string> = {
