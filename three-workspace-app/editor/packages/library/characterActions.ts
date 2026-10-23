@@ -118,9 +118,11 @@ function sourceLicense(root: string, action: IndexedAction): LibraryLicense {
 
 function sourceManifestContract(root: string, action: IndexedAction): NewVersion['manifestContract'] {
   const manifest = readJsonFile<NormalizedManifest>(safeChild(root, 'packs', action.packId, 'anim.manifest.json'))
-  return manifest.extraBoneMode === 'scene-nodes'
-    ? { version: manifest.version, extraBoneMode: manifest.extraBoneMode, extraBones: manifest.extraBones }
-    : { version: manifest.version }
+  return {
+    version: manifest.version,
+    ...(manifest.extraBones === undefined ? {} : { extraBones: manifest.extraBones }),
+    ...(manifest.extraBoneMode === undefined ? {} : { extraBoneMode: manifest.extraBoneMode }),
+  }
 }
 
 function inspectEditedGlb(root: string, path: string, rig: string, manifestContract?: NewVersion['manifestContract']): { durationSeconds: number } {

@@ -30,7 +30,7 @@ const sceneExtras = [
   { name: 'X_Spine2_Wing_Bone', parent: 'Spine2', rawSourceName: 'Wing_Bone', rest: { position: [0.2, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] } },
 ]
 
-function veritySceneGlb(): Buffer {
+function veritySceneGlb(skinnedExtras: string[] = []): Buffer {
   const byName = new Map(MIXAMO65_BONE_PARENTS.map(([name], index) => [name, index]))
   const nodes = MIXAMO65_BONE_PARENTS.map(([name]) => ({ name, children: [] as number[], translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1] }))
   for (const [name, parent] of MIXAMO65_BONE_PARENTS) if (parent) nodes[byName.get(parent)!]!.children.push(byName.get(name)!)
@@ -40,7 +40,9 @@ function veritySceneGlb(): Buffer {
     nodes[byName.get(extra.parent)!]!.children.push(index)
   }
   const jawIndex = nodes.findIndex((node) => node.name === 'X_Head_Jaw')
-  const gltf = { asset: { version: '2.0' }, nodes, skins: [{ joints: MIXAMO65_BONE_PARENTS.map((_, index) => index) }],
+  const gltf = { asset: { version: '2.0' }, nodes, skins: [{ joints: [
+    ...MIXAMO65_BONE_PARENTS.map((_, index) => index), ...skinnedExtras.map((name) => nodes.findIndex((node) => node.name === name)),
+  ] }],
     accessors: [{ max: [1.5] }], animations: [{ samplers: [{ input: 0 }, { input: 0 }], channels: [
       { sampler: 0, target: { node: jawIndex, path: 'translation' } }, { sampler: 1, target: { node: jawIndex, path: 'rotation' } },
     ] }] }
@@ -50,9 +52,9 @@ function veritySceneGlb(): Buffer {
   return Buffer.concat([header, padded])
 }
 
-function normalizedVeritySource(parent: string, name: string, overrides: Record<string, unknown> = {}): string {
+function normalizedVeritySource(parent: string, name: string, overrides: Record<string, unknown> = {}, glb = veritySceneGlb()): string {
   const directory = join(parent, name); mkdirSync(directory)
-  const glb = veritySceneGlb(), sha = createHash('sha256').update(glb).digest('hex')
+  const sha = createHash('sha256').update(glb).digest('hex')
   writeFileSync(join(directory, `${name}.glb`), glb); writeJsonAtomic(join(directory, `${name}.report.json`), { status: 'PASS' })
   writeJsonAtomic(join(directory, `${name}.manifest.json`), { version: '1.1.0', rig: 'mixamo65+verity', extraBoneMode: 'scene-nodes',
     extraBones: sceneExtras, glbSha256: sha, actions: [{ uuid: '20000000-0000-7000-8000-000000000001', name: 'Verity idle', durationSeconds: 1.5, fps: 30, glbAnimationIndex: 0 }],
@@ -185,4 +187,17 @@ test('imports the explicit Verity scene-node contract and preserves it through d
   assert.throws(() => importPack({ root, sourceDirectory: wrongRig }), /scene-nodes is only supported/)
   const wrongDeclaration = normalizedVeritySource(temporary, 'verity-wrong-node', { extraBones: [{ ...sceneExtras[0], parent: 'Spine2' }, sceneExtras[1]] })
   assert.throws(() => importPack({ root, sourceDirectory: wrongDeclaration }), /metadata|does not match GLB/)
+
+  const legacyTailSource = normalizedVeritySource(temporary, 'legacy-tail', {
+    rig: 'mixamo65+tail', extraBoneMode: undefined, extraBones: [sceneExtras[0]],
+    actions: [{ uuid: '20000000-0000-8000-8000-000000000002', name: 'Tail idle', durationSeconds: 1.5, fps: 30, glbAnimationIndex: 0 }],
+  }, veritySceneGlb(['X_Head_Jaw']))
+  const legacyTail = importPack({ root, sourceDirectory: legacyTailSource })
+  const tailCharacter: CharacterMetadata = { kind: 'character', charId: 'tail', libraryVersion: '1.1.0', name: 'tail', rig: 'mixamo65+tail',
+    createdAt: '2026-10-23T00:00:00.000Z', license: { id: 'test', commitable: false }, model: 'model.glb' }
+  mkdirSync(join(root, 'characters', 'tail')); writeJsonAtomic(join(root, 'characters', 'tail', 'meta.json'), tailCharacter)
+  const tailDraft = addDraftToCharacter({ root, charId: 'tail', actionUuid: legacyTail.metadata.actions[0]!.uuid })
+  const tailManifest = readJsonFile<{ version: string; extraBoneMode?: string; extraBones?: unknown[] }>(join(root, 'packs', tailDraft.packId, 'anim.manifest.json'))
+  assert.equal(tailManifest.version, '1.1.0'); assert.equal(tailManifest.extraBoneMode, undefined)
+  assert.deepEqual(tailManifest.extraBones, [sceneExtras[0]])
 })
