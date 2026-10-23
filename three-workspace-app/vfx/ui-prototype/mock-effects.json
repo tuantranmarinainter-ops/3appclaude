@@ -1,0 +1,9 @@
+[
+  {"id":"arcane-ring","name":"Vòng phép Tinh Vân","type":"Vòng phép","colors":["xanh","tím"],"duration":2.4,"loop":true,"source":"Effekseer Sample","license":"CC0","gameVerified":true,"renderer":"sprite","accent":"#7c6cff"},
+  {"id":"ember-aura","name":"Hào quang Hổ Phách","type":"Hào quang","colors":["cam","vàng"],"duration":3.2,"loop":true,"source":"Nội bộ","license":"CC0","gameVerified":true,"renderer":"sprite","accent":"#ff9e45"},
+  {"id":"frost-slash","name":"Vệt chém Băng Lam","type":"Vệt chém","colors":["xanh","trắng"],"duration":0.8,"loop":false,"source":"Effekseer Sample","license":"CC0","gameVerified":false,"renderer":"effekseer","accent":"#58c8ff"},
+  {"id":"solar-shot","name":"Đạn Nhật Quang","type":"Đạn","colors":["vàng","trắng"],"duration":1.4,"loop":false,"source":"Kenney Particle Pack","license":"CC0","gameVerified":true,"renderer":"sprite","accent":"#ffe26a"},
+  {"id":"void-impact","name":"Va chạm Hư Không","type":"Va chạm / Nổ","colors":["tím","đen"],"duration":1.1,"loop":false,"source":"Nội bộ","license":"CC0","gameVerified":false,"renderer":"cpu","accent":"#bd64ff"},
+  {"id":"jade-shield","name":"Khiên Ngọc Lục","type":"Khiên","colors":["xanh lá","trắng"],"duration":4,"loop":true,"source":"Effekseer Sample","license":"CC0","gameVerified":true,"renderer":"sprite","accent":"#54dda1"},
+  {"id":"storm-vortex","name":"Lốc Tố Phong","type":"Lốc","colors":["xanh","xám"],"duration":2.8,"loop":true,"source":"Nội bộ","license":"CC0","gameVerified":false,"renderer":"effekseer","accent":"#70a8ff"}
+]
