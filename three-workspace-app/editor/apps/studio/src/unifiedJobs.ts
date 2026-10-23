@@ -18,7 +18,7 @@ import { filmAudioPackage } from './audioMix'
 import { getAction, resolveCharacter } from '../../../packages/library/index'
 import { resolveLibraryPath } from '../../../packages/library/index'
 import { Matrix4 } from 'three'
-import { buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
+import { bobjModelToGlb, buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -107,7 +107,24 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
     .map((clip) => snapshot.motions[clip.motion.assetId]!.id))]
   if (!actionUuids.length && typeof metadata.libraryDefaultAction === 'string') actionUuids.push(metadata.libraryDefaultAction)
   const sidecars: Buffer[] = []
+  const nativeNames = [...parseBobjActions(bobj).keys()]
+  let nativeGlbHash: string | undefined
   for (const actionUuid of actionUuids) {
+    const motion = snapshot.motions[actionUuid]
+    if (motion?.assetId === model.assetId) {
+      // L3 imports the complete authoritative base GLB, including its native clips.
+      // UUIDs alone and matching names do not prove that a project motion is native.
+      nativeGlbHash ??= digest(Buffer.from(bobjModelToGlb(parseBobjModel(bobj)).bytes))
+      const motionMetadata = snapshot.extensions?.retargetMotionMetadata?.[actionUuid] as { name?: unknown; clipIndex?: unknown } | undefined
+      const index = motionMetadata?.clipIndex
+      const clips = snapshot.scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === model.nodeId && clip.motion.assetId === actionUuid)
+      if (motion.edit !== null || motion.derivedFrom !== null || motion.sourceClip.sha256 !== nativeGlbHash || model.source.sha256 !== nativeGlbHash ||
+          typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0 || index >= nativeNames.length ||
+          motionMetadata?.name !== nativeNames[index] || clips.some((clip) => clip.motion.clipIndex !== index)) {
+        throw new TypeError(`Character ${model.characterId} native action identity does not match its original BOBJ: ${actionUuid}`)
+      }
+      continue
+    }
     let selected
     try { selected = getAction({ root, actionUuid }) } catch { throw new TypeError(`Character ${model.characterId} action is missing from the library: ${actionUuid}`) }
     const sidecar = path.join(path.dirname(selected.glbPath), 'anim.original.bbs.bobj')
@@ -147,7 +164,7 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
     bones: armature.bones.map((bone) => ({ name: bone.name, parent: bone.parent,
       bobjRestMatrixRowMajor: new Matrix4().fromArray([...bone.restWorld]).transpose().toArray() })),
     actions: actionNames, textureRequired: files.length > 1, files,
-    ...(character.baseModel.rig === 'verity' ? { originalRig: { bobj, wingAction } } : {}) }
+    originalRig: { bobj, wingAction, ...(character.baseModel.rig !== 'verity' ? { nativeOnly: true } : {}) } }
 }
 
 /** Apply a library skin after the shared GLB conversion, keeping the converted BOBJ bytes shared. */

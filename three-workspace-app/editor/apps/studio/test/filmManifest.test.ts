@@ -134,3 +134,68 @@ test('original named pose keys read back within 1e-4 native units at four noncon
   assert.ok(maxAngleDegrees <= 2, `native hip direction error ${maxAngleDegrees}`)
   t.diagnostic(`four ticks: position=${maxError} native units; hip direction=${maxAngleDegrees} degrees`)
 })
+
+test('L3 native topology keeps moving COG samples after removing actor and BOBJ wrapper transforms', () => {
+  const row = (y: number) => `1 0 0 0 0 1 0 ${y} 0 0 1 0 0 0 0 1`
+  const bobj = `arm_name verity.mdl\narm_bone Root 0 0 0 ${row(0)}\narm_bone COG Root 0 1 0 ${row(1)}\narm_bone Jaw COG 0 2 0 ${row(2)}\narm_bone Wing.Bone COG 0 2 0 ${row(2)}\no Body\nv 0 0 0\nvw COG 1\nan idle\nao Root\nag rotation 1\nkf 0 1.5707963267948966 LINEAR 0 1.5707963267948966 0 1.5707963267948966\n`
+  const source = structuredClone(input) as any
+  source.models[0].sourceBones = ['bobj-model', 'Root', 'COG', 'Jaw', 'Wing_Bone'].map((name) => ({ name }))
+  const wrapper = new Matrix4().makeScale(0.4915394, 0.4915394, 0.4915394)
+  const actor = new Matrix4().makeTranslation(4, 2, -3).multiply(new Matrix4().makeRotationY(0.5))
+  source.frames = [0, 3, 7, 11].map((tick) => {
+    const root = new Matrix4().makeRotationY(Math.PI / 2 + tick / 10)
+    const cog = root.clone().multiply(new Matrix4().makeTranslation(tick / 5, 1, 0))
+    const prefix = actor.clone().multiply(wrapper)
+    return { tick, skeletons: [{ nodeId: 'actor', actorWorldMatrix: actor.toArray(), bones: [
+      { name: 'bobj-model', worldMatrix: prefix.toArray() },
+      { name: 'Root', worldMatrix: prefix.clone().multiply(root).toArray() },
+      { name: 'COG', worldMatrix: prefix.clone().multiply(cog).toArray() },
+      { name: 'Wing_Bone', worldMatrix: prefix.clone().multiply(cog).multiply(new Matrix4().makeTranslation(0, 1, 0)).multiply(new Matrix4().makeRotationZ(tick / 5)).toArray() },
+      { name: 'Jaw', worldMatrix: prefix.clone().multiply(cog).multiply(new Matrix4().makeTranslation(0, 1, 0)).toArray() },
+    ] }] }
+  })
+  const tracks = projectOriginalVerityPoseTracks(source, 0, { bobj })
+  assert.deepEqual(tracks.map((track) => track.boneName), ['Root', 'COG', 'Jaw', 'Wing.Bone'])
+  const cog = tracks[1]!
+  assert.deepEqual(cog.keyframes.map((key) => key.tick), [0, 3, 7, 11])
+  for (const key of cog.keyframes) {
+    assert.ok(Math.abs(key.t[0] - key.tick / 5) < 1e-10, `moving native COG at ${key.tick}: ${key.t}`)
+    assert.ok(Math.abs(key.t[1]) < 1e-10 && Math.abs(key.t[2]) < 1e-10)
+  }
+  assert.ok(Math.abs(tracks[0]!.keyframes.at(-1)!.r[1] - tracks[0]!.keyframes[0]!.r[1]) > 0.5, 'sampled Root differs from idle')
+  assert.ok(tracks[3]!.keyframes.at(-1)!.r.some((value) => Math.abs(value) > 1), 'sampled wing differs from idle')
+  assert.ok(cog.keyframes.at(-1)!.t[0] > 2, 'native motion must not collapse to rest')
+  assert.ok(tracks[2]!.keyframes.every((key) => [...key.t, ...key.r].every((value) => Math.abs(value) < 1e-10)))
+  source.durationTicks = 3
+  source.frames.forEach((frame: { tick: number }, index: number) => { frame.tick = index })
+  const nativeProfile: ConvertedFilmModelProfile = { ...profile, originalRig: { bobj }, bones: ['Root', 'COG', 'Jaw', 'Wing.Bone'].map((name) => ({ name, parent: name === 'Root' ? null : name === 'COG' ? 'Root' : 'COG', bobjRestMatrixRowMajor: identity })) }
+  const manifest = buildFilmExportManifest(source, new Map([['character', nativeProfile]]), 'native-samples')
+  assert.equal(manifest.actors[0]!.animationKeyframes, undefined, 'sampled native Root and wings must not layer over idle')
+})
+
+test('Minecraft20 native BOBJ removes the GLB wrapper and exports exactly 20 moving native tracks without an idle action', () => {
+  const matrix = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1'
+  const names = ['low_body', ...Array.from({ length: 19 }, (_, i) => `bone_${i}`)]
+  const bobj = ['arm_name minecraft20', ...names.map((name, i) => `arm_bone ${name}${i ? ' low_body' : ''} 0 1 0 ${matrix}`),
+    'o body', 'v 0 -2 0', 'vw low_body 1', 'v 1 -2 0', 'vw low_body 1', 'v 0 -2 1', 'vw low_body 1', 'f 1 2 3'].join('\n') + '\n'
+  const source = structuredClone(input) as any
+  source.models[0].sourceBones = ['bobj-model', ...names].map((name) => ({ name }))
+  const wrapper = new Matrix4().makeTranslation(0, 2, 0)
+  source.frames = [0, 1, 2].map((tick) => ({ tick, skeletons: [{ nodeId: 'actor', actorWorldMatrix: identity,
+    bones: [{ name: 'bobj-model', worldMatrix: wrapper.toArray() }, ...names.map((name) => ({ name,
+      worldMatrix: wrapper.clone().multiply(new Matrix4().makeTranslation(tick / 4, 0, 0)).toArray() }))] }] }))
+  const tracks = projectOriginalVerityPoseTracks(source, 0, { bobj, nativeOnly: true })
+  assert.equal(tracks.length, 20)
+  assert.deepEqual(tracks.map((track) => track.boneName), names)
+  for (const key of tracks[0]!.keyframes) {
+    assert.ok(Math.abs(key.t[0] - key.tick / 4) < 1e-10)
+    assert.ok(Math.abs(key.t[1]) < 1e-10, 'wrapper floor translation must be removed once')
+  }
+  assert.ok(tracks.slice(1).every((track) => track.keyframes.every((key) => key.t.every((value) => Math.abs(value) < 1e-10))))
+  source.durationTicks = 2
+  const nativeProfile: ConvertedFilmModelProfile = { ...profile, originalRig: { bobj, nativeOnly: true }, bones: names.map((name, index) => ({ name, parent: index ? 'low_body' : null, bobjRestMatrixRowMajor: identity })) }
+  const manifest = buildFilmExportManifest(source, new Map([['character', nativeProfile]]), 'native-minecraft')
+  assert.equal(manifest.models[0]!.bones.length, 20)
+  assert.equal(manifest.actors[0]!.poseTracks.length, 20)
+  assert.equal(manifest.actors[0]!.animationKeyframes, undefined)
+})

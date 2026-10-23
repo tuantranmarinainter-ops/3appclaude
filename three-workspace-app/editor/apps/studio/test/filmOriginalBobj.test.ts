@@ -33,6 +33,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { registerBaseModel, createCharacter } from '../../../packages/library/index.ts'
+import { bobjModelToGlb, parseBobjModel } from '../../../packages/retarget/src/bobjModel.ts'
 import { stageConvertedLibrarySkinProfile, stageOriginalLibraryBobjProfile } from '../src/unifiedJobs.ts'
 
 test('stages library BOBJ behind a GLB asset, keeps bytes and blocks visible missing textures', async (t) => {
@@ -87,6 +88,21 @@ test('stages library BOBJ behind a GLB asset, keeps bytes and blocks visible mis
   const animatedBytes = readFileSync(animated!.files[0]!.sourcePath)
   assert.deepEqual(animatedBytes.subarray(0, original.length), original)
   assert.deepEqual(animated!.actions, ['idle', 'character_wave'])
+  // Actual L3 convention: native base clips are project Motions, not library actions.
+  const nativeGlb = Buffer.from(bobjModelToGlb(parseBobjModel(original.toString())).bytes)
+  writeFileSync(path.join(folder, 'model.glb'), nativeGlb)
+  Object.assign(model.source, { sha256: sha(nativeGlb), byteLength: nativeGlb.length })
+  const nativeUuid = 'df7ac5ff-0000-4000-8000-000000000002'
+  Object.assign(snapshot, { motions: { [nativeUuid]: { id: nativeUuid, assetId: 'asset', sourceClip: { sha256: sha(nativeGlb) }, edit: null, derivedFrom: null } },
+    extensions: { retargetMotionMetadata: { [nativeUuid]: { name: 'idle', clipIndex: 0 } } } })
+  Object.assign(snapshot.scene.content.timeline.animation, { motionClips: [{ target: { nodeId: 'actor' }, motion: { assetId: nativeUuid, clipIndex: 0 } }] })
+  const native = await stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'native-project-action'))
+  assert.deepEqual(readFileSync(native!.files[0]!.sourcePath), original, 'native project action needs no appended sidecar')
+  const nativeMetadata = (snapshot as unknown as { extensions: { retargetMotionMetadata: Record<string, { name: string; clipIndex: number }> } }).extensions.retargetMotionMetadata[nativeUuid]!
+  nativeMetadata.clipIndex = 1
+  await assert.rejects(stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'wrong-index')), /native action identity/)
+  nativeMetadata.clipIndex = 0; nativeMetadata.name = 'forged'
+  await assert.rejects(stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'wrong-name')), /native action identity/)
 })
 
 test('rejects different selected actions that would overwrite the same original action name', () => {

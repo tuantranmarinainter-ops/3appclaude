@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 import { evaluateBobjAction, MIXAMO_TO_VERITY, parseBobjActions, parseBobjArmature, projectVerityFrame, VERITY_METRES_PER_UNIT } from '@bbs/retarget'
-import { buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
+import { bobjModelNodeName, buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 import { bakeProjectFilmPoseTracks } from './unifiedFilmSampling'
 
 type FilmInput = Awaited<ReturnType<typeof import('./unifiedFilmSampling').sampleProjectFilm>>
@@ -14,8 +14,8 @@ export interface ConvertedFilmModelProfile {
   actions: string[]
   textureRequired: boolean
   files: Array<{ sourcePath: string; targetPath: string; sha256: string }>
-  /** In-memory context for an original Verity BOBJ. Never serialized into the worker manifest. */
-  originalRig?: { bobj: string; wingAction?: string }
+  /** In-memory context for an original library BOBJ. Never serialized into the worker manifest. */
+  originalRig?: { bobj: string; wingAction?: string; nativeOnly?: boolean }
 }
 
 const HASH = /^[a-f0-9]{64}$/
@@ -88,17 +88,17 @@ function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][n
 
 type PoseKey = { tick: number; t: [number, number, number]; s: [number, number, number]; r: [number, number, number]; r2: [0, 0, 0]; fix: 0; color: -1; lighting: 0 }
 
-/** Project normalized Mixamo samples back through the original 84/101-bone Verity hierarchy. */
-export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string }) {
+/** Bake native BOBJ samples directly, or invert canonical Mixamo samples through the original Verity hierarchy. */
+export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean }) {
   const model = input.models[modelIndex]!
   const armature = parseBobjArmature(original.bobj)
   const modelReport = buildBobjModel(parseBobjModel(original.bobj)).report
   const actions = parseBobjActions(original.bobj)
   const nativeAction = actions.get(original.wingAction || 'idle') ?? actions.values().next().value
-  if (!nativeAction) fail(`Original BOBJ has no native action for Character ${model.characterId}`)
+  if (!nativeAction && !original.nativeOnly) fail(`Original BOBJ has no native action for Character ${model.characterId}`)
   const restWorld = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restWorld])]))
   const restLocal = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restLocal])]))
-  const nativeAtZero = new Map(evaluateBobjAction(armature, nativeAction, 0).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])]))
+  const nativeAtZero = new Map(nativeAction ? evaluateBobjAction(armature, nativeAction, 0).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])] as const) : restWorld)
   const rootName = armature.bones.find((bone) => bone.parent === null)?.name
   if (!rootName) fail('Original BOBJ has no root bone')
   const rootLocal = nativeAtZero.get(rootName)!
@@ -107,14 +107,29 @@ export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: nu
   const facing = side.lengthSq() > 1e-12 ? new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -Math.atan2(-side.z, side.x)) : new Quaternion()
   const sourceFacingInverse = facing.clone().invert()
   const groundUnits = modelReport.floorNative
+  const sourceNames = new Set(model.sourceBones.map((bone) => bone.name))
+  const nativeTopology = armature.bones.every((bone) => sourceNames.has(bobjModelNodeName(bone.name)))
+  if (original.nativeOnly && !nativeTopology) fail(`Film Character ${model.characterId} must retain its original BOBJ topology`)
+  const wrapperInverse = new Matrix4().makeScale(1 / modelReport.unitMeters, 1 / modelReport.unitMeters, 1 / modelReport.unitMeters)
+    .multiply(new Matrix4().makeTranslation(0, groundUnits * modelReport.unitMeters, 0))
   let duration = 1
-  for (const group of nativeAction.groups.values()) for (const channel of group.channels) for (const key of channel.keys) duration = Math.max(duration, key.t)
+  for (const group of nativeAction?.groups.values() ?? []) for (const channel of group.channels) for (const key of channel.keys) duration = Math.max(duration, key.t)
   const projected = input.frames.map((frame) => {
     const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
     if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
     const actorInverse = new Matrix4().fromArray(sample.actorWorldMatrix).invert()
+    if (nativeTopology) {
+      const sampled = new Map(sample.bones.map((bone) => [bone.name, bone]))
+      const worlds = new Map(armature.bones.map((bone) => {
+        const value = sampled.get(bobjModelNodeName(bone.name))
+        if (!value) fail(`Film sample is missing original bone ${bone.name}`)
+        return [bone.name, wrapperInverse.clone().multiply(actorInverse).multiply(new Matrix4().fromArray(value.worldMatrix))] as const
+      }))
+      return new Map(armature.bones.map((bone) => [bone.name, bone.name === 'Jaw' ? restLocal.get(bone.name)!.clone() :
+        bone.parent ? worlds.get(bone.parent)!.clone().invert().multiply(worlds.get(bone.name)!) : worlds.get(bone.name)!]))
+    }
     const solverWorlds = new Map(sample.bones.map((bone) => [bone.name, actorInverse.clone().multiply(new Matrix4().fromArray(bone.worldMatrix))]))
-    const native = new Map(evaluateBobjAction(armature, nativeAction, frame.tick % duration).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])]))
+    const native = new Map(evaluateBobjAction(armature, nativeAction!, frame.tick % duration).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])]))
     const wingLocals = new Map<string, Matrix4>()
     for (const bone of armature.bones.filter((item) => item.name.startsWith('Wing'))) {
       const world = native.get(bone.name)!, parent = bone.parent ? native.get(bone.parent) : undefined
@@ -127,7 +142,7 @@ export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: nu
   const prior = new Map<string, Euler>()
   const trackedOriginalNames = new Set(Object.values(MIXAMO_TO_VERITY))
   trackedOriginalNames.add('Jaw')
-  return armature.bones.filter((bone) => trackedOriginalNames.has(bone.name))
+  return armature.bones.filter((bone) => nativeTopology ? !/^camera(?:_|$)/i.test(bone.name) : trackedOriginalNames.has(bone.name))
     .map((bone) => ({ boneName: bone.name, keyframes: projected.map((locals, index): PoseKey => {
       const tick = input.frames[index]!.tick
       const delta = bone.restLocal ? new Matrix4().fromArray([...bone.restLocal]).invert().multiply(locals.get(bone.name)!) : locals.get(bone.name)!
@@ -187,9 +202,10 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
       return { ...transform, yaw: transform.yaw + facingOffset }
     })
     const original = profile.originalRig
+    const nativeTopology = original && parseBobjArmature(original.bobj).bones.every((bone) => model.sourceBones.some((source) => source.name === bobjModelNodeName(bone.name)))
     const poseTracks = original ? projectOriginalVerityPoseTracks(input, modelIndex, original) : bakedByCharacter.get(model.characterId)!.poseTracks
     return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples, poseTracks,
-      ...(original ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] } : {}) }
+      ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] } : {}) }
   })
   return {
     schemaVersion: 1 as const, targetVersion: '2.4' as const, projectId: input.projectId,
