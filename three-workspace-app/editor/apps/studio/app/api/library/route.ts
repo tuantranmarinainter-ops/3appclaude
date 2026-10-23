@@ -16,7 +16,7 @@ export async function GET(request: Request): Promise<Response> {
     const actionUuid = url.searchParams.get('actionUuid')
     if (actionUuid) {
       const action = getAction({ actionUuid })
-      return Response.json({ action: { ...action, glbPath: undefined, manifestPath: undefined, coverPath: undefined }, cover: action.coverPath ? `/api/library/cover/${encodeURIComponent(actionUuid)}` : null }, { headers: { 'Cache-Control': 'no-store' } })
+      return Response.json({ action: { ...action, glbPath: undefined, manifestPath: undefined, coverPath: undefined, previewPath: undefined }, cover: action.coverPath ? `/api/library/cover/${encodeURIComponent(actionUuid)}` : null }, { headers: { 'Cache-Control': 'no-store' } })
     }
     if (url.searchParams.get('characters') === '1') {
       const builtin = [

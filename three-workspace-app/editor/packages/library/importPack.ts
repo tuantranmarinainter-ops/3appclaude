@@ -338,12 +338,16 @@ function registerRigUnlocked(root: string, rigId: string, bones: RigBone[]): voi
 
 /** Change searchable metadata only; immutable GLB and App 1 manifest bytes are preserved. */
 export function updateActionMetadata(options: {
-  libraryRoot: string; actionUuid: string; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; name?: string; nameVi?: string; sourceName?: string
+  libraryRoot: string; actionUuid: string; preview?: ActionMetadata['preview'] | null; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; name?: string; nameVi?: string; sourceName?: string
 }): MotionPackMetadata {
   if (!UUID.test(options.actionUuid)) throw new Error('Invalid action UUID')
   if (options.category !== undefined && !ACTION_CATEGORIES.includes(options.category)) throw new Error(`Unknown action category: ${options.category}`)
   if (options.tags?.some((tag) => typeof tag !== 'string' || !tag.trim())) throw new Error('Tags must be non-empty strings')
   if (options.parentUuid !== undefined && options.parentUuid !== null && !UUID.test(options.parentUuid)) throw new Error('Invalid parent action UUID')
+  if (options.preview !== undefined && options.preview !== null) {
+    validateRelativeAssetPath(options.preview.file)
+    if (!options.preview.file.startsWith('previews/') || !options.preview.file.endsWith('.webm') || !/^[a-f0-9]{64}$/i.test(options.preview.sha256) || options.preview.width !== 320 || options.preview.height !== 320 || options.preview.fps !== 15 || !Number.isFinite(options.preview.seconds) || options.preview.seconds <= 0 || options.preview.seconds > 3) throw new Error('Invalid library preview metadata')
+  }
   if (options.nameVi !== undefined && typeof options.nameVi !== 'string') throw new Error('Vietnamese action name must be a string')
   if (options.name !== undefined && (typeof options.name !== 'string' || !options.name.trim())) throw new Error('English action name must be non-empty')
   if (options.sourceName !== undefined && typeof options.sourceName !== 'string') throw new Error('sourceName must be a string')
@@ -357,6 +361,7 @@ export function updateActionMetadata(options: {
       const metadata = readJsonFile<MotionPackMetadata>(metaPath)
       const action = metadata.actions.find((item) => item.uuid.toLowerCase() === options.actionUuid.toLowerCase())
       if (!action) continue
+      if (options.preview !== undefined) { if (options.preview === null) delete action.preview; else action.preview = { ...options.preview } }
       if (options.category !== undefined) action.category = options.category
       if (options.tags !== undefined) action.tags = [...new Set(options.tags.map((tag) => tag.trim()))]
       if (options.loop !== undefined) action.loop = options.loop

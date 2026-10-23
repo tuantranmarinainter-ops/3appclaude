@@ -13,6 +13,7 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
     let renderer: import('three').WebGLRenderer | undefined
     let observer: ResizeObserver | undefined
     let cleanup: (() => void) | undefined
+    let removePointerListeners: (() => void) | undefined
     setError('')
     void (async () => {
       try {
@@ -45,6 +46,16 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
         const span = Math.max(size.x, size.y, size.z)
         camera.position.set(center.x + span * 1.8, center.y + span * 0.7, center.z + span * 2.2)
         camera.lookAt(center)
+        const target = center.clone(), spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target))
+        const syncCamera = () => { camera.position.copy(target).add(new THREE.Vector3().setFromSpherical(spherical)); camera.lookAt(target) }
+        let pointerX = 0, pointerY = 0, activeButton = -1
+        const canvas = renderer.domElement; canvas.tabIndex = 0; canvas.style.cursor = 'grab'
+        const onDown = (event: PointerEvent) => { activeButton = event.button; pointerX = event.clientX; pointerY = event.clientY; canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing' }
+        const onMove = (event: PointerEvent) => { if (activeButton < 0) return; const dx = event.clientX - pointerX, dy = event.clientY - pointerY; pointerX = event.clientX; pointerY = event.clientY; if (activeButton === 0) { spherical.theta -= dx * 0.006; spherical.phi = Math.max(0.12, Math.min(Math.PI - 0.12, spherical.phi + dy * 0.006)) } else if (activeButton === 1) { const scale = spherical.radius * 0.0015; target.add(new THREE.Vector3(-dx * scale, dy * scale, 0).applyQuaternion(camera.quaternion)) }; syncCamera() }
+        const onUp = () => { activeButton = -1; canvas.style.cursor = 'grab' }
+        const onWheel = (event: WheelEvent) => { event.preventDefault(); spherical.radius = Math.max(span * 0.4, Math.min(span * 12, spherical.radius * Math.exp(event.deltaY * 0.001))); syncCamera() }
+        canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointermove', onMove); canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onUp); canvas.addEventListener('wheel', onWheel, { passive: false })
+        removePointerListeners = () => { canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onUp); canvas.removeEventListener('wheel', onWheel) }
         camera.near = Math.max(0.001, span / 1000); camera.far = span * 100; camera.updateProjectionMatrix()
         const clip = action.animations[animationIndex]
         if (!clip) throw new Error('Action animation clip is missing from its GLB')
@@ -71,7 +82,7 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
         cleanup = () => { mixer.stopAllAction(); scene.clear(); renderer?.dispose(); renderer?.domElement.remove() }
       } catch (cause) { if (!disposed) setError(cause instanceof Error ? cause.message : String(cause)) }
     })()
-    return () => { disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); cleanup?.(); renderer?.dispose(); element.replaceChildren() }
+    return () => { disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); removePointerListeners?.(); cleanup?.(); renderer?.dispose(); element.replaceChildren() }
   }, [animationIndex, characterUrl, uuid])
   return <div ref={host} aria-label="Animation preview" style={{ width: '100%', height: 230, background: '#15191f', display: 'grid', placeItems: 'center' }}>{error && <span role="status">{error}</span>}</div>
 }

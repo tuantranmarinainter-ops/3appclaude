@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } fro
 import { basename, extname } from 'node:path'
 import { importNormalizedPack, updateActionMetadata, type ImportPackOptions, type ImportPackResult } from './importPack'
 import { initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
-import { DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION, type ActionCategory, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
+import { DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION, type ActionCategory, type ActionMetadata, type CharacterMetadata, type IndexedAction, type LibraryIndex, type LibraryOptions, type LibraryLicense, type SearchOptions } from './types'
 import { withCharacterDefaults } from './characterActions'
 
 export interface SearchResult {
@@ -40,16 +40,18 @@ export function searchLibrary(options: LibraryOptions & SearchOptions = {}): Sea
   })
 }
 
-export function getAction(options: LibraryOptions & { actionUuid: string }): IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null } {
+export function getAction(options: LibraryOptions & { actionUuid: string }): IndexedAction & { glbPath: string; manifestPath: string; coverPath: string | null; previewPath: string | null } {
   const root = resolveLibraryPath(options)
   const action = searchLibrary({ root, limit: 100 }).items.find((item) => item.uuid.toLowerCase() === options.actionUuid.toLowerCase())
     ?? withLibraryLock(root, () => writeIndex(root).actions.find((item) => item.uuid.toLowerCase() === options.actionUuid.toLowerCase()))
   if (!action) throw new Error(`Action not found: ${options.actionUuid}`)
   const packDirectory = safeChild(root, 'packs', action.packId)
-  const pack = readJsonFile<{ actions: Array<{ uuid: string; cover: string | null }> }>(safeChild(packDirectory, 'meta.json'))
+  const pack = readJsonFile<{ actions: Array<{ uuid: string; cover: string | null; preview?: ActionMetadata['preview'] }> }>(safeChild(packDirectory, 'meta.json'))
   const packAction = pack.actions.find((item) => item.uuid.toLowerCase() === action.uuid.toLowerCase())
   const coverPath = packAction?.cover ? safeChild(packDirectory, ...packAction.cover.split('/')) : null
+  const preview = packAction?.preview
   return Object.assign({}, action, {
+    previewPath: preview ? safeChild(packDirectory, ...preview.file.split('/')) : null,
     glbPath: safeChild(packDirectory, 'anim.glb'),
     manifestPath: safeChild(packDirectory, 'anim.manifest.json'),
     coverPath: coverPath && existsSync(coverPath) ? coverPath : null,
@@ -109,6 +111,10 @@ export function registerLibraryCharacter(options: LibraryOptions & {
       return metadata
     } catch (error) { rmSync(staging, { recursive: true, force: true }); throw error }
   })
+}
+
+export function setActionPreview(options: LibraryOptions & { actionUuid: string; preview: NonNullable<ActionMetadata['preview']> | null }) {
+  return updateActionMetadata({ ...options, libraryRoot: resolveLibraryPath(options) })
 }
 
 export function setActionMetadata(options: LibraryOptions & Omit<Parameters<typeof updateActionMetadata>[0], 'libraryRoot'>) {

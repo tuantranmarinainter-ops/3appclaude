@@ -63,6 +63,8 @@ export interface ActionMetadata {
   inPlace: boolean
   parentUuid: string | null
   cover: string | null
+  /** Optional auto-generated, muted looping library preview. */
+  preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }
   glbAnimationIndex: number
   /** Missing means a backwards-compatible raw library action. */
   ownerCharId?: string
@@ -97,6 +99,7 @@ export interface IndexedAction extends ActionMetadata {
   rig: string
   createdAt: string
   licenseId: string
+  licenseSource?: string
   boundCharacter: string | null
 }
 
