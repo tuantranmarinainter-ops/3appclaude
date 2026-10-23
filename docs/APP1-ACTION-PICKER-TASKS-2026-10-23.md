@@ -47,6 +47,24 @@ Vùng file: `packages/library/` (file mới `actionNames.ts` + test, `types.ts`,
 **Đạt khi:** test từ điển (≥ 30 tên thật từ Mixamo/WC3/BBS mẫu trong repo hoặc tổng hợp), tên ghép giữ số, tiền tố rác bị bỏ, không dấu
 vẫn tìm được; bản ghi cũ không có `nameVi` vẫn đọc được; test cũ PASS.
 
+## A1b — Sửa #80 sau review (Claude chạy thật FelOrc → Chirity) + đổi tên animation
+1. **File bộ xương gốc cho Verity**: `workbench/server.ts` chỉ ghi `anim.original.bbs.bobj` / `anim.original.glb` khi
+   `character.rig === 'verity'`; Gỗ Xưa/Tiểu Nhị/Chirity trong thư viện có rig `mixamo65` + `characters/<id>/original/model.bbs.bobj`.
+   Coi nhân vật có `original/model.bbs.bobj` (hoặc rig `verity`) là nhân vật bộ xương gốc; sửa cả đường gửi của L2.
+2. **Thẻ động tác theo từng dòng**: tự đoán theo tên (attack→`attack`, death/die/dead→`fall`, walk→`walk`, run/sprint→`run`,
+   idle/stand→`idle`, jump→`jump`, hit→`hit`…), không đoán được thì để trống, sửa được từng dòng.
+3. **Mặc định không tích** animation nào khi mở bảng ("đã chọn 0/N"); nút Chuyển chỉ bật khi đã tích ≥ 1.
+4. **Đổi tên animation** (người dùng yêu cầu 2026-10-23):
+   - Trong bảng chọn: nhấp đúp vào tên (hoặc nút bút chì) để sửa **tên tiếng Anh** và **tên tiếng Việt** riêng; Enter lưu, Esc huỷ;
+     tên rỗng không được; trùng tên trong cùng lần chuyển thì báo và tự thêm hậu tố `_2`.
+   - Tên mới dùng cho mọi đầu ra của lần chuyển: tên animation trong GLB, tên `an` trong `.bobj` (Minecraft 20 và `.bobj` gốc Verity;
+     chuyển ký tự không hợp lệ thành `_`), tên + `nameVi` trong thư viện (cả bản Nháp và kho dùng chung). Giữ tên gốc của nguồn trong
+     metadata (`sourceName`) để truy vết.
+   - Thư viện: `setActionMetadata` nhận `name` (ngoài `nameVi`), có test; App 2 (bảng động tác theo nhân vật, trang `/library`) cho
+     **đổi tên** animation đã có trong thư viện (tên Anh + Việt), cập nhật cả bản Nháp của nhân vật.
+   **Đạt khi:** test: đổi tên 2 animation rồi chuyển → GLB, `.bobj`, thư viện mang tên mới, `sourceName` giữ tên gốc; đổi tên trong
+   thư viện được App 2 hiển thị lại đúng.
+
 ## Phân chia và nộp
 - **A1 và A2 chạy song song** (hai subagent, model **sol 5.6** bản nhẹ). Hợp đồng chung để không chờ nhau: A2 export
   `translateActionName`, `formatBilingual` từ `packages/library/index.ts`; A1 import đúng hai hàm này (khi A2 chưa merge, A1 tạm dùng
