@@ -2,6 +2,7 @@ import { stageSceneConversion, type SceneConversionArgs } from './sceneConversio
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { parseBobjActions, parseBobjArmature } from '@bbs/retarget'
 import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { renderFrames } from '@topview/3d-director-cli/render.mjs'
@@ -14,6 +15,10 @@ import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries
 import { buildVfxEffectsForFilm, readVfxCueExtension } from './vfxCues'
 import { listVfxPreviews, readVfxSheetImage } from './vfxPreviews'
 import { filmAudioPackage } from './audioMix'
+import { getAction, resolveCharacter } from '../../../packages/library/index'
+import { resolveLibraryPath } from '../../../packages/library/index'
+import { Matrix4 } from 'three'
+import { buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -50,6 +55,126 @@ const COMMAND_TIMEOUT_MS = 15 * 60 * 1000
 const ZIP_SCRIPT = 'import pathlib,sys,zipfile; root=pathlib.Path(sys.argv[1]).resolve(strict=True); out=pathlib.Path(sys.argv[2]); files=list(root.rglob("*")); assert files and all(not p.is_symlink() for p in files); z=zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED); [z.write(p,p.relative_to(root).as_posix()) for p in files if p.is_file()]; z.close()'
 
 type FilmManifest = ReturnType<typeof buildFilmExportManifest>
+
+interface LibraryTextureRef { object: string; path: string; sha256: string }
+
+export function selectOriginalBobj(base: Buffer, appended?: Buffer): Buffer {
+  if (!appended) return base
+  if (appended.length < base.length || !appended.subarray(0, base.length).equals(base)) throw new TypeError('Original action BOBJ changed its source prefix')
+  return appended
+}
+
+export function mergeOriginalBobjActions(base: Buffer, sidecars: readonly Buffer[]): Buffer {
+  const known = new Set(parseBobjActions(base.toString('utf8')).keys())
+  const chunks = [base]
+  const appended = new Map<string, string>()
+  for (const sidecar of sidecars) {
+    selectOriginalBobj(base, sidecar)
+    const suffix = sidecar.subarray(base.length).toString('utf8')
+    const starts = [...suffix.matchAll(/^an\s+(.+)$/gm)]
+    for (const [index, match] of starts.entries()) {
+      const name = match[1]!.replace(/\r$/, '')
+      const start = match.index!, end = starts[index + 1]?.index ?? suffix.length
+      const block = suffix.slice(start, end)
+      if (known.has(name)) {
+        if (appended.get(name) !== block) throw new TypeError(`Original Character actions conflict: ${name}`)
+        continue
+      }
+      known.add(name); appended.set(name, block)
+      if (chunks[chunks.length - 1]!.at(-1) !== 10) chunks.push(Buffer.from('\n'))
+      chunks.push(Buffer.from(block, 'utf8'))
+    }
+  }
+  return Buffer.concat(chunks)
+}
+
+/** Stage an original library BOBJ once per Character skin, without a Blender round trip. */
+export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, model: FilmInputModel, folder: string): Promise<ConvertedFilmModelProfile | null> {
+  const node = snapshot.scene.content.nodes.find((item) => item.id === model.nodeId)
+  const metadata = node?.metadata as Record<string, unknown> | undefined
+  if (!metadata || typeof metadata.libraryCharacterId !== 'string') return null
+  const resolved = await resolveUnifiedAssetFile(snapshot, model.assetId, 'source')
+  if (digest(resolved.bytes) !== model.source.sha256) throw new TypeError(`Character ${model.characterId} source hash changed during Film export`)
+  const root = resolveLibraryPath()
+  const character = resolveCharacter({ root, charId: metadata.libraryCharacterId })
+  if (character.baseModel?.format !== 'bobj') return null
+  const baseBytes = await readFile(character.modelPath)
+  if (digest(baseBytes) !== character.baseModel.sha256) throw new TypeError(`Character ${model.characterId} original BOBJ hash changed`)
+  let bobj = baseBytes.toString('utf8')
+  if (!/^arm_name\s/m.test(bobj) || !/^arm_bone\s/m.test(bobj)) throw new TypeError(`Character ${model.characterId} has an invalid original BOBJ`)
+  const actionUuids = [...new Set(snapshot.scene.content.timeline.animation.motionClips
+    .filter((clip) => clip.target.nodeId === model.nodeId && snapshot.motions[clip.motion.assetId])
+    .map((clip) => snapshot.motions[clip.motion.assetId]!.id))]
+  if (!actionUuids.length && typeof metadata.libraryDefaultAction === 'string') actionUuids.push(metadata.libraryDefaultAction)
+  const sidecars: Buffer[] = []
+  for (const actionUuid of actionUuids) {
+    let selected
+    try { selected = getAction({ root, actionUuid }) } catch { throw new TypeError(`Character ${model.characterId} action is missing from the library: ${actionUuid}`) }
+    const sidecar = path.join(path.dirname(selected.glbPath), 'anim.original.bbs.bobj')
+    try { sidecars.push(await readFile(sidecar)) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; if (character.baseModel.rig === 'verity') throw new TypeError(`Character ${model.characterId} action lacks its original-rig BOBJ: ${actionUuid}`) }
+  }
+  if (sidecars.length) bobj = mergeOriginalBobjActions(baseBytes, sidecars).toString('utf8')
+  const refs = Array.isArray(metadata.librarySkin) ? metadata.librarySkin as LibraryTextureRef[] : []
+  const hidden = new Set(Array.isArray(metadata.libraryHiddenObjects) ? metadata.libraryHiddenObjects.filter((item): item is string => typeof item === 'string') : [])
+  const parsedModel = parseBobjModel(bobj)
+  const modelReport = buildBobjModel(parsedModel).report
+  const objects = modelReport.objects
+  const byObject = new Map(refs.map((item) => [item.object, item]))
+  const helpers = new Set(modelReport.helperObjects)
+  const missing = objects.filter((object) => !hidden.has(object) && !helpers.has(object) && !byObject.has(object))
+  if (missing.length) throw new TypeError(`Character ${model.characterId} is missing visible textures: ${missing.join(', ')}`)
+  await mkdir(folder, { recursive: true })
+  const bobjBytes = Buffer.from(bobj, 'utf8'), bobjSha = digest(bobjBytes)
+  const bobjPath = path.join(folder, 'model.bobj'); await writeFile(bobjPath, bobjBytes, { flag: 'wx' })
+  const files: ConvertedFilmModelProfile['files'] = [{ sourcePath: bobjPath, targetPath: 'model.bobj', sha256: bobjSha }]
+  for (const ref of refs) {
+    if (hidden.has(ref.object)) continue
+    if (!objects.includes(ref.object) || !/^[a-f0-9]{64}$/.test(ref.sha256) || !/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$)).+$/.test(ref.path)) throw new TypeError(`Character ${model.characterId} has an invalid texture reference: ${ref.object}`)
+    const candidate = path.resolve(root, ...ref.path.split('/')), actualRoot = await realpath(root), actual = await realpath(candidate)
+    if (!actual.startsWith(`${actualRoot}${path.sep}`)) throw new TypeError(`Character ${model.characterId} texture escaped the library root`)
+    const bytes = await readFile(actual)
+    if (digest(bytes) !== ref.sha256) throw new TypeError(`Character ${model.characterId} texture hash changed: ${ref.object}`)
+    files.push({ sourcePath: actual, targetPath: `textures/${ref.object}/default.png`, sha256: ref.sha256 })
+  }
+  const armature = parseBobjArmature(bobj)
+  const actionNames = [...parseBobjActions(bobj).keys()]
+  const wingAction = typeof metadata.libraryWingAction === 'string' ? metadata.libraryWingAction : actionNames.includes('idle') ? 'idle' : actionNames[0]
+  if (character.baseModel.rig === 'verity' && (!wingAction || !actionNames.includes(wingAction))) throw new TypeError(`Character ${model.characterId} has no valid native wing action`)
+  const skinIdentity = digest(Buffer.from(refs.slice().sort((a, b) => a.object.localeCompare(b.object)).map((item) => `${item.object}:${item.sha256}`).join('\n'))).slice(0, 16)
+  return { schemaVersion: 1, sourceSha256: model.source.sha256, modelId: `unified/${bobjSha.slice(0, 16)}-${skinIdentity}`,
+    metersPerUnit: model.metersPerUnit,
+    bones: armature.bones.map((bone) => ({ name: bone.name, parent: bone.parent,
+      bobjRestMatrixRowMajor: new Matrix4().fromArray([...bone.restWorld]).transpose().toArray() })),
+    actions: actionNames, textureRequired: files.length > 1, files,
+    ...(character.baseModel.rig === 'verity' ? { originalRig: { bobj, wingAction } } : {}) }
+}
+
+/** Apply a library skin after the shared GLB conversion, keeping the converted BOBJ bytes shared. */
+export async function stageConvertedLibrarySkinProfile(snapshot: UnifiedProject, model: FilmInputModel, profile: ConvertedFilmModelProfile): Promise<ConvertedFilmModelProfile> {
+  const metadata = snapshot.scene.content.nodes.find((node) => node.id === model.nodeId)?.metadata as Record<string, unknown> | undefined
+  if (typeof metadata?.libraryCharacterId !== 'string') return profile
+  const root = resolveLibraryPath(), character = resolveCharacter({ root, charId: metadata.libraryCharacterId })
+  const objects = character.baseModel?.objects ?? []
+  const hidden = new Set(Array.isArray(metadata.libraryHiddenObjects) ? metadata.libraryHiddenObjects : [])
+  const refs = Array.isArray(metadata.librarySkin) ? metadata.librarySkin as LibraryTextureRef[] : []
+  const missing = objects.filter((object) => !hidden.has(object) && !refs.some((ref) => ref.object === object))
+  if (missing.length) throw new TypeError(`Character ${model.characterId} is missing visible textures: ${missing.join(', ')}`)
+  const files = profile.files.filter((file) => file.targetPath === 'model.bobj')
+  const actualRoot = await realpath(root)
+  for (const ref of refs) {
+    if (hidden.has(ref.object)) continue
+    if (!objects.includes(ref.object) || !/^[a-f0-9]{64}$/.test(ref.sha256) || !/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$)).+$/.test(ref.path)) throw new TypeError(`Character ${model.characterId} has an invalid texture reference: ${ref.object}`)
+    const actual = await realpath(path.resolve(root, ...ref.path.split('/')))
+    if (!actual.startsWith(`${actualRoot}${path.sep}`)) throw new TypeError(`Character ${model.characterId} texture escaped the library root`)
+    if (digest(await readFile(actual)) !== ref.sha256) throw new TypeError(`Character ${model.characterId} texture hash changed: ${ref.object}`)
+    files.push({ sourcePath: actual, targetPath: `textures/${ref.object}/default.png`, sha256: ref.sha256 })
+  }
+  const skinId = digest(Buffer.from(files.filter((file) => file.targetPath !== 'model.bobj').map((file) => `${file.targetPath}:${file.sha256}`).sort().join('\n'))).slice(0, 16)
+  return { ...profile, modelId: `${profile.modelId}-${skinId}`, files, textureRequired: files.length > 1 }
+}
+
+type FilmInputModel = Awaited<ReturnType<typeof sampleProjectFilm>>['models'][number]
 
 /** B15: Film-worker entries for AAA Particles replays; ticks clamp into the Film and empty intervals are dropped. */
 export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number; play?: 'manual' }>, durationTicks: number) {
@@ -228,8 +353,14 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     const convertedRoot = path.join(work, 'converted'); await mkdir(convertedRoot)
     const profiles = new Map<string, ConvertedFilmModelProfile>(), bySource = new Map<string, ConvertedFilmModelProfile>()
     const unique = [...new Map(input.models.map((model) => [model.assetId, model])).values()]
+    for (const [index, model] of input.models.entries()) {
+      const original = await stageOriginalLibraryBobjProfile(snapshot, model, path.join(convertedRoot, `original-${index}`))
+      if (original) profiles.set(model.characterId, original)
+    }
     for (const [index, model] of unique.entries()) {
       signal.throwIfAborted()
+      const characters = input.models.filter((candidate) => candidate.assetId === model.assetId)
+      if (characters.every((candidate) => profiles.has(candidate.characterId))) continue
       const key = `${model.source.sha256}:${model.metersPerUnit}:${model.basisToScene.join(',')}`
       const cached = bySource.get(key)
       if (cached) { profiles.set(model.assetId, cached); continue }
@@ -249,6 +380,10 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
       const profile = JSON.parse(await readFile(convertedPath, 'utf8')) as Omit<ConvertedFilmModelProfile, 'files'>
       const converted = { ...profile, files: conversion.files } as ConvertedFilmModelProfile
       profiles.set(model.assetId, converted); bySource.set(key, converted)
+    }
+    for (const model of input.models) if (!profiles.has(model.characterId)) {
+      const profile = profiles.get(model.assetId)!
+      profiles.set(model.characterId, await stageConvertedLibrarySkinProfile(snapshot, model, profile))
     }
     signal.throwIfAborted()
     const manifest = buildFilmExportManifest(input, profiles, args.filmName)
@@ -439,6 +574,7 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
   const warnings: string[] = []
   const blockedRequests = new Set<string>()
   const cameraManifests: Array<{ cameraNodeId: string; files: string[] }> = []
+  const renderDevices: Array<{ kind: 'gpu' | 'cpu'; name: string; raw: string }> = []
   const sourceHash = record.sourceSha256
   try {
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
@@ -475,6 +611,14 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
         await persist(record)
       } })
       warnings.push(...result.warnings)
+      const renderer = (result as typeof result & { renderer?: unknown }).renderer
+      if (renderer && typeof renderer === 'object') {
+        const value = renderer as Record<string, unknown>
+        if ((value.kind === 'gpu' || value.kind === 'cpu') && typeof value.name === 'string' && typeof value.raw === 'string' &&
+            !renderDevices.some((item) => item.kind === value.kind && item.raw === value.raw)) {
+          renderDevices.push({ kind: value.kind, name: value.name, raw: value.raw })
+        }
+      }
       for (const request of result.blockedRequests) blockedRequests.add(request)
       const cameraFiles: string[] = []
       for (const frame of result.frames) {
@@ -494,7 +638,7 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
     const provenance = {
       sourceRevision: record.sourceRevision, sourceSha256: sourceHash,
-      renderer: '@topview/3d-director-cli', createdAt: new Date().toISOString(),
+      renderer: '@topview/3d-director-cli', ...(renderDevices.length ? { renderDevices } : {}), createdAt: new Date().toISOString(),
     }
     const manifest = path.join(base, 'render.json')
     await writeFile(manifest, `${JSON.stringify({ version: 1, ...provenance, width: args.width, height: args.height, frames: args.frames, cameras: cameraManifests,

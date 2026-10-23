@@ -161,7 +161,7 @@ public final class FilmExportWorker {
                 JsonArray poses = actor.has("poseTracks") ? array(actor, "poseTracks", 0, 512) : new JsonArray();
                 JsonArray animations = actor.has("animationKeyframes") ? array(actor, "animationKeyframes", 0, 256) : new JsonArray();
                 if (animations.size() > 0) validateTicks(animations, duration, "animation keyframes");
-                if (poses.size() > 0 && (mode.equals("playback") || animations.size() > 0)) throw new IllegalArgumentException("Editable pose tracks cannot overlap playback actions");
+                if (poses.size() > 0 && mode.equals("playback")) throw new IllegalArgumentException("Editable pose tracks require editable mode");
                 if (poses.size() > 0 && modelId.isEmpty()) throw new IllegalArgumentException("Editable pose tracks require a BOBJ model");
                 JsonObject model = modelId.isEmpty() ? null : modelById.get(modelId);
                 Set<String> modelBones = model == null ? Set.of() : strings(array(model, "bones", 1, 512));

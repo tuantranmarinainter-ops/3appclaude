@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Matrix4, Quaternion } from 'three'
-import { buildFilmExportManifest, inspectFilmActorTransform, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
+import { buildFilmExportManifest, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
 
 const identity = new Matrix4().toArray()
 const input = {
@@ -62,4 +62,75 @@ test('shared actor transform inspector detects shear and non-unit scale without 
   assert.ok(inspectFilmActorTransform(shear.toArray(), 0).issues.some((entry) => entry.code === 'TRANSFORM_SHEAR'))
   assert.ok(inspectFilmActorTransform(new Matrix4().makeScale(1, 2, 1).toArray(), 0).issues.some((entry) => entry.code === 'TRANSFORM_SCALE'))
   assert.deepEqual(inspectFilmActorTransform(identity, 0).issues, [])
+})
+
+test('selects a distinct model profile per Character skin even when both share one source asset', () => {
+  const two = structuredClone(input)
+  two.models.push({ ...structuredClone(two.models[0]!), characterId: 'character-skin-b', nodeId: 'actor-b', name: 'Actor B' })
+  for (const frame of two.frames) frame.skeletons.push({ ...structuredClone(frame.skeletons[0]!), nodeId: 'actor-b' })
+  const skinA = { ...profile, modelId: 'unified/shared-skin-a', files: [profile.files[0]!,
+    { sourcePath: '/library/a.png', targetPath: 'textures/verity.mdl/Body.smd/default.png', sha256: 'd'.repeat(64) }] }
+  const skinB = { ...profile, modelId: 'unified/shared-skin-b', files: [profile.files[0]!,
+    { sourcePath: '/library/b.png', targetPath: 'textures/verity.mdl/Body.smd/default.png', sha256: 'e'.repeat(64) }] }
+  skinA.textureRequired = skinB.textureRequired = true
+  const manifest = buildFilmExportManifest(two as never, new Map([['character', skinA], ['character-skin-b', skinB]]), 'skins')
+  assert.deepEqual(manifest.actors.map((actor) => actor.modelId), ['unified/shared-skin-a', 'unified/shared-skin-b'])
+  assert.equal(manifest.models.length, 2)
+  assert.equal(manifest.models[0]!.files[0]!.sha256, manifest.models[1]!.files[0]!.sha256, 'BOBJ bytes stay shared')
+  assert.notEqual(manifest.models[0]!.files[1]!.sha256, manifest.models[1]!.files[1]!.sha256, 'skin bytes stay distinct')
+})
+
+test('original-rig projection emits Verity names, pins Jaw at rest and leaves Root and wings to the native action', () => {
+  const verityInput = JSON.parse(JSON.stringify(input).replaceAll('"root"', '"Hips"'))
+  verityInput.frames[0].tick = 3
+  verityInput.frames[1].tick = 5
+  const matrix = (y: number) => `1 0 0 0 0 1 0 ${y} 0 0 1 0 0 0 0 1`
+  const bobj = [
+    'arm_name verity.mdl',
+    `arm_bone Root 0 0.1 0 ${matrix(0)}`,
+    `arm_bone COG Root 0 1.1 0 ${matrix(1)}`,
+    `arm_bone Jaw COG 0 1.6 0 ${matrix(1.5)}`,
+    `arm_bone Wing_Bone_L COG 0 1.4 0 ${matrix(1.3)}`,
+    'o body', 'v 0 0 0', 'vw COG 1',
+    'an idle', 'ao Root', 'ag rotation 1', 'kf 0 1.570796 LINEAR 0 1.570796 0 1.570796',
+    'ao Wing_Bone_L', 'ag rotation 2', 'kf 0 0 LINEAR 0 0 0 0', 'kf 1 0.2 LINEAR 1 0.2 1 0.2',
+  ].join('\n') + '\n'
+  const tracks = projectOriginalVerityPoseTracks(verityInput, 0, { bobj, wingAction: 'idle' })
+  assert.deepEqual(tracks.map((track) => track.boneName), ['COG', 'Jaw'])
+  assert.deepEqual(tracks[0]!.keyframes.map((key) => key.tick), [3, 5])
+  assert.ok(tracks.find((track) => track.boneName === 'Jaw')!.keyframes.every((key) => [...key.t, ...key.r].every((value) => Math.abs(value) < 1e-9)))
+  assert.ok(tracks[0]!.keyframes.every((key) => [...key.t, ...key.r, ...key.s].every(Number.isFinite)))
+})
+
+test('original named pose keys read back within 1e-4 native units at four noncontiguous ticks', async (t) => {
+  const { evaluateBobjAction, parseBobjActions, parseBobjArmature } = await import('@bbs/retarget')
+  const { Vector3 } = await import('three')
+  const matrix = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1'
+  const bobj = `arm_name verity.mdl\narm_bone Root 0 0 0 ${matrix}\narm_bone COG Root 0 1 0 ${matrix}\narm_bone Jaw COG 0 2 0 ${matrix}\no Body\nv 0 0 0\nvw COG 1\nan idle\nao Root\nag rotation 1\nkf 0 1.5707963267948966 LINEAR 0 1.5707963267948966 0 1.5707963267948966\n`
+  const source = structuredClone(input) as any
+  source.models[0].metersPerUnit = 0.4915394
+  source.frames = [3, 7, 11, 19].map((tick) => ({ tick, skeletons: [{ nodeId: 'actor', actorWorldMatrix: identity,
+    bones: [{ name: 'Hips', worldMatrix: new Matrix4().makeTranslation(tick / 10, 1, 0.25).toArray() }] }] }))
+  const tracks = projectOriginalVerityPoseTracks(source, 0, { bobj })
+  let action = 'an readback\nao Root\nag rotation 1\nkf 0 1.5707963267948966 LINEAR 0 1.5707963267948966 0 1.5707963267948966\n'
+  for (const track of tracks) {
+    action += `ao ${track.boneName}\n`
+    for (const [kind, field] of [['location', 't'], ['rotation', 'r'], ['scale', 's']] as const) for (let axis = 0; axis < 3; axis++) {
+      action += `ag ${kind} ${axis}\n`
+      for (const key of track.keyframes) action += `kf ${key.tick} ${key[field][axis]} LINEAR ${key.tick} ${key[field][axis]} ${key.tick} ${key[field][axis]}\n`
+    }
+  }
+  const armature = parseBobjArmature(bobj), parsed = parseBobjActions(bobj + action).get('readback')!
+  const turn = new Matrix4().makeRotationY(Math.PI / 2)
+  let maxError = 0, maxAngleDegrees = 0
+  for (const frame of source.frames) {
+    const actual = evaluateBobjAction(armature, parsed, frame.tick).find((bone) => bone.name === 'COG')!
+    const expected = new Vector3(frame.tick / 10, 1, 0.25).multiplyScalar(1 / 0.4915394).applyMatrix4(turn)
+    const rotation = new Quaternion().setFromRotationMatrix(new Matrix4().fromArray([...actual.worldMatrix]))
+    maxAngleDegrees = Math.max(maxAngleDegrees, rotation.angleTo(new Quaternion().setFromRotationMatrix(turn)) * 180 / Math.PI)
+    maxError = Math.max(maxError, expected.distanceTo(new Vector3().setFromMatrixPosition(new Matrix4().fromArray([...actual.worldMatrix]))))
+  }
+  assert.ok(maxError <= 1e-4, `native position error ${maxError}`)
+  assert.ok(maxAngleDegrees <= 2, `native hip direction error ${maxAngleDegrees}`)
+  t.diagnostic(`four ticks: position=${maxError} native units; hip direction=${maxAngleDegrees} degrees`)
 })
