@@ -23,8 +23,10 @@ export async function loadModel(url, format) {
 }
 
 class Pane {
-  constructor(host) {
+  /** `metricGrid`: floor cells are a fixed 0.25 m (results are always metres) instead of following the framed size. */
+  constructor(host, { metricGrid = false } = {}) {
     this.host = host
+    this.metricGrid = metricGrid
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     host.appendChild(this.renderer.domElement)
@@ -39,6 +41,8 @@ class Pane {
     this.scene.add(this.holder)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.controls.enableDamping = true
+    // Same in every W01 3D view: left orbit, middle pan, wheel zoom (right also pans).
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN }
     this.mixer = null; this.clip = null; this.helper = null; this.object = null
     this.show = { mesh: true, skeleton: true, grid: true }
     this.applyTheme()
@@ -120,6 +124,12 @@ class Pane {
     subject.updateMatrixWorld(true)
     const point = new THREE.Vector3()
     subject.traverse((node) => { if (node.isBone) box.expandByPoint(node.getWorldPosition(point)) })
+    // Meshes too (posed skinned bounds, wings left out): bone boxes stop at the neck/head joint on rigs without a head-top joint.
+    const part = new THREE.Box3()
+    subject.traverse((node) => {
+      if (!node.isSkinnedMesh || !node.visible || /wing/i.test(node.name)) return
+      node.computeBoundingBox(); box.union(part.copy(node.boundingBox).applyMatrix4(node.matrixWorld))
+    })
     if (box.isEmpty()) box.setFromObject(subject)
     if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1))
     this.bounds = box
@@ -135,7 +145,7 @@ class Pane {
     this.camera.updateProjectionMatrix()
     this.controls.target.copy(center)
     this.controls.update()
-    this.grid.scale.setScalar(extent * 1.5 / 2)
+    this.grid.scale.setScalar(this.metricGrid ? 2.5 : extent * 1.5 / 2)
     this.grid.position.set(center.x, this.bounds.min.y, center.z)
   }
 
@@ -163,6 +173,19 @@ export function retargetTrackNames(clip, scene) {
 
 /** BOBJ bone names contain dots (`low_left_arm.end`), which three.js track paths cannot address. */
 const steveNode = (name) => `steve_${name.replace(/[^\w]/g, '_')}`
+
+/** Height of the visible body in the current pose: skinned bounds follow the bones; wing meshes (Chirity) are left out. */
+function bodyHeight(object) {
+  object.updateMatrixWorld(true)
+  const box = new THREE.Box3(), part = new THREE.Box3()
+  object.traverse((node) => {
+    if (!node.isMesh || /wing/i.test(node.name)) return
+    if (node.isSkinnedMesh) { node.computeBoundingBox(); part.copy(node.boundingBox).applyMatrix4(node.matrixWorld) }
+    else { node.geometry.computeBoundingBox(); part.copy(node.geometry.boundingBox).applyMatrix4(node.matrixWorld) }
+    box.union(part)
+  })
+  return box.isEmpty() ? 0 : box.max.y - box.min.y
+}
 
 /** Minecraft20 preview SkinnedMesh (mannequin with vertex colors, or textured Steve); bind = rest world, vertices in rest world space. */
 export async function buildSteve(data, textureUrl) {
@@ -207,7 +230,7 @@ export function steveClips(clips) {
 export class Viewer {
   constructor(leftHost, rightHost, onFrame) {
     this.left = new Pane(leftHost)
-    this.right = new Pane(rightHost)
+    this.right = new Pane(rightHost, { metricGrid: true })
     this.onFrame = onFrame
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
     this.source = null // { scene, animations }
@@ -247,12 +270,13 @@ export class Viewer {
     this.result = null
     this.renamed.clear()
     if (!this.steveMode) this.right.setModel(this.targetScene)
-    else { this.fitSteveToTarget(); this.right.setModel(this.steve.scene, this.targetScene) }
+    else { this.fitSteveToTarget(); this.right.setModel(this.steve.scene) }
   }
 
-  async loadResult(url, mode) {
+  /** `offset`: animations before the normalized ones (an original-skeleton result keeps the character's built-in Actions first). */
+  async loadResult(url, mode, offset = 0) {
     const loaded = await loadModel(url, 'glb')
-    this.result = { mode, animations: loaded.animations, scene: loaded.scene }
+    this.result = { mode, animations: loaded.animations, scene: loaded.scene, offset }
     this.renamed.clear()
     if (this.steveMode) return
     if (mode === 'model') this.right.setModel(loaded.scene)
@@ -262,34 +286,36 @@ export class Viewer {
   clearResult() {
     this.result = null
     this.renamed.clear()
-    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene, this.targetScene) }
+    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene) }
     else if (this.targetScene) this.right.setModel(this.targetScene)
     this.right.setClip(null)
   }
 
   /** Right pane shows Steve (Minecraft20) instead of the Mixamo target; clips come later from a run's .bobj. */
-  async showSteve() {
+  async showSteve(skinId = null) {
+    if (this.steve && this.steve.skinId !== skinId) { this.right.setModel(this.targetScene); this.steve = null }
     if (!this.steve) {
-      const info = await (await fetch('/api/steve')).json()
+      const info = await (await fetch(skinId ? `/api/mc20/${encodeURIComponent(skinId)}` : '/api/steve')).json()
       const scene = await buildSteve(info.mesh, info.textureUrl)
       // The mannequin is authored in BBS model units; show it at the target character's height so both panes compare
       // at one scale (display only, the exported .bobj is untouched).
       const holder = new THREE.Group(); holder.name = 'steve-holder'; holder.add(scene)
-      this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [] }
+      this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [], skinId }
     }
     this.fitSteveToTarget()
     this.steveMode = true
-    this.right.setModel(this.steve.scene, this.targetScene)
+    // Frame on the mannequin itself: the target's bone box can be much shorter than its body (Verity rigs have no head-top
+    // joint), which made the mannequin overflow the view.
+    this.right.setModel(this.steve.scene)
   }
 
-  /** Scale the mannequin to the target's height (1.8 m before a target loads). */
+  /** Scale the mannequin to the target's body height (wings and other add-ons left out; 1.8 m before a target loads). */
   fitSteveToTarget() {
     if (!this.steve) return
-    const height = (object) => { const box = new THREE.Box3().setFromObject(object); return box.isEmpty() ? 0 : box.max.y - box.min.y }
     this.steve.scene.scale.setScalar(1)
     this.steve.scene.updateMatrixWorld(true)
-    const own = height(this.steve.model)
-    const wanted = (this.targetScene && height(this.targetScene)) || 1.8
+    const own = bodyHeight(this.steve.model)
+    const wanted = (this.targetScene && bodyHeight(this.targetScene)) || 1.8
     if (own > 0) this.steve.scene.scale.setScalar(wanted / own)
   }
 
@@ -317,8 +343,8 @@ export class Viewer {
       const clip = glbIndex === null || glbIndex === undefined ? null : this.steve?.clips[glbIndex] ?? null
       this.right.setClip(clip)
       if (clip) rightInfo = { bound: clip.tracks.length, total: clip.tracks.length }
-    } else if (this.result && glbIndex !== null && glbIndex !== undefined && this.result.animations[glbIndex]) {
-      const raw = this.result.animations[glbIndex]
+    } else if (this.result && glbIndex !== null && glbIndex !== undefined && this.result.animations[glbIndex + this.result.offset]) {
+      const raw = this.result.animations[glbIndex + this.result.offset]
       if (this.result.mode === 'model') { this.right.setClip(raw); rightInfo = { bound: raw.tracks.length, total: raw.tracks.length } }
       else {
         if (!this.renamed.has(glbIndex)) this.renamed.set(glbIndex, retargetTrackNames(raw, this.targetScene))

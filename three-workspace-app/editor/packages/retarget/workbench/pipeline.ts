@@ -15,6 +15,7 @@ import type { SourceFamily } from '../cli/autoMapping.ts'
 import { renderContactSheet } from '../cli/previewPng.ts'
 import { exportMinecraft20 } from '../cli/toMinecraft20.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
+import { loadVerityModel, type VerityModel } from './verity.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 /** The V9.12 Minecraft20 armature shipped with Studio is the default rig for `.bobj` sources and `.bobj` output. */
@@ -27,7 +28,8 @@ export class UserError extends Error {
 }
 
 export interface SourceRecord { id: string; name: string; format: AssetFormat; path: string; bytes: number; sha256: string; uploaded: boolean; armaturePath?: string }
-export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number; name?: string; library?: boolean }
+/** `original`: folder holding the character's original `model.bbs.bobj` + textures (Verity rig); results are carried back onto it. */
+export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number; name?: string; library?: boolean; original?: string }
 
 export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
@@ -160,7 +162,8 @@ export async function buildPreset(source: SourceRecord, target: TargetRecord, as
   return { preset: createMixamo65MappingPreset(sourceSkeleton, targetSkeleton, chosen), family: result.mapping.family }
 }
 
-export interface RunFile { name: string; kind: 'glb' | 'manifest' | 'report' | 'preview' | 'bobj' | 'bobjPreview'; bytes: number }
+export interface RunFile { name: string; kind: 'glb' | 'manifest' | 'report' | 'preview' | 'bobj' | 'bobjPreview' | 'originalBobj' | 'originalGlb'; bytes: number }
+const verityModels = new Map<string, VerityModel>()
 
 /** CLI-equivalent run. Files are written into `outDir` (a session temp folder); the user's source is never touched. */
 export async function runPipeline(source: SourceRecord, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily: SourceFamily | undefined, outDir: string, onProgress: NormalizeProgress, signal?: AbortSignal) {
@@ -204,6 +207,22 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
       write('.minecraft20.bobj', 'bobj', minecraft.bobj)
       if (options.preview) write('.minecraft20.preview.png', 'bobjPreview', renderContactSheet(minecraft.previewFrames, minecraft.previewParents))
       if (minecraft.report.status !== 'PASS' && status === 'PASS') status = 'FAIL'
+    }
+    if (target.original) {
+      // Original-skeleton target: every normalized Action goes back onto the character's own bones (Jaw at rest, wings
+      // looping a built-in Action), appended to its original .bobj; plus a GLB with the same skeleton for viewing.
+      await onProgress('original', 0, 1)
+      const bobjPath = join(target.original, 'model.bbs.bobj')
+      let model = verityModels.get(bobjPath)
+      if (!model) { model = loadVerityModel(bobjPath); verityModels.set(bobjPath, model) }
+      const added = await model.convertNormalized(result.glb)
+      const bobj = model.appendBobj(added), roundTripMaxErrorUnits = model.roundTripError(bobj, added)
+      report.original = { character: target.name ?? target.id, bones: model.boneCount, builtInActions: model.builtInActions, addedActions: added.map((action) => action.name),
+        glbAnimationOffset: model.builtInActions.length, jaw: 'rest', wings: model.hasWings ? `loop ${model.wingAction}` : 'none', roundTripMaxErrorUnits,
+        textures: join(target.original, 'textures'), status: roundTripMaxErrorUnits < 1e-3 ? 'PASS' : 'FAIL' }
+      write('.original.bbs.bobj', 'originalBobj', bobj)
+      write('.original.glb', 'originalGlb', model.buildGlb(added))
+      if (report.original.status !== 'PASS' && status === 'PASS') status = 'FAIL'
     }
   }
   report.status = status

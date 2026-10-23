@@ -87,6 +87,54 @@ function steve(files: NonNullable<ReturnType<typeof steveFiles>>): { armature: A
   return { armature, mesh }
 }
 
+/**
+ * Minecraft skin layout (64×64, classic 4 px arms): [bone, part]. Part = texture origin (u, v), size w×h×d px and the top
+ * of the whole limb in model px, so a rig segment (upper arm, forearm, hand) takes its own rows of the limb's side faces.
+ */
+const SKIN_PARTS = {
+  head: { u: 0, v: 0, w: 8, h: 8, d: 8, top: 32 }, body: { u: 16, v: 16, w: 8, h: 12, d: 4, top: 24 },
+  rarm: { u: 40, v: 16, w: 4, h: 12, d: 4, top: 24 }, larm: { u: 32, v: 48, w: 4, h: 12, d: 4, top: 24 },
+  rleg: { u: 0, v: 16, w: 4, h: 12, d: 4, top: 12 }, lleg: { u: 16, v: 48, w: 4, h: 12, d: 4, top: 12 },
+} as const
+const SKIN_BOXES: ReadonlyArray<readonly [string, keyof typeof SKIN_PARTS]> = [
+  ['head', 'head'], ['low_body', 'body'], ['body', 'body'], ['left_arm', 'larm'], ['low_left_arm', 'larm'], ['low_left_arm.end', 'larm'],
+  ['right_arm', 'rarm'], ['low_right_arm', 'rarm'], ['low_right_arm.end', 'rarm'], ['left_leg', 'lleg'], ['low_left_leg', 'lleg'],
+  ['right_leg', 'rleg'], ['low_leg_right', 'rleg'],
+]
+
+/** The mannequin boxes UV-mapped to a Minecraft player skin (front +Z, character left +X), drawn with a library skin. */
+function skinnedMannequin(): { armature: Armature; mesh: PreviewMesh } {
+  const armature = parseBobjArmature(readFileSync(DEFAULT_ARMATURE, 'utf8'))
+  const mesh = emptyMesh('steve', armature)
+  for (const [bone, partName] of SKIN_BOXES) {
+    const index = armature.bones.findIndex((item) => item.name === bone)
+    const box = BOXES.find(([name, min]) => name === bone && !(name === 'head' && min[2] === 4))
+    if (index < 0 || !box) continue
+    const [, [x0, y0, z0], [x1, y1, z1]] = box, p = SKIN_PARTS[partName]
+    const row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
+    // [corners TL, TR, BR, BL seen from outside, UV rect u0, v0, u1, v1 in skin px]
+    const quads: Array<[number[][], number[]]> = [
+      [[[x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]], [p.u + p.d, row0, p.u + p.d + p.w, row1]], // front
+      [[[x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]], [p.u + 2 * p.d + p.w, row0, p.u + 2 * p.d + 2 * p.w, row1]], // back
+      [[[x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]], [p.u, row0, p.u + p.d, row1]], // character right (−X)
+      [[[x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]], [p.u + p.d + p.w, row0, p.u + 2 * p.d + p.w, row1]], // character left (+X)
+      [[[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [p.u + p.d, p.v, p.u + p.d + p.w, p.v + p.d]], // top
+      [[[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], [p.u + p.d + p.w, p.v, p.u + p.d + 2 * p.w, p.v + p.d]], // bottom
+    ]
+    for (const [corners, [u0, v0, u1, v1]] of quads) {
+      const uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(([u, v]) => [u! / 64, 1 - v! / 64])
+      for (const i of [0, 3, 2, 0, 2, 1]) {
+        mesh.positions.push(...corners[i]!.map((value) => value * PX)); mesh.uvs.push(...uv[i]!); mesh.colors.push(1, 1, 1)
+        mesh.skinIndices.push(index, 0, 0, 0); mesh.skinWeights.push(1, 0, 0, 0)
+      }
+    }
+  }
+  return { armature, mesh }
+}
+let skinned: ReturnType<typeof skinnedMannequin> | null = null
+/** Mannequin wearing a library character's skin (`textureUrl` serves that skin PNG). */
+export function skinnedPreviewModel(textureUrl: string) { skinned ??= skinnedMannequin(); return { mesh: skinned.mesh, textureUrl } }
+
 let cached: { key: string; armature: Armature; mesh: PreviewMesh } | null = null
 function load() {
   const files = steveFiles(), key = files ? `steve:${files.model}` : 'mannequin'

@@ -19,7 +19,7 @@ import {
   buildPreset, DEFAULT_ARMATURE, describeSource, inspect, parseFamily, parseOptions, runPipeline, sha256, UserError,
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
-import { previewClips, previewModel, steveFiles } from './steve.ts'
+import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
 import { importPack, listLibraryCharacters, registerLibraryCharacter, resolveLibraryPath } from '../../library/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -61,6 +61,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
   // Targets: the four builtin Mixamo65 characters plus the user's own Mixamo65 characters registered in the App 5
   // library ("Thêm nhân vật đích"); hips height measured from the file itself.
   const targets = new Map<string, TargetRecord>()
+  // Named Minecraft20 characters: App 5 library characters with rig minecraft20 and a 64×64 player skin (`skin.png`).
+  const mc20 = new Map<string, { id: string; name: string; skin: string }>()
   async function measureTarget(path: string) {
     const bytes = readFileSync(path)
     const scene = await loadAsset(bytes, 'glb', { skeletonOnly: true })
@@ -79,11 +81,16 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
   try {
     const root = resolveLibraryPath()
     for (const character of listLibraryCharacters()) {
+      const skin = join(root, 'characters', character.charId, 'skin.png')
+      if (character.rig === 'minecraft20' && existsSync(skin)) { mc20.set(character.charId, { id: character.charId, name: character.name, skin }); continue }
       if (character.rig !== 'mixamo65' || !character.model.endsWith('.glb')) continue
       const path = join(root, 'characters', character.charId, character.model)
       if (!existsSync(path)) continue
       const measured = await measureTarget(path)
-      targets.set(`lib-${character.charId}`, { id: `lib-${character.charId}`, file: basename(path), path, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name: character.name, library: true })
+      // `original/model.bbs.bobj`: the character keeps its own skeleton; `model.glb` is only the Mixamo65 view for the solver.
+      const original = join(root, 'characters', character.charId, 'original')
+      targets.set(`lib-${character.charId}`, { id: `lib-${character.charId}`, file: basename(path), path, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name: character.name, library: true,
+        ...(existsSync(join(original, 'model.bbs.bobj')) && existsSync(join(original, 'display.glb')) ? { original } : {}) })
     }
   } catch (error) { console.error('App 5 library characters were not loaded:', error instanceof Error ? error.message : error) }
 
@@ -135,7 +142,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     if (!record) throw new UserError('Unknown targetId', 404)
     return record
   }
-  const targetView = (target: TargetRecord) => ({ id: target.id, file: target.file, name: target.name ?? target.file.replace(/^a3d_char_/, '').slice(0, 8), library: !!target.library, hipsHeightMeters: target.hipsHeightMeters, sha256: target.sha256, url: `/api/targets/${target.id}/file` })
+  const targetView = (target: TargetRecord) => ({ id: target.id, file: target.file, name: target.name ?? target.file.replace(/^a3d_char_/, '').slice(0, 8), library: !!target.library, hipsHeightMeters: target.hipsHeightMeters, sha256: target.sha256, url: `/api/targets/${target.id}/file`,
+    original: !!target.original, displayUrl: target.original ? `/api/targets/${target.id}/display.glb` : `/api/targets/${target.id}/file` })
 
   const registerSource = (path: string, name: string, uploaded: boolean, armaturePath?: string) => {
     const id = randomBytes(8).toString('hex')
@@ -220,7 +228,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     const method = req.method ?? 'GET'
-    if (method === 'GET' && path === '/api/targets') return json(res, 200, { targets: [...targets.values()].map(targetView) })
+    if (method === 'GET' && path === '/api/targets') return json(res, 200, { targets: [...targets.values()].map(targetView), mc20: [...mc20.values()].map(({ id, name }) => ({ id, name })) })
     if (method === 'POST' && path === '/api/targets') {
       // "Thêm nhân vật đích": a local Mixamo65 GLB (T-pose, metres) becomes a library character and a target here.
       const body = await readJson(req)
@@ -239,9 +247,18 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     }
     let match: RegExpMatchArray | null
     if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/file$/))) return sendFile(res, getTarget(match[1]).path, MIME['.glb'])
+    if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/display\.glb$/))) {
+      const target = getTarget(match[1])
+      return sendFile(res, target.original ? join(target.original, 'display.glb') : target.path, MIME['.glb'])
+    }
     if (method === 'POST' && path === '/api/sources') return handleSources(req, res)
     // Minecraft20 preview model: generated mannequin, or Steve from W01_STEVE_DIR (see steve.ts).
     if (method === 'GET' && path === '/api/steve') return json(res, 200, previewModel())
+    if (method === 'GET' && (match = path.match(/^\/api\/mc20\/([\w-]+)(\/skin\.png)?$/))) {
+      const character = mc20.get(match[1]!)
+      if (!character) return fail(res, 404, 'Unknown Minecraft20 character')
+      return match[2] ? sendFile(res, character.skin, MIME['.png']) : json(res, 200, skinnedPreviewModel(`/api/mc20/${character.id}/skin.png`))
+    }
     if (method === 'GET' && path === '/api/steve/texture') {
       const files = steveFiles()
       if (!files) return fail(res, 404, 'Steve assets not configured (W01_STEVE_DIR)')

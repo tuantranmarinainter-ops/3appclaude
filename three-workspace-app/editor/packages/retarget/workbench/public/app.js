@@ -35,7 +35,7 @@ const CODE_HINTS = {
 const QUALITY_TITLES = {
   HIPS_BELOW_GROUND: 'Hông chui xuống đất', HIPS_TOO_HIGH: 'Hông bay quá cao', FEET_PENETRATE: 'Chân lún dưới mặt sàn', FOOT_SLIDE: 'Trượt chân khi đang chạm đất',
 }
-const STAGES = { queued: 'Đang xếp hàng', inspect: 'Đọc rig & ghép mapping', bake: 'Bake Action', roundtrip: 'Đọc lại GLB & đo chất lượng', model: 'Dựng model + skin', bobj: 'Xuất .bobj Minecraft20' }
+const STAGES = { queued: 'Đang xếp hàng', inspect: 'Đọc rig & ghép mapping', bake: 'Bake Action', roundtrip: 'Đọc lại GLB & đo chất lượng', model: 'Dựng model + skin', bobj: 'Xuất .bobj Minecraft20', original: 'Áp về bộ xương gốc' }
 
 const state = {
   source: null, targets: [], target: null,
@@ -258,15 +258,20 @@ function renderTargets() {
   for (const target of state.targets) {
     const selected = state.target?.id === target.id && !state.mc20
     box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(selected), onclick: () => { setMc20(false); chooseTarget(target) } },
-      h('b', { text: target.library ? target.name : `Nhân vật ${target.name}` }), h('small', { text: `${target.library ? 'thư viện · ' : ''}hông ${fmt(target.hipsHeightMeters)} m` })))
+      h('b', { text: target.library ? target.name : `Nhân vật ${target.name}` }), h('small', { text: `${target.original ? 'bộ xương gốc · ' : target.library ? 'thư viện · ' : ''}hông ${fmt(target.hipsHeightMeters)} m` })))
   }
   // Minecraft20 is an extra output on top of the Mixamo65 GLB (the solver is Mixamo65 → Minecraft20), so it rides on the selected character.
-  box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20), onclick: () => setMc20(true) },
+  box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20 && !state.mc20Skin), onclick: () => setMc20(true) },
     h('b', { text: 'Minecraft 20' }), h('small', { text: 'xuất .bobj cho BBS FS' })))
+  // Named Minecraft20 characters (library skins): same .bobj output, previewed on the mannequin wearing their skin.
+  for (const character of state.mc20Characters ?? []) {
+    box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20 && state.mc20Skin === character.id), onclick: () => setMc20(true, character.id) },
+      h('b', { text: character.name }), h('small', { text: 'Minecraft 20 · skin thư viện' })))
+  }
 }
-function setMc20(on) {
-  if (!!state.mc20 === on) return
-  state.mc20 = on
+function setMc20(on, skinId = null) {
+  if (!!state.mc20 === on && (state.mc20Skin ?? null) === skinId) return
+  state.mc20 = on; state.mc20Skin = on ? skinId : null
   // Switching the view never touches the options (that would mark the result stale); only a missing .bobj output is turned on.
   const box = $('optionsForm').elements.bobj
   if (on && !box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })) }
@@ -279,7 +284,7 @@ function setMc20(on) {
 async function showSteveResult() {
   setOverlay('right', 'Đang tải ma-nơ-canh Minecraft 20…')
   try {
-    await viewer.showSteve()
+    await viewer.showSteve(state.mc20Skin ?? null)
     const run = state.result?.files?.some((file) => file.kind === 'bobj') ? state.result.runId : null
     if (run) await viewer.loadSteveClips(run)
     setOverlay('right', '')
@@ -293,7 +298,7 @@ async function chooseTarget(target) {
   state.result = null; state.stale = false; state.actionMap = new Map(); state.preset = null; state.presetFamily = null; state.dirty = false
   renderTargets(); renderAll(); refreshSteps()
   setOverlay('right', 'Đang tải nhân vật đích…')
-  try { await viewer.loadTarget(target.url); setOverlay('right', '') } catch (error) { setOverlay('right', `Không tải được nhân vật đích: ${error.message}`, true) }
+  try { await viewer.loadTarget(target.displayUrl ?? target.url); setOverlay('right', '') } catch (error) { setOverlay('right', `Không tải được nhân vật đích: ${error.message}`, true) }
   if (state.source) inspectNow()
 }
 
@@ -472,7 +477,13 @@ async function finishRun(result, options) {
   const glb = result.files.find((file) => file.kind === 'glb')
   if (glb) {
     setOverlay('right', 'Đang tải GLB kết quả vào viewer…')
-    try { await viewer.loadResult(glb.url, report.model || result.manifest?.glb?.mode === 'model' ? 'model' : 'animation'); setOverlay('right', '') } catch (error) { setOverlay('right', `Không phát được GLB kết quả: ${error.message}`, true) }
+    // Original-skeleton targets (Verity): play the result carried back onto the character's own bones.
+    const original = result.files.find((file) => file.kind === 'originalGlb')
+    try {
+      if (original) await viewer.loadResult(original.url, 'model', report.original?.glbAnimationOffset ?? 0)
+      else await viewer.loadResult(glb.url, report.model || result.manifest?.glb?.mode === 'model' ? 'model' : 'animation')
+      setOverlay('right', '')
+    } catch (error) { setOverlay('right', `Không phát được GLB kết quả: ${error.message}`, true) }
     if (state.mc20) await showSteveResult()
     const first = report.roundtrip?.primaryAction ?? manifestActions[0]?.sourceActionIndex ?? state.selected ?? 0
     selectAction(first)
@@ -746,7 +757,8 @@ function renderMc20() {
 }
 
 // ---- Tải về
-const KIND_LABELS = { glb: 'GLB Mixamo65', manifest: 'Manifest JSON', report: 'Report JSON', preview: 'Preview PNG', bobj: '.bobj Minecraft20', bobjPreview: 'Preview .bobj PNG' }
+const KIND_LABELS = { glb: 'GLB Mixamo65', manifest: 'Manifest JSON', report: 'Report JSON', preview: 'Preview PNG', bobj: '.bobj Minecraft20', bobjPreview: 'Preview .bobj PNG',
+  originalBobj: '.bobj gốc + action mới (BBS FS)', originalGlb: 'GLB bộ xương gốc' }
 function renderDownloads() {
   const box = clear($('tab-downloads'))
   const list = h('div', { class: 'dl' })
@@ -782,7 +794,8 @@ async function boot() {
   renderTargets(); renderAll(); refreshSteps()
   setOverlay('right', 'Đang tải danh sách nhân vật đích…')
   try {
-    state.targets = (await api('/api/targets')).targets
+    const targetList = await api('/api/targets')
+    state.targets = targetList.targets; state.mc20Characters = targetList.mc20 ?? []
     renderTargets()
     await chooseTarget(state.targets[0])
   } catch (error) {

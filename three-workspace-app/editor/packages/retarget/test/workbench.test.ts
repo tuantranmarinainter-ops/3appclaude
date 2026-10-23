@@ -15,8 +15,15 @@ const xbot = 'C:/w01-samples/Xbot.glb'
 const haveXbot = existsSync(xbot)
 
 let bench: Workbench
-before(async () => { bench = await startWorkbench({ port: 0 }) })
-after(async () => { await bench.close() })
+// The server reads App 5 library characters at start: use an empty library so the user's own characters don't count.
+const emptyLibrary = mkdtempSync(join(tmpdir(), 'w01-wb-empty-library-')), startLibrary = process.env.W01_LIBRARY
+before(async () => { process.env.W01_LIBRARY = emptyLibrary; bench = await startWorkbench({ port: 0 }) })
+after(async () => {
+  await bench.close()
+  if (startLibrary === undefined) delete process.env.W01_LIBRARY
+  else process.env.W01_LIBRARY = startLibrary
+  rmSync(emptyLibrary, { recursive: true, force: true })
+})
 
 const call = async (path: string, init?: RequestInit) => {
   const response = await fetch(bench.url + path, init)
