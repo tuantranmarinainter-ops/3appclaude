@@ -788,8 +788,7 @@ function compatibleLibraryCharacter(character) {
   const rig = state.result?.manifest?.rig ?? 'mixamo65'
   if (character.rig === rig) return { enabled: true, reason: '' }
   if (character.rig === 'verity' && (rig === 'mixamo65' || rig === 'mixamo65+verity')) {
-    const original = state.result?.files?.some((file) => file.kind === 'originalBobj') && state.result?.files?.some((file) => file.kind === 'originalGlb')
-    return { enabled: !!original, reason: original ? '' : 'Lượt chạy phải dùng đích Verity để tạo bản xương gốc.' }
+    return { enabled: true, reason: '' }
   }
   if (character.rig === 'minecraft20' && state.result?.files?.some((file) => file.kind === 'bobj')) {
     return { enabled: true, reason: '' }

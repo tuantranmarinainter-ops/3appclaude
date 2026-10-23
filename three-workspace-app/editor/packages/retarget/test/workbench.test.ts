@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test, { after, before } from 'node:test'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { runInNewContext } from 'node:vm'
 import { request } from 'node:http'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -73,6 +74,18 @@ test('serves the page, the app module and a bound loopback address only', async 
   assert.match(index.text, /importmap/)
   assert.equal((await call('/app.js')).status, 200)
   assert.equal((await call('/styles.css')).status, 200)
+})
+
+test('canonical runs without original sidecars enable both Verity destination cards', async () => {
+  const app = (await call('/app.js')).text
+  const implementation = app.match(/function compatibleLibraryCharacter\(character\) \{[\s\S]*?\n\}/)![0]
+  for (const rig of ['mixamo65', 'mixamo65+verity']) {
+    const compatible = runInNewContext(`(${implementation})`, { state: { result: { manifest: { rig }, files: [{ kind: 'glb' }] } } })
+    const destinations = [{ charId: 'verity84', rig: 'verity' }, { charId: 'verity101', rig: 'verity' }]
+    assert.ok(destinations.every((character) => compatible(character).enabled), rig)
+    assert.equal(compatible({ rig: 'custom' }).enabled, false)
+    assert.equal(compatible({ rig: 'minecraft20' }).enabled, false, 'MC20 still requires BOBJ output')
+  }
 })
 
 test('workspace navigation endpoint reads optional app URLs from the environment', async () => {
