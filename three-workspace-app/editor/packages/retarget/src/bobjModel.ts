@@ -1,4 +1,4 @@
-import { AnimationClip, Bone, BufferGeometry, Float32BufferAttribute, DoubleSide, Group, Matrix4, MeshStandardMaterial, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3, VectorKeyframeTrack, type Texture, type KeyframeTrack } from 'three'
+import { AnimationClip, Bone, BufferGeometry, Float32BufferAttribute, DoubleSide, Group, Matrix4, MeshStandardMaterial, Quaternion, QuaternionKeyframeTrack, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3, VectorKeyframeTrack, type Object3D, type Texture, type KeyframeTrack } from 'three'
 import { evaluateBobjAction, parseBobjActions, type BobjAction } from './index'
 import { parseBobjArmature, type BobjArmature } from './reverse'
 
@@ -12,13 +12,22 @@ export interface BobjModel {
   normals: number[][]
   weights: Array<Array<{ bone: string; weight: number }>>
   unitMeters: number
+  unitSource: 'option' | 'verity-preset' | 'default'
+  armatureName: string
+  motionScale: number | null
 }
 export interface BobjModelReport {
   objects: string[]; boneCount: number; actionCount: number; vertexCount: number
   heightMeters: number; hipHeightMeters: number | null; unitMeters: number
+  unitSource: BobjModel['unitSource']; motionScale: number | null; floorNative: number
+  helperObjects: string[]; restFacing: BobjFacing | null; actionFacing: BobjFacing | null
+  framingBoundsMeters: { min: number[]; max: number[] } | null
   missingTextures: string[]; warnings: string[]
 }
+export interface BobjFacing { left: number[]; forward: number[]; yawDegrees: number }
 export interface BobjModelOptions {
+  /** Metres per native BOBJ unit. Overrides the armature preset; motion_scale is never a unit. */
+  unitMeters?: number
   /** Resolves the relative BBS path, e.g. textures/verity.mdl/Verity.smd/default.png. No I/O in the parser. */
   readTexture?: (path: string) => Uint8Array | undefined
   decodeTexture?: (bytes: Uint8Array) => Texture
@@ -26,13 +35,14 @@ export interface BobjModelOptions {
 export const bobjModelNodeName = (name: string) => name.replace(/[.\[\]:/]/g, '_')
 
 /** BBS exporter indices are global across objects; vw records belong to the preceding v. */
-export function parseBobjModel(text: string): BobjModel {
-  const model: BobjModel = { armature: parseBobjArmature(text), actions: parseBobjActions(text), objects: [], positions: [], uvs: [], normals: [], weights: [], unitMeters: 1 }
+export function parseBobjModel(text: string, options: Pick<BobjModelOptions, 'unitMeters'> = {}): BobjModel {
+  const armatureName = text.match(/^arm_name\s+(.+)$/m)?.[1].trim() ?? ''
+  const unitMeters = options.unitMeters ?? (armatureName === 'verity.mdl' ? 0.4915394 : 1)
+  if (!(unitMeters > 0) || !Number.isFinite(unitMeters)) throw new Error('BOBJ unitMeters must be finite and positive')
   const scale = text.match(/^#.*BBSFix.*\bmotion_scale\s*=\s*(\S+)/mi)
-  if (scale) {
-    model.unitMeters = Number(scale[1])
-    if (!(model.unitMeters > 0) || !Number.isFinite(model.unitMeters)) throw new Error('BOBJ invalid BBSFix motion_scale')
-  }
+  const motionScale = scale && Number.isFinite(Number(scale[1])) ? Number(scale[1]) : null
+  const model: BobjModel = { armature: parseBobjArmature(text), actions: parseBobjActions(text), objects: [], positions: [], uvs: [], normals: [], weights: [], unitMeters,
+    unitSource: options.unitMeters !== undefined ? 'option' : armatureName === 'verity.mdl' ? 'verity-preset' : 'default', armatureName, motionScale }
   let object: BobjModelObject | undefined
   const fail = (line: number, reason: string): never => { throw new Error(`BOBJ line ${line}: ${reason}`) }
   for (const [i, raw] of text.split(/\r?\n/).entries()) {
@@ -76,28 +86,40 @@ export function parseBobjModel(text: string): BobjModel {
   return model
 }
 
-/** Builds a metre/Y-up Three.js model. Translation-only bind axes also accept legacy mirrored Blender bone rolls. */
+/** Builds a metre/Y-up model with native rest/mesh/action coordinates beneath a scale/floor wrapper. */
 export function buildBobjModel(model: BobjModel, options: BobjModelOptions = {}) {
   const root = new Group(); root.name = 'bobj-model'
-  const unit = model.unitMeters, rest = new Map(model.armature.bones.map(b => [b.name, new Matrix4().fromArray([...b.restWorld])]))
-  const frames = new Map(model.armature.bones.map(b => [b.name, new Matrix4().copyPosition(rest.get(b.name)!)]))
-  const rebase = new Map(model.armature.bones.map(b => [b.name, rest.get(b.name)!.clone().invert().multiply(frames.get(b.name)!)]))
+  const unit = options.unitMeters ?? model.unitMeters
+  if (!(unit > 0) || !Number.isFinite(unit)) throw new Error('BOBJ unitMeters must be finite and positive')
+  const unitSource = options.unitMeters !== undefined ? 'option' : model.unitSource
   const nodes = new Map<string, Bone>()
   for (const bone of model.armature.bones) {
-    const node = new Bone(); node.name = bobjModelNodeName(bone.name); node.userData.bobjName = bone.name
-    const local = bone.parent ? frames.get(bone.parent)!.clone().invert().multiply(frames.get(bone.name)!) : frames.get(bone.name)!
-    node.position.setFromMatrixPosition(local).multiplyScalar(unit)
+    const node = new Bone(); node.name = bobjModelNodeName(bone.name); node.userData.bobjName = bone.name; node.userData.bobjRestLocal = [...bone.restLocal]; node.userData.bobjRestWorld = [...bone.restWorld]
+    new Matrix4().fromArray([...bone.restLocal]).decompose(node.position, node.quaternion, node.scale)
     ;(bone.parent ? nodes.get(bone.parent)! : root).add(node); nodes.set(bone.name, node)
   }
+  // Bind inverses stay in the native/common model frame; the wrapper is applied only after binding.
   root.updateMatrixWorld(true)
   const skeleton = new Skeleton([...nodes.values()]); skeleton.calculateInverses()
+  const helperObjects: string[] = [], visibleVertices = new Set<number>()
   const images = new Map<string, Uint8Array>(), missingTextures: string[] = [], warnings: string[] = []
   let vertexCount = 0
   for (const object of model.objects) {
+    const vertices = new Set(object.faces.flatMap(face => face.map(c => c[0])))
+    const helper = vertices.size > 0 && [...vertices].every(v => {
+      const influences = model.weights[v].filter(w => w.weight > 0)
+      return influences.length > 0 && influences.every(w => /^camera(?:_|$)/i.test(w.bone))
+    })
+    if (helper) {
+      helperObjects.push(object.name)
+      const node = new Group(); node.name = `BOBJ_helper_${helperObjects.length}`; node.userData = { bobjObject: object.name, bobjHelper: true, reason: 'camera-only weights' }; root.add(node)
+      continue
+    }
+    for (const v of vertices) visibleVertices.add(v)
     const position: number[] = [], uv: number[] = [], normal: number[] = [], joints: number[] = [], weights: number[] = []
     let allNormals = true
     for (const face of object.faces) for (let i = 1; i < face.length - 1; i++) for (const [v, vt, vn] of [face[0], face[i], face[i + 1]]) {
-      position.push(...model.positions[v].map(x => x * unit)); /* OBJ/Blender v starts at the image bottom; glTF and decoded PNG rows start at the top. */ uv.push(...(vt === null ? [0, 0] : [model.uvs[vt][0], 1 - model.uvs[vt][1]])); normal.push(...(vn === null ? [0, 0, 0] : model.normals[vn])); allNormals &&= vn !== null
+      position.push(...model.positions[v]); /* OBJ/Blender v starts at the image bottom; glTF and decoded PNG rows start at the top. */ uv.push(...(vt === null ? [0, 0] : [model.uvs[vt][0], 1 - model.uvs[vt][1]])); normal.push(...(vn === null ? [0, 0, 0] : model.normals[vn])); allNormals &&= vn !== null
       const influences = model.weights[v].filter(w => w.weight > 0).sort((a, b) => b.weight - a.weight)
       if (!influences.length) throw new Error(`BOBJ object ${object.name}: vertex ${v + 1} has no bone influence`)
       if (influences.length > 4) warnings.push(`Object ${object.name} vertex ${v + 1}: truncated ${influences.length} influences to four`)
@@ -126,11 +148,11 @@ export function buildBobjModel(model: BobjModel, options: BobjModelOptions = {})
     const times = Array.from({ length: Math.ceil(duration * 60) + 1 }, (_, i) => Math.min(i / 60, duration))
     const values = new Map(model.armature.bones.map(b => [b.name, { p: [] as number[], q: [] as number[], s: [] as number[] }]))
     for (const time of times) {
-      const worlds = new Map(evaluateBobjAction(model.armature, action, time * 20).map(b => [b.name, new Matrix4().fromArray([...b.worldMatrix]).multiply(rebase.get(b.name)!)]))
+      const worlds = new Map(evaluateBobjAction(model.armature, action, time * 20).map(b => [b.name, new Matrix4().fromArray([...b.worldMatrix])]))
       for (const bone of model.armature.bones) {
         const local = bone.parent ? worlds.get(bone.parent)!.clone().invert().multiply(worlds.get(bone.name)!) : worlds.get(bone.name)!
         const p = new Vector3(), q = new Quaternion(), s = new Vector3(); local.decompose(p, q, s)
-        const entry = values.get(bone.name)!; entry.p.push(...p.multiplyScalar(unit).toArray()); entry.q.push(...q.normalize().toArray()); entry.s.push(...s.toArray())
+        const entry = values.get(bone.name)!; entry.p.push(...p.toArray()); entry.q.push(...q.normalize().toArray()); entry.s.push(...s.toArray())
       }
     }
     const tracks: KeyframeTrack[] = model.armature.bones.flatMap(b => {
@@ -139,15 +161,27 @@ export function buildBobjModel(model: BobjModel, options: BobjModelOptions = {})
     })
     return new AnimationClip(action.name, duration, tracks)
   })
-  const heights = [...model.positions.map(p => p[1] * unit), ...[...nodes.values()].map(n => n.getWorldPosition(new Vector3()).y)]
-  const floor = heights.length ? heights.reduce((a, b) => Math.min(a, b), Infinity) : 0
-  const ceiling = heights.length ? heights.reduce((a, b) => Math.max(a, b), -Infinity) : 0
-  const hips = model.armature.bones.find(b => /^(Hips|Pelvis|COG|body)$/i.test(b.name))
-  const hipHeightMeters = hips ? nodes.get(hips.name)!.getWorldPosition(new Vector3()).y - floor : null
-  if (hipHeightMeters === null) warnings.push('Hip height unavailable: no Hips/Pelvis/COG/body bone')
-  else if (hipHeightMeters < 0.5 || hipHeightMeters > 3) warnings.push(`Hip height ${hipHeightMeters.toFixed(6)} m outside 0.5–3 m; verify BBSFix motion_scale`)
+  const points = [...visibleVertices].map(v => model.positions[v])
+  const minimum = [Infinity, Infinity, Infinity], maximum = [-Infinity, -Infinity, -Infinity]
+  for (const point of points) for (let axis = 0; axis < 3; axis++) { minimum[axis] = Math.min(minimum[axis], point[axis]); maximum[axis] = Math.max(maximum[axis], point[axis]) }
+  const floor = points.length ? minimum[1] : 0, ceiling = points.length ? maximum[1] : 0
+  const hips = ['COG', 'Hips', 'Pelvis', 'body'].map(name => model.armature.bones.find(b => b.name.toLowerCase() === name.toLowerCase())).find(Boolean)
+  const hipHeightMeters = hips ? (new Matrix4().fromArray([...hips.restWorld]).elements[13] - floor) * unit : null
+  if (hipHeightMeters === null) warnings.push('Hip height unavailable: no COG/Hips/Pelvis/body bone')
+  else if (hipHeightMeters < 0.5 || hipHeightMeters > 3) warnings.push(`Hip height ${hipHeightMeters.toFixed(6)} m outside 0.5–3 m; verify unitMeters`)
   for (const object of missingTextures) warnings.push(`Object ${object}: missing textures/${object}/default.png`)
-  const report: BobjModelReport = { objects: model.objects.map(o => o.name), boneCount: nodes.size, actionCount: root.animations.length, vertexCount, heightMeters: ceiling - floor, hipHeightMeters, unitMeters: unit, missingTextures, warnings: [...new Set(warnings)] }
+  const restFacing = modelFacing(model)
+  let actionFacing = restFacing
+  const first = model.actions.values().next().value as BobjAction | undefined
+  const rootBone = model.armature.bones.find(b => b.name === 'Root')
+  if (restFacing && first && rootBone) {
+    const pose = evaluateBobjAction(model.armature, first, 0).find(b => b.name === rootBone.name)!
+    const delta = new Matrix4().fromArray([...pose.worldMatrix]).multiply(new Matrix4().fromArray([...rootBone.restWorld]).invert())
+    actionFacing = facingFromLeft(new Vector3().fromArray(restFacing.left).transformDirection(delta), new Vector3().fromArray(restFacing.forward).transformDirection(delta))
+  }
+  root.scale.setScalar(unit); root.position.y = -floor * unit; root.updateMatrixWorld(true)
+  const framingBoundsMeters = points.length ? { min: minimum.map((v, axis) => (v - (axis === 1 ? floor : 0)) * unit), max: maximum.map((v, axis) => (v - (axis === 1 ? floor : 0)) * unit) } : null
+  const report: BobjModelReport = { objects: model.objects.map(o => o.name), helperObjects, boneCount: nodes.size, actionCount: root.animations.length, vertexCount, heightMeters: (ceiling - floor) * unit, hipHeightMeters, unitMeters: unit, unitSource, motionScale: model.motionScale, floorNative: floor, restFacing, actionFacing, framingBoundsMeters, missingTextures, warnings: [...new Set(warnings)] }
   root.userData.bobjModel = report
   return { root, report, images }
 }
@@ -166,13 +200,13 @@ export function bobjModelToGlb(model: BobjModel, options: BobjModelOptions = {})
     }
     json.accessors.push(result); return json.accessors.length - 1
   }
-  const objects: Array<Bone | SkinnedMesh> = []; root.traverse(node => { if (node instanceof Bone || node instanceof SkinnedMesh) objects.push(node) })
+  const objects: Object3D[] = []; root.traverse(node => objects.push(node))
   const index = new Map(objects.map((node, i) => [node, i]))
   for (const node of objects) {
     const entry: Record<string, any> = { name: node.name, translation: node.position.toArray(), rotation: node.quaternion.toArray(), scale: node.scale.toArray(), extras: node.userData }
-    const children = node.children.filter((n): n is Bone | SkinnedMesh => index.has(n as Bone | SkinnedMesh)).map(n => index.get(n))
+    const children = node.children.map(n => index.get(n))
     if (children.length) entry.children = children
-    if (node.parent === root) json.scenes[0].nodes.push(index.get(node))
+    if (node === root) json.scenes[0].nodes.push(index.get(node))
     json.nodes.push(entry)
   }
   for (const node of objects) if (node instanceof SkinnedMesh) {
@@ -215,4 +249,26 @@ export function bobjModelToGlb(model: BobjModel, options: BobjModelOptions = {})
   let cursor = 28 + jsonLength
   for (const chunk of chunks) { bytes.set(chunk, cursor); cursor += Math.ceil(chunk.length / 4) * 4 }
   return { bytes, report }
+}
+
+function facingFromLeft(left: Vector3, forward: Vector3): BobjFacing {
+  left.y = 0; forward.y = 0; left.normalize(); forward.normalize()
+  return { left: left.toArray(), forward: forward.toArray(), yawDegrees: Math.atan2(forward.x, forward.z) * 180 / Math.PI }
+}
+
+/** Native facing from leg separation, with toe/foot direction disambiguating the forward sign. */
+function modelFacing(model: BobjModel): BobjFacing | null {
+  const position = (name: string) => {
+    const bone = model.armature.bones.find(b => b.name === name)
+    return bone ? new Vector3().setFromMatrixPosition(new Matrix4().fromArray([...bone.restWorld])) : null
+  }
+  const l = position('Upper_Leg_L'), r = position('Upper_Leg_R'), toeL = position('Toe_L'), toeR = position('Toe_R')
+  if (!l || !r || !toeL || !toeR) return null
+  const left = l.clone().sub(r); left.y = 0
+  if (left.lengthSq() < 1e-12) return null
+  left.normalize()
+  const forward = left.clone().cross(new Vector3(0, 1, 0)).normalize()
+  const toes = toeL.clone().add(toeR).sub((position('Foot_L') ?? l).clone().add(position('Foot_R') ?? r)); toes.y = 0
+  if (toes.lengthSq() > 1e-12 && toes.dot(forward) < 0) forward.negate()
+  return facingFromLeft(left, forward)
 }

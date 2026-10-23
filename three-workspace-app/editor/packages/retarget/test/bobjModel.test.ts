@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import { deflateSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { AnimationMixer, Bone, Matrix4, Quaternion, SkinnedMesh, Vector3, LoopOnce } from 'three'
+import { AnimationMixer, Bone, Box3, Matrix4, Quaternion, SkinnedMesh, Vector3, LoopOnce } from 'three'
 import { bobjModelToGlb, buildBobjModel, parseBobjModel } from '../src/bobjModel.ts'
 import { loadBobj } from '../cli/loadBobj.ts'
 import { loadAsset } from '../cli/loadAsset.ts'
@@ -103,7 +103,7 @@ const withFixture = async (run: (dir: string) => Promise<void>) => {
 const readTexture = (dir: string) => (path: string) => { try { return readFileSync(join(dir, path)) } catch { return undefined } }
 
 test('BOBJ model GLB roundtrip preserves two textured objects, six bones, UVs, normals and weights', async () => withFixture(async dir => {
-  const parsed = parseBobjModel(fixture), { bytes, report } = bobjModelToGlb(parsed, { readTexture: readTexture(dir) })
+  const parsed = parseBobjModel(fixture, { unitMeters: 0.02 }), { bytes, report } = bobjModelToGlb(parsed, { readTexture: readTexture(dir) })
   assert.equal(report.unitMeters, 0.02); assert.equal(report.boneCount, 6); assert.equal(report.actionCount, 2)
   assert.equal(report.heightMeters, 1.6); assert.equal(report.hipHeightMeters, 1); assert.equal(report.vertexCount, 6)
   assert.deepEqual(report.missingTextures, []); assert.deepEqual(report.warnings, [])
@@ -126,7 +126,7 @@ test('BOBJ model GLB roundtrip preserves two textured objects, six bones, UVs, n
       for (let i = 0; i < actual.array.length; i++) assert.ok(Math.abs(actual.array[i] - expected.array[i]) <= 1e-6, `${mesh.name}/${attribute}/${i}`)
     }
     for (let i = 0; i < mesh.skeleton.bones.length; i++) {
-      const identity = mesh.skeleton.bones[i].matrixWorld.clone().multiply(mesh.skeleton.boneInverses[i])
+      const identity = loaded.getObjectByName('bobj-model')!.matrixWorld.clone().invert().multiply(mesh.skeleton.bones[i].matrixWorld).multiply(mesh.skeleton.boneInverses[i])
       assert.ok(identity.elements.every((v, j) => Math.abs(v - new Matrix4().elements[j]) < 1e-6))
     }
   }
@@ -138,7 +138,7 @@ test('BOBJ model GLB roundtrip preserves two textured objects, six bones, UVs, n
 }))
 
 test('both GLB animations match source evaluated world position/rotation at ticks 0, 1, 2', async () => withFixture(async dir => {
-  const parsed = parseBobjModel(fixture), { bytes } = bobjModelToGlb(parsed, { readTexture: readTexture(dir) })
+  const parsed = parseBobjModel(fixture, { unitMeters: 0.02 }), { bytes } = bobjModelToGlb(parsed, { readTexture: readTexture(dir) })
   for (const action of parsed.actions.values()) {
     const loaded = await loadAsset(bytes, 'glb', { keepMeshes: true }), mixer = new AnimationMixer(loaded)
     const playing = mixer.clipAction(loaded.animations.find(a => a.name === action.name)!); playing.setLoop(LoopOnce, 1); playing.clampWhenFinished = true; playing.play()
@@ -175,10 +175,10 @@ test('loader forwards resourceDir, reports nested missing texture and respects s
   const here = dirname(fileURLToPath(import.meta.url)), target = resolve(here, '../../../../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
   const inspection = await inspectNormalize({ source: skeleton, sourceLabel: 'model.bbs.bobj', sourceSha256: '0'.repeat(64), target: await loadAsset(readFileSync(target), 'glb', { skeletonOnly: true }), targetLabel: 'target', targetSha256: '1'.repeat(64) })
   assert.deepEqual(inspection.input.bobjModel, skeleton.userData.bobjModel)
-  assert.equal(inspection.input.effectiveSourceUnitMeters, 0.02)
+  assert.equal(inspection.input.effectiveSourceUnitMeters, 1)
   const scaled = await inspectNormalize({ source: skeleton, sourceLabel: 'model.bbs.bobj', sourceSha256: '0'.repeat(64), target: await loadAsset(readFileSync(target), 'glb', { skeletonOnly: true }), targetLabel: 'target', targetSha256: '1'.repeat(64), unitMeters: 0.5 })
-  assert.equal(scaled.input.effectiveSourceUnitMeters, 0.01, 'CLI unit option is an additional multiplier after header conversion')
-  assert.equal(skeleton.getObjectByName('Pelvis')!.position.y, 1, 'header scale is baked into the imported rig exactly once')
+  assert.equal(scaled.input.effectiveSourceUnitMeters, 0.5, 'CLI unit option is an additional multiplier after header conversion')
+  assert.equal(skeleton.getObjectByName('Pelvis')!.position.y, 50, 'raw local bone position is unchanged by import')
 }))
 
 test('parser rejects dangling weights, unweighted vertices, traversal and invalid faces', () => {
@@ -186,20 +186,20 @@ test('parser rejects dangling weights, unweighted vertices, traversal and invali
   assert.throws(() => buildBobjModel(parseBobjModel(fixture.replace('vw Root 1', ''))), /no bone influence/)
   assert.throws(() => parseBobjModel(fixture.replace('o EYES', 'o ../EYES')), /unsafe object name/)
   assert.throws(() => parseBobjModel(fixture.replace('f 4/4/1', 'f 999/4/1')), /out of bounds/)
-  assert.throws(() => parseBobjModel(fixture.replace('motion_scale=0.02', 'motion_scale=0')), /motion_scale/)
-  const report = buildBobjModel(parseBobjModel(fixture.replace('motion_scale=0.02', 'motion_scale=0.00002'))).report
+  assert.throws(() => parseBobjModel(fixture, { unitMeters: 0 }), /unitMeters/)
+  const report = buildBobjModel(parseBobjModel(fixture, { unitMeters: 0.00002 })).report
   assert.match(report.warnings.join('\n'), /Hip height.*outside/)
 })
 
 test('rotated source rest axes preserve weighted world vertices, and object/bone name collision binds the joint', async () => {
   const rotated = fixture.replace(bone('Head', 'Pelvis', 0, 80), 'arm_bone Head Pelvis 0 81 0 0 -1 0 0 1 0 0 80 0 0 1 0 0 0 0 1').replace('o EYES', 'o Jaw')
-  const parsed = parseBobjModel(rotated), { bytes } = bobjModelToGlb(parsed), { json } = decodeGlb(bytes)
+  const parsed = parseBobjModel(rotated, { unitMeters: 0.02 }), { bytes } = bobjModelToGlb(parsed), { json } = decodeGlb(bytes)
   const jawIndex = json.nodes.findIndex((n: any) => n.extras.bobjName === 'Jaw')
   assert.ok(json.animations[0].channels.some((c: any) => c.target.node === jawIndex && c.target.path === 'rotation'))
   assert.ok(json.animations[0].channels.every((c: any) => json.skins[0].joints.includes(c.target.node)))
   const root = await loadAsset(bytes, 'glb', { keepMeshes: true }), mixer = new AnimationMixer(root)
   mixer.clipAction(root.animations[0]).play(); mixer.setTime(0.05); root.updateMatrixWorld(true)
-  const body = root.children.find(n => n.userData.bobjObject === 'verity.mdl/Verity.smd') as SkinnedMesh
+  const body = root.getObjectByName('bobj-model')!.children.find(n => n.userData.bobjObject === 'verity.mdl/Verity.smd') as SkinnedMesh
   const worlds = new Map(evaluateBobjAction(parsed.armature, parsed.actions.get('idle')!, 1).map(b => [b.name, new Matrix4().fromArray([...b.worldMatrix])]))
   for (let i = 0; i < 3; i++) {
     const original = new Vector3(...parsed.positions[i] as [number, number, number]), expected = new Vector3()
@@ -207,7 +207,7 @@ test('rotated source rest axes preserve weighted world vertices, and object/bone
       const rest = new Matrix4().fromArray([...parsed.armature.bones.find(b => b.name === influence.bone)!.restWorld])
       expected.add(original.clone().applyMatrix4(rest.invert()).applyMatrix4(worlds.get(influence.bone)!).multiplyScalar(influence.weight * 0.02))
     }
-    const actual = body.applyBoneTransform(i, new Vector3().fromBufferAttribute(body.geometry.getAttribute('position'), i))
+    const actual = body.applyBoneTransform(i, new Vector3().fromBufferAttribute(body.geometry.getAttribute('position'), i)).applyMatrix4(body.matrixWorld)
     assert.ok(actual.distanceTo(expected) < 1e-6, `${i}: ${actual.toArray()} vs ${expected.toArray()}`)
   }
 })
@@ -220,17 +220,17 @@ test('normalize.ts --src model.bbs.bobj normalizes a textured synthetic 65-bone 
     if (!(node instanceof Bone)) return
     const name = node.name.replace(/^mixamorig:?/, ''), parent = node.parent instanceof Bone ? node.parent.name.replace(/^mixamorig:?/, '') : ''
     const e = node.matrixWorld.elements
-    const world = Array.from({ length: 16 }, (_, i) => { const row = Math.floor(i / 4), col = i % 4; return e[col * 4 + row] / (col === 3 && row < 3 ? 0.02 : 1) })
+    const world = Array.from({ length: 16 }, (_, i) => { const row = Math.floor(i / 4), col = i % 4; return e[col * 4 + row] })
     rows.push(`arm_bone ${name} ${parent} 0 0 0 ${world.join(' ')}`)
   })
   assert.equal(rows.length, 65)
-  const model = `# BBSFix motion_scale=0.02\narm_name synthetic65\n${rows.join('\n')}\no verity.mdl/Verity.smd\nv 0 0 0\nvw Hips 1\nv 1 0 0\nvw Hips 1\nv 0 1 0\nvw Hips 1\nvt 0 0\nvt 1 0\nvt 0 1\nvn 0 0 1\nf 1/1/1 2/2/1 3/3/1\nan idle\nao Hips\nag location 0\nkf 0 0 LINEAR\nkf 1 1 LINEAR\nkf 2 2 LINEAR\n`
+  const model = `# BBSFix motion_scale=0.02\narm_name synthetic65\n${rows.join('\n')}\no verity.mdl/Verity.smd\nv 0 0 0\nvw Hips 1\nv 1 0 0\nvw Hips 1\nv 0 1 0\nvw Hips 1\nvt 0 0\nvt 1 0\nvt 0 1\nvn 0 0 1\nf 1/1/1 2/2/1 3/3/1\nan idle\nao Hips\nag location 0\nkf 0 0 LINEAR\nkf 1 0.02 LINEAR\nkf 2 0.04 LINEAR\n`
   const src = join(dir, 'model.bbs.bobj'), out = join(dir, 'out'); writeFileSync(src, model)
   const result = spawnSync(process.execPath, ['--import', 'tsx', resolve(here, '../cli/normalize.ts'), '--src', src, '--target', targetPath, '--out', out], { cwd: resolve(here, '../../builder'), encoding: 'utf8' })
   assert.equal(result.status, 0, result.stdout + result.stderr)
   const report = JSON.parse(readFileSync(join(out, 'model.bbs.report.json'), 'utf8'))
   assert.equal(report.status, 'PASS'); assert.equal(report.input.bobjModel.boneCount, 65)
-  assert.equal(report.input.effectiveSourceUnitMeters, 0.02); assert.equal(report.input.unitMeters, 1); assert.equal(report.input.bobjModel.unitMeters, 0.02)
+  assert.equal(report.input.effectiveSourceUnitMeters, 1); assert.equal(report.input.unitMeters, 1); assert.equal(report.input.bobjModel.unitMeters, 1)
   assert.deepEqual(report.input.bobjModel.missingTextures, [])
   const glb = await loadAsset(readFileSync(join(out, 'model.bbs.glb')), 'glb', { skeletonOnly: true })
   assert.equal(glb.animations.length, 1)
@@ -238,6 +238,17 @@ test('normalize.ts --src model.bbs.bobj normalizes a textured synthetic 65-bone 
   assert.ok(motion, 'normalizer preserves source position tracks')
   assert.ok(Math.abs(motion.values[motion.values.length - 3] - motion.values[0] - 0.04) < 1e-6, 'Hips moves 0.04 m after header conversion through the full CLI')
   assert.equal(report.loss.prunedTracks.count, 0, 'generic BOBJ bone tracks survive normalizer pruning')
+  // The same CLI path must retain motion when the model is converted by a non-identity preset wrapper.
+  writeFileSync(src, model.replace('arm_name synthetic65', 'arm_name verity.mdl'))
+  const presetOut = join(dir, 'preset-out')
+  const presetRun = spawnSync(process.execPath, ['--import', 'tsx', resolve(here, '../cli/normalize.ts'), '--src', src, '--target', targetPath, '--out', presetOut], { cwd: resolve(here, '../../builder'), encoding: 'utf8' })
+  assert.equal(presetRun.status, 0, presetRun.stdout + presetRun.stderr)
+  const presetReport = JSON.parse(readFileSync(join(presetOut, 'model.bbs.report.json'), 'utf8'))
+  assert.equal(presetReport.input.bobjModel.unitSource, 'verity-preset'); assert.equal(presetReport.input.bobjModel.motionScale, 0.02)
+  const presetGlb = await loadAsset(readFileSync(join(presetOut, 'model.bbs.glb')), 'glb', { skeletonOnly: true })
+  const presetMotion = presetGlb.animations[0].tracks.find(t => t.name === 'Hips.position')!
+  assert.ok(Math.abs(presetMotion.values[presetMotion.values.length - 3] - presetMotion.values[0] - 0.04 * 0.4915394) < 1e-6)
+
 }))
 
 
@@ -270,3 +281,116 @@ test('GLTFLoader reads both embedded textures and binds them to the correct obje
     }
   } finally { if (savedSelf === undefined) delete scope.self; else scope.self = savedSelf; if (savedBitmap === undefined) delete scope.createImageBitmap; else scope.createImageBitmap = savedBitmap }
 }))
+
+test('K2b units are option/preset/default; BBSFix motion_scale and ground_target are report-only', () => {
+  const parsed = parseBobjModel(fixture)
+  assert.equal(parsed.unitMeters, 1); assert.equal(parsed.unitSource, 'default')
+  assert.equal(parsed.motionScale, 0.02)
+  const plain = buildBobjModel(parsed).report
+  const changed = buildBobjModel(parseBobjModel(fixture.replace('motion_scale=0.02', 'motion_scale=0.9 ground_target=-2'))).report
+  assert.equal(plain.heightMeters, changed.heightMeters); assert.equal(plain.hipHeightMeters, changed.hipHeightMeters)
+  assert.equal(plain.heightMeters, 80); assert.equal(plain.hipHeightMeters, 50)
+  const verity = parseBobjModel(fixture.replace('arm_name synthetic', 'arm_name verity.mdl'))
+  assert.equal(verity.unitMeters, 0.4915394); assert.equal(verity.unitSource, 'verity-preset')
+  const option = parseBobjModel(fixture.replace('arm_name synthetic', 'arm_name verity.mdl'), { unitMeters: 0.02 })
+  assert.equal(option.unitSource, 'option'); assert.equal(option.unitMeters, 0.02)
+  assert.equal(bobjModelToGlb(verity, { unitMeters: 0.25 }).report.unitSource, 'option')
+  assert.equal(bobjModelToGlb(verity, { unitMeters: 0.25 }).report.heightMeters, 20)
+  assert.equal(buildBobjModel(option).report.heightMeters, 1.6)
+  assert.equal(loadBobj(fixture, fixture, { unitMeters: 0.25 }).userData.bobjModel.unitMeters, 0.25)
+})
+
+const raisedFixture = () => fixture.replace(/^v (\S+) (\S+) (\S+)$/gm, (_, x, y, z) => `v ${x} ${Number(y) + 3} ${z}`)
+const withCamera = () => raisedFixture().replace('o verity.mdl/Verity.smd', `${bone('camera', 'Root', 0, 0)}\n${bone('camera_frame', 'camera', 0, 1)}\no verity.mdl/Verity.smd`)
+  .replace('# BBSFix export motion_scale=0.02', '# BBSFix export motion_scale=0.02 ground_target=-2')
+  .replace('an idle', 'o body_lookalike\nv -1 1 0\nvw camera 1\nv 1 1 0\nvw camera_frame 1\nv 0 1 1\nvw camera 0.5\nvw camera_frame 0.5\nf 7 8 9\nan idle')
+
+test('K2b camera helper two units below feet does not affect visible floor, height, hip, framing or missing textures', () => {
+  const options = { unitMeters: 0.02 }, model = parseBobjModel(withCamera(), options)
+  const original = buildBobjModel(parseBobjModel(raisedFixture(), options)), withHelper = buildBobjModel(model)
+  for (const key of ['heightMeters', 'hipHeightMeters', 'floorNative', 'framingBoundsMeters', 'missingTextures'] as const) assert.deepEqual(withHelper.report[key], original.report[key], key)
+  assert.equal(withHelper.report.floorNative, 3); assert.equal(withHelper.report.heightMeters, 1.6)
+  assert.ok(Math.abs(withHelper.report.hipHeightMeters! - 0.94) < 1e-12)
+  assert.deepEqual(withHelper.report.helperObjects, ['body_lookalike'])
+  assert.ok(model.objects.some(o => o.name === 'body_lookalike'), 'parser keeps original helper object')
+  const helper = withHelper.root.children.find(n => n.userData.bobjHelper)!
+  assert.equal(helper.userData.bobjObject, 'body_lookalike'); assert.ok(!(helper instanceof SkinnedMesh))
+  assert.ok(withHelper.root.getObjectByName('camera_frame') instanceof Bone)
+  assert.ok(!withHelper.report.warnings.some(w => w.includes('body_lookalike')))
+  const mixed = withCamera().replace('vw camera 1\nv 1 1 0', 'vw camera 0.5\nvw Head 0.5\nv 1 1 0')
+  const mixedReport = buildBobjModel(parseBobjModel(mixed, options)).report
+  assert.deepEqual(mixedReport.helperObjects, []); assert.equal(mixedReport.floorNative, 1)
+  assert.ok(mixedReport.missingTextures.includes('body_lookalike'))
+})
+
+test('K2b wrapper keeps native mesh/rest/animation transforms and world skin correct through GLB at three ticks', async () => {
+  const parsed = parseBobjModel(withCamera(), { unitMeters: 0.02 }), built = buildBobjModel(parsed)
+  assert.deepEqual(built.root.scale.toArray(), [0.02, 0.02, 0.02]); assert.equal(built.root.position.y, -0.06)
+  assert.deepEqual(built.root.quaternion.toArray(), [0, 0, 0, 1], 'wrapper adds no yaw')
+  const { bytes } = bobjModelToGlb(parsed), { json } = decodeGlb(bytes)
+  assert.equal(json.scenes[0].nodes.length, 1)
+  const wrapper = json.nodes[json.scenes[0].nodes[0]]
+  assert.deepEqual(wrapper.translation, [0, -0.06, 0]); assert.deepEqual(wrapper.scale, [0.02, 0.02, 0.02])
+  const loaded = await loadAsset(bytes, 'glb', { keepMeshes: true })
+  for (const root of [built.root, loaded]) {
+    root.updateMatrixWorld(true)
+    const box = new Box3().setFromObject(root)
+    assert.ok(Math.abs(box.min.y) < 1e-6 && Math.abs(box.max.y - 1.6) < 1e-6, 'real GLB/scene framing excludes the camera helper')
+    const body = root.getObjectByName('bobj-model')!.children.find(n => n.userData.bobjObject === 'verity.mdl/Verity.smd') as SkinnedMesh
+    assert.deepEqual([...body.geometry.getAttribute('position').array], parsed.positions.slice(0, 3).flat(), 'vertices stay native')
+    for (const bone of parsed.armature.bones) {
+      const node = root.getObjectByName(bone.name)!
+      node.updateMatrix()
+      assert.ok(node.matrix.elements.every((v, i) => Math.abs(v - bone.restLocal[i]) < 1e-6), `${bone.name} raw rest local`)
+      assert.deepEqual(node.userData.bobjRestLocal, [...bone.restLocal])
+    }
+    for (const action of parsed.actions.values()) {
+      const mixer = new AnimationMixer(root), clip = root.animations.find(a => a.name === action.name)!
+      const playing = mixer.clipAction(clip); playing.setLoop(LoopOnce, 1); playing.clampWhenFinished = true; playing.play()
+      for (const tick of [0, 1, 2]) {
+        mixer.setTime(tick / 20); root.updateMatrixWorld(true)
+        const pose = evaluateBobjAction(parsed.armature, action, tick)
+        for (const bone of pose) {
+          const node = root.getObjectByName(bone.name)!, raw = new Matrix4().compose(new Vector3(...bone.position), new Quaternion(...bone.rotation), new Vector3(...bone.scale))
+          node.updateMatrix()
+          assert.ok(node.matrix.elements.every((v, i) => Math.abs(v - raw.elements[i]) < 1e-6), `${action.name}@${tick}/${bone.name} raw animation`)
+        }
+        const worlds = new Map(pose.map(b => [b.name, new Matrix4().fromArray([...b.worldMatrix])]))
+        for (let v = 0; v < 3; v++) {
+          const expected = new Vector3(), position = new Vector3(...parsed.positions[v] as [number, number, number])
+          for (const weight of parsed.weights[v]) {
+            const inverse = new Matrix4().fromArray([...parsed.armature.bones.find(b => b.name === weight.bone)!.restWorld]).invert()
+            expected.add(position.clone().applyMatrix4(inverse).applyMatrix4(worlds.get(weight.bone)!).multiplyScalar(weight.weight))
+          }
+          expected.y -= 3; expected.multiplyScalar(0.02)
+          const actual = body.applyBoneTransform(v, new Vector3().fromBufferAttribute(body.geometry.getAttribute('position'), v)).applyMatrix4(body.matrixWorld)
+          assert.ok(actual.distanceTo(expected) < 1e-6, `${action.name}@${tick}/vertex${v}: ${actual.toArray()} expected ${expected.toArray()}`)
+        }
+      }
+      mixer.stopAllAction()
+    }
+  }
+})
+
+
+test('K2b reports rest -X and first-action +Z facing while preserving the original Root rotation', async () => {
+  const boneAt = (name: string, x: number, y: number, z: number) => `arm_bone ${name} Root ${x} ${y + 1} ${z} 1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
+  const legs = [boneAt('Upper_Leg_L', 0, 40, 10), boneAt('Upper_Leg_R', 0, 40, -10), boneAt('Foot_L', 0, 0, 10), boneAt('Foot_R', 0, 0, -10), boneAt('Toe_L', -5, 0, 10), boneAt('Toe_R', -5, 0, -10)].join('\n')
+  const text = fixture.replace('o verity.mdl/Verity.smd', `${legs}\no verity.mdl/Verity.smd`).replace('an idle', `an idle\nao Root\nag rotation 1\nkf 0 ${Math.PI / 2} LINEAR\nkf 2 ${Math.PI / 2} LINEAR`)
+  const parsed = parseBobjModel(text, { unitMeters: 0.02 }), { bytes, report } = bobjModelToGlb(parsed)
+  assert.ok(new Vector3(...report.restFacing!.forward as [number, number, number]).distanceTo(new Vector3(-1, 0, 0)) < 1e-6)
+  assert.ok(new Vector3(...report.actionFacing!.forward as [number, number, number]).distanceTo(new Vector3(0, 0, 1)) < 1e-6)
+  const loaded = await loadAsset(bytes, 'glb', { keepMeshes: true }), mixer = new AnimationMixer(loaded)
+  mixer.clipAction(loaded.animations[0]).play(); mixer.setTime(0); loaded.updateMatrixWorld(true)
+  assert.ok(loaded.getObjectByName('Root')!.quaternion.clone().normalize().angleTo(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)) < 1e-6)
+  assert.deepEqual(loaded.getObjectByName('bobj-model')!.quaternion.toArray(), [0, 0, 0, 1])
+})
+
+test('K2b Verity preset gives synthetic 1.9m body and 1.17m COG hip above the visible floor', () => {
+  const floor = -0.03, cog = 1.17 / 0.4915394 + floor
+  const text = fixture.replace('arm_name synthetic', 'arm_name verity.mdl').replace(/^v (\S+) (\S+) (\S+)$/gm, (_, x, y, z) => `v ${x} ${Number(y) / 80 * 3.865407 + floor} ${z}`).replace('o verity.mdl/Verity.smd', `${bone('COG', 'Root', 0, cog)}\no verity.mdl/Verity.smd`)
+  const report = bobjModelToGlb(parseBobjModel(text)).report
+  assert.equal(report.unitSource, 'verity-preset'); assert.equal(report.unitMeters, 0.4915394)
+  assert.ok(Math.abs(report.heightMeters - 1.9) < 1e-6)
+  assert.ok(Math.abs(report.hipHeightMeters! - 1.17) < 1e-6)
+})

@@ -22,7 +22,7 @@ export const bobjNodeName = (name: string) => name.replace(/\./g, '_')
  * translation-only rest frame C and each pose W is re-expressed as W·R⁻¹·C (R = original rest). World deltas
  * (W·R⁻¹) and joint positions are unchanged; only the arbitrary — here mirrored — axis convention is dropped.
  */
-export function loadBobj(actionsText: string, armatureText: string, options: { resourceDir?: string; skeletonOnly?: boolean } = {}): Group {
+export function loadBobj(actionsText: string, armatureText: string, options: { resourceDir?: string; skeletonOnly?: boolean; unitMeters?: number } = {}): Group {
   if (/^o\s+/m.test(actionsText) && /^v\s+/m.test(actionsText)) {
     const readTexture: BobjModelOptions['readTexture'] = options.resourceDir ? (path) => {
       const base = resolve(options.resourceDir!), target = resolve(base, path), inside = relative(base, target)
@@ -32,7 +32,7 @@ export function loadBobj(actionsText: string, armatureText: string, options: { r
         throw error
       }
     } : undefined
-    const { root } = buildBobjModel(parseBobjModel(actionsText), { readTexture, decodeTexture: options.skeletonOnly ? undefined : decodeBobjPng })
+    const { root } = buildBobjModel(parseBobjModel(actionsText, { unitMeters: options.unitMeters }), { readTexture, decodeTexture: options.skeletonOnly ? undefined : decodeBobjPng })
     if (options.skeletonOnly) {
       const meshes = root.children.filter(node => node.type === 'SkinnedMesh')
       for (const mesh of meshes) root.remove(mesh)
