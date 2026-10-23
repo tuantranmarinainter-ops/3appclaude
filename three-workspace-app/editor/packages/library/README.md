@@ -7,7 +7,8 @@ The public API is exported from `index.ts`. Library contract version 1.1 keeps r
 - `importPack({ sourceDirectory, license, ... })` imports a passing `normalize.ts` or `normalizeBatch.ts` output as one immutable pack. It verifies the GLB hash and report gate, derives the pack ID from the first 16 SHA-256 characters, preserves the App 1 manifest and report, and records each action UUID.
 - `searchLibrary({ rig, category, tags, text, boundCharacter, ownerCharId, status, limit, offset })` rebuilds the search index from pack and character metadata.
 - `getAction({ actionUuid })` returns metadata and local paths for the immutable GLB, manifest, and optional cover.
-- `setActionMetadata(...)` edits tags/category/loop/parent UUID in `meta.json` without touching the GLB or App 1 manifest.
+- `setActionMetadata(...)` edits tags/category/loop/parent UUID and the manual Vietnamese `nameVi` in `meta.json` without touching the English identity, GLB, or App 1 manifest. Imports fill `nameVi` from the deterministic offline glossary; draft, edited-version, and copy operations preserve it.
+- `translateActionName(en)` and `formatBilingual(en, vi)` provide the shared offline `English | Tiếng Việt` display contract. Search matches English and Vietnamese with or without accents.
 - `registerLibraryCharacter(...)` copies a GLB/BOBJ character into the external library with a non-committable default license.
 - `callLibraryTool(...)` provides the `library.search`, `library.get`, and `library.characters` handlers for a local MCP transport.
 - `addDraftToCharacter(...)` copies one raw action into a character-owned immutable version chain. Verity characters use their Mixamo65 view for compatibility checks.

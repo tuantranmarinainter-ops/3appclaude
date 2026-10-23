@@ -5,14 +5,17 @@ import Image from 'next/image'
 import { loadUnifiedProject } from '../../src/unifiedApi'
 import { ActionPreview } from './ActionPreview'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
+import { formatBilingual } from '../../../../packages/library/actionNames'
 
 type Status = 'draft' | 'edited' | 'approved'
-type Action = { uuid: string; name: string; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number }
+type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number }
 type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
+
+function searchable(value: string) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase() }
 
 async function json(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: 'no-store', ...init })
@@ -45,7 +48,7 @@ export default function LibraryPage() {
     const body = await json(`/api/library?${params}`)
     let rows = body.actions as Action[]
     if (category) rows = rows.filter(action => action.category === category)
-    if (!warehouse && query) rows = rows.filter(action => `${action.name} ${action.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+    if (!warehouse && query) rows = rows.filter(action => searchable(`${action.name} ${action.nameVi ?? ''} ${action.tags.join(' ')}`).includes(searchable(query)))
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
   }, [category, characterId, query, status, warehouse])
 
@@ -81,6 +84,11 @@ export default function LibraryPage() {
     await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'copy', actionUuid: selected.uuid, toCharId: effectiveCopyTarget }) })
     setMessage('Đã sao chép thành bản Nháp riêng của nhân vật đích.')
   }
+  async function saveVietnameseName(nameVi: string) {
+    if (!selected) return
+    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, nameVi }) })
+    await loadActions(); setMessage('Đã lưu tên tiếng Việt.')
+  }
   function notifyOpener(type: string) {
     if (!selected || !window.opener) return setMessage('Mở Thư viện từ App 2 để dùng thao tác này.')
     window.opener.postMessage({ type, actionUuid: selected.uuid }, window.location.origin)
@@ -99,11 +107,12 @@ export default function LibraryPage() {
       <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start' }}>
         {actions.map(action => <button key={action.uuid} onClick={() => setSelected(action)} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
           <div style={{ height: 90, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="" width={220} height={90} unoptimized /> : 'Không có ảnh'}</div>
-          <strong>{action.name}</strong><div>{action.tags.join(', ') || action.category}</div>{action.status && <small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small>}
+          <strong>{formatBilingual(action.name, action.nameVi)}</strong><div>{action.tags.join(', ') || action.category}</div>{action.status && <small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small>}
         </button>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
-      <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{selected.name}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
+      <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
         <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig}</p>
+        <form key={selected.uuid} onSubmit={event => { event.preventDefault(); void saveVietnameseName(String(new FormData(event.currentTarget).get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
         <button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
         <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
@@ -135,5 +144,5 @@ function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: {
 
 function CoverageMatrix({ rows, onMissing }: { rows: Coverage[]; onMissing: (key: string, charId: string) => void }) {
   const columns = [...new Map(rows.flatMap(row => row.cells).map(cell => [cell.key, cell.label])).entries()]
-  return <div style={{ overflow: 'auto' }}><table style={{ borderCollapse: 'collapse', minWidth: '100%' }}><thead><tr><th>Nhân vật</th>{columns.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.charId}><th>{row.name}</th>{columns.map(([key]) => { const cell = row.cells.find(item => item.key === key); return <td key={key} style={{ padding: 5, background: cell?.status ? STATUS_COLOR[cell.status] : '#3a3030' }}>{cell?.action ? <span title={cell.action.name}>{cell.status && STATUS_LABEL[cell.status]}</span> : <button onClick={() => onMissing(key, row.charId)}>Tìm trong kho</button>}</td> })}</tr>)}</tbody></table></div>
+  return <div style={{ overflow: 'auto' }}><table style={{ borderCollapse: 'collapse', minWidth: '100%' }}><thead><tr><th>Nhân vật</th>{columns.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.charId}><th>{row.name}</th>{columns.map(([key]) => { const cell = row.cells.find(item => item.key === key); return <td key={key} style={{ padding: 5, background: cell?.status ? STATUS_COLOR[cell.status] : '#3a3030' }}>{cell?.action ? <span title={formatBilingual(cell.action.name, cell.action.nameVi)}>{formatBilingual(cell.action.name, cell.action.nameVi)}{cell.status && ` · ${STATUS_LABEL[cell.status]}`}</span> : <button onClick={() => onMissing(key, row.charId)}>Tìm trong kho</button>}</td> })}</tr>)}</tbody></table></div>
 }
