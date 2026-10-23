@@ -30,6 +30,7 @@ import {
   addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
   resolveCharacter, resolveLibraryPath, setActionMetadata,
 } from '../../library/index.ts'
+import * as libraryContract from '../../library/index.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -45,6 +46,15 @@ const VENDOR_PREFIXES = ['build/', 'examples/jsm/']
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.wasm': 'application/wasm', '.png': 'image/png', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bobj': 'text/plain; charset=utf-8',
   '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8' }
+
+/** Temporary A1/A2 parallel-development adapter. Once A2 lands these optional exports are always present. */
+function bilingualActionName(name: string): { nameVi: string; displayName: string } {
+  const contract = libraryContract as unknown as {
+    translateActionName?: (en: string) => { vi: string }, formatBilingual?: (en: string, vi: string) => string
+  }
+  const nameVi = typeof contract.translateActionName === 'function' ? contract.translateActionName(name).vi : ''
+  return { nameVi, displayName: typeof contract.formatBilingual === 'function' ? contract.formatBilingual(name, nameVi) : name }
+}
 
 /** `actionsGlb` normally emits the 17-bone playable anchor tree; library rig validation keeps all 20 BOBJ bones. */
 function minecraft20LibraryGlb(root: ReturnType<typeof loadBobj> & { animations: any[] }): Uint8Array {
@@ -368,7 +378,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     }
     if (method === 'POST' && path === '/api/inspect') {
       const body = await readJson(req)
-      return json(res, 200, await inspect(getSource(body.sourceId), getTarget(body.targetId), parseOptions(body.options), body.mappingPreset ?? null, parseFamily(body.presetFamily)))
+      const result = await inspect(getSource(body.sourceId), getTarget(body.targetId), parseOptions(body.options), body.mappingPreset ?? null, parseFamily(body.presetFamily))
+      return json(res, 200, { ...result, actions: result.actions.map((action) => ({ ...action, ...bilingualActionName(action.name) })) })
     }
     if (method === 'POST' && path === '/api/preset') {
       const body = await readJson(req)

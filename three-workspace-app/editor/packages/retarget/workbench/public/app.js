@@ -1,5 +1,6 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
 import { Viewer, FPS } from './viewer.js'
+import { executeTransfer } from './transfer.js'
 
 const $ = (id) => document.getElementById(id)
 /** Tiny DOM builder; text always goes through textContent so file/bone names can never inject markup. */
@@ -45,6 +46,7 @@ const state = {
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
+  transferFailed: [], transferRunning: false, requestBobj: false,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -135,14 +137,71 @@ function selectAction(sourceIndex) {
   $('bindInfo').textContent = parts.join(' · ')
   $('bindInfo').classList.toggle('bad', bad)
   renderActions(false)
+  renderActionPicker()
 }
 
 function fillActionSelect() {
   const select = clear($('actionSel'))
   const actions = state.inspect?.actions ?? []
-  for (const action of actions) select.append(h('option', { value: String(action.index), text: `${action.index} · ${action.name} (${fmt(action.durationSeconds)} s)${state.result && !state.stale && !state.actionMap.has(action.index) ? ' — chưa xuất' : ''}` }))
+  for (const action of actions) select.append(h('option', { value: String(action.index), text: `${action.index} · ${action.displayName ?? action.name} (${fmt(action.durationSeconds)} s)${state.result && !state.stale && !state.actionMap.has(action.index) ? ' — chưa xuất' : ''}` }))
   select.disabled = !actions.length
+  renderActionPicker()
 }
+
+// ---------------------------------------------------------------- pinned source Action picker
+const picker = $('actionPicker'), pickerStorageKey = 'w01.actionPicker.v1'
+function openActionPicker() { picker.hidden = false; $('actionPickerBtn').setAttribute('aria-expanded', 'true'); renderActionPicker() }
+function closeActionPicker() { picker.hidden = true; $('actionPickerBtn').setAttribute('aria-expanded', 'false') }
+function savePickerBounds() {
+  if (picker.hidden || picker.offsetWidth < 100 || picker.offsetHeight < 100) return
+  try { localStorage.setItem(pickerStorageKey, JSON.stringify({ left: picker.style.left, top: picker.style.top, width: picker.style.width, height: picker.style.height })) } catch { /* storage can be disabled or full */ }
+}
+function restorePickerBounds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(pickerStorageKey) ?? 'null')
+    if (saved) for (const key of ['left', 'top', 'width', 'height']) if (typeof saved[key] === 'string' && /^\d+(?:\.\d+)?px$/.test(saved[key])) picker.style[key] = saved[key]
+    const left = Math.max(0, Math.min(innerWidth - 120, parseFloat(picker.style.left) || 0)), top = Math.max(0, Math.min(innerHeight - 60, parseFloat(picker.style.top) || 0))
+    picker.style.left = `${left}px`; picker.style.top = `${top}px`
+  } catch { /* ignore corrupt local preference */ }
+}
+function actionMatches(action, query) { const q = query.trim().toLocaleLowerCase('vi'); return !q || `${action.name} ${action.nameVi ?? ''} ${action.index}`.toLocaleLowerCase('vi').includes(q) }
+function actionQuality(action) {
+  const mapped = state.actionMap.get(action.index), skipped = state.result?.report?.skippedActions?.find((item) => item.index === action.index)
+  if (skipped) return { text: skipped.code, class: 'warn', title: skipped.message }
+  if (mapped?.perAction) return { text: mapped.perAction.status, class: mapped.perAction.status, title: (mapped.quality?.warnings ?? []).map((item) => item.message).join('\n') }
+  return { text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra', class: action.ready ? 'PASS' : 'warn', title: '' }
+}
+function renderActionPicker() {
+  if (!picker || picker.hidden) return
+  const actions = state.inspect?.actions ?? [], query = $('actionPickerSearch').value
+  $('actionPickerCount').textContent = `đã chọn ${selectedActionIndices().length}/${actions.length}`
+  $('transferOpen').disabled = !actions.length || !selectedActionIndices().length || !state.target || state.transferRunning
+  const body = h('tbody')
+  for (const action of actions.filter((item) => actionMatches(item, query))) {
+    const check = h('input', { type: 'checkbox', 'aria-label': `Chọn ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => {
+      event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false); renderActionPicker()
+    } }); check.checked = state.checked.has(action.index)
+    const quality = actionQuality(action)
+    body.append(h('tr', { class: `clickable${state.selected === action.index ? ' active' : ''}`, dataset: { index: String(action.index) }, onclick: () => selectAction(action.index) },
+      h('td', {}, check), h('td', { class: 'num', text: String(action.index + 1) }), h('td', { class: 'name', text: action.displayName ?? action.name }),
+      h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality' }, h('span', { class: `chip ${quality.class}`, title: quality.title, text: quality.text }))))
+  }
+  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 5, class: 'empty', text: 'Không có animation khớp.' })))
+  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
+}
+$('actionPickerBtn').addEventListener('click', openActionPicker)
+$('actionPickerClose').addEventListener('click', closeActionPicker)
+$('actionPickerSearch').addEventListener('input', renderActionPicker)
+$('actionPickerAll').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerNone').addEventListener('click', () => { state.checked.clear(); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerInvert').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.has(action.index) ? state.checked.delete(action.index) : state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+window.addEventListener('keydown', (event) => { if ((event.key === 'a' || event.key === 'A') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input,textarea,select')) { event.preventDefault(); openActionPicker() } })
+let pickerDrag = null
+$('actionPickerHandle').addEventListener('pointerdown', (event) => { if (event.target.closest('button')) return; const rect = picker.getBoundingClientRect(); pickerDrag = { x: event.clientX - rect.left, y: event.clientY - rect.top }; event.currentTarget.setPointerCapture(event.pointerId) })
+$('actionPickerHandle').addEventListener('pointermove', (event) => { if (!pickerDrag) return; picker.style.left = `${Math.max(0, Math.min(innerWidth - 120, event.clientX - pickerDrag.x))}px`; picker.style.top = `${Math.max(0, Math.min(innerHeight - 60, event.clientY - pickerDrag.y))}px` })
+$('actionPickerHandle').addEventListener('pointerup', () => { pickerDrag = null; savePickerBounds() })
+new ResizeObserver(savePickerBounds).observe(picker)
+restorePickerBounds()
 
 // ---------------------------------------------------------------- steps
 function setStep(n, status, label) {
@@ -371,6 +430,7 @@ function renderInspectInfo() {
 // ---------------------------------------------------------------- step 4: options
 const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
+  state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
   if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale]')) inspectSoon()
   renderOptionHints()
@@ -427,10 +487,10 @@ function selectedActionIndices() {
   const actions = state.inspect?.actions ?? []
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
-async function runNow() {
+async function runNow(onlyActions = null) {
   const reason = canRunReason()
   if (reason) { toast(reason, 'err'); return }
-  const all = selectedActionIndices()
+  const all = onlyActions ?? selectedActionIndices()
   const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true
   $('progress').hidden = false
@@ -450,6 +510,7 @@ async function runNow() {
     if (current.state === 'CANCELLED') { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok'); return }
     if (current.state === 'error') throw new Error(current.error)
     await finishRun(current.result, options)
+    return current.result
   } catch (error) {
     toast(`Chạy thất bại: ${error.message}`, 'err', true)
     $('runInfo').textContent = `Chạy thất bại: ${error.message}`
@@ -493,10 +554,72 @@ async function finishRun(result, options) {
   } else setOverlay('right', `Không có GLB: ${result.status}${report.blocker ? ` — ${report.blocker.code}` : ''}`)
   toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
 }
-$('runBtn').addEventListener('click', runNow)
+$('runBtn').addEventListener('click', () => runNow())
 $('cancelBtn').addEventListener('click', async () => {
   if (!state.run) return
   try { await api(`/api/runs/${state.run}/cancel`, { method: 'POST' }) } catch (error) { toast(error.message, 'err') }
+})
+
+async function prepareTransfer() {
+  if (!state.libraryCharacters) state.libraryCharacters = (await api('/api/library/characters')).characters
+  const select = clear($('transferCharacter'))
+  const compatible = state.libraryCharacters.filter((character) => compatibleLibraryCharacter(character).enabled)
+  for (const character of compatible) select.append(h('option', { value: character.charId, text: `${character.name} · ${character.rig}` }))
+  const targetCharacter = state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : ''
+  if (compatible.some((character) => character.charId === targetCharacter)) select.value = targetCharacter
+  const character = compatible.find((item) => item.charId === select.value)
+  $('transferCharacterPack').checked = !!character
+  $('transferCharacterPack').disabled = !character
+  renderTransferKeys()
+  $('transferConfirm').hidden = false
+}
+function renderTransferKeys() {
+  const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
+  const select = clear($('transferActionKey'))
+  for (const required of character?.requiredActions ?? []) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
+  if (!select.options.length) select.append(h('option', { value: 'idle', text: 'Đứng yên (idle)' }))
+  $('transferCharacterPack').disabled = !character
+}
+$('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
+$('transferCharacter').addEventListener('change', renderTransferKeys)
+async function transferSelected(indices) {
+  const config = { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
+  const toCharacter = config.toCharacter, toShared = config.toShared
+  if (!toCharacter && !toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
+  if (!indices.length) throw new Error('Chưa chọn animation.')
+  state.transferRunning = true
+  for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
+  const selectedCharacter = state.libraryCharacters?.find((item) => item.charId === config.charId)
+  const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
+  if (selectedCharacter?.rig === 'mixamo65' && characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
+  renderActionPicker(); $('transferStatus').textContent = `Đang chuẩn hoá ${indices.length} animation…`
+  const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact),
+    importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
+      charIds: [config.charId], actions: succeeded.map((action) => ({ uuid: action.uuid, key: config.key })),
+    } }),
+    importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {}),
+  })
+  const succeeded = transferred.actions, drafts = transferred.drafts, shared = transferred.shared
+  state.transferFailed = transferred.failed
+  if (!succeeded.length) throw new Error('Không animation nào chuẩn hoá thành công.')
+  const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
+  const summary = [`Đã chuyển ${succeeded.length} animation`, ...(toCharacter ? [`→ ${character?.name ?? 'nhân vật'} (${drafts.length} Nháp)`] : []), ...(toShared ? [`+ kho dùng chung (${shared?.created === false ? 'đã có' : '1 gói'})`] : [])].join(' ')
+  $('transferStatus').textContent = state.transferFailed.length ? `${summary}. Lỗi ${state.transferFailed.length}: ${state.transferFailed.map((index) => state.inspect.actions[index]?.displayName ?? index).join(', ')}` : summary
+  $('transferRetry').hidden = !state.transferFailed.length
+  state.libraryCharacters = null
+  return { normalized: succeeded.length, drafts: drafts.length, sharedPacks: toShared ? 1 : 0, failed: state.transferFailed }
+}
+$('transferStart').addEventListener('click', async () => {
+  $('transferStart').disabled = true
+  try { await transferSelected(selectedActionIndices()); toast('Đã chuyển animation vào thư viện', 'ok') }
+  catch (error) { $('transferStatus').textContent = `Chuyển thất bại: ${error.message}`; toast(error.message, 'err', true) }
+  finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
+})
+$('transferRetry').addEventListener('click', async () => {
+  const failed = [...state.transferFailed]
+  $('transferRetry').hidden = true
+  try { await transferSelected(failed) } catch (error) { $('transferStatus').textContent = `Thử lại thất bại: ${error.message}` }
+  finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 
 // ---------------------------------------------------------------- tabs
@@ -693,7 +816,7 @@ function renderActions(rebuild) {
   if (!info) { box.append(h('div', { class: 'empty', text: 'Kiểm tra nguồn để xem danh sách Action.' })); return }
   const withResult = !!state.result && !state.stale
   const q = state.actionFilter.trim().toLowerCase()
-  const shown = info.actions.filter((action) => !q || action.name.toLowerCase().includes(q) || String(action.index) === q)
+  const shown = info.actions.filter((action) => !q || `${action.name} ${action.nameVi ?? ''}`.toLowerCase().includes(q) || String(action.index) === q)
   const toolbar = h('div', { class: 'toolbar' },
     h('input', { type: 'search', placeholder: 'Lọc Action theo tên / số…', value: state.actionFilter, 'aria-label': 'Lọc Action', oninput: (event) => { state.actionFilter = event.target.value; renderActions(true); box.querySelector('input[type=search]').focus() } }),
     h('button', { type: 'button', text: 'Chọn hết', onclick: () => { info.actions.forEach((action) => state.checked.add(action.index)); markRunInputsChanged() } }),
@@ -723,7 +846,7 @@ function renderActions(rebuild) {
     const status = !(action.durationSeconds > 0) ? 'rỗng' : action.ready ? 'sẵn sàng' : `kênh không hỗ trợ (${action.issueCount})`
     body.append(h('tr', { class: `clickable ${state.selected === action.index ? 'sel' : ''}`, dataset: { index: String(action.index) }, tabindex: '0', onclick: () => selectAction(action.index),
       onkeydown: (event) => { if (event.key === 'Enter') selectAction(action.index) } },
-      h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
+      h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.displayName ?? action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
       h('td', {}, rangeInputs), h('td', { text: status }),
       withResult ? [h('td', {}, per ? chip(per.status) : skipped ? h('span', { class: 'chip warn', title: skipped.message, text: skipped.code }) : '–'),
         h('td', { class: 'num', text: per ? `${fmt(per.hipsHeightRangeMeters[0])}–${fmt(per.hipsHeightRangeMeters[1])}` : '–' }),
@@ -756,7 +879,7 @@ function renderMc20() {
   if (preview) box.append(h('h3', { text: 'Preview .bobj' }), h('img', { class: 'img', src: preview.url, alt: 'Preview Minecraft20' }))
   box.append(h('p', { class: 'note info', text: 'Chưa kiểm: mở file .bobj trong BBS FS thật (cần thử trong game).' }),
     h('h3', { text: 'Action' }), h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Tên .bobj' }), h('th', { text: 'Tên GLB' }), h('th', { class: 'num', text: 'Tick' }), h('th', { class: 'num', text: 'Kênh' }))),
-      h('tbody', {}, mc.actions.slice(0, 500).map((action) => h('tr', {}, h('td', { text: action.name }), h('td', { text: action.glbName }), h('td', { class: 'num', text: String(action.ticks) }), h('td', { class: 'num', text: String(action.channels) }))))))
+      h('tbody', {}, mc.actions.slice(0, 500).map((action) => h('tr', {}, h('td', { text: action.name }), h('td', { text: state.inspect?.actions?.find((item) => item.name === action.glbName)?.displayName ?? action.glbName }), h('td', { class: 'num', text: String(action.ticks) }), h('td', { class: 'num', text: String(action.channels) }))))))
 }
 
 // ---- Tải về
@@ -775,11 +898,6 @@ function renderDownloads() {
     const url = URL.createObjectURL(blob)
     list.append(h('a', { href: url, download: `${stem}.mapping.json` }, h('span', { text: `Preset mapping · ${stem}.mapping.json (dùng với CLI --mapping)` }), h('span', { text: fmtBytes(blob.size) })))
   }
-  if (state.result && !state.stale && state.result.status === 'PASS') {
-    const host = h('div', { class: 'character-library' }, h('h3', { text: 'Đưa Action vào bộ của nhân vật' }), h('div', { class: 'empty', text: 'Đang đọc nhân vật thư viện…' }))
-    box.append(host)
-    void renderCharacterLibrary(host)
-  }
   if (!list.children.length) box.append(h('div', { class: 'empty', text: 'Chưa có file. Chạy chuẩn hoá hoặc xác nhận mapping để có file tải về.' }))
   else box.append(list, h('p', { class: 'note info', text: 'File nằm trong thư mục tạm của phiên Workbench; tải về để giữ lại. File nguồn của bạn không bị sửa.' }))
 }
@@ -790,7 +908,7 @@ function compatibleLibraryCharacter(character) {
   if (character.rig === 'verity' && (rig === 'mixamo65' || rig === 'mixamo65+verity')) {
     return { enabled: true, reason: '' }
   }
-  if (character.rig === 'minecraft20' && state.result?.files?.some((file) => file.kind === 'bobj')) {
+  if (character.rig === 'minecraft20' && (state.result?.files?.some((file) => file.kind === 'bobj') || state.requestBobj)) {
     return { enabled: true, reason: '' }
   }
   return { enabled: false, reason: `Không khớp rig ${rig}.` }

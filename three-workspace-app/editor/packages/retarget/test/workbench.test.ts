@@ -15,6 +15,7 @@ import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
 import { decodeGlb } from '../cli/glb.ts'
 import { AnimationMixer, LoopOnce, Vector3 } from 'three'
+import { executeTransfer } from '../workbench/public/transfer.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
@@ -82,6 +83,42 @@ test('serves the page, the app module and a bound loopback address only', async 
   assert.match(panels.text, /localStorage/)
   assert.match(panels.text, /dblclick/)
   assert.equal((await call('/styles.css')).status, 200)
+})
+
+test('source Action picker is pinned, persisted, and closes only through its X button', async () => {
+  const html = (await call('/')).text, app = (await call('/app.js')).text, css = (await call('/styles.css')).text
+  assert.match(html, /id="actionPicker"[^>]*hidden/)
+  assert.match(html, /id="actionPickerClose"/)
+  assert.match(html, /id="actionPickerInvert"/)
+  assert.match(app, /pickerStorageKey = 'w01\.actionPicker\.v1'/)
+  assert.match(app, /actionPickerClose'\)\.addEventListener\('click', closeActionPicker\)/)
+  assert.doesNotMatch(app, /Escape[\s\S]{0,100}closeActionPicker/)
+  assert.doesNotMatch(app, /picker[^\n]*addEventListener\('click'[^\n]*closeActionPicker/)
+  assert.match(css, /\.action-picker[^}]*resize: both/)
+  assert.match(app, /executeTransfer\(\{ indices, toCharacter, toShared/)
+  assert.match(app, /transferRetry[\s\S]*transferSelected\(failed\)/)
+})
+
+test('one-click transfer orchestrator uses the exact selection, supports shared-only, and retries only failures', async () => {
+  const normalized: number[][] = [], characterImports: number[][] = [], sharedImports: number[][] = []
+  const normalize = async (indices: number[]) => {
+    normalized.push(indices)
+    const completed = indices.filter((index) => index !== 2 || normalized.length > 1)
+    return { runId: `run-${normalized.length}`, manifest: { actions: completed.map((sourceActionIndex) => ({ sourceActionIndex, uuid: `uuid-${sourceActionIndex}` })) } }
+  }
+  const importCharacter = async (_run: unknown, actions: any[]) => { characterImports.push(actions.map((action) => action.sourceActionIndex)); return { drafts: actions.map((action) => ({ uuid: action.uuid })) } }
+  const importShared = async (_run: unknown, actions: any[]) => { sharedImports.push(actions.map((action) => action.sourceActionIndex)); return { packId: 'shared' } }
+
+  const both = await executeTransfer({ indices: [0, 2], toCharacter: true, toShared: true, normalize, importCharacter, importShared })
+  assert.deepEqual(normalized[0], [0, 2]); assert.deepEqual(characterImports[0], [0]); assert.deepEqual(sharedImports[0], [0])
+  assert.equal(both.drafts.length, 1); assert.deepEqual(both.failed, [2])
+  const retry = await executeTransfer({ indices: both.failed, toCharacter: true, toShared: true, normalize, importCharacter, importShared })
+  assert.deepEqual(normalized[1], [2]); assert.deepEqual(retry.failed, []); assert.equal(retry.drafts.length, 1)
+
+  const sharedOnly = await executeTransfer({ indices: [1, 3], toCharacter: false, toShared: true, normalize, importCharacter, importShared })
+  assert.deepEqual(normalized[2], [1, 3]); assert.equal(sharedOnly.drafts.length, 0)
+  assert.equal(characterImports.length, 2, 'shared-only must not create character drafts')
+  assert.deepEqual(sharedImports[2], [1, 3])
 })
 
 test('canonical runs without original sidecars enable both Verity destination cards', async () => {
@@ -323,6 +360,38 @@ test('.bobj by path (default armature) → run with bobj:true writes a .minecraf
   assert.equal(bobj.status, 200)
   assert.match(bobj.text, /# Animation data/)
   assert.ok(/\.minecraft20\.bobj$/.test(run.json.files.find((file: { kind: string }) => file.kind === 'bobj').name))
+})
+
+test('one transfer normalizes exactly 2 of 4 checked Actions into 2 drafts plus one shared pack; shared-only creates no drafts', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-picker-transfer-')), priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const model = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const destination = registerLibraryCharacter({ name: 'Đích Picker', rig: 'mixamo65', modelFile: model })
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const inspected = await post('/api/inspect', { sourceId: source.json.sourceId, targetId: target.id, options: {} })
+    assert.ok(inspected.json.actions.length >= 4)
+    const checked = [inspected.json.actions[1].index, inspected.json.actions[3].index]
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: checked } })
+    assert.equal(run.status, 200, run.text)
+    assert.deepEqual(run.json.manifest.actions.map((action: any) => action.sourceActionIndex), checked)
+    const shared = await post(`/api/runs/${run.json.runId}/library`, {})
+    assert.equal(shared.status, 200, shared.text); assert.equal(shared.json.actions, 2)
+    const drafts = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [destination.charId], actions: run.json.manifest.actions.map((action: any) => ({ uuid: action.uuid, key: 'idle' })) })
+    assert.equal(drafts.status, 200, drafts.text); assert.equal(drafts.json.drafts.length, 2)
+    assert.equal(listCharacterActions({ charId: destination.charId, latestOnly: true }).length, 2)
+
+    const sharedOnlyDestination = registerLibraryCharacter({ name: 'Chỉ kho chung', rig: 'mixamo65', modelFile: model })
+    const sharedOnlyRun = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0] } })
+    const sharedOnly = await post(`/api/runs/${sharedOnlyRun.json.runId}/library`, {})
+    assert.equal(sharedOnly.status, 200, sharedOnly.text)
+    assert.equal(listCharacterActions({ charId: sharedOnlyDestination.charId, latestOnly: true }).length, 0)
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true })
+  }
 })
 
 test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and Minecraft20 character folders as tagged drafts', async () => {

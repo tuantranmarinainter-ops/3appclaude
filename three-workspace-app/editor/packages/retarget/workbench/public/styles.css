@@ -156,6 +156,22 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .destination-card small.bad { color: var(--fail); }
 .library-actions select { min-width: 180px; }
 
+.action-picker { position: fixed; left: 34%; top: 14%; width: min(680px, 62vw); height: min(620px, 72vh); min-width: 420px; min-height: 300px; z-index: 40; resize: both; overflow: hidden; grid-template-rows: auto auto minmax(80px, 1fr) auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: 0 16px 48px rgba(0,0,0,.38); }
+.action-picker:not([hidden]) { display: grid; }
+.action-picker > header { display: flex; align-items: center; padding: 9px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); cursor: move; user-select: none; }
+.action-picker > header button { margin-left: auto; border: 0; background: transparent; font-size: 20px; line-height: 1; }
+.action-picker-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.action-picker-tools input { flex: 1; min-width: 150px; }
+.action-picker-list { overflow: auto; }
+.action-picker-list table { margin: 0; }
+.action-picker-list tr.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.action-picker-list td.name { width: 100%; }
+.action-picker-list .quality { white-space: nowrap; }
+.action-transfer { padding: 9px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.transfer-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.transfer-confirm label { display: inline-flex; align-items: center; gap: 5px; }
+.action-transfer .summary { margin-top: 7px; }
+
 .toasts { position: fixed; right: 14px; bottom: 14px; display: grid; gap: 8px; z-index: 50; max-width: min(460px, calc(100vw - 28px)); }
 .toast { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 6px; padding: 8px 12px; box-shadow: 0 6px 24px rgba(0,0,0,.25); display: flex; gap: 10px; align-items: flex-start; }
 .toast.err { border-left-color: var(--fail); } .toast.ok { border-left-color: var(--pass); }
@@ -167,4 +183,5 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
   .layout > .panel-divider { display: none; }
   .stage { min-height: 70vh; }
   .steps, .panel { max-height: none; }
+  .action-picker { left: 3vw; top: 8vh; width: 94vw; }
 }

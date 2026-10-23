@@ -157,6 +157,7 @@
         </div>
         <div class="row transport-row">
           <label class="inline">Action <select id="actionSel" disabled></select></label>
+          <button type="button" id="actionPickerBtn" aria-controls="actionPicker" aria-expanded="false" title="Mở bảng Animation của nguồn (A)">Animation nguồn (A)</button>
           <label class="inline"><input type="checkbox" id="tgMesh" checked> Mesh</label>
           <label class="inline"><input type="checkbox" id="tgSkel" checked> Xương</label>
           <label class="inline"><input type="checkbox" id="tgGrid" checked> Lưới sàn</label>
@@ -165,6 +166,33 @@
           <span class="bindinfo" id="bindInfo"></span>
         </div>
       </div>
+    </section>
+
+    <section class="action-picker" id="actionPicker" aria-label="Animation của nguồn" hidden>
+      <header id="actionPickerHandle">
+        <strong>Animation của nguồn</strong>
+        <button type="button" id="actionPickerClose" aria-label="Đóng bảng Animation">×</button>
+      </header>
+      <div class="action-picker-tools">
+        <input type="search" id="actionPickerSearch" placeholder="Tìm tên Anh / Việt…" aria-label="Tìm animation">
+        <button type="button" id="actionPickerAll">Chọn hết</button>
+        <button type="button" id="actionPickerNone">Bỏ hết</button>
+        <button type="button" id="actionPickerInvert">Đảo chọn</button>
+        <span class="chip" id="actionPickerCount">đã chọn 0/0</span>
+      </div>
+      <div class="action-picker-list" id="actionPickerList"></div>
+      <footer class="action-transfer">
+        <button type="button" class="primary" id="transferOpen">Chuyển sang nhân vật đích</button>
+        <div class="transfer-confirm" id="transferConfirm" hidden>
+          <label>Nhân vật đích <select id="transferCharacter"></select></label>
+          <label class="inline"><input type="checkbox" id="transferCharacterPack" checked> Bộ của nhân vật (Nháp)</label>
+          <label class="inline"><input type="checkbox" id="transferShared"> Kho dùng chung</label>
+          <label>Thẻ động tác <select id="transferActionKey"></select></label>
+          <button type="button" class="primary" id="transferStart">Chuyển</button>
+        </div>
+        <div class="summary" id="transferStatus"></div>
+        <button type="button" id="transferRetry" hidden>Thử lại các action lỗi</button>
+      </footer>
     </section>
 
     <div class="panel-divider panel-divider-vertical" data-resize-panel="results" role="separator" aria-orientation="vertical" aria-label="Đổi độ rộng khung kết quả" tabindex="0"></div>
