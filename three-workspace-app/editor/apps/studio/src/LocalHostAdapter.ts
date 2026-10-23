@@ -130,13 +130,22 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   async browseLibraryAction(documentId: string, characterNodeId: string): Promise<void> {
     if (this.base !== '/api/unified/projects') throw new Error('Shared-library Actions can only be placed in an App 2 project')
     const project = (await loadUnifiedProject(documentId)).project
-    if (!Object.values(project.characters).some((item) => item.nodeId === characterNodeId)) throw new Error('Select a Character in the current App 2 project first')
-    const popup = window.open('/library?app2=1', 'bbs-action-library', 'popup,width=1100,height=760')
+    const character = Object.values(project.characters).find((item) => item.nodeId === characterNodeId)
+    if (!character) throw new Error('Select a Character in the current App 2 project first')
+    const node = project.scene.content.nodes.find((item) => item.id === character.nodeId)
+    const libraryCharacterId = typeof node?.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : ''
+    const popup = window.open(`/library?app2=1${libraryCharacterId ? `&charId=${encodeURIComponent(libraryCharacterId)}` : ''}`, 'bbs-action-library', 'popup,width=1100,height=760')
     if (!popup) throw new Error('Allow popups to choose an Action from the library')
     await new Promise<void>((resolve, reject) => {
       const onMessage = (event: MessageEvent) => {
         if (event.origin !== window.location.origin || event.source !== popup) return
-        const data = event.data as { type?: unknown; actionUuid?: unknown }
+        const data = event.data as { type?: unknown; actionUuid?: unknown; charId?: unknown }
+        if (data.type === 'bbs-library-add-character' && typeof data.charId === 'string') {
+          window.removeEventListener('message', onMessage)
+          popup.close()
+          void this.addLibraryCharacter(documentId, data.charId).then(resolve, reject)
+          return
+        }
         if (typeof data?.actionUuid !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.actionUuid)) return
         if (data.type !== 'bbs-library-place-action' && data.type !== 'bbs-library-open-app3') return
         window.removeEventListener('message', onMessage)
@@ -148,6 +157,18 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
       }
       window.addEventListener('message', onMessage)
     })
+  }
+
+  async addLibraryCharacter(documentId: string, charId: string): Promise<void> {
+    if (this.base !== '/api/unified/projects') throw new Error('Library Characters require an App 2 project')
+    const project = (await loadUnifiedProject(documentId)).project
+    const response = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'add-to-scene', projectId: project.projectId, expectedRevision: project.revision, charId }) })
+    const body = await response.json() as { revision?: number; error?: string }
+    if (!response.ok || !Number.isInteger(body.revision)) throw new Error(body.error ?? 'Could not add the library Character')
+    this.revisions.set(project.projectId, body.revision!)
+    window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: body.revision } }))
+    window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
   }
 
   async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {
@@ -198,7 +219,7 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   resolveAssetUrl(key: string): string {
     const trimmed = key.trim()
-    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/')) return trimmed
+    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/') || trimmed.startsWith('/api/library?modelCharacter=')) return trimmed
     if (/^https?:\/\//i.test(trimmed)) return trimmed
     const normalized = normalizeAssetKey(trimmed)
     if (!normalized) throw new Error(translateStudio('素材 key 为空'))

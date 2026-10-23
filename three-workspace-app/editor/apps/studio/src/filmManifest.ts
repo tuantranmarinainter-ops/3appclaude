@@ -1,4 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
+import { evaluateBobjAction, MIXAMO_TO_VERITY, parseBobjActions, parseBobjArmature, projectVerityFrame, VERITY_METRES_PER_UNIT } from '@bbs/retarget'
+import { bobjModelNodeName, buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 import { bakeProjectFilmPoseTracks } from './unifiedFilmSampling'
 
 type FilmInput = Awaited<ReturnType<typeof import('./unifiedFilmSampling').sampleProjectFilm>>
@@ -12,6 +14,8 @@ export interface ConvertedFilmModelProfile {
   actions: string[]
   textureRequired: boolean
   files: Array<{ sourcePath: string; targetPath: string; sha256: string }>
+  /** In-memory context for an original library BOBJ. Never serialized into the worker manifest. */
+  originalRig?: { bobj: string; wingAction?: string; nativeOnly?: boolean }
 }
 
 const HASH = /^[a-f0-9]{64}$/
@@ -64,20 +68,90 @@ function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][n
       typeof profile.modelId !== 'string' || !MODEL_ID.test(profile.modelId) ||
       !Array.isArray(profile.bones) || !Array.isArray(profile.actions) || !Array.isArray(profile.files) ||
       typeof profile.textureRequired !== 'boolean') fail(`Converted BOBJ profile does not match Character ${model.characterId}`)
-  if (profile.bones.length !== model.sourceBones.length || profile.bones.some((bone) => !bone || typeof bone.name !== 'string' ||
+  if ((!profile.originalRig && profile.bones.length !== model.sourceBones.length) || profile.bones.some((bone) => !bone || typeof bone.name !== 'string' ||
       !Array.isArray(bone.bobjRestMatrixRowMajor) || bone.bobjRestMatrixRowMajor.length !== 16 ||
       bone.bobjRestMatrixRowMajor.some((value) => !Number.isFinite(value)))) fail(`Converted BOBJ profile is incomplete for Character ${model.characterId}`)
   const sourceNames = new Set(model.sourceBones.map((bone) => bone.name))
-  if (profile.bones.some((bone) => bone.sourceName !== undefined && (typeof bone.sourceName !== 'string' || !sourceNames.has(bone.sourceName))) ||
-      new Set(profile.bones.map((bone) => bone.sourceName ?? bone.name)).size !== profile.bones.length) fail(`Converted BOBJ source bone mapping is invalid for Character ${model.characterId}`)
+  if (!profile.originalRig && (profile.bones.some((bone) => bone.sourceName !== undefined && (typeof bone.sourceName !== 'string' || !sourceNames.has(bone.sourceName))) ||
+      new Set(profile.bones.map((bone) => bone.sourceName ?? bone.name)).size !== profile.bones.length)) fail(`Converted BOBJ source bone mapping is invalid for Character ${model.characterId}`)
   const targets = new Set<string>()
   for (const file of profile.files) {
     if (!file || typeof file.sourcePath !== 'string' || !/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(file.sourcePath) ||
-        !['model.bobj', 'model.png'].includes(file.targetPath) || targets.has(file.targetPath) || !HASH.test(file.sha256)) fail(`Converted BOBJ files are invalid for Character ${model.characterId}`)
-    targets.add(file.targetPath)
+        !(file.targetPath === 'model.bobj' || file.targetPath === 'model.png' || /^textures\/(?!.*(?:^|\/)\.\.?(?:\/|$))[A-Za-z0-9_.\/-]+\/default\.png$/.test(file.targetPath)) ||
+        targets.has(file.targetPath.toLowerCase()) || !HASH.test(file.sha256)) fail(`Converted BOBJ files are invalid for Character ${model.characterId}`)
+    targets.add(file.targetPath.toLowerCase())
   }
-  if (!targets.has('model.bobj') || profile.textureRequired !== targets.has('model.png')) fail(`Converted BOBJ files do not match the texture profile for Character ${model.characterId}`)
+  const hasTexture = targets.has('model.png') || [...targets].some((target) => target.startsWith('textures/') && target.endsWith('/default.png'))
+  if (!targets.has('model.bobj') || profile.textureRequired !== hasTexture) fail(`Converted BOBJ files do not match the texture profile for Character ${model.characterId}`)
   if (profile.actions.some((action) => typeof action !== 'string' || !action) || new Set(profile.actions).size !== profile.actions.length) fail('Converted BOBJ action list is invalid')
+}
+
+type PoseKey = { tick: number; t: [number, number, number]; s: [number, number, number]; r: [number, number, number]; r2: [0, 0, 0]; fix: 0; color: -1; lighting: 0 }
+
+/** Bake native BOBJ samples directly, or invert canonical Mixamo samples through the original Verity hierarchy. */
+export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean }) {
+  const model = input.models[modelIndex]!
+  const armature = parseBobjArmature(original.bobj)
+  const modelReport = buildBobjModel(parseBobjModel(original.bobj)).report
+  const actions = parseBobjActions(original.bobj)
+  const nativeAction = actions.get(original.wingAction || 'idle') ?? actions.values().next().value
+  if (!nativeAction && !original.nativeOnly) fail(`Original BOBJ has no native action for Character ${model.characterId}`)
+  const restWorld = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restWorld])]))
+  const restLocal = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restLocal])]))
+  const nativeAtZero = new Map(nativeAction ? evaluateBobjAction(armature, nativeAction, 0).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])] as const) : restWorld)
+  const rootName = armature.bones.find((bone) => bone.parent === null)?.name
+  if (!rootName) fail('Original BOBJ has no root bone')
+  const rootLocal = nativeAtZero.get(rootName)!
+  const rootActionDelta = rootLocal.clone().multiply(restWorld.get(rootName)!.clone().invert())
+  const side = new Vector3().fromArray(modelReport.restFacing?.left ?? [1, 0, 0]); side.y = 0
+  const facing = side.lengthSq() > 1e-12 ? new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -Math.atan2(-side.z, side.x)) : new Quaternion()
+  const sourceFacingInverse = facing.clone().invert()
+  const groundUnits = modelReport.floorNative
+  const sourceNames = new Set(model.sourceBones.map((bone) => bone.name))
+  const nativeTopology = armature.bones.every((bone) => sourceNames.has(bobjModelNodeName(bone.name)))
+  if (original.nativeOnly && !nativeTopology) fail(`Film Character ${model.characterId} must retain its original BOBJ topology`)
+  const wrapperInverse = new Matrix4().makeScale(1 / modelReport.unitMeters, 1 / modelReport.unitMeters, 1 / modelReport.unitMeters)
+    .multiply(new Matrix4().makeTranslation(0, groundUnits * modelReport.unitMeters, 0))
+  let duration = 1
+  for (const group of nativeAction?.groups.values() ?? []) for (const channel of group.channels) for (const key of channel.keys) duration = Math.max(duration, key.t)
+  const projected = input.frames.map((frame) => {
+    const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
+    if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
+    const actorInverse = new Matrix4().fromArray(sample.actorWorldMatrix).invert()
+    if (nativeTopology) {
+      const sampled = new Map(sample.bones.map((bone) => [bone.name, bone]))
+      const worlds = new Map(armature.bones.map((bone) => {
+        const value = sampled.get(bobjModelNodeName(bone.name))
+        if (!value) fail(`Film sample is missing original bone ${bone.name}`)
+        return [bone.name, wrapperInverse.clone().multiply(actorInverse).multiply(new Matrix4().fromArray(value.worldMatrix))] as const
+      }))
+      return new Map(armature.bones.map((bone) => [bone.name, bone.name === 'Jaw' ? restLocal.get(bone.name)!.clone() :
+        bone.parent ? worlds.get(bone.parent)!.clone().invert().multiply(worlds.get(bone.name)!) : worlds.get(bone.name)!]))
+    }
+    const solverWorlds = new Map(sample.bones.map((bone) => [bone.name, actorInverse.clone().multiply(new Matrix4().fromArray(bone.worldMatrix))]))
+    const native = new Map(evaluateBobjAction(armature, nativeAction!, frame.tick % duration).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])]))
+    const wingLocals = new Map<string, Matrix4>()
+    for (const bone of armature.bones.filter((item) => item.name.startsWith('Wing'))) {
+      const world = native.get(bone.name)!, parent = bone.parent ? native.get(bone.parent) : undefined
+      wingLocals.set(bone.name, parent ? parent.clone().invert().multiply(world) : world)
+    }
+    return projectVerityFrame(solverWorlds, armature.bones.map((bone) => ({ name: bone.name, parent: bone.parent,
+      restWorld: restWorld.get(bone.name)!, restLocal: restLocal.get(bone.name)! })),
+    { metresPerUnit: modelReport.unitMeters || model.metersPerUnit || VERITY_METRES_PER_UNIT, groundUnits, sourceFacingInverse, rootActionDelta }, rootName, rootLocal, wingLocals)
+  })
+  const prior = new Map<string, Euler>()
+  const trackedOriginalNames = new Set(Object.values(MIXAMO_TO_VERITY))
+  trackedOriginalNames.add('Jaw')
+  return armature.bones.filter((bone) => nativeTopology ? !/^camera(?:_|$)/i.test(bone.name) : trackedOriginalNames.has(bone.name))
+    .map((bone) => ({ boneName: bone.name, keyframes: projected.map((locals, index): PoseKey => {
+      const tick = input.frames[index]!.tick
+      const delta = bone.restLocal ? new Matrix4().fromArray([...bone.restLocal]).invert().multiply(locals.get(bone.name)!) : locals.get(bone.name)!
+      const p = new Vector3(), q = new Quaternion(), s = new Vector3(); delta.decompose(p, q, s)
+      const e = new Euler().setFromQuaternion(q, 'ZYX'), old = prior.get(bone.name)
+      if (old) { e.x += 2 * Math.PI * Math.round((old.x - e.x) / (2 * Math.PI)); e.y += 2 * Math.PI * Math.round((old.y - e.y) / (2 * Math.PI)); e.z += 2 * Math.PI * Math.round((old.z - e.z) / (2 * Math.PI)) }
+      prior.set(bone.name, e.clone())
+      return { tick, t: p.toArray() as [number, number, number], s: s.toArray() as [number, number, number], r: [e.x, e.y, e.z], r2: [0, 0, 0], fix: 0, color: -1, lighting: 0 }
+    }) }))
 }
 
 /** Build the exact typed JSON accepted by the pinned BBS 2.4 Film worker. */
@@ -90,14 +164,12 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
   const sourceHashes = Object.fromEntries(Object.entries(input.sourceHashes).sort(([a], [b]) => a.localeCompare(b)))
   if (Object.values(sourceHashes).some((hash) => typeof hash !== 'string' || !HASH.test(hash))) fail('Film source dependency hashes are invalid')
 
-  const profileByAsset = new Map<string, ConvertedFilmModelProfile>()
+  const profileByCharacter = new Map<string, ConvertedFilmModelProfile>()
   const models = input.models.map((model) => {
-    const profile = convertedModels.get(model.assetId)
+    const profile = convertedModels.get(model.characterId) ?? convertedModels.get(model.assetId)
     if (!profile) fail(`Converted BOBJ profile is missing for Character ${model.characterId}`)
     validateConvertedProfile(input, model, profile)
-    const prior = profileByAsset.get(model.assetId)
-    if (prior && prior.modelId !== profile.modelId) fail(`Characters sharing asset ${model.assetId} have different converted models`)
-    profileByAsset.set(model.assetId, profile)
+    profileByCharacter.set(model.characterId, profile)
     return { id: profile.modelId, bones: profile.bones.map((bone) => bone.name), actions: profile.actions,
       textureRequired: profile.textureRequired, files: profile.files }
   })
@@ -108,9 +180,16 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     modelsById.set(model.id, model)
   }
   const uniqueModels = [...modelsById.values()]
-  const baked = bakeProjectFilmPoseTracks(input, convertedModels)
+  const regularProfiles = new Map(convertedModels)
+  for (const model of input.models) {
+    const profile = profileByCharacter.get(model.characterId)!
+    if (!profile.originalRig) regularProfiles.set(model.assetId, profile)
+  }
+  const regularInput = { ...input, models: input.models.filter((model) => !profileByCharacter.get(model.characterId)!.originalRig) }
+  const bakedRegular = bakeProjectFilmPoseTracks(regularInput as FilmInput, regularProfiles)
+  const bakedByCharacter = new Map(bakedRegular.map((item) => [item.characterId, item]))
   const actors = input.models.map((model, modelIndex) => {
-    const profile = profileByAsset.get(model.assetId)!
+    const profile = profileByCharacter.get(model.characterId)!
     const name = model.name
     if (typeof name !== 'string' || !name.trim() || name.length > 64) fail(`Film actor name must contain 1-64 characters: ${model.characterId}`)
     let previousYaw: number | undefined
@@ -122,8 +201,11 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
       previousYaw = transform.yaw
       return { ...transform, yaw: transform.yaw + facingOffset }
     })
-    return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples,
-      poseTracks: baked[modelIndex]!.poseTracks }
+    const original = profile.originalRig
+    const nativeTopology = original && parseBobjArmature(original.bobj).bones.every((bone) => model.sourceBones.some((source) => source.name === bobjModelNodeName(bone.name)))
+    const poseTracks = original ? projectOriginalVerityPoseTracks(input, modelIndex, original) : bakedByCharacter.get(model.characterId)!.poseTracks
+    return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples, poseTracks,
+      ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] } : {}) }
   })
   return {
     schemaVersion: 1 as const, targetVersion: '2.4' as const, projectId: input.projectId,

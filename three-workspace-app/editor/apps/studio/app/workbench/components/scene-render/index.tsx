@@ -2,6 +2,7 @@
 
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useSceneRender } from './hooks/useSceneRender'
+import { RendererStatus } from './RendererStatus'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 
 export function SceneRenderPanel({ project }: { project: UnifiedProject }) {
@@ -25,6 +26,7 @@ export function SceneRenderPanel({ project }: { project: UnifiedProject }) {
         {!busy && completedJob?.state === 'succeeded' && <button type="button" onClick={() => void saveAgain(completedJob)}>{vi ? 'Lưu lại file…' : 'Save again…'}</button>}
         {status && <span role="status" aria-live="polite">{status}</span>}
       </div>
+      <RendererStatus provenance={completedJob?.result?.provenance} />
       {error && <p className="wb-scene-render-error" role="alert">{error}</p>}
     </section>
   )

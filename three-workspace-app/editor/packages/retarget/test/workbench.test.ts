@@ -1,18 +1,42 @@
 import assert from 'node:assert/strict'
 import test, { after, before } from 'node:test'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { runInNewContext } from 'node:vm'
 import { request } from 'node:http'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
+import { loadBobj } from '../cli/loadBobj.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
+import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter } from '../../library/index.ts'
+import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
+import { parseBobjArmature } from '../src/reverse.ts'
+import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
+import { decodeGlb } from '../cli/glb.ts'
+import { AnimationMixer, LoopOnce, Vector3 } from 'three'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
 const characters = resolve(here, '../../../../builtin-assets/characters')
 const xbot = 'C:/w01-samples/Xbot.glb'
 const haveXbot = existsSync(xbot)
+
+function syntheticVerity(helperCount: number, wingCount: number): string {
+  const matrix = (x: number, y: number, z: number) => `1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
+  const bone = (name: string, parent: string | null, x = 0, y = 1, z = 0) => `arm_bone ${name}${parent ? ` ${parent}` : ''} ${x} ${y + .1} ${z} ${matrix(x, y, z)}`
+  const mapped = Object.keys(VERITY_TO_MIXAMO).filter((name) => name !== 'COG').map((name, index) => bone(name,
+    name === 'Upper_Leg_L' || name === 'Upper_Leg_R' ? 'Pelvis' : name === 'Head' ? 'COG' : 'Root',
+    name === 'Upper_Leg_L' ? -.2 : name === 'Upper_Leg_R' ? .2 : index * .001, name === 'Head' ? 2 : 1.2))
+  const actions = ['idle', 'crouching', 'crouching_idle', 'dead', 'dying', 'running', 'sprinting', 'swipe'].flatMap((name) => [
+    `an ${name}`, 'ao Root', 'ag rotation 1', 'kf 0 1.5707963267948966 LINEAR 0 1.5707963267948966 0 1.5707963267948966',
+    ...(name === 'idle' ? Array.from({ length: wingCount }, (_, index) => [`ao Wing_Bone_${index}`, 'ag rotation 2', 'kf 0 0 LINEAR 0 0 0 0', 'kf 2 .4 LINEAR 2 .4 2 .4']).flat() : []),
+  ])
+  return ['arm_name verity.mdl', bone('Root', null, 0, 0, 0), bone('COG', 'Root', 0, 1, 0), bone('Pelvis', 'COG', 0, 1.1, 0), ...mapped,
+    bone('Jaw', 'Head', 0, 1.9, .1), ...Array.from({ length: wingCount }, (_, index) => bone(`Wing_Bone_${index}`, 'COG', -.4 - index * .1, 1.5, 0)),
+    bone('camera', 'Root', 0, -2, 0), bone('Jaw_end_end', 'Jaw', 0, 1.8, .1), ...Array.from({ length: helperCount }, (_, index) => bone(`Helper_${index}`, 'Root', 0, 0, index * .01)),
+    'o body', 'v 0 0 0', 'vw COG 1', ...actions].join('\n') + '\n'
+}
 
 let bench: Workbench
 // The server reads App 5 library characters at start: use an empty library so the user's own characters don't count.
@@ -50,6 +74,33 @@ test('serves the page, the app module and a bound loopback address only', async 
   assert.match(index.text, /importmap/)
   assert.equal((await call('/app.js')).status, 200)
   assert.equal((await call('/styles.css')).status, 200)
+})
+
+test('canonical runs without original sidecars enable both Verity destination cards', async () => {
+  const app = (await call('/app.js')).text
+  const implementation = app.match(/function compatibleLibraryCharacter\(character\) \{[\s\S]*?\n\}/)![0]
+  for (const rig of ['mixamo65', 'mixamo65+verity']) {
+    const compatible = runInNewContext(`(${implementation})`, { state: { result: { manifest: { rig }, files: [{ kind: 'glb' }] } } })
+    const destinations = [{ charId: 'verity84', rig: 'verity' }, { charId: 'verity101', rig: 'verity' }]
+    assert.ok(destinations.every((character) => compatible(character).enabled), rig)
+    assert.equal(compatible({ rig: 'custom' }).enabled, false)
+    assert.equal(compatible({ rig: 'minecraft20' }).enabled, false, 'MC20 still requires BOBJ output')
+  }
+})
+
+test('workspace navigation endpoint reads optional app URLs from the environment', async () => {
+  const prior = [process.env.W01_STUDIO_URL, process.env.W01_ANIMATION_STUDIO_URL, process.env.W01_VFX_URL]
+  process.env.W01_STUDIO_URL = 'http://127.0.0.1:3002'
+  process.env.W01_ANIMATION_STUDIO_URL = 'http://127.0.0.1:3102'
+  delete process.env.W01_VFX_URL
+  try {
+    const result = await call('/api/workspace-navigation')
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.json, { studioUrl: 'http://127.0.0.1:3002', animationUrl: 'http://127.0.0.1:3102', vfxUrl: null })
+  } finally {
+    const keys = ['W01_STUDIO_URL', 'W01_ANIMATION_STUDIO_URL', 'W01_VFX_URL'] as const
+    keys.forEach((key, index) => { if (prior[index] === undefined) delete process.env[key]; else process.env[key] = prior[index] })
+  }
 })
 
 test('every module the browser imports resolves through the server (import map + relative imports)', async () => {
@@ -264,6 +315,124 @@ test('.bobj by path (default armature) → run with bobj:true writes a .minecraf
   assert.equal(bobj.status, 200)
   assert.match(bobj.text, /# Animation data/)
   assert.ok(/\.minecraft20\.bobj$/.test(run.json.files.find((file: { kind: string }) => file.kind === 'bobj').name))
+})
+
+test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and Minecraft20 character folders as tagged drafts', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-character-library-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const model = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const first = registerLibraryCharacter({ name: 'Đích Một', rig: 'mixamo65', modelFile: model })
+    const second = registerLibraryCharacter({ name: 'Đích Hai', rig: 'mixamo65', modelFile: model })
+    const minecraft = registerLibraryCharacter({ name: 'Đích Minecraft', rig: 'minecraft20', modelFile: join(bobjDir, 'minecraft20-armature.bobj') })
+    const listed = await call('/api/library/characters')
+    assert.equal(listed.status, 200, listed.text)
+    assert.deepEqual(listed.json.characters.filter((item: any) => [first.charId, second.charId].includes(item.charId)).map((item: any) => item.counts), [
+      { draft: 0, edited: 0, approved: 0 }, { draft: 0, edited: 0, approved: 0 },
+    ])
+
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, [...parseBobjActions(readFileSync(join(bobjDir, 'minecraft-actions.bobj'), 'utf8')).keys()].indexOf('running')], bobj: true } })
+    assert.equal(run.status, 200, run.text)
+    const rawImport = await post(`/api/runs/${run.json.runId}/library`, { tags: ['legacy'] })
+    assert.equal(rawImport.status, 200, rawImport.text)
+    const selected = run.json.manifest.actions[1]
+    const sent = await post(`/api/runs/${run.json.runId}/character-library`, {
+      charIds: [first.charId, second.charId, minecraft.charId], actions: [{ uuid: selected.uuid, key: 'walk' }],
+    })
+    assert.equal(sent.status, 200, sent.text)
+    assert.equal(sent.json.drafts.length, 3)
+    for (const character of [first, second, minecraft]) {
+      const drafts = listCharacterActions({ charId: character.charId, latestOnly: true })
+      assert.equal(drafts.length, 1)
+      assert.equal(drafts[0]!.status, 'draft')
+      assert.deepEqual(drafts[0]!.tags, ['legacy', 'walk'])
+      if (character.rig === 'mixamo65') assert.equal(drafts[0]!.parentUuid, selected.uuid)
+      else assert.match(drafts[0]!.parentUuid!, /^[0-9a-f-]{36}$/)
+      assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.glb')))
+      if (character.rig === 'minecraft20') {
+        const draftPath = join(library, 'packs', drafts[0]!.packId), bobjPath = join(draftPath, 'anim.bobj')
+        assert.ok(existsSync(bobjPath))
+        const glb = await loadAsset(readFileSync(join(draftPath, 'anim.glb')), 'glb', { skeletonOnly: true })
+        const bobj = loadBobj(readFileSync(bobjPath, 'utf8'), readFileSync(join(bobjDir, 'minecraft20-armature.bobj'), 'utf8'))
+        const glbBones = new Map<string, any>(), bobjBones = new Map<string, any>()
+        glb.traverse((object: any) => { if (object.isBone) glbBones.set(object.name, object) }); bobj.traverse((object: any) => { if (object.isBone) bobjBones.set(object.name, object) })
+        assert.equal(glbBones.size, 20); assert.equal(bobjBones.size, 20)
+        const clip = glb.animations[drafts[0]!.glbAnimationIndex], reference = bobj.animations[0]!
+        assert.ok(clip && reference && clip.name === reference.name)
+        const a = new AnimationMixer(glb), b = new AnimationMixer(bobj), aa = a.clipAction(clip), bb = b.clipAction(reference)
+        aa.clampWhenFinished = true; bb.clampWhenFinished = true
+        aa.setLoop(LoopOnce, 1).play(); bb.setLoop(LoopOnce, 1).play()
+        const armature = parseBobjArmature(readFileSync(join(bobjDir, 'minecraft20-armature.bobj'), 'utf8')), action = [...parseBobjActions(readFileSync(bobjPath, 'utf8')).values()][0]!
+        let maxEndpointError = 0
+        for (const time of [0, clip.duration / 2, clip.duration]) {
+          a.setTime(time); b.setTime(time); glb.updateMatrixWorld(true); bobj.updateMatrixWorld(true)
+          const evaluated = new Map(evaluateBobjAction(armature, action, time * 20).map((bone) => [bone.name.replace(/\./g, '_'), bone.worldMatrix]))
+          for (const [name, bone] of glbBones) maxEndpointError = Math.max(maxEndpointError,
+            new Vector3().setFromMatrixPosition(bone.matrixWorld).distanceTo(new Vector3().fromArray(evaluated.get(name)!.slice(12, 15))))
+        }
+        assert.ok(maxEndpointError <= 1e-4, `Minecraft20 GLB vs evaluateBobjAction endpoints ${maxEndpointError}`)
+        const raw = getAction({ actionUuid: drafts[0]!.parentUuid! }), report = JSON.parse(readFileSync(join(library, 'packs', raw.packId, 'anim.report.json'), 'utf8'))
+        assert.equal(report.serializerRoundTrip.status, 'PASS'); assert.equal(report.serializerRoundTrip.joints, 20)
+        assert.ok(report.serializerRoundTrip.sampledEndpoints >= 3)
+        console.info('MC20 running serialized evaluator measurement', JSON.stringify({ maxEndpointError, ...report.serializerRoundTrip }))
+      }
+    }
+    const updatedCounts = (await call('/api/library/characters')).json.characters.filter((item: any) => [first.charId, second.charId, minecraft.charId].includes(item.charId))
+    assert.ok(updatedCounts.every((item: any) => item.counts.draft === 1 && item.counts.edited === 0 && item.counts.approved === 0))
+    assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [], actions: [{ uuid: selected.uuid, key: 'walk' }] })).status, 400)
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true })
+  }
+})
+
+test('selected Action is rebuilt against each Verity destination base without leaking other new Actions', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-verity-library-')), fixtures = mkdtempSync(join(tmpdir(), 'w01-verity-models-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const path84 = join(fixtures, 'verity84.bobj'), path101 = join(fixtures, 'verity101.bobj')
+    const source84 = syntheticVerity(13, 1), source101 = syntheticVerity(29, 2)
+    writeFileSync(path84, source84); writeFileSync(path101, source101)
+    const base84 = registerBaseModel({ name: 'Verity 84', rig: 'verity', modelFile: path84 })
+    const base101 = registerBaseModel({ name: 'Verity 101', rig: 'verity', modelFile: path101 })
+    const char84 = createCharacter({ name: 'Gỗ 84', baseModelId: base84.modelId })
+    const char101 = createCharacter({ name: 'Cánh 101', baseModelId: base101.modelId })
+    const custom = registerLibraryCharacter({ name: 'Sai rig', rig: 'custom', modelFile: join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!) })
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, 1] } })
+    assert.equal(run.status, 200, run.text)
+    const selected = run.json.manifest.actions[0]
+    const rejected = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [char84.charId, custom.charId], actions: [{ uuid: selected.uuid, key: 'walk' }] })
+    assert.equal(rejected.status, 409, rejected.text)
+    assert.equal(listCharacterActions({ charId: char84.charId }).length, 0, 'prevalidation prevents a partial valid-character draft')
+
+    const sent = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [char84.charId, char101.charId], actions: [{ uuid: selected.uuid, key: 'walk' }] })
+    assert.equal(sent.status, 200, sent.text); assert.equal(sent.json.drafts.length, 2)
+    for (const [character, original, bones, wings] of [[char84, source84, 84, 1], [char101, source101, 101, 2]] as const) {
+      const draft = listCharacterActions({ charId: character.charId, latestOnly: true })[0]!
+      const pack = join(library, 'packs', draft.packId), bobj = readFileSync(join(pack, 'anim.original.bbs.bobj'), 'utf8')
+      assert.equal(bobj.slice(0, original.length), original, 'destination-specific original prefix is byte-preserved')
+      assert.equal(parseBobjArmature(bobj).bones.length, bones)
+      assert.equal(parseBobjArmature(bobj).bones.filter((bone) => bone.name.startsWith('Wing')).length, wings)
+      const actions = [...parseBobjActions(bobj).keys()]
+      assert.deepEqual(actions.slice(0, 8), ['idle', 'crouching', 'crouching_idle', 'dead', 'dying', 'running', 'sprinting', 'swipe'])
+      assert.equal(actions.length, 9, 'eight built-ins plus only the one selected new Action')
+      const glb = decodeGlb(readFileSync(join(pack, 'anim.original.glb'))).json
+      assert.equal(glb.skins[0].joints.length, bones)
+      assert.equal(glb.animations.length, 9)
+      assert.equal(glb.animations.at(-1).name, actions.at(-1))
+    }
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true }); rmSync(fixtures, { recursive: true, force: true })
+  }
 })
 
 test('invalid options come back as a readable 400, a blocked source as a normal BLOCKED result', async () => {

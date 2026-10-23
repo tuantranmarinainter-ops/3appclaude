@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { launchRenderBrowser } from './browser.mjs'
 import { loadPlaywright } from './playwright.mjs'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
@@ -88,19 +89,13 @@ export async function withPage(work, { allowedOrigins = [], localAssets = [], si
   const { server, origin } = await serveRoot(localAssets.map(([, file]) => path.resolve(file)))
   const network = { blocked: [] }
   let browser
+  let renderer
   const abort = () => { if (browser) void browser.close().catch(() => undefined) }
   signal?.addEventListener('abort', abort, { once: true })
   try {
-    browser = await playwright.chromium.launch({
-      args: [
-        '--use-angle=swiftshader',
-        '--enable-unsafe-swiftshader',
-        '--ignore-gpu-blocklist',
-        '--disable-dev-shm-usage',
-        '--disable-web-security',
-      ],
-      chromiumSandbox: false,
-    })
+    const launched = await launchRenderBrowser(playwright.chromium)
+    browser = launched.browser
+    renderer = launched.renderer
     if (signal?.aborted) throw new DOMException('Operation cancelled', 'AbortError')
     const page = await browser.newPage()
     const allowed = new Set([origin, ...allowedOrigins])
@@ -115,7 +110,7 @@ export async function withPage(work, { allowedOrigins = [], localAssets = [], si
       }
       return route.abort('blockedbyclient')
     })
-    const warnings = []
+    const warnings = [...launched.warnings]
     page.on('console', (message) => {
       if (!['warning', 'error'].includes(message.type()) || warnings.length >= 20) return
       // Preserve asset-load diagnostics without returning signed URL credentials.
@@ -129,7 +124,7 @@ export async function withPage(work, { allowedOrigins = [], localAssets = [], si
     })
     await page.goto(`${origin}/static/headless.html`, { waitUntil: 'load' })
     await page.waitForFunction(() => window.__directorReady === true, null, { timeout: 30_000 })
-    return await work(page, origin, warnings, network, localAssetUrls(localAssets, origin))
+    return await work(page, origin, warnings, network, localAssetUrls(localAssets, origin), renderer)
   } finally {
     signal?.removeEventListener('abort', abort)
     try { if (browser) await browser.close() }
@@ -187,7 +182,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
   const { width, height } = resolveRenderSize(body)
   await mkdir(outputDir, { recursive: true })
   const localAssets = localAssetFiles(body)
-  return withPage(async (page, origin, warnings, network, localAssetUrls) => {
+  return withPage(async (page, origin, warnings, network, localAssetUrls, renderer) => {
     await page.exposeFunction('__directorRenderProgress', async (completed, total) => {
       if (signal?.aborted) throw new DOMException('Operation cancelled', 'AbortError')
       await onProgress?.(completed, total)
@@ -276,6 +271,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
       contactSheet: { ...contactSheet, path: undefined, file: path.basename(sheetFile) },
       blank,
       blockedRequests: network.blocked,
+      renderer,
       ...(isPlainObject(body.metadata) ? { metadata: body.metadata } : {}),
     }, null, 2)}\n`)
     return {
@@ -288,6 +284,7 @@ export async function renderFrames(body, { signal, onProgress } = {}) {
       blank,
       blockedRequests: network.blocked,
       warnings,
+      renderer,
     }
   }, { allowedOrigins: assetOrigins(body), localAssets, signal })
 }

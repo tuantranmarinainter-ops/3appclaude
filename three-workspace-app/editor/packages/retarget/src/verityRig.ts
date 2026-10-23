@@ -3,7 +3,8 @@ import { MIXAMO65_BONE_PARENTS } from './mixamo65'
 import { createMixamo65MappingPreset, type Mixamo65MappingPreset } from './mappingPreset'
 import type { MappingSkeleton } from './mapping'
 
-export const VERITY_METRES_PER_UNIT = 1.9 / 3.865407
+/** Physical scale shared with the BOBJ model loader; keep the preset decimal exact to avoid applying two near-equal wrappers. */
+export const VERITY_METRES_PER_UNIT = 0.4915394
 
 /** Raw Verity bone name → canonical Mixamo65 joint. Helpers and extras are intentionally absent. */
 export const VERITY_TO_MIXAMO: Readonly<Record<string, string>> = (() => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import test from 'node:test'
-import { assetOrigins, localAssetFiles, renderFrames, resolveOutputDir } from '../render.mjs'
+import { assetOrigins, localAssetFiles, renderFrames, resolveOutputDir, resolveRenderSize } from '../render.mjs'
 
 test('outputDir is required and must be absolute', () => {
   assert.throws(() => resolveOutputDir(undefined), /RENDER_OUTPUT_DIR_REQUIRED/)
@@ -61,4 +61,11 @@ test('local assets must be absolute file paths', () => {
   assert.deepEqual(localAssetFiles({}), [])
   assert.deepEqual(localAssetFiles({ localAssets: { k: '/a/b.glb' } }), [['k', '/a/b.glb']])
   assert.throws(() => localAssetFiles({ localAssets: { k: 'b.glb' } }), /LOCAL_ASSET_PATH_INVALID:k/)
+})
+
+test('render sizing remains deterministic across CPU and GPU modes', () => {
+  const body = { width: 1920, height: 1080 }
+  const expected = { width: 1024, height: 576 }
+  assert.deepEqual(resolveRenderSize(body), expected)
+  assert.deepEqual(resolveRenderSize(body), expected)
 })

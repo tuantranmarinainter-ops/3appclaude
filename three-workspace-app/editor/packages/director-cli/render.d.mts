@@ -23,6 +23,11 @@ interface RenderResult {
   blank: boolean
   blockedRequests: string[]
   warnings: string[]
+  renderer: {
+    kind: 'gpu' | 'cpu'
+    name: string
+    raw: string
+  }
 }
 
 export function renderFrames(body: {
