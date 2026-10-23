@@ -1,68 +1,120 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { ActionPreview } from './ActionPreview'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 
-type Action = { uuid: string; name: string; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number }
-type Character = { charId: string; name: string; rig: string; previewUrl: string }
-type Page = { items: Action[]; total: number }
+type Status = 'draft' | 'edited' | 'approved'
+type Action = { uuid: string; name: string; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number }
+type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
+type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
+
+const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
+const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
+
+async function json(url: string, init?: RequestInit) {
+  const response = await fetch(url, { cache: 'no-store', ...init })
+  const body = await response.json()
+  if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`)
+  return body
+}
 
 export default function LibraryPage() {
-  const [page, setPage] = useState<Page>({ items: [], total: 0 })
-  const [rig, setRig] = useState('')
-  const [category, setCategory] = useState('')
-  const [tag, setTag] = useState('')
-  const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<Action | null>(null)
-  const [characters, setCharacters] = useState<Character[]>([])
-  const [characterId, setCharacterId] = useState('')
-  const [editTags, setEditTags] = useState('')
-  const [editCategory, setEditCategory] = useState('')
+  const [tab, setTab] = useState<'actions' | 'characters' | 'coverage'>('actions')
+  const [actions, setActions] = useState<Action[]>([]), [characters, setCharacters] = useState<Character[]>([])
+  const [coverage, setCoverage] = useState<Coverage[]>([]), [characterId, setCharacterId] = useState('')
+  const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(false)
+  const [query, setQuery] = useState(''), [category, setCategory] = useState('')
+  const [selected, setSelected] = useState<Action | null>(null), [copyTarget, setCopyTarget] = useState('')
   const [message, setMessage] = useState('')
-  const params = useMemo(() => new URLSearchParams({ ...(rig ? { rig } : {}), ...(category ? { category } : {}), ...(tag ? { tag } : {}), ...(query ? { q: query } : {}) }), [rig, category, tag, query])
-  useEffect(() => { let live = true; fetch(`/api/library?${params}`, { cache: 'no-store' }).then(r => r.json()).then(data => { if (live) setPage(data) }).catch(error => setMessage(String(error))); return () => { live = false } }, [params])
-  const selectedRig = selected?.rig
-  useEffect(() => { let live = true; fetch('/api/library?characters=1', { cache: 'no-store' }).then(r => r.json()).then(data => { if (live) { const rows = (data.characters as Character[]).filter(c => c.rig === selectedRig || !selectedRig); setCharacters(rows); setCharacterId(current => rows.some(c => c.charId === current) ? current : rows[0]?.charId ?? '') } }).catch(error => setMessage(String(error))); return () => { live = false } }, [selectedRig])
-  const previewCharacter = characters.find(character => character.charId === characterId)
-  async function choose(action: Action) {
-    setSelected(action); setEditTags(action.tags.join(', ')); setEditCategory(action.category)
-    try { const response = await fetch(`/api/library?actionUuid=${encodeURIComponent(action.uuid)}`); const body = await response.json(); if (!response.ok) throw Error(body.error); setSelected({ ...action, ...body.action }) } catch (error) { setMessage(String(error)) }
+
+  const loadCharacters = useCallback(async () => {
+    const body = await json('/api/library?characters=1')
+    const rows = (body.characters as Character[]).filter(item => item.baseModelId)
+    setCharacters(rows)
+    const requested = new URLSearchParams(window.location.search).get('charId') ?? ''
+    setCharacterId(current => rows.some(item => item.charId === current) ? current : rows.some(item => item.charId === requested) ? requested : rows[0]?.charId ?? '')
+    setCopyTarget(current => rows.some(item => item.charId === current) ? current : rows[0]?.charId ?? '')
+  }, [])
+  const loadActions = useCallback(async () => {
+    if (!warehouse && !characterId) { setActions([]); return }
+    const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
+    const body = await json(`/api/library?${params}`)
+    let rows = body.actions as Action[]
+    if (category) rows = rows.filter(action => action.category === category)
+    if (!warehouse && query) rows = rows.filter(action => `${action.name} ${action.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+    setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
+  }, [category, characterId, query, status, warehouse])
+
+  useEffect(() => { void loadCharacters().catch(error => setMessage(String(error))) }, [loadCharacters])
+  useEffect(() => { void loadActions().catch(error => setMessage(String(error))) }, [loadActions])
+  useEffect(() => { if (tab === 'coverage') void json('/api/library?coverage=1').then(body => setCoverage(body.coverage)).catch(error => setMessage(String(error))) }, [tab])
+
+  const selectedCharacter = characters.find(item => item.charId === characterId)
+  const compatibleTargets = useMemo(() => characters.filter(item => item.rig === selected?.rig && item.charId !== selected?.ownerCharId), [characters, selected])
+  async function approve() {
+    if (!selected?.ownerCharId) return
+    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'approve', charId: selected.ownerCharId, actionUuid: selected.uuid }) })
+    await loadActions(); setMessage('Đã duyệt động tác.')
   }
-  async function save() {
-    if (!selected) return
-    const response = await fetch('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, category: editCategory, tags: editTags.split(',').map(t => t.trim()).filter(Boolean) }) })
-    const body = await response.json(); if (!response.ok) { setMessage(body.error); return }
-    setMessage('Metadata saved'); const updated = { ...selected, category: editCategory, tags: editTags.split(',').map(t => t.trim()).filter(Boolean) }; setSelected(updated); setPage(p => ({ ...p, items: p.items.map(a => a.uuid === updated.uuid ? updated : a) }))
+  async function copy() {
+    if (!selected || !copyTarget) return
+    await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'copy', actionUuid: selected.uuid, toCharId: copyTarget }) })
+    setMessage('Đã sao chép thành bản Nháp riêng của nhân vật đích.')
   }
+  function notifyOpener(type: string) {
+    if (!selected || !window.opener) return setMessage('Mở Thư viện từ App 2 để dùng thao tác này.')
+    window.opener.postMessage({ type, actionUuid: selected.uuid }, window.location.origin)
+  }
+
   return <main style={{ padding: 24, color: '#eee', background: '#111318', minHeight: '100vh', fontFamily: 'system-ui' }}>
-    <h1>App 5 · Animation Library</h1>
-    <p>Browse immutable normalized Actions. Metadata edits change tags and category only.</p>
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-      <input aria-label="Search actions" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
-      <select aria-label="Filter rig" value={rig} onChange={e => setRig(e.target.value)}><option value="">All rigs</option>{[...new Set(page.items.map(a => a.rig))].map(v => <option key={v}>{v}</option>)}</select>
-      <select aria-label="Filter category" value={category} onChange={e => setCategory(e.target.value)}><option value="">All categories</option>{ACTION_CATEGORIES.map(v => <option key={v}>{v}</option>)}</select>
-      <input aria-label="Filter tag" placeholder="Tag" value={tag} onChange={e => setTag(e.target.value)} />
-    </div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)', gap: 20 }}>
-      <section aria-label="Action covers" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 12, alignContent: 'start' }}>
-        {page.items.map(action => <button key={action.uuid} onClick={() => void choose(action)} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left', cursor: 'pointer' }}>
-          <div style={{ height: 105, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="" width={240} height={105} unoptimized style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : 'No cover'}</div>
-          <strong>{action.name}</strong><div>{action.rig} · {action.category}</div><small>{action.tags.join(', ')}</small>
-        </button>)}
-        {!page.items.length && <p>No actions in this library yet.</p>}
+    <h1>App 5 · Thư viện</h1>
+    <nav style={{ display: 'flex', gap: 8, marginBottom: 18 }}><button onClick={() => setTab('actions')}>Động tác</button><button onClick={() => setTab('characters')}>Nhân vật</button><button onClick={() => setTab('coverage')}>Bảng động tác</button></nav>
+    {tab === 'actions' && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
+      <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
+      <button onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
+      <input aria-label="Tìm động tác" placeholder="Tìm" value={query} onChange={event => setQuery(event.target.value)} />
+      <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select>
+    </div><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(280px,1fr)', gap: 20 }}>
+      <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start' }}>
+        {actions.map(action => <button key={action.uuid} onClick={() => setSelected(action)} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
+          <div style={{ height: 90, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="" width={220} height={90} unoptimized /> : 'Không có ảnh'}</div>
+          <strong>{action.name}</strong><div>{action.tags.join(', ') || action.category}</div>{action.status && <small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small>}
+        </button>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
-      <aside aria-label="Action preview and metadata" style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>
-        {selected ? <><h2>{selected.name}</h2>
-          <label>Preview character <select aria-label="Preview character" value={characterId} onChange={event => setCharacterId(event.target.value)}>{characters.filter(character => character.rig === selected.rig).map(character => <option key={character.charId} value={character.charId}>{character.name}</option>)}</select></label>
-          {previewCharacter ? <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={previewCharacter.previewUrl} /> : <p>No preview character is available for rig {selected.rig}.</p>}
-          <p>Action preview · {selected.durationSeconds.toFixed(2)} s · {selected.fps} fps</p><p>Rig: {selected.rig} · Pack: {selected.packId}</p>
-          <label>Category <select value={editCategory} onChange={e => setEditCategory(e.target.value)}>{ACTION_CATEGORIES.map(v => <option key={v}>{v}</option>)}</select></label><p><label>Tags (comma separated)<br /><input value={editTags} onChange={e => setEditTags(e.target.value)} /></label></p><button onClick={() => void save()}>Save metadata</button>
-          <p>Action UUID · {selected.uuid}</p>
-          {typeof window !== 'undefined' && window.opener ? <><button onClick={() => window.opener?.postMessage({ type: 'bbs-library-place-action', actionUuid: selected.uuid }, window.location.origin)}>Place on selected App 2 character</button><button onClick={() => window.opener?.postMessage({ type: 'bbs-library-open-app3', actionUuid: selected.uuid }, window.location.origin)}>Open in Animation Studio</button></> : null}
-        </> : <p>Select an Action to preview its details and edit metadata.</p>}{message && <p role="status">{message}</p>}
-      </aside>
-    </div>
+      <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{selected.name}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
+        <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig}</p>
+        {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
+        <button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
+        <p><select aria-label="Nhân vật đích" value={copyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
+      </> : <p>Chọn một động tác.</p>}</aside>
+    </div></>}
+    {tab === 'characters' && <CharacterProfiles characters={characters} onSaved={loadCharacters} setMessage={setMessage} />}
+    {tab === 'coverage' && <CoverageMatrix rows={coverage} onMissing={(key, charId) => { setCharacterId(charId); setQuery(key); setWarehouse(true); setTab('actions') }} />}
+    {message && <p role="status">{message}</p>}
   </main>
+}
+
+function CharacterProfiles({ characters, onSaved, setMessage }: { characters: Character[]; onSaved: () => Promise<void>; setMessage: (value: string) => void }) {
+  async function save(character: Character, form: HTMLFormElement) {
+    const data = new FormData(form)
+    const personality = { summary: String(data.get('summary') ?? ''), traits: String(data.get('traits') ?? '').split(',').map(value => value.trim()).filter(Boolean) }
+    const requiredActions = String(data.get('required') ?? '').split('\n').map(line => line.split(':', 2)).filter(parts => parts[0]?.trim() && parts[1]?.trim()).map(([key, label]) => ({ key: key!.trim(), label: label!.trim() }))
+    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'profile', charId: character.charId, personality, requiredActions }) })
+    await onSaved(); setMessage(`Đã lưu hồ sơ ${character.name}.`)
+  }
+  return <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>{characters.map(character => <form key={character.charId} onSubmit={event => { event.preventDefault(); void save(character, event.currentTarget).catch(error => setMessage(String(error))) }} style={{ padding: 14, background: '#20242c' }}>
+    <h2>{character.name}</h2><p>{character.rig} · mô hình {character.baseModelId}</p>
+    <label>Tính cách<textarea name="summary" defaultValue={character.personality?.summary} style={{ width: '100%' }} /></label>
+    <label>Đặc điểm (cách nhau bằng dấu phẩy)<input name="traits" defaultValue={character.personality?.traits.join(', ')} style={{ width: '100%' }} /></label>
+    <label>Động tác cần có (key: nhãn)<textarea name="required" defaultValue={character.requiredActions?.map(item => `${item.key}: ${item.label}`).join('\n')} style={{ width: '100%', minHeight: 130 }} /></label><button type="submit">Lưu hồ sơ</button>
+    {typeof window !== 'undefined' && window.opener && <button type="button" onClick={() => window.opener?.postMessage({ type: 'bbs-library-add-character', charId: character.charId }, window.location.origin)}>Thêm vào cảnh App 2</button>}
+  </form>)}</section>
+}
+
+function CoverageMatrix({ rows, onMissing }: { rows: Coverage[]; onMissing: (key: string, charId: string) => void }) {
+  const columns = [...new Map(rows.flatMap(row => row.cells).map(cell => [cell.key, cell.label])).entries()]
+  return <div style={{ overflow: 'auto' }}><table style={{ borderCollapse: 'collapse', minWidth: '100%' }}><thead><tr><th>Nhân vật</th>{columns.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.charId}><th>{row.name}</th>{columns.map(([key]) => { const cell = row.cells.find(item => item.key === key); return <td key={key} style={{ padding: 5, background: cell?.status ? STATUS_COLOR[cell.status] : '#3a3030' }}>{cell?.action ? <span title={cell.action.name}>{cell.status && STATUS_LABEL[cell.status]}</span> : <button onClick={() => onMissing(key, row.charId)}>Tìm trong kho</button>}</td> })}</tr>)}</tbody></table></div>
 }

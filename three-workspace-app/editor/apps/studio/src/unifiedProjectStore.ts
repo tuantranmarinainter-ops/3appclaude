@@ -1757,10 +1757,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw new UnifiedStoreError('ASSET_MISSING', error instanceof Error ? error.message : 'Staged relink file is unavailable', 422)
     }
   } else if (envelope.command === 'character.add') {
-    const { assetId, skeletonId, name, transform, parentNodeId } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['assetId', 'skeletonId', 'name', 'transform', 'parentNodeId'].includes(key)) ||
+    const { assetId, skeletonId, name, transform, parentNodeId, library } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['assetId', 'skeletonId', 'name', 'transform', 'parentNodeId', 'library'].includes(key)) ||
       typeof assetId !== 'string' || typeof skeletonId !== 'string' || typeof name !== 'string' || !name.trim() || name.length > 120 ||
       parentNodeId !== undefined && typeof parentNodeId !== 'string') throw new UnifiedStoreError('VALIDATION_FAILED', 'character.add requires a model asset, skeleton profile and name', 400)
+    if (library !== undefined && (!isRecord(library) || typeof library.libraryCharacterId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(library.libraryCharacterId) ||
+      typeof library.libraryBaseModelId !== 'string' || !/^[a-f0-9]{16}$/.test(library.libraryBaseModelId) ||
+      !Array.isArray(library.librarySkin) || library.librarySkin.some((item) => !isRecord(item) || typeof item.object !== 'string' || typeof item.path !== 'string' ||
+        !item.object || item.object.startsWith('/') || item.object.split('/').some((part) => !part || part === '.' || part === '..') ||
+        !/^(characters|models)\/[A-Za-z0-9_-]+\/(?:[A-Za-z0-9_. -]+\/)*default\.png$/.test(item.path) ||
+        !/^[a-f0-9]{64}$/.test(String(item.sha256)) || !['skin', 'base'].includes(String(item.source))) ||
+      !Array.isArray(library.libraryHiddenObjects) || library.libraryHiddenObjects.some((item) => typeof item !== 'string') ||
+      library.libraryDefaultAction !== undefined && (typeof library.libraryDefaultAction !== 'string' || !LIBRARY_ACTION_UUID.test(library.libraryDefaultAction)))) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'character.add library metadata is invalid', 400)
+    }
     const model = project.assets[assetId as keyof typeof project.assets]
     if (!model || model.kind !== 'model') throw new UnifiedStoreError('ASSET_MISSING', 'Character model asset is missing', 422)
     if (!project.skeletons[skeletonId]) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Character skeleton profile is missing', 422)
@@ -1789,7 +1799,8 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const characterId = randomUUID()
     node.metadata = { ...(isRecord(node.metadata) ? node.metadata : {}), characterId, rig: 'direct',
       modelFormat: model.source.mediaType === 'application/vnd.autodesk.fbx' ? 'fbx' : 'gltf',
-      modelUnitMeters: profile.metersPerUnit, modelBasisToScene: profile.basisToScene, preserveMaterials: true }
+      modelUnitMeters: profile.metersPerUnit, modelBasisToScene: profile.basisToScene, preserveMaterials: true,
+      ...(library ? structuredClone(library) : {}) }
     scene.content.nodes.push(node)
     characterAddition = { characterId, scene, character: { id: characterId, assetId: assetId as `sha256:${string}`, nodeId: node.id, skeletonId, name: name.trim() } }
     const proposed = structuredClone(project)
