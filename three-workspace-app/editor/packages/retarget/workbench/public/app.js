@@ -235,6 +235,19 @@ for (const type of ['dragenter', 'dragover']) $('drop').addEventListener(type, (
 for (const type of ['dragleave', 'drop']) $('drop').addEventListener(type, (event) => { event.preventDefault(); $('drop').classList.remove('over') })
 $('drop').addEventListener('drop', (event) => uploadFile(event.dataTransfer.files[0]))
 $('pathBtn').addEventListener('click', usePath)
+$('addTargetBtn').addEventListener('click', async () => {
+  const path = $('addTargetPath').value.trim()
+  if (!path) { toast('Nhập đường dẫn file .glb của nhân vật', 'err'); return }
+  $('addTargetBtn').disabled = true
+  try {
+    const target = await api('/api/targets', { method: 'POST', json: { path, name: $('addTargetName').value.trim() } })
+    state.targets = (await api('/api/targets')).targets
+    renderTargets()
+    toast(`Đã thêm nhân vật đích ${target.name} (hông ${fmt(target.hipsHeightMeters)} m) vào thư viện`, 'ok')
+    $('addTargetPath').value = ''; $('addTargetName').value = ''
+  } catch (error) { toast(`Không thêm được: ${error.message}`, 'err') }
+  finally { $('addTargetBtn').disabled = false }
+})
 $('pathInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') usePath() })
 // A stray drop outside the zone must not navigate away to the file.
 for (const type of ['dragover', 'drop']) window.addEventListener(type, (event) => event.preventDefault())
@@ -245,7 +258,7 @@ function renderTargets() {
   for (const target of state.targets) {
     const selected = state.target?.id === target.id && !state.mc20
     box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(selected), onclick: () => { setMc20(false); chooseTarget(target) } },
-      h('b', { text: `Nhân vật ${target.name}` }), h('small', { text: `hông ${fmt(target.hipsHeightMeters)} m` })))
+      h('b', { text: target.library ? target.name : `Nhân vật ${target.name}` }), h('small', { text: `${target.library ? 'thư viện · ' : ''}hông ${fmt(target.hipsHeightMeters)} m` })))
   }
   // Minecraft20 is an extra output on top of the Mixamo65 GLB (the solver is Mixamo65 → Minecraft20), so it rides on the selected character.
   box.append(h('button', { type: 'button', class: 'target', role: 'radio', 'aria-checked': String(!!state.mc20), onclick: () => setMc20(true) },

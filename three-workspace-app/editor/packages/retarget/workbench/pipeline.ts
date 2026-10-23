@@ -27,7 +27,7 @@ export class UserError extends Error {
 }
 
 export interface SourceRecord { id: string; name: string; format: AssetFormat; path: string; bytes: number; sha256: string; uploaded: boolean; armaturePath?: string }
-export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number }
+export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number; name?: string; library?: boolean }
 
 export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'

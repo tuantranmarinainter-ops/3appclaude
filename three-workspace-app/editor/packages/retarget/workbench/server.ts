@@ -20,11 +20,13 @@ import {
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
 import { previewClips, previewModel, steveFiles } from './steve.ts'
-import { importPack } from '../../library/index.ts'
+import { importPack, listLibraryCharacters, registerLibraryCharacter, resolveLibraryPath } from '../../library/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
 const charactersDir = resolve(here, '../../../../builtin-assets/characters')
+/** Bones every Mixamo65 target must have (canonical names, prefix stripped). */
+const MIXAMO_CORE = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 const JSON_LIMIT_BYTES = 8 * 1024 * 1024
 const SOURCE_EXTENSIONS = new Set(['.glb', '.gltf', '.fbx', '.bobj'])
@@ -56,17 +58,34 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
   let active: RunState | null = null
   let port = 0
 
-  // Targets: the four builtin Mixamo65 characters, hips height measured from the file itself.
+  // Targets: the four builtin Mixamo65 characters plus the user's own Mixamo65 characters registered in the App 5
+  // library ("Thêm nhân vật đích"); hips height measured from the file itself.
   const targets = new Map<string, TargetRecord>()
-  for (const file of readdirSync(charactersDir).filter((name) => name.endsWith('.glb')).sort()) {
-    const path = join(charactersDir, file), bytes = readFileSync(path)
+  async function measureTarget(path: string) {
+    const bytes = readFileSync(path)
     const scene = await loadAsset(bytes, 'glb', { skeletonOnly: true })
     const adapter = createThreeRigAdapter(scene, { fingerprint: 'target' })
+    const names = new Set(adapter.rig.bones.map((bone) => (bone.name ?? '').replace(/^mixamorig\d*:?/i, '').toLowerCase()))
     const hips = adapter.rig.bones.find((bone) => (bone.name ?? '').replace(/^mixamorig\d*:?/i, '').toLowerCase() === 'hips')
     adapter.dispose()
-    const id = file.replace(/\.glb$/, '')
-    targets.set(id, { id, file, path, sha256: sha256(bytes), hipsHeightMeters: hips?.restWorld[13] ?? 0 })
+    const missing = MIXAMO_CORE.filter((name) => !names.has(name.toLowerCase()))
+    return { bytes, hipsHeightMeters: hips?.restWorld[13] ?? 0, missing }
   }
+  for (const file of readdirSync(charactersDir).filter((name) => name.endsWith('.glb')).sort()) {
+    const path = join(charactersDir, file), measured = await measureTarget(path)
+    const id = file.replace(/\.glb$/, '')
+    targets.set(id, { id, file, path, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters })
+  }
+  try {
+    const root = resolveLibraryPath()
+    for (const character of listLibraryCharacters()) {
+      if (character.rig !== 'mixamo65' || !character.model.endsWith('.glb')) continue
+      const path = join(root, 'characters', character.charId, character.model)
+      if (!existsSync(path)) continue
+      const measured = await measureTarget(path)
+      targets.set(`lib-${character.charId}`, { id: `lib-${character.charId}`, file: basename(path), path, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name: character.name, library: true })
+    }
+  } catch (error) { console.error('App 5 library characters were not loaded:', error instanceof Error ? error.message : error) }
 
   const json = (res: ServerResponse, status: number, body: unknown) => {
     const text = JSON.stringify(body)
@@ -116,7 +135,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     if (!record) throw new UserError('Unknown targetId', 404)
     return record
   }
-  const targetView = (target: TargetRecord) => ({ id: target.id, file: target.file, name: target.file.replace(/^a3d_char_/, '').slice(0, 8), hipsHeightMeters: target.hipsHeightMeters, sha256: target.sha256, url: `/api/targets/${target.id}/file` })
+  const targetView = (target: TargetRecord) => ({ id: target.id, file: target.file, name: target.name ?? target.file.replace(/^a3d_char_/, '').slice(0, 8), library: !!target.library, hipsHeightMeters: target.hipsHeightMeters, sha256: target.sha256, url: `/api/targets/${target.id}/file` })
 
   const registerSource = (path: string, name: string, uploaded: boolean, armaturePath?: string) => {
     const id = randomBytes(8).toString('hex')
@@ -202,6 +221,22 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     const method = req.method ?? 'GET'
     if (method === 'GET' && path === '/api/targets') return json(res, 200, { targets: [...targets.values()].map(targetView) })
+    if (method === 'POST' && path === '/api/targets') {
+      // "Thêm nhân vật đích": a local Mixamo65 GLB (T-pose, metres) becomes a library character and a target here.
+      const body = await readJson(req)
+      if (typeof body.path !== 'string' || !body.path.trim()) throw new UserError('Provide { "path": "<local .glb>", "name": "<tên>" }')
+      const file = resolve(body.path.trim().replace(/^"(.*)"$/, '$1'))
+      if (!existsSync(file) || !statSync(file).isFile() || extname(file).toLowerCase() !== '.glb') throw new UserError(`Not a local .glb file: ${file}`)
+      const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 64) : basename(file, '.glb')
+      const measured = await measureTarget(file)
+      if (measured.missing.length) throw new UserError(`Not a Mixamo65 character: missing ${measured.missing.join(', ')}. Normalize it in App 1 with --mode model first.`)
+      if (!(measured.hipsHeightMeters > 0.2 && measured.hipsHeightMeters < 5)) throw new UserError(`Hips height ${measured.hipsHeightMeters.toFixed(3)} m is not a metre-scale character`)
+      const character = registerLibraryCharacter({ name, rig: 'mixamo65', modelFile: file })
+      const stored = join(resolveLibraryPath(), 'characters', character.charId, character.model)
+      const record: TargetRecord = { id: `lib-${character.charId}`, file: basename(file), path: stored, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name, library: true }
+      targets.set(record.id, record)
+      return json(res, 200, targetView(record))
+    }
     let match: RegExpMatchArray | null
     if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/file$/))) return sendFile(res, getTarget(match[1]).path, MIME['.glb'])
     if (method === 'POST' && path === '/api/sources') return handleSources(req, res)

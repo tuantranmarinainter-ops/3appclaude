@@ -77,6 +77,29 @@ test('lists the four built-in Mixamo65 characters with hips heights', async () =
   assert.equal((await call(json.targets[0].url)).status, 200, 'target GLB is served to the viewer')
 })
 
+test('adds a Mixamo65 character from a local path as a library target and refuses other files', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-targets-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const glb = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const added = await post('/api/targets', { path: glb, name: 'Nhân vật chính' })
+    assert.equal(added.status, 200, added.text)
+    assert.equal(added.json.name, 'Nhân vật chính')
+    assert.equal(added.json.library, true)
+    assert.ok(added.json.hipsHeightMeters > 0.5)
+    const listed = (await call('/api/targets')).json.targets
+    assert.ok(listed.some((target: { id: string }) => target.id === added.json.id))
+    assert.ok(existsSync(join(library, 'characters')))
+    assert.equal((await post('/api/targets', { path: join(characters, 'missing.glb') })).status, 400)
+    assert.equal((await post('/api/targets', { path: join(bobjDir, 'minecraft20-armature.bobj') })).status, 400)
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true })
+  }
+})
+
 test('vendor route serves three modules and refuses traversal', async () => {
   for (const path of ['/vendor/three/build/three.module.js', '/vendor/three/examples/jsm/loaders/GLTFLoader.js', '/vendor/three/examples/jsm/controls/OrbitControls.js',
     '/vendor/three/examples/jsm/utils/SkeletonUtils.js', '/vendor/three/examples/jsm/libs/draco/gltf/draco_decoder.wasm']) {
