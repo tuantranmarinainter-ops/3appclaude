@@ -5,8 +5,8 @@
  *   node --import tsx ../retarget/workbench/server.ts [--port 3101]
  * Uploads live in os.tmpdir()/w01-workbench/<session>/; nothing is written into the repo or next to user files.
  */
-import { randomBytes } from 'node:crypto'
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { createHash, randomBytes } from 'node:crypto'
+import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -14,13 +14,19 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { loadAsset, packGltf, stripGltfTextures } from '../cli/loadAsset.ts'
+import { loadBobj } from '../cli/loadBobj.ts'
+import { actionsGlb } from '../cli/minecraftBlockCharacters.ts'
+import { decodeGlb, encodeGlb } from '../cli/glb.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import {
   buildPreset, DEFAULT_ARMATURE, describeSource, inspect, parseFamily, parseOptions, runPipeline, sha256, UserError,
   type RunFile, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
 import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
-import { importPack, listLibraryCharacters, registerLibraryCharacter, resolveLibraryPath } from '../../library/index.ts'
+import {
+  addDraftToCharacter, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
+  resolveLibraryPath, setActionMetadata,
+} from '../../library/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
@@ -35,6 +41,26 @@ const VENDOR_PREFIXES = ['build/', 'examples/jsm/']
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.wasm': 'application/wasm', '.png': 'image/png', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bobj': 'text/plain; charset=utf-8',
   '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8' }
+
+/** `actionsGlb` normally emits the 17-bone playable anchor tree; library rig validation keeps all 20 BOBJ bones. */
+function minecraft20LibraryGlb(root: ReturnType<typeof loadBobj> & { animations: any[] }): Uint8Array {
+  let anchor: any
+  root.traverse((object: any) => { if (object.isBone && object.name === 'anchor') anchor = object })
+  if (!anchor) throw new Error('Minecraft20 armature has no anchor bone')
+  anchor.name = '__library_anchor__'
+  const changed: Array<{ track: any; name: string }> = []
+  for (const clip of root.animations) for (const track of clip.tracks) if (track.name.startsWith('anchor.')) {
+    changed.push({ track, name: track.name }); track.name = `__library_anchor__.${track.name.slice('anchor.'.length)}`
+  }
+  try {
+    const decoded = decodeGlb(actionsGlb(root))
+    for (const node of decoded.json.nodes ?? []) if (node.name === '__library_anchor__') node.name = 'anchor'
+    return encodeGlb(decoded.json, decoded.bin)
+  } finally {
+    anchor.name = 'anchor'
+    for (const item of changed) item.track.name = item.name
+  }
+}
 
 export interface Workbench { server: Server; url: string; port: number; sessionDir: string; close(): Promise<void> }
 
@@ -228,7 +254,21 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     const method = req.method ?? 'GET'
+    if (method === 'GET' && path === '/api/workspace-navigation') return json(res, 200, {
+      studioUrl: process.env.W01_STUDIO_URL ?? null,
+      animationUrl: process.env.W01_ANIMATION_STUDIO_URL ?? null,
+      vfxUrl: process.env.W01_VFX_URL ?? null,
+    })
     if (method === 'GET' && path === '/api/targets') return json(res, 200, { targets: [...targets.values()].map(targetView), mc20: [...mc20.values()].map(({ id, name }) => ({ id, name })) })
+    if (method === 'GET' && path === '/api/library/characters') {
+      const characters = listLibraryCharacters().map((character) => {
+        const actions = listCharacterActions({ charId: character.charId, latestOnly: true })
+        const counts = { draft: 0, edited: 0, approved: 0 }
+        for (const action of actions) if (action.status) counts[action.status]++
+        return { charId: character.charId, name: character.name, rig: character.rig, requiredActions: character.requiredActions ?? [], counts }
+      })
+      return json(res, 200, { characters })
+    }
     if (method === 'POST' && path === '/api/targets') {
       // "Thêm nhân vật đích": a local Mixamo65 GLB (T-pose, metres) becomes a library character and a target here.
       const body = await readJson(req)
@@ -312,6 +352,89 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}) })
       return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions, created: pack.created,
         actionUuids: pack.metadata.actions.map((action) => action.uuid) })
+    }
+    if (method === 'POST' && (match = path.match(/^\/api\/runs\/(\w+)\/character-library$/))) {
+      const state = runs.get(match[1]!)
+      if (!state || state.state !== 'done' || !state.result) return fail(res, 404, 'Unknown or unfinished runId')
+      if (state.result.status !== 'PASS') return fail(res, 409, `Only a PASS run can go to the library (this run is ${state.result.status})`)
+      const body = await readJson(req)
+      const charIds = Array.isArray(body.charIds) ? [...new Set(body.charIds.filter((value: unknown): value is string => typeof value === 'string' && !!value))] : []
+      const selections = Array.isArray(body.actions) ? body.actions : []
+      if (!charIds.length) throw new UserError('Choose at least one destination character')
+      if (!selections.length) throw new UserError('Choose at least one Action')
+      const byUuid = new Map((state.result.manifest as any)?.actions?.map((action: any) => [action.uuid, action]) ?? [])
+      const selected = selections.map((selection: any) => {
+        if (!selection || typeof selection.uuid !== 'string' || !byUuid.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) {
+          throw new UserError('Each selected Action requires a run UUID and a requiredActions.key tag')
+        }
+        return { uuid: selection.uuid, key: selection.key.trim() }
+      })
+      if (new Set(selected.map((item) => item.uuid)).size !== selected.length) throw new UserError('An Action can only be selected once')
+      const characters = new Map(listLibraryCharacters().map((character) => [character.charId, character]))
+      for (const charId of charIds) {
+        const character = characters.get(charId)
+        if (!character) throw new UserError(`Unknown library character: ${charId}`, 404)
+        const allowed = new Set((character.requiredActions ?? []).map((action) => action.key))
+        const invalid = selected.find((action) => !allowed.has(action.key))
+        if (invalid) throw new UserError(`Character ${character.name} does not require Action key: ${invalid.key}`)
+      }
+      const selectedCharacters = charIds.map((charId) => characters.get(charId)!)
+      const needsMixamo = selectedCharacters.some((character) => character.rig !== 'minecraft20')
+      const needsMinecraft = selectedCharacters.some((character) => character.rig === 'minecraft20')
+      if (selectedCharacters.some((character) => character.rig === 'verity') && (!state.result.files.some((file) => file.kind === 'originalBobj') || !state.result.files.some((file) => file.kind === 'originalGlb'))) {
+        throw new UserError('A Verity destination requires a run against its original-skeleton target', 409)
+      }
+      const mixamoPack = needsMixamo ? importPack({ sourceDirectory: state.dir, createdBy: 'app1' }) : null
+      let minecraftPack: ReturnType<typeof importPack> | null = null
+      if (needsMinecraft) {
+        const bobj = state.result.files.find((file) => file.kind === 'bobj')
+        if (!bobj) throw new UserError('Minecraft20 destinations require a run with .bobj output enabled', 409)
+        const directory = join(state.dir, 'library-minecraft20'), stem = 'minecraft20'
+        mkdirSync(directory, { recursive: true })
+        const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8')
+        const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8')) as ReturnType<typeof loadBobj> & { animations: any[] }
+        root.updateMatrixWorld(true)
+        const glb = minecraft20LibraryGlb(root), manifestActions = (state.result.manifest as any).actions ?? []
+        writeFileSync(join(directory, `${stem}.glb`), glb)
+        writeFileSync(join(directory, `${stem}.minecraft20.bobj`), bobjText)
+        const stableUuid = (uuid: string) => {
+          const hex = createHash('sha256').update(`minecraft20:${uuid}`).digest('hex').slice(0, 32).split('')
+          hex[12] = '4'; hex[16] = ((parseInt(hex[16]!, 16) & 3) | 8).toString(16)
+          return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20).join('')}`
+        }
+        writeFileSync(join(directory, `${stem}.manifest.json`), JSON.stringify({
+          ...(state.result.manifest as any), version: '1.0.0', rig: 'minecraft20', glbSha256: sha256(glb),
+          actions: manifestActions.map((action: any, index: number) => ({ ...action, uuid: stableUuid(action.uuid), glbAnimationIndex: index })),
+        }, null, 2))
+        writeFileSync(join(directory, `${stem}.report.json`), JSON.stringify({ status: 'PASS', sourceRunId: state.id, artifact: 'minecraft20' }, null, 2))
+        minecraftPack = importPack({ sourceDirectory: directory, createdBy: 'app1' })
+      }
+      const drafts: Array<{ charId: string; actionUuid: string; packId: string; key: string }> = []
+      const originalBobj = state.result.files.find((file) => file.kind === 'originalBobj')
+      const originalGlb = state.result.files.find((file) => file.kind === 'originalGlb')
+      for (const action of selected) {
+        for (const charId of charIds) {
+          const character = characters.get(charId)!
+          const pack = character.rig === 'minecraft20' ? minecraftPack! : mixamoPack!
+          const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+          const source = pack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
+          if (!source) throw new UserError(`Selected Action is not in the ${character.rig} pack: ${action.uuid}`)
+          setActionMetadata({ actionUuid: source.uuid, tags: [action.key] })
+          const draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
+          const draftPath = join(resolveLibraryPath(), 'packs', draft.packId)
+          if (character.rig === 'minecraft20') {
+            const bobj = state.result.files.find((file) => file.kind === 'bobj')!
+            copyFileSync(join(state.dir, bobj.name), join(draftPath, 'anim.bobj'))
+          }
+          if (character.rig === 'verity') {
+            if (!originalBobj || !originalGlb) throw new UserError(`Run has no original-skeleton artifacts for Verity character ${character.name}`, 409)
+            copyFileSync(join(state.dir, originalBobj.name), join(draftPath, 'anim.original.bbs.bobj'))
+            copyFileSync(join(state.dir, originalGlb.name), join(draftPath, 'anim.original.glb'))
+          }
+          drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key })
+        }
+      }
+      return json(res, 200, { packId: mixamoPack?.packId ?? minecraftPack?.packId, drafts })
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/steve$/))) {
       const state = runs.get(match[1]!), file = state?.result?.files.find((item) => item.kind === 'bobj')

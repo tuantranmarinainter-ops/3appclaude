@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
+import { listCharacterActions, registerLibraryCharacter } from '../../library/index.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
@@ -50,6 +51,21 @@ test('serves the page, the app module and a bound loopback address only', async 
   assert.match(index.text, /importmap/)
   assert.equal((await call('/app.js')).status, 200)
   assert.equal((await call('/styles.css')).status, 200)
+})
+
+test('workspace navigation endpoint reads optional app URLs from the environment', async () => {
+  const prior = [process.env.W01_STUDIO_URL, process.env.W01_ANIMATION_STUDIO_URL, process.env.W01_VFX_URL]
+  process.env.W01_STUDIO_URL = 'http://127.0.0.1:3002'
+  process.env.W01_ANIMATION_STUDIO_URL = 'http://127.0.0.1:3102'
+  delete process.env.W01_VFX_URL
+  try {
+    const result = await call('/api/workspace-navigation')
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.json, { studioUrl: 'http://127.0.0.1:3002', animationUrl: 'http://127.0.0.1:3102', vfxUrl: null })
+  } finally {
+    const keys = ['W01_STUDIO_URL', 'W01_ANIMATION_STUDIO_URL', 'W01_VFX_URL'] as const
+    keys.forEach((key, index) => { if (prior[index] === undefined) delete process.env[key]; else process.env[key] = prior[index] })
+  }
 })
 
 test('every module the browser imports resolves through the server (import map + relative imports)', async () => {
@@ -264,6 +280,49 @@ test('.bobj by path (default armature) → run with bobj:true writes a .minecraf
   assert.equal(bobj.status, 200)
   assert.match(bobj.text, /# Animation data/)
   assert.ok(/\.minecraft20\.bobj$/.test(run.json.files.find((file: { kind: string }) => file.kind === 'bobj').name))
+})
+
+test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and Minecraft20 character folders as tagged drafts', async () => {
+  const library = mkdtempSync(join(tmpdir(), 'w01-character-library-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const model = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const first = registerLibraryCharacter({ name: 'Đích Một', rig: 'mixamo65', modelFile: model })
+    const second = registerLibraryCharacter({ name: 'Đích Hai', rig: 'mixamo65', modelFile: model })
+    const minecraft = registerLibraryCharacter({ name: 'Đích Minecraft', rig: 'minecraft20', modelFile: join(bobjDir, 'minecraft20-armature.bobj') })
+    const listed = await call('/api/library/characters')
+    assert.equal(listed.status, 200, listed.text)
+    assert.deepEqual(listed.json.characters.filter((item: any) => [first.charId, second.charId].includes(item.charId)).map((item: any) => item.counts), [
+      { draft: 0, edited: 0, approved: 0 }, { draft: 0, edited: 0, approved: 0 },
+    ])
+
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0, 1], bobj: true } })
+    assert.equal(run.status, 200, run.text)
+    const selected = run.json.manifest.actions[0]
+    const sent = await post(`/api/runs/${run.json.runId}/character-library`, {
+      charIds: [first.charId, second.charId, minecraft.charId], actions: [{ uuid: selected.uuid, key: 'walk' }],
+    })
+    assert.equal(sent.status, 200, sent.text)
+    assert.equal(sent.json.drafts.length, 3)
+    for (const character of [first, second, minecraft]) {
+      const drafts = listCharacterActions({ charId: character.charId, latestOnly: true })
+      assert.equal(drafts.length, 1)
+      assert.equal(drafts[0]!.status, 'draft')
+      assert.deepEqual(drafts[0]!.tags, ['walk'])
+      if (character.rig === 'mixamo65') assert.equal(drafts[0]!.parentUuid, selected.uuid)
+      else assert.match(drafts[0]!.parentUuid!, /^[0-9a-f-]{36}$/)
+      assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.glb')))
+      if (character.rig === 'minecraft20') assert.ok(existsSync(join(library, 'packs', drafts[0]!.packId, 'anim.bobj')))
+    }
+    assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [], actions: [{ uuid: selected.uuid, key: 'walk' }] })).status, 400)
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true })
+  }
 })
 
 test('invalid options come back as a readable 400, a blocked source as a normal BLOCKED result', async () => {
