@@ -167,6 +167,13 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .action-picker-list tr.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .action-picker-list td.name { width: 100%; }
 .action-picker-list .quality { white-space: nowrap; }
+.batch-action-groups { display: grid; align-content: start; gap: 8px; padding: 8px; }
+.batch-action-group { border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.batch-action-group > summary { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--surface-2); cursor: pointer; }
+.batch-action-group > summary button { margin-left: auto; }
+.batch-action-group > summary button + button { margin-left: 0; }
+.batch-action-group table { margin: 0; }
+.batch-action-group td.name { width: 100%; }
 .action-transfer { padding: 9px; border-top: 1px solid var(--border); background: var(--surface-2); }
 .transfer-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .transfer-confirm label { display: inline-flex; align-items: center; gap: 5px; }

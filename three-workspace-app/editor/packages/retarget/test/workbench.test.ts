@@ -13,7 +13,7 @@ import { createCharacter, getAction, listCharacterActions, registerBaseModel, re
 import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
-import { decodeGlb } from '../cli/glb.ts'
+import { decodeGlb, encodeGlb } from '../cli/glb.ts'
 import { AnimationMixer, LoopOnce, Vector3 } from 'three'
 import { executeTransfer, suggestActionKey } from '../workbench/public/transfer.js'
 
@@ -37,6 +37,24 @@ function syntheticVerity(helperCount: number, wingCount: number): string {
     bone('Jaw', 'Head', 0, 1.9, .1), ...Array.from({ length: wingCount }, (_, index) => bone(`Wing_Bone_${index}`, 'COG', -.4 - index * .1, 1.5, 0)),
     bone('camera', 'Root', 0, -2, 0), bone('Jaw_end_end', 'Jaw', 0, 1.8, .1), ...Array.from({ length: helperCount }, (_, index) => bone(`Helper_${index}`, 'Root', 0, 0, index * .01)),
     'o body', 'v 0 0 0', 'vw COG 1', ...actions].join('\n') + '\n'
+}
+
+function syntheticAnimatedMixamo(glbPath: string, animationName: string): Uint8Array {
+  const { json, bin } = decodeGlb(readFileSync(glbPath))
+  const hips = json.nodes.findIndex((node: any) => /(^|:)Hips$/i.test(node.name ?? ''))
+  assert.ok(hips >= 0, 'fixture has a Hips joint')
+  const offset = Math.ceil(bin.length / 4) * 4, extra = Buffer.alloc(offset - bin.length + 40)
+  extra.writeFloatLE(0, offset - bin.length); extra.writeFloatLE(1, offset - bin.length + 4)
+  ;[0, 0, 0, 1, 0, 0.04, 0, Math.sqrt(1 - 0.04 ** 2)].forEach((value, index) => extra.writeFloatLE(value, offset - bin.length + 8 + index * 4))
+  const fullBin = Buffer.concat([Buffer.from(bin), extra])
+  json.bufferViews ??= []; json.accessors ??= []
+  const timeView = json.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: 8 }) - 1
+  const rotationView = json.bufferViews.push({ buffer: 0, byteOffset: offset + 8, byteLength: 32 }) - 1
+  const timeAccessor = json.accessors.push({ bufferView: timeView, componentType: 5126, count: 2, type: 'SCALAR', min: [0], max: [1] }) - 1
+  const rotationAccessor = json.accessors.push({ bufferView: rotationView, componentType: 5126, count: 2, type: 'VEC4' }) - 1
+  json.buffers[0].byteLength = fullBin.length
+  json.animations = [{ name: animationName, samplers: [{ input: timeAccessor, output: rotationAccessor, interpolation: 'LINEAR' }], channels: [{ sampler: 0, target: { node: hips, path: 'rotation' } }] }]
+  return encodeGlb(json, fullBin)
 }
 
 let bench: Workbench
@@ -77,6 +95,8 @@ test('serves the page, the app module and a bound loopback address only', async 
   assert.match(index.text, /data-resize-panel="viewer"/)
   assert.match(index.text, /data-resize-panel="timeline"/)
   assert.match(index.text, /data-resize-panel="results"/)
+  assert.match(index.text, /id="fileInput"[^>]*multiple/)
+  assert.match(index.text, /id="folderInput"[^>]*webkitdirectory/)
   assert.equal((await call('/app.js')).status, 200)
   const panels = await call('/resizable-panels.js')
   assert.equal(panels.status, 200)
@@ -97,6 +117,9 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(css, /\.action-picker[^}]*resize: both/)
   assert.match(app, /executeTransfer\(\{ indices, toCharacter, toShared/)
   assert.match(app, /transferRetry[\s\S]*transferSelected\(failed, config\)/)
+  assert.match(app, /renderBatchActionPicker/)
+  assert.match(app, /selectedBatchGroups/)
+  assert.match(app, /\/api\/batches/)
 })
 
 test('one-click transfer orchestrator uses the exact selection, supports shared-only, and retries only failures', async () => {
@@ -250,6 +273,107 @@ test('upload keeps the file out of the repo and inspect reports a Mixamo target 
   assert.equal(inspect.json.blocker.code, 'NO_ACTION')
   const file = await call(`/api/sources/${upload.json.sourceId}/file`)
   assert.equal(file.status, 200)
+})
+
+test('batch inspection walks folders recursively and isolates a corrupt file as one entry error', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'w01-batch-inspect-'))
+  const nested = join(folder, 'nested'); mkdirSync(nested)
+  writeFileSync(join(folder, 'broken.glb'), 'not a GLB')
+  writeFileSync(join(nested, 'also-broken.fbx'), 'not an FBX')
+  writeFileSync(join(nested, 'ignore.txt'), 'not supported')
+  try {
+    const target = (await call('/api/targets')).json.targets[0]
+    const started = await post('/api/batches', { paths: [folder], targetId: target.id, options: {} })
+    assert.equal(started.status, 202, started.text)
+    let current = started.json
+    for (let attempt = 0; attempt < 100 && current.state === 'running'; attempt++) {
+      await new Promise((ok) => setTimeout(ok, 10))
+      current = (await call(`/api/batches/${started.json.batchId}`)).json
+    }
+    assert.equal(current.state, 'done')
+    assert.equal(current.total, 2)
+    assert.deepEqual(current.entries.map((entry: any) => entry.status), ['error', 'error'])
+    assert.ok(current.entries.every((entry: any) => typeof entry.error === 'string'))
+    assert.equal((await post(`/api/batches/${started.json.batchId}/cancel`, {})).status, 202)
+    assert.equal((await call('/api/batches/missing')).status, 404)
+    const tooMany = await post('/api/batches', { paths: Array(2001).fill(join(folder, 'broken.glb')), targetId: target.id, options: {} })
+    assert.equal(tooMany.status, 413)
+    const upload = await call('/api/batch-uploads', { method: 'POST' })
+    assert.equal(upload.status, 201)
+    const staged = await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('Nested/broken.glb') }, body: readFileSync(join(folder, 'broken.glb')) })
+    assert.equal(staged.status, 201)
+    assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('../escape.glb') }, body: readFileSync(join(folder, 'broken.glb')) })).status, 400)
+    const uploadedBatch = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: target.id, options: {} })
+    assert.equal(uploadedBatch.status, 202)
+  } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('three-file Mixamo batch normalizes two Actions, imports per-file packs/drafts, and flags re-imports', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'w01-batch-transfer-'))
+  const library = mkdtempSync(join(tmpdir(), 'w01-batch-library-'))
+  const priorLibrary = process.env.W01_LIBRARY
+  process.env.W01_LIBRARY = library
+  try {
+    const builtin = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const first = join(folder, 'Samba Dancing.glb'), second = join(folder, 'Walking.glb')
+    writeFileSync(first, syntheticAnimatedMixamo(builtin, 'Samba Dancing'))
+    writeFileSync(second, syntheticAnimatedMixamo(builtin, 'Walking'))
+    writeFileSync(join(folder, 'broken.glb'), 'broken')
+    const character = await post('/api/targets', { path: builtin, name: 'Batch target' })
+    assert.equal(character.status, 200, character.text)
+    const started = await post('/api/batches', { paths: [folder], targetId: character.json.id, options: {} })
+    assert.equal(started.status, 202, started.text)
+    let batch = started.json
+    for (let attempt = 0; attempt < 200 && batch.state === 'running'; attempt++) {
+      await new Promise((ok) => setTimeout(ok, 20))
+      batch = (await call(`/api/batches/${started.json.batchId}`)).json
+    }
+    assert.equal(batch.state, 'done')
+    assert.equal(batch.entries.length, 3)
+    assert.deepEqual(batch.entries.map((entry: any) => entry.status).sort(), ['error', 'ready', 'ready'])
+    const charId = character.json.id.replace(/^lib-/, '')
+    for (const entry of batch.entries.filter((item: any) => item.status === 'ready')) {
+      const run = await post('/api/runs', { sourceId: entry.sourceId, targetId: character.json.id, options: { actions: [0] } })
+      assert.equal(run.status, 200, run.text)
+      assert.equal(run.json.status, 'PASS', JSON.stringify(run.json.report))
+      const action = run.json.manifest.actions[0]
+      assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [charId], actions: [{ uuid: action.uuid, key: 'idle' }] })).status, 200)
+      const shared = await post(`/api/runs/${run.json.runId}/library`, { actions: [{ uuid: action.uuid, key: 'dance' }], license: { id: 'internal-only', commitable: false, source: 'Mixamo (Adobe)' } })
+      assert.equal(shared.status, 200, shared.text)
+      assert.ok(getAction({ actionUuid: action.uuid }).tags.includes('dance'))
+    }
+    assert.equal(listCharacterActions({ charId }).length, 2)
+    const sharedPacks = readdirSync(join(library, 'packs'), { withFileTypes: true }).filter((item) => item.isDirectory()).filter((item) => {
+      const meta = JSON.parse(readFileSync(join(library, 'packs', item.name, 'meta.json'), 'utf8'))
+      return meta.actions.every((action: any) => !action.ownerCharId)
+    })
+    assert.equal(sharedPacks.length, 2)
+    const external = syntheticAnimatedMixamo(builtin, 'External Walk'), externalParts = decodeGlb(external), externalJson = externalParts.json
+    externalJson.buffers = [{ uri: 'animation.bin', byteLength: externalParts.bin.length }]
+    const upload = await call('/api/batch-uploads', { method: 'POST' })
+    assert.equal(upload.status, 201)
+    assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('Folder/animation.gltf') }, body: Buffer.from(JSON.stringify(externalJson)) })).status, 201)
+    assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('Folder/animation.bin') }, body: externalParts.bin })).status, 201)
+    const externalStarted = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: character.json.id, options: {} })
+    let externalBatch = externalStarted.json
+    for (let attempt = 0; attempt < 200 && externalBatch.state === 'running'; attempt++) {
+      await new Promise((ok) => setTimeout(ok, 20))
+      externalBatch = (await call(`/api/batches/${externalStarted.json.batchId}`)).json
+    }
+    assert.equal(externalBatch.entries[0].status, 'ready', externalBatch.entries[0].error)
+    const again = await post('/api/batches', { paths: [folder], targetId: character.json.id, options: {} })
+    let repeated = again.json
+    for (let attempt = 0; attempt < 200 && repeated.state === 'running'; attempt++) {
+      await new Promise((ok) => setTimeout(ok, 20))
+      repeated = (await call(`/api/batches/${again.json.batchId}`)).json
+    }
+    assert.deepEqual(repeated.entries.map((entry: any) => entry.status).sort(), ['duplicate', 'duplicate', 'error'])
+    assert.ok(repeated.entries.filter((entry: any) => entry.status === 'duplicate').every((entry: any) => entry.inLibrary))
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    rmSync(library, { recursive: true, force: true }); rmSync(folder, { recursive: true, force: true })
+  }
 })
 
 test('Xbot upload → inspect → run: PASS, files downloadable, GLB parses', { skip: haveXbot ? false : 'C:/w01-samples/Xbot.glb not present' }, async () => {

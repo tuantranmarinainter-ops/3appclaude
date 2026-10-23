@@ -47,6 +47,7 @@ const state = {
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
+  batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -182,8 +183,63 @@ function actionQuality(action) {
   if (mapped?.perAction) return { text: mapped.perAction.status, class: mapped.perAction.status, title: (mapped.quality?.warnings ?? []).map((item) => item.message).join('\n') }
   return { text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra', class: action.ready ? 'PASS' : 'warn', title: '' }
 }
+function batchKey(entry, action) { return `${entry.sourceId}:${action.index}` }
+function selectedBatchGroups() {
+  const entries = state.batch?.entries ?? []
+  return entries.map((entry) => ({ entry, actions: (entry.inspect?.actions ?? []).filter((action) => state.batchSelection.has(batchKey(entry, action))) })).filter((group) => group.actions.length)
+}
+function previewBatchAction(entry, action) {
+  if (!entry.sourceId) return
+  state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect?.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
+  state.inspect = entry.inspect; state.inspectError = null; state.preset = null; state.presetFamily = null; state.dirty = false
+  state.selected = action.index; state.actionMap = new Map(); state.result = null; state.stale = false
+  $('armatureBox').hidden = state.source.format !== 'bobj'
+  clear($('sourceInfo')).append(h('b', { text: entry.name }), h('span', { text: ` · ${entry.inspect?.actions?.length ?? 0} animation · sha256 ${(entry.sha256 ?? '').slice(0, 16)}…` }))
+  if (state.source.format === 'bobj') { viewer.clearSource(); selectAction(action.index) }
+  else viewer.loadSource(`/api/sources/${entry.sourceId}/file`, state.source.format).then(() => selectAction(action.index)).catch((error) => setOverlay('left', `Không dựng được viewer: ${error.message}`, true))
+  refreshSteps()
+}
+function renderBatchActionPicker(query) {
+  const groups = state.batch?.entries ?? [], body = h('div', { class: 'batch-action-groups' })
+  $('actionPickerHandle').querySelector('strong').textContent = 'Animation của lô'
+  $('actionPicker').setAttribute('aria-label', 'Animation của lô')
+  let total = 0, selected = 0, selectedFiles = 0
+  for (const entry of groups) {
+    const actions = entry.inspect?.actions ?? []
+    total += actions.length
+    const chosen = actions.filter((action) => state.batchSelection.has(batchKey(entry, action)))
+    selected += chosen.length; if (chosen.length) selectedFiles++
+    const group = h('details', { class: 'batch-action-group', open: true })
+    const selectGroup = (check) => { for (const action of actions) { const key = batchKey(entry, action); if (check) state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }); else state.batchSelection.delete(key) } renderActionPicker() }
+    const duplicateLabel = entry.inLibrary ? 'Đã có trong kho' : 'File trùng trong lô'
+    const summary = h('summary', {}, `${entry.name} · ${actions.length} animation · ${entry.status === 'duplicate' ? duplicateLabel : entry.status === 'error' ? `Lỗi: ${entry.error ?? 'thiếu xương chính'}` : entry.status === 'ready' ? 'Sẵn sàng' : entry.status}`,
+      h('button', { type: 'button', text: 'Chọn hết', onclick: (event) => { event.preventDefault(); event.stopPropagation(); selectGroup(true) } }),
+      h('button', { type: 'button', text: 'Bỏ hết', onclick: (event) => { event.preventDefault(); event.stopPropagation(); selectGroup(false) } }))
+    group.append(summary)
+    if (entry.status === 'error' || !actions.length) { if (entry.error) group.append(h('p', { class: 'note', text: entry.error })); body.append(group); continue }
+    const tableBody = h('tbody')
+    for (const action of actions.filter((item) => !query || `${entry.name} ${item.name} ${item.nameVi ?? ''}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')))) {
+      const key = batchKey(entry, action), checkbox = h('input', { type: 'checkbox', 'aria-label': `Chọn ${entry.name}: ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => { event.target.checked ? state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }) : state.batchSelection.delete(key); renderActionPicker() } })
+      checkbox.checked = state.batchSelection.has(key)
+      const required = pickerRequiredActions(), actionKey = state.batchKeys.get(key) ?? suggestActionKey(required, [action.name]) ?? ''
+      const tag = h('select', { 'aria-label': `Thẻ ${entry.name}: ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.batchKeys.set(key, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
+      tag.value = actionKey
+      const edit = state.batchEdits.get(key) ?? { name: action.name, nameVi: action.nameVi ?? '' }
+      const nameCell = h('td', { class: 'name', ondblclick: (event) => { event.stopPropagation(); const english = h('input', { value: edit.name, 'aria-label': `Tên Anh ${entry.name} ${action.name}` }), vi = h('input', { value: edit.nameVi, placeholder: 'Tên tiếng Việt', 'aria-label': `Tên Việt ${entry.name} ${action.name}` }), save = h('button', { type: 'button', text: '✓', title: 'Lưu tên', onclick: (click) => { click.stopPropagation(); if (!english.value.trim()) { toast('Tên tiếng Anh không được để trống', 'err'); return } state.batchEdits.set(key, { name: english.value.trim(), nameVi: vi.value.trim() }); renderActionPicker() } }); clear(nameCell).append(english, vi, save); english.addEventListener('click', (click) => click.stopPropagation()); vi.addEventListener('click', (click) => click.stopPropagation()) } }, edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name)
+      tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
+    }
+    group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
+  }
+  $('actionPickerCount').textContent = `đã chọn ${selected}/${total} (${selectedFiles} file)`
+  $('transferOpen').disabled = selected === 0 || !state.target || state.transferRunning
+  if (!body.children.length) body.append(h('p', { class: 'empty', text: 'Chưa có file kiểm tra được.' }))
+  clear($('actionPickerList')).append(body)
+}
 function renderActionPicker() {
   if (!picker || picker.hidden) return
+  if (state.batch) { renderBatchActionPicker($('actionPickerSearch').value); return }
+  $('actionPickerHandle').querySelector('strong').textContent = 'Animation của nguồn'
+  $('actionPicker').setAttribute('aria-label', 'Animation của nguồn')
   const actions = state.inspect?.actions ?? [], query = $('actionPickerSearch').value
   $('actionPickerCount').textContent = `đã chọn ${selectedActionIndices().length}/${actions.length}`
   $('transferOpen').disabled = !actions.length || !selectedActionIndices().length || !state.target || state.transferRunning
@@ -228,9 +284,9 @@ function renderActionPicker() {
 $('actionPickerBtn').addEventListener('click', openActionPicker)
 $('actionPickerClose').addEventListener('click', closeActionPicker)
 $('actionPickerSearch').addEventListener('input', renderActionPicker)
-$('actionPickerAll').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
-$('actionPickerNone').addEventListener('click', () => { state.checked.clear(); markRunInputsChanged(false); renderActionPicker() })
-$('actionPickerInvert').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.has(action.index) ? state.checked.delete(action.index) : state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerAll').addEventListener('click', () => { if (state.batch) for (const entry of state.batch.entries) for (const action of entry.inspect?.actions ?? []) state.batchSelection.set(batchKey(entry, action), { sourceId: entry.sourceId, index: action.index }); else for (const action of state.inspect?.actions ?? []) state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerNone').addEventListener('click', () => { if (state.batch) state.batchSelection.clear(); else state.checked.clear(); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerInvert').addEventListener('click', () => { if (state.batch) for (const entry of state.batch.entries) for (const action of entry.inspect?.actions ?? []) { const key = batchKey(entry, action); state.batchSelection.has(key) ? state.batchSelection.delete(key) : state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }) } else for (const action of state.inspect?.actions ?? []) state.checked.has(action.index) ? state.checked.delete(action.index) : state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
 window.addEventListener('keydown', (event) => { if ((event.key === 'a' || event.key === 'A') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input,textarea,select')) { event.preventDefault(); openActionPicker() } })
 let pickerDrag = null
 $('actionPickerHandle').addEventListener('pointerdown', (event) => { if (event.target.closest('button')) return; const rect = picker.getBoundingClientRect(); pickerDrag = { x: event.clientX - rect.left, y: event.clientY - rect.top }; event.currentTarget.setPointerCapture(event.pointerId) })
@@ -285,6 +341,7 @@ function refreshSteps() {
 
 // ---------------------------------------------------------------- step 1: source
 async function useSource(info) {
+  state.batch = null; state.batchSelection.clear(); $('batchPickerBtn').hidden = true; $('batchStatus').hidden = true
   state.source = info; state.inspect = null; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
   state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.actionRanges = {}; state.selected = null
   viewer.clearResult(); fillActionSelect(); drawContacts(null, 0); frames = 0; $('timeline').max = '0'
@@ -315,22 +372,87 @@ async function uploadFile(file) {
     await useSource(info)
   } catch (error) { toast(error.message, 'err'); refreshSteps() }
 }
+async function queueBatch({ files = [], paths = [], sourceIds = [], uploadId = null } = {}) {
+  if (!state.target) { toast('Chọn nhân vật đích trước khi kiểm tra lô.', 'err'); return }
+  if (files.filter((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name)).length + paths.length + sourceIds.length > 2000) { toast('Mỗi lô tối đa 2000 file.', 'err'); return }
+  if (files.some((file) => /\.gltf$/i.test(file.name)) && files.some((file) => !file.webkitRelativePath && !file.batchPath)) { toast('Chọn thư mục chứa .gltf để giữ các file .bin/texture bên cạnh, hoặc nhập đường dẫn thư mục.', 'err'); return }
+  state.batch = null; state.batchSelection.clear(); state.batchKeys.clear(); state.batchEdits.clear(); state.result = null
+  $('batchPickerBtn').hidden = true; $('batchStatus').hidden = false
+  if (files.length) {
+    const staged = await api('/api/batch-uploads', { method: 'POST' })
+    uploadId = staged.uploadId
+    $('batchStatus').hidden = false
+    for (const [index, file] of files.entries()) {
+      $('batchStatus').textContent = `Đang thêm file ${index + 1}/${files.length}: ${file.name}`
+      const relativePath = file.batchPath || file.webkitRelativePath || (files.length === 1 ? file.name : `files/${index + 1}/${file.name}`)
+      try { await api(`/api/batch-uploads/${uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent(relativePath) }, body: file }) }
+      catch (error) { toast(`${file.name}: ${error.message}`, 'err'); $('batchStatus').textContent = 'Không tải hết được các file trong lô.'; return }
+    }
+  }
+  if (!paths.length && !sourceIds.length && !uploadId) { $('batchStatus').hidden = true; return }
+  $('batchCancel').hidden = false; $('batchPickerBtn').hidden = true
+  try {
+    const started = await api('/api/batches', { method: 'POST', json: { paths, sourceIds, ...(uploadId ? { uploadId } : {}), targetId: state.target.id, options: readOptions() } })
+    state.batchRun = started.batchId; state.batchCancelRequested = false
+    let current = started
+    while (current.state === 'running') {
+      $('batchStatus').textContent = `Đang kiểm tra file ${current.done}/${current.total}…`
+      await sleep(250)
+      current = await api(`/api/batches/${started.batchId}`)
+    }
+    state.batch = current
+    $('batchStatus').textContent = current.state === 'cancelled'
+      ? `Đã huỷ kiểm tra lô sau ${current.done}/${current.total} file.`
+      : `Đã kiểm tra ${current.total} file · ${current.entries.filter((entry) => entry.status === 'ready' || entry.status === 'duplicate').length} dùng được · ${current.entries.filter((entry) => entry.status === 'error').length} lỗi.`
+    $('batchPickerBtn').hidden = !current.entries.some((entry) => entry.inspect?.actions?.length)
+    if (!picker.hidden && $('batchPickerBtn').hidden === false) renderActionPicker()
+    else if (!$('batchPickerBtn').hidden) openActionPicker()
+  } catch (error) { $('batchStatus').textContent = `Kiểm tra lô thất bại: ${error.message}`; toast(error.message, 'err', true) }
+  finally { state.batchRun = null; $('batchCancel').hidden = true }
+}
 async function usePath() {
   const path = $('pathInput').value.trim()
-  if (!path) { toast('Dán đường dẫn file vào ô trước.', 'err'); return }
+  if (!path) { toast('Dán đường dẫn file hoặc thư mục vào ô trước.', 'err'); return }
   setStep(1, 'busy', 'Đang đọc')
-  try {
-    const armaturePath = $('armatureInput').value.trim()
-    await useSource(await api('/api/sources', { method: 'POST', json: { path, ...(armaturePath ? { armaturePath } : {}) } }))
-  } catch (error) { toast(error.message, 'err'); refreshSteps() }
+  await queueBatch({ paths: [path] }); refreshSteps()
 }
 $('drop').addEventListener('click', () => $('fileInput').click())
 $('drop').addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('fileInput').click() } })
-$('fileInput').addEventListener('change', (event) => { uploadFile(event.target.files[0]); event.target.value = '' })
+async function queueDrop(dataTransfer) {
+  const files = []
+  const readEntry = (entry) => new Promise((resolveEntry, rejectEntry) => {
+    if (entry.isFile) entry.file((file) => { file.batchPath = String(entry.fullPath ?? file.name).replace(/^\/+/, ''); resolveEntry(file) }, rejectEntry)
+    else if (entry.isDirectory) {
+      const reader = entry.createReader(), found = []
+      const next = () => reader.readEntries(async (items) => {
+        if (!items.length) { try { for (const child of found) await readEntry(child); resolveEntry() } catch (error) { rejectEntry(error) }; return }
+        found.push(...items); next()
+      }, rejectEntry)
+      next()
+    } else resolveEntry()
+  })
+  const items = [...(dataTransfer?.items ?? [])]
+  if (items.some((item) => item.webkitGetAsEntry?.())) {
+    try { for (const item of items) { const entry = item.webkitGetAsEntry?.(); if (entry) await readEntry(entry); else if (item.kind === 'file') files.push(item.getAsFile()) } }
+    catch (error) { toast(`Không đọc được thư mục thả vào: ${error.message}`, 'err'); return }
+  } else files.push(...(dataTransfer?.files ?? []))
+  const batchFiles = files.filter((file) => /\.(glb|gltf|fbx|bobj|bin|png|jpe?g|webp|ktx2)$/i.test(file.name))
+  if (batchFiles.some((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name))) await queueBatch({ files: batchFiles })
+}
+$('fileInput').addEventListener('change', (event) => { queueBatch({ files: [...event.target.files] }); event.target.value = '' })
+$('folderInputBtn').addEventListener('click', () => $('folderInput').click())
+$('folderInput').addEventListener('change', (event) => { queueBatch({ files: [...event.target.files] }); event.target.value = '' })
 for (const type of ['dragenter', 'dragover']) $('drop').addEventListener(type, (event) => { event.preventDefault(); $('drop').classList.add('over') })
 for (const type of ['dragleave', 'drop']) $('drop').addEventListener(type, (event) => { event.preventDefault(); $('drop').classList.remove('over') })
-$('drop').addEventListener('drop', (event) => uploadFile(event.dataTransfer.files[0]))
+$('drop').addEventListener('drop', (event) => queueDrop(event.dataTransfer))
 $('pathBtn').addEventListener('click', usePath)
+$('batchPickerBtn').addEventListener('click', openActionPicker)
+$('batchCancel').addEventListener('click', async () => {
+  if (state.transferRunning && state.batch) {
+    state.batchCancelRequested = true
+    if (state.run) await api(`/api/runs/${state.run}/cancel`, { method: 'POST' })
+  } else if (state.batchRun) await api(`/api/batches/${state.batchRun}/cancel`, { method: 'POST' })
+})
 $('addTargetBtn').addEventListener('click', async () => {
   const path = $('addTargetPath').value.trim()
   if (!path) { toast('Nhập đường dẫn file .glb của nhân vật', 'err'); return }
@@ -560,7 +682,9 @@ async function runNow(onlyActions = null, actionNames = null) {
 function setProgress(stage, done, total, elapsedMs) {
   const fraction = total > 0 ? Math.min(1, done / total) : 0
   $('progressBar').style.width = `${Math.round(fraction * 100)}%`
-  $('progressText').textContent = `${STAGES[stage] ?? stage}${total > 1 ? ` ${Math.min(done + 1, total)}/${total}` : ''} · ${(elapsedMs / 1000).toFixed(1)} s`
+  const batch = state.batchProgress
+  const batchLabel = batch ? ` · file ${batch.file}/${batch.files}, animation ${Math.min(batch.animationBase + done + 1, batch.animations)}/${batch.animations}` : ''
+  $('progressText').textContent = `${STAGES[stage] ?? stage}${total > 1 ? ` ${Math.min(done + 1, total)}/${total}` : ''}${batchLabel} · ${(elapsedMs / 1000).toFixed(1)} s`
 }
 async function finishRun(result, options) {
   state.result = result; state.stale = false; state.resultOptions = options
@@ -592,6 +716,7 @@ async function finishRun(result, options) {
 $('runBtn').addEventListener('click', () => runNow())
 $('cancelBtn').addEventListener('click', async () => {
   if (!state.run) return
+  if (state.batch) state.batchCancelRequested = true
   try { await api(`/api/runs/${state.run}/cancel`, { method: 'POST' }) } catch (error) { toast(error.message, 'err') }
 })
 
@@ -644,7 +769,7 @@ async function transferSelected(indices, retryConfig = null) {
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
       charIds: [config.charId], actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
     } }),
-    importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {} }),
+    importShared: (result, succeeded) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => ({ uuid: action.uuid, key: state.actionKeys.get(action.sourceActionIndex) || config.key || 'idle' })) } }),
   })
   const succeeded = transferred.actions, drafts = transferred.drafts, shared = transferred.shared
   state.transferFailed = transferred.failed
@@ -658,8 +783,79 @@ async function transferSelected(indices, retryConfig = null) {
 }
 $('transferStart').addEventListener('click', async () => {
   $('transferStart').disabled = true
-  try { await transferSelected(selectedActionIndices()); toast('Đã chuyển animation vào thư viện', 'ok') }
+  try { if (state.batch) await transferBatch(selectedBatchGroups()); else await transferSelected(selectedActionIndices()); toast('Đã chuyển animation vào thư viện', 'ok') }
   catch (error) { $('transferStatus').textContent = `Chuyển thất bại: ${error.message}`; toast(error.message, 'err', true) }
+  finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
+})
+async function transferBatch(groups, retryConfig = null) {
+  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value, licenseSource: $('transferLicenseSource').value.trim() }
+  if (!config.toCharacter && !config.toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
+  state.transferConfig = Object.freeze({ ...config }); state.transferRunning = true; state.batchFailedEntries = []; state.batchCancelRequested = false
+  $('batchRetry').hidden = true
+  $('batchCancel').hidden = false; $('batchCancel').textContent = 'Huỷ chuyển lô'
+  for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
+  let completed = 0, drafts = 0, sharedPacks = 0
+  const totalActions = groups.reduce((sum, item) => sum + item.actions.length, 0)
+  for (const [position, group] of groups.entries()) {
+    if (state.batchCancelRequested) break
+    const { entry, actions } = group
+    $('transferStatus').textContent = `Chuẩn hoá file ${position + 1}/${groups.length}, animation ${completed + 1}/${totalActions}…`
+    try {
+      if (!entry.sourceId || !entry.inspect || entry.inspect.blocker) throw new Error(entry.error ?? 'File thiếu xương chính hoặc không có Action')
+      if (config.toCharacter) {
+        const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
+        const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
+        if (character?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${character.name} chưa có model đích trong Workbench`)
+        if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
+      }
+      state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
+      state.inspect = entry.inspect; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
+      if (entry.inspect.mapping?.needsUserConfirmation) {
+        const assignments = Object.fromEntries((entry.inspect.mapping.joints ?? []).map((joint) => [joint.target, joint.source]))
+        const mapped = await api('/api/preset', { method: 'POST', json: { sourceId: entry.sourceId, targetId: state.target.id, assignments } })
+        state.preset = mapped.preset; state.presetFamily = mapped.family
+      }
+      state.checked = new Set(actions.map((action) => action.index)); state.selected = actions[0]?.index ?? null
+      state.batchProgress = { file: position + 1, files: groups.length, animationBase: completed, animations: totalActions }
+      const names = {}
+      for (const action of actions) { const edit = state.batchEdits.get(batchKey(entry, action)); if (edit) names[action.index] = edit }
+      const result = await runNow(actions.map((action) => action.index), names)
+      if (!result || result.status !== 'PASS') throw new Error(result?.report?.blocker?.message ?? `Chuẩn hoá trả ${result?.status ?? 'lỗi'}`)
+      const byIndex = new Map((result.manifest?.actions ?? []).map((action) => [action.sourceActionIndex, action]))
+      const succeeded = actions.map((action) => byIndex.get(action.index)).filter(Boolean)
+      const failedActions = actions.filter((action) => !byIndex.has(action.index))
+      if (config.toCharacter && succeeded.length) {
+        const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: [config.charId], actions: succeeded.map((action) => {
+          const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
+          const edit = state.batchEdits.get(batchKey(entry, sourceAction))
+          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', ...(edit ? { name: action.name, nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.name }
+        }) } })
+        drafts += sent.drafts?.length ?? succeeded.length
+      }
+      if (config.toShared && succeeded.length) {
+        const licenseSource = config.licenseSource || (entry.inspect.mapping?.family === 'mixamo' ? 'Mixamo (Adobe)' : '')
+        const shared = await api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => {
+          const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
+          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle' }
+        }), ...(licenseSource ? { license: { id: 'internal-only', commitable: false, source: licenseSource } } : {}) } })
+        sharedPacks += shared.created === false ? 0 : 1
+      }
+      completed += succeeded.length
+      if (failedActions.length) { entry.error = `${failedActions.length} animation lỗi`; state.batchFailedEntries.push({ entry, actions: failedActions }) }
+    } catch (error) { state.batchFailedEntries.push(group); entry.error = error.message }
+  }
+  $('batchRetry').hidden = state.batchFailedEntries.length === 0
+  const targetName = state.libraryCharacters?.find((item) => item.charId === config.charId)?.name ?? 'nhân vật'
+  $('transferStatus').textContent = `${state.batchCancelRequested ? 'Đã huỷ' : 'Đã chuyển'} ${completed} animation${config.toCharacter ? ` → ${targetName} (${drafts} Nháp)` : ''}${config.toShared ? ` + kho dùng chung (${sharedPacks} gói mới)` : ''}${state.batchFailedEntries.length ? ` · ${state.batchFailedEntries.length} file lỗi, có thể thử lại` : ''}`
+  state.batchProgress = null
+  $('batchCancel').hidden = true; $('batchCancel').textContent = 'Huỷ kiểm tra lô'
+  return { completed, failed: state.batchFailedEntries.length }
+}
+$('batchRetry').addEventListener('click', async () => {
+  const failed = [...state.batchFailedEntries], config = state.transferConfig
+  $('batchRetry').hidden = true
+  try { await transferBatch(failed, config); toast('Đã thử lại các file lỗi', 'ok') }
+  catch (error) { $('transferStatus').textContent = `Thử lại thất bại: ${error.message}`; $('batchRetry').hidden = !state.batchFailedEntries.length }
   finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 $('transferRetry').addEventListener('click', async () => {
