@@ -70,9 +70,11 @@ class Pane {
   }
 
   /** Puts `object` in the pane (it may be shared between runs, so it is never disposed here). */
-  setModel(object) {
+  /** `frameLike`: frame the camera on another object's bounds (Minecraft 20 shown at the Mixamo target's framing). */
+  setModel(object, frameLike = null) {
     this.clear()
     this.object = object
+    this.frameLike = frameLike
     this.holder.add(object)
     object.traverse((node) => { if (node.isMesh) node.frustumCulled = false })
     let hasBone = false
@@ -114,10 +116,11 @@ class Pane {
   updateBounds() {
     if (!this.object) { this.bounds = null; return }
     const box = new THREE.Box3()
-    this.object.updateMatrixWorld(true)
+    const subject = this.frameLike ?? this.object
+    subject.updateMatrixWorld(true)
     const point = new THREE.Vector3()
-    this.object.traverse((node) => { if (node.isBone) box.expandByPoint(node.getWorldPosition(point)) })
-    if (box.isEmpty()) box.setFromObject(this.object)
+    subject.traverse((node) => { if (node.isBone) box.expandByPoint(node.getWorldPosition(point)) })
+    if (box.isEmpty()) box.setFromObject(subject)
     if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1))
     this.bounds = box
   }
@@ -244,6 +247,7 @@ export class Viewer {
     this.result = null
     this.renamed.clear()
     if (!this.steveMode) this.right.setModel(this.targetScene)
+    else { this.fitSteveToTarget(); this.right.setModel(this.steve.scene, this.targetScene) }
   }
 
   async loadResult(url, mode) {
@@ -258,7 +262,7 @@ export class Viewer {
   clearResult() {
     this.result = null
     this.renamed.clear()
-    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene) }
+    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene, this.targetScene) }
     else if (this.targetScene) this.right.setModel(this.targetScene)
     this.right.setClip(null)
   }
@@ -267,10 +271,26 @@ export class Viewer {
   async showSteve() {
     if (!this.steve) {
       const info = await (await fetch('/api/steve')).json()
-      this.steve = { kind: info.mesh.kind, scene: await buildSteve(info.mesh, info.textureUrl), clips: [] }
+      const scene = await buildSteve(info.mesh, info.textureUrl)
+      // The mannequin is authored in BBS model units; show it at the target character's height so both panes compare
+      // at one scale (display only, the exported .bobj is untouched).
+      const holder = new THREE.Group(); holder.name = 'steve-holder'; holder.add(scene)
+      this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [] }
     }
+    this.fitSteveToTarget()
     this.steveMode = true
-    this.right.setModel(this.steve.scene)
+    this.right.setModel(this.steve.scene, this.targetScene)
+  }
+
+  /** Scale the mannequin to the target's height (1.8 m before a target loads). */
+  fitSteveToTarget() {
+    if (!this.steve) return
+    const height = (object) => { const box = new THREE.Box3().setFromObject(object); return box.isEmpty() ? 0 : box.max.y - box.min.y }
+    this.steve.scene.scale.setScalar(1)
+    this.steve.scene.updateMatrixWorld(true)
+    const own = height(this.steve.model)
+    const wanted = (this.targetScene && height(this.targetScene)) || 1.8
+    if (own > 0) this.steve.scene.scale.setScalar(wanted / own)
   }
 
   /** Back to the Mixamo target (and its GLB result, if any). */
