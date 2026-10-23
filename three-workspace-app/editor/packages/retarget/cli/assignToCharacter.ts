@@ -29,11 +29,11 @@ export interface AssignActionResult {
   reason?: string
 }
 
-function oneAnimation(bytes: Uint8Array, animationIndex: number): Uint8Array {
+function oneAnimation(bytes: Uint8Array, animationIndex: number, name: string): Uint8Array {
   const { json, bin } = decodeGlb(bytes)
   const animations = json.animations as unknown[] | undefined
   if (!animations?.[animationIndex]) throw new Error(`Animation ${animationIndex} is missing from the source GLB`)
-  json.animations = [animations[animationIndex]]
+  json.animations = [{ ...(animations[animationIndex] as Record<string, unknown>), name }]
   return encodeGlb(json, bin)
 }
 
@@ -66,7 +66,7 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
         const draft = addDraftToCharacter({ root: options.libraryRoot, charId: character.character.charId, actionUuid: source.uuid })
         results.push({ actionUuid, status: 'ok', assignedUuid: draft.uuid, name: source.name })
       } else {
-        const selectedGlb = oneAnimation(readFileSync(source.glbPath), source.glbAnimationIndex)
+        const selectedGlb = oneAnimation(readFileSync(source.glbPath), source.glbAnimationIndex, source.name)
         const sourcePack = readJsonFile<MotionPackMetadata>(safeChild(resolveLibraryPath({ root: options.libraryRoot }), 'packs', source.packId, 'meta.json'))
         const sourceText = readFileSync(character.modelPath, 'utf8')
         let outputGlb: Uint8Array, sidecar: string, sidecarName: string
