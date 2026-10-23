@@ -93,6 +93,11 @@ export interface CharacterMetadata {
   license: LibraryLicense
   fingerprint?: string | null
   model: string
+  baseModelId?: string
+  skin?: string | null
+  actions?: string[]
+  actionCount?: number
+  defaultAction?: string
 }
 
 export interface LibraryOptions {
@@ -109,4 +114,35 @@ export interface SearchOptions {
   boundCharacter?: string
   limit?: number
   offset?: number
+}
+
+export interface BaseModelMetadata {
+  kind: 'base-model'
+  libraryVersion: typeof LIBRARY_VERSION
+  modelId: string
+  name: string
+  rig: string
+  format: 'glb' | 'bobj'
+  model: string
+  objects: string[]
+  bones: string[]
+  extraBones: string[]
+  heightMeters: number
+  sha256: string
+  license: LibraryLicense
+}
+
+export interface CharacterWarning {
+  code: 'MISSING_TEXTURE'
+  object: string
+  message: string
+}
+
+export interface ResolvedCharacter {
+  character: CharacterMetadata
+  baseModel: BaseModelMetadata | null
+  modelPath: string
+  textures: Record<string, string>
+  actions: IndexedAction[]
+  warnings: CharacterWarning[]
 }
