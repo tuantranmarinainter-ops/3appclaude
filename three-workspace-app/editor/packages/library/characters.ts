@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename, dirname, extname } from 'node:path'
 import { ensureRegularFile, initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
-import { LIBRARY_VERSION, type BaseModelMetadata, type CharacterMetadata, type CharacterWarning, type LibraryLicense, type LibraryOptions, type ResolvedCharacter } from './types'
+import { DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION, type BaseModelMetadata, type CharacterMetadata, type CharacterWarning, type LibraryLicense, type LibraryOptions, type ResolvedCharacter } from './types'
 
 function rigId(rig: string): string {
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*(?:\+[A-Za-z0-9][A-Za-z0-9_-]*)?$/.test(rig)) throw new Error('Invalid rig id')
@@ -190,7 +190,10 @@ export function createCharacter(options: CreateCharacterOptions): CharacterMetad
     if (!license.id.trim() || typeof license.commitable !== 'boolean') throw new Error('Invalid license')
     const metadata: CharacterMetadata = { kind: 'character', libraryVersion: LIBRARY_VERSION, charId, name: characterName, rig: base.rig,
       createdAt: new Date().toISOString(), license: { ...license }, model: base.model,
-      baseModelId: base.modelId, skin: options.skinDir ? 'skin/textures' : null, actions, ...(defaultAction ? { defaultAction } : {}) }
+      baseModelId: base.modelId, skin: options.skinDir ? 'skin/textures' : null, actions, ...(defaultAction ? { defaultAction } : {}),
+      personality: { summary: '', traits: [] },
+      requiredActions: DEFAULT_REQUIRED_ACTIONS.map(([key, label]) => ({ key, label })),
+    }
     const destination = safeChild(root, 'characters', charId), staging = safeChild(root, 'characters', `.${randomUUID()}.tmp`)
     if (existsSync(destination)) throw new Error(`Character already exists: ${charId}`)
     mkdirSync(staging)

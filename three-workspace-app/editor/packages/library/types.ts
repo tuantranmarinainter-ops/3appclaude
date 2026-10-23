@@ -1,4 +1,16 @@
-export const LIBRARY_VERSION = '1.0.0' as const
+export const LIBRARY_VERSION = '1.1.0' as const
+
+export const CHARACTER_ACTION_STATUSES = ['draft', 'edited', 'approved'] as const
+export type CharacterActionStatus = typeof CHARACTER_ACTION_STATUSES[number]
+
+export const DEFAULT_REQUIRED_ACTIONS = [
+  ['idle', 'Idle'], ['walk', 'Walk'], ['run', 'Run'], ['talk', 'Talk'],
+  ['happy', 'Happy'], ['sad', 'Sad'], ['surprised', 'Surprised'], ['angry', 'Angry'],
+  ['attack', 'Attack'], ['hit', 'Hit'], ['fall', 'Fall'], ['jump', 'Jump'],
+] as const
+
+export interface CharacterPersonality { summary: string; traits: string[] }
+export interface RequiredAction { key: string; label: string }
 
 export const ACTION_CATEGORIES = [
   'locomotion', 'idle', 'combat', 'emote', 'dance', 'gesture', 'interaction',
@@ -31,6 +43,7 @@ export interface NormalizedManifest {
   fingerprint?: { boneLengthsMeters?: Record<string, number>; hipsHeightMeters?: number }
   rootPolicy?: { mode?: string; translationScale?: number; units?: string }
   rig?: string
+  extraBoneMode?: 'scene-nodes'
   extraBones?: unknown[]
 }
 
@@ -46,6 +59,13 @@ export interface ActionMetadata {
   parentUuid: string | null
   cover: string | null
   glbAnimationIndex: number
+  /** Missing means a backwards-compatible raw library action. */
+  ownerCharId?: string
+  status?: CharacterActionStatus
+  version?: number
+  /** UUID of version 1 in this immutable character-action chain. */
+  variantOf?: string
+  notes?: string
 }
 
 export interface MotionPackMetadata {
@@ -98,6 +118,8 @@ export interface CharacterMetadata {
   actions?: string[]
   actionCount?: number
   defaultAction?: string
+  personality?: CharacterPersonality
+  requiredActions?: RequiredAction[]
 }
 
 export interface LibraryOptions {
@@ -112,8 +134,23 @@ export interface SearchOptions {
   tags?: string[]
   text?: string
   boundCharacter?: string
+  ownerCharId?: string
+  status?: CharacterActionStatus
   limit?: number
   offset?: number
+}
+
+export interface CoverageCell {
+  key: string
+  label: string
+  action: IndexedAction | null
+  status: CharacterActionStatus | null
+}
+
+export interface CharacterCoverage {
+  charId: string
+  name: string
+  cells: CoverageCell[]
 }
 
 export interface BaseModelMetadata {

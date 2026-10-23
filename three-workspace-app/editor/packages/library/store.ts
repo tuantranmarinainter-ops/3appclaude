@@ -118,10 +118,12 @@ export function initializeLibrary(root: string): LibraryConfig {
   for (const folder of ['packs', 'rigs', 'characters', 'models']) mkdirSync(safeChild(root, folder), { recursive: true })
   const configPath = safeChild(root, 'library.json')
   if (!existsSync(configPath)) writeJsonAtomic(configPath, { version: LIBRARY_VERSION, rigs: [] } satisfies LibraryConfig)
-  const config = readJsonFile<LibraryConfig>(configPath)
-  if (config.version !== LIBRARY_VERSION || !Array.isArray(config.rigs) || config.rigs.some((rig) => typeof rig !== 'string')) {
+  const raw = readJsonFile<{ version: string; rigs: string[] }>(configPath)
+  if (!['1.0.0', LIBRARY_VERSION].includes(raw.version) || !Array.isArray(raw.rigs) || raw.rigs.some((rig) => typeof rig !== 'string')) {
     throw new Error(`Unsupported or invalid library configuration at ${configPath}`)
   }
+  const config: LibraryConfig = { version: LIBRARY_VERSION, rigs: raw.rigs }
+  if (raw.version === '1.0.0') writeJsonAtomic(configPath, config)
   return config
 }
 
