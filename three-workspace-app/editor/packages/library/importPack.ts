@@ -257,7 +257,7 @@ function buildActions(manifest: NormalizedManifest, options: ImportPackOptions, 
     const cover = hasCover ? `covers/${action.uuid}.png` : null
     const translated = translateActionName(action.name)
     return {
-      uuid: action.uuid, name: action.name, durationSeconds: action.durationSeconds, fps: action.fps,
+      uuid: action.uuid, name: action.name, sourceName: (action as typeof action & { sourceName?: string }).sourceName ?? action.name, durationSeconds: action.durationSeconds, fps: action.fps,
       ...(translated.source === 'none' ? {} : { nameVi: translated.vi, nameViSource: translated.source }),
       category: category((action as NormalizedManifest['actions'][number] & { category?: unknown }).category, categoryDefault),
       tags: [...new Set(tags.map((tag) => tag.trim()))],
@@ -338,13 +338,15 @@ function registerRigUnlocked(root: string, rigId: string, bones: RigBone[]): voi
 
 /** Change searchable metadata only; immutable GLB and App 1 manifest bytes are preserved. */
 export function updateActionMetadata(options: {
-  libraryRoot: string; actionUuid: string; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; nameVi?: string
+  libraryRoot: string; actionUuid: string; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; name?: string; nameVi?: string; sourceName?: string
 }): MotionPackMetadata {
   if (!UUID.test(options.actionUuid)) throw new Error('Invalid action UUID')
   if (options.category !== undefined && !ACTION_CATEGORIES.includes(options.category)) throw new Error(`Unknown action category: ${options.category}`)
   if (options.tags?.some((tag) => typeof tag !== 'string' || !tag.trim())) throw new Error('Tags must be non-empty strings')
   if (options.parentUuid !== undefined && options.parentUuid !== null && !UUID.test(options.parentUuid)) throw new Error('Invalid parent action UUID')
   if (options.nameVi !== undefined && typeof options.nameVi !== 'string') throw new Error('Vietnamese action name must be a string')
+  if (options.name !== undefined && (typeof options.name !== 'string' || !options.name.trim())) throw new Error('English action name must be non-empty')
+  if (options.sourceName !== undefined && typeof options.sourceName !== 'string') throw new Error('sourceName must be a string')
   return withLibraryLock(options.libraryRoot, () => {
     initializeLibrary(options.libraryRoot)
     const packsRoot = safeChild(options.libraryRoot, 'packs')
@@ -359,6 +361,10 @@ export function updateActionMetadata(options: {
       if (options.tags !== undefined) action.tags = [...new Set(options.tags.map((tag) => tag.trim()))]
       if (options.loop !== undefined) action.loop = options.loop
       if (options.parentUuid !== undefined) action.parentUuid = options.parentUuid
+      if (options.name !== undefined) {
+        if (!action.sourceName) action.sourceName = options.sourceName?.trim() || action.name
+        action.name = options.name.trim()
+      }
       if (options.nameVi !== undefined) {
         const nameVi = options.nameVi.trim()
         if (nameVi) { action.nameVi = nameVi; action.nameViSource = 'manual' }

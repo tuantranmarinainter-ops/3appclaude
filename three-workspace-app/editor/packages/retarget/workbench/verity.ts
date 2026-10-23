@@ -73,7 +73,7 @@ export function loadVerityModel(bobjPath: string, wingActionName = 'idle') {
     const nodes = new Map<string, Object3D>(); scene.traverse((o) => { if (o.name) nodes.set(o.name.replace(/^mixamorig\d*:?/i, ''), o) })
     const used = new Set(actions.keys()), added: AddedAction[] = []
     for (const clip of scene.animations) {
-      let name = clip.name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'action'
+      let name = clip.name.replace(/[.\[\]:/\\]|[^\w-]+/g, '_').replace(/^_+|_+$/g, '') || 'action'
       for (let n = 2; used.has(name); n++) name = `${name.replace(/_\d+$/, '')}_${n}`
       used.add(name)
       const mixer = new AnimationMixer(scene), playing = mixer.clipAction(clip).play()

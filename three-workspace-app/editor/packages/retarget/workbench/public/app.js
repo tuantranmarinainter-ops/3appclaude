@@ -42,7 +42,7 @@ const state = {
   source: null, targets: [], target: null,
   inspect: null, inspecting: false, inspectError: null, inspectSeq: 0,
   rows: [], filter: 'all', search: '', preset: null, presetFamily: null, dirty: false,
-  actionRanges: {}, checked: new Set(), actionFilter: '',
+  actionRanges: {}, checked: new Set(), actionFilter: '', actionEdits: new Map(), actionKeys: new Map(),
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
@@ -182,12 +182,17 @@ function renderActionPicker() {
       event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false); renderActionPicker()
     } }); check.checked = state.checked.has(action.index)
     const quality = actionQuality(action)
+    const edit = state.actionEdits.get(action.index) ?? { name: action.name, nameVi: action.nameVi ?? '' }
+    const name = h('td', { class: 'name', text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name, ondblclick: (event) => { event.stopPropagation(); const english = prompt('Tên tiếng Anh', edit.name); if (english === null) return; const trimmed = english.trim(); if (!trimmed) { toast('Tên tiếng Anh không được để trống', 'err'); return } const vietnamese = prompt('Tên tiếng Việt', edit.nameVi) ?? edit.nameVi; state.actionEdits.set(action.index, { name: trimmed, nameVi: vietnamese.trim() }); renderActionPicker() } })
+    const required = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter')?.value)?.requiredActions ?? []
+    const keySelect = h('select', { 'aria-label': `Thẻ động tác ${edit.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.actionKeys.set(action.index, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
+    if (required.length) { keySelect.value = state.actionKeys.get(action.index) ?? suggestActionKey(required, [edit.name]) ?? ''; if (keySelect.value) state.actionKeys.set(action.index, keySelect.value) }
     body.append(h('tr', { class: `clickable${state.selected === action.index ? ' active' : ''}`, dataset: { index: String(action.index) }, onclick: () => selectAction(action.index) },
-      h('td', {}, check), h('td', { class: 'num', text: String(action.index + 1) }), h('td', { class: 'name', text: action.displayName ?? action.name }),
+      h('td', {}, check), h('td', { class: 'num', text: String(action.index + 1) }), name, h('td', {}, keySelect),
       h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality' }, h('span', { class: `chip ${quality.class}`, title: quality.title, text: quality.text }))))
   }
-  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 5, class: 'empty', text: 'Không có animation khớp.' })))
-  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
+  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 6, class: 'empty', text: 'Không có animation khớp.' })))
+  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
 }
 $('actionPickerBtn').addEventListener('click', openActionPicker)
 $('actionPickerClose').addEventListener('click', closeActionPicker)
@@ -399,8 +404,7 @@ async function inspectNow() {
     if (!state.preset) state.presetFamily = result.mapping.family
     state.rows = result.mapping.joints.map((joint) => ({ ...joint, original: joint.source }))
     state.dirty = false
-    if (!state.checked.size) state.checked = new Set(result.actions.map((action) => action.index))
-    else state.checked = new Set([...state.checked].filter((index) => result.actions[index]))
+    state.checked = new Set([...state.checked].filter((index) => result.actions.some((action) => action.index === index)))
     if (state.selected === null || !result.actions[state.selected]) state.selected = result.actions.length ? 0 : null
   } catch (error) {
     if (seq !== state.inspectSeq) return
@@ -487,11 +491,11 @@ function selectedActionIndices() {
   const actions = state.inspect?.actions ?? []
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
-async function runNow(onlyActions = null) {
+async function runNow(onlyActions = null, actionNames = null) {
   const reason = canRunReason()
   if (reason) { toast(reason, 'err'); return }
   const all = onlyActions ?? selectedActionIndices()
-  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true
   $('progress').hidden = false
   setProgress('queued', 0, 1, 0)
@@ -572,6 +576,7 @@ async function prepareTransfer() {
   $('transferCharacterPack').disabled = !character
   renderTransferKeys()
   $('transferConfirm').hidden = false
+  renderActionPicker()
 }
 function renderTransferKeys() {
   const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
@@ -587,7 +592,7 @@ function renderTransferKeys() {
   $('transferCharacterPack').disabled = !character
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
-$('transferCharacter').addEventListener('change', renderTransferKeys)
+$('transferCharacter').addEventListener('change', () => { renderTransferKeys(); renderActionPicker() })
 async function transferSelected(indices, retryConfig = null) {
   const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
   state.transferConfig = Object.freeze({ ...config })
@@ -601,9 +606,12 @@ async function transferSelected(indices, retryConfig = null) {
   if (selectedCharacter?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${selectedCharacter.name} chưa có model đích trong Workbench. Tải lại Workbench sau khi thêm nhân vật.`)
   if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
   renderActionPicker(); $('transferStatus').textContent = `Đang chuẩn hoá ${indices.length} animation…`
-  const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact),
+  const transferNames = {}
+  const nameCounts = new Map()
+  for (const index of indices) { const edit = state.actionEdits.get(index); if (!edit) continue; const base = edit.name.trim(); const count = nameCounts.get(base.toLocaleLowerCase()) ?? 0; nameCounts.set(base.toLocaleLowerCase(), count + 1); transferNames[index] = { ...edit, name: count ? `${base}_${count + 1}` : base } }
+  const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact, transferNames),
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
-      charIds: [config.charId], actions: succeeded.map((action) => ({ uuid: action.uuid, key: config.key })),
+      charIds: [config.charId], actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
     } }),
     importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {} }),
   })

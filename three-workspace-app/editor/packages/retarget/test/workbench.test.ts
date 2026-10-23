@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test, { after, before } from 'node:test'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
 import { request } from 'node:http'
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { loadBobj } from '../cli/loadBobj.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
-import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter } from '../../library/index.ts'
+import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter, resolveLibraryPath } from '../../library/index.ts'
 import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
@@ -122,9 +122,11 @@ test('one-click transfer orchestrator uses the exact selection, supports shared-
 })
 
 test('transfer suggests a required action key from selected animation names', () => {
-  const required = [{ key: 'idle', label: 'Đứng yên' }, { key: 'walking', label: 'Đi bộ' }, { key: 'running', label: 'Chạy' }]
+  const required = [{ key: 'idle', label: 'Đứng yên' }, { key: 'walking', label: 'Đi bộ' }, { key: 'running', label: 'Chạy' }, { key: 'fall', label: 'Ngã' }]
   assert.equal(suggestActionKey(required, ['Fast Walking']), 'walking')
   assert.equal(suggestActionKey(required, ['Chạy nhanh']), 'running')
+  assert.equal(suggestActionKey(required, ['dead']), 'fall')
+  assert.equal(suggestActionKey(required, ['sprinting']), 'running')
   assert.equal(suggestActionKey(required, ['Unmatched clip']), null)
 })
 
@@ -380,14 +382,23 @@ test('one transfer normalizes exactly 2 of 4 checked Actions into 2 drafts plus 
     const inspected = await post('/api/inspect', { sourceId: source.json.sourceId, targetId: target.id, options: {} })
     assert.ok(inspected.json.actions.length >= 4)
     const checked = [inspected.json.actions[1].index, inspected.json.actions[3].index]
-    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: checked } })
+    const originalNames = checked.map((index) => inspected.json.actions.find((action: any) => action.index === index).name)
+    const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: checked, bobj: true, actionNames: { [checked[0]!]: { name: 'Edited Walk', nameVi: 'Đi bộ mới' }, [checked[1]!]: { name: 'Edited Attack', nameVi: 'Tấn công mới' } } } })
     assert.equal(run.status, 200, run.text)
     assert.deepEqual(run.json.manifest.actions.map((action: any) => action.sourceActionIndex), checked)
+    assert.deepEqual(run.json.manifest.actions.map((action: any) => [action.name, action.sourceName, action.nameVi]), [['Edited Walk', originalNames[0], 'Đi bộ mới'], ['Edited Attack', originalNames[1], 'Tấn công mới']])
+    const glbFile = run.json.files.find((file: any) => file.kind === 'glb')
+    const glbResponse = await fetch(bench.url + glbFile.url); const glbJson = decodeGlb(new Uint8Array(await glbResponse.arrayBuffer())).json
+    assert.deepEqual(glbJson.animations.map((animation: any) => animation.name), ['Edited Walk', 'Edited Attack'])
+    const bobjFile = run.json.files.find((file: any) => file.kind === 'bobj')
+    const bobjResponse = await call(bobjFile.url)
+    assert.match(bobjResponse.text, /an Edited Walk/); assert.match(bobjResponse.text, /an Edited Attack/)
     const shared = await post(`/api/runs/${run.json.runId}/library`, {})
     assert.equal(shared.status, 200, shared.text); assert.equal(shared.json.actions, 2)
     const drafts = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [destination.charId], actions: run.json.manifest.actions.map((action: any) => ({ uuid: action.uuid, key: 'idle' })) })
     assert.equal(drafts.status, 200, drafts.text); assert.equal(drafts.json.drafts.length, 2)
     assert.equal(listCharacterActions({ charId: destination.charId, latestOnly: true }).length, 2)
+    assert.deepEqual(run.json.manifest.actions.map((action: any) => getAction({ actionUuid: action.uuid }).sourceName), originalNames)
 
     const sharedOnlyDestination = registerLibraryCharacter({ name: 'Chỉ kho chung', rig: 'mixamo65', modelFile: model })
     const sharedOnlyRun = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions: [0] } })
@@ -486,6 +497,9 @@ test('selected Action is rebuilt against each Verity destination base without le
     const base101 = registerBaseModel({ name: 'Verity 101', rig: 'verity', modelFile: path101 })
     const char84 = createCharacter({ name: 'Gỗ 84', baseModelId: base84.modelId })
     const char101 = createCharacter({ name: 'Cánh 101', baseModelId: base101.modelId })
+    const mixamoOriginal = registerLibraryCharacter({ name: 'Mixamo65 with original rig', rig: 'mixamo65', modelFile: join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!) })
+    const originalDir = join(resolveLibraryPath(), 'characters', mixamoOriginal.charId, 'original')
+    mkdirSync(originalDir, { recursive: true }); copyFileSync(path84, join(originalDir, 'model.bbs.bobj'))
     const custom = registerLibraryCharacter({ name: 'Sai rig', rig: 'custom', modelFile: join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!) })
     const target = (await call('/api/targets')).json.targets[0]
     const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
@@ -512,6 +526,10 @@ test('selected Action is rebuilt against each Verity destination base without le
       assert.equal(glb.animations.length, 9)
       assert.equal(glb.animations.at(-1).name, actions.at(-1))
     }
+    const mixamoRigSent = await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [mixamoOriginal.charId], actions: [{ uuid: selected.uuid, key: 'walk' }] })
+    assert.equal(mixamoRigSent.status, 200, mixamoRigSent.text)
+    const mixamoDraft = listCharacterActions({ charId: mixamoOriginal.charId, latestOnly: true })[0]!
+    assert.ok(existsSync(join(library, 'packs', mixamoDraft.packId, 'anim.original.bbs.bobj')), 'original BOBJ is attached based on file presence even with rig=mixamo65')
   } finally {
     if (priorLibrary === undefined) delete process.env.W01_LIBRARY
     else process.env.W01_LIBRARY = priorLibrary

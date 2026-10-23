@@ -183,7 +183,7 @@ export async function exportMinecraft20(glb: Uint8Array, armatureText: string, s
       return [id, { name, position: position.toArray(), rotation: rotation.toArray() }]
     }))
     for (const [clipIndex, clip] of adapter.actions.entries()) {
-      const actionName = uniqueName(clip.name)
+      const actionName = uniqueName(clip.name.replace(/[.\[\]:/\\]/g, '_'))
       const lastTick = Math.max(0, Math.round(clip.durationSeconds * TICKS_PER_SECOND))
       const channels = new Map<string, { location: number[][]; rotation: number[][]; scale: number[][] }>()
       const samples: Array<{ ticks: number; worlds: Map<string, Vector3>; tips: Map<string, Vector3> }> = []

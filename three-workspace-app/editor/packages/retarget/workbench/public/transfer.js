@@ -3,6 +3,14 @@ export function suggestActionKey(requiredActions, actionNames) {
   const normalize = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   const names = actionNames.map(normalize).filter(Boolean)
   if (!names.length) return null
+  const aliases = [
+    [['attack', 'attacking'], ['attack']], [['death', 'die', 'dead', 'dying'], ['fall']], [['walk', 'walking'], ['walk']],
+    [['run', 'running', 'sprint', 'sprinting'], ['run', 'running']], [['idle', 'stand', 'standing'], ['idle', 'stand']], [['jump', 'jumping'], ['jump']], [['hit', 'hurt', 'damage'], ['hit']],
+  ]
+  for (const [terms, keys] of aliases) if (names.some((name) => terms.some((term) => name.split(' ').includes(term)))) {
+    const required = requiredActions.find((action) => keys.includes(action.key))
+    if (required) return required.key
+  }
   return requiredActions.find((action) => {
     const terms = [action.key, action.label].map(normalize).filter((term) => term && term.length > 2)
     return terms.some((term) => names.some((name) => name === term || name.includes(term) || term.includes(name)))

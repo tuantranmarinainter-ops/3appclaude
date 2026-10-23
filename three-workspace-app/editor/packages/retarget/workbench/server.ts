@@ -28,9 +28,8 @@ import {
 import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
 import {
   addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
-  resolveCharacter, resolveLibraryPath, setActionMetadata,
+  resolveCharacter, resolveLibraryPath, setActionMetadata, translateActionName, formatBilingual,
 } from '../../library/index.ts'
-import * as libraryContract from '../../library/index.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -47,13 +46,9 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
   '.json': 'application/json; charset=utf-8', '.wasm': 'application/wasm', '.png': 'image/png', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bobj': 'text/plain; charset=utf-8',
   '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8' }
 
-/** Temporary A1/A2 parallel-development adapter. Once A2 lands these optional exports are always present. */
 function bilingualActionName(name: string): { nameVi: string; displayName: string } {
-  const contract = libraryContract as unknown as {
-    translateActionName?: (en: string) => { vi: string }, formatBilingual?: (en: string, vi: string) => string
-  }
-  const nameVi = typeof contract.translateActionName === 'function' ? contract.translateActionName(name).vi : ''
-  return { nameVi, displayName: typeof contract.formatBilingual === 'function' ? contract.formatBilingual(name, nameVi) : name }
+  const nameVi = translateActionName(name).vi
+  return { nameVi, displayName: formatBilingual(name, nameVi) }
 }
 
 /** `actionsGlb` normally emits the 17-bone playable anchor tree; library rig validation keeps all 20 BOBJ bones. */
@@ -176,14 +171,14 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     for (const character of listLibraryCharacters()) {
       const skin = join(root, 'characters', character.charId, 'skin.png')
       if (character.rig === 'minecraft20' && existsSync(skin)) { mc20.set(character.charId, { id: character.charId, name: character.name, skin }); continue }
-      if (character.rig !== 'mixamo65' || !character.model.endsWith('.glb')) continue
+      if (!(character.rig === 'mixamo65' || character.rig === 'verity') || !character.model.endsWith('.glb')) continue
       const path = join(root, 'characters', character.charId, character.model)
       if (!existsSync(path)) continue
       const measured = await measureTarget(path)
       // `original/model.bbs.bobj`: the character keeps its own skeleton; `model.glb` is only the Mixamo65 view for the solver.
       const original = join(root, 'characters', character.charId, 'original')
       targets.set(`lib-${character.charId}`, { id: `lib-${character.charId}`, file: basename(path), path, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name: character.name, library: true,
-        ...(existsSync(join(original, 'model.bbs.bobj')) && existsSync(join(original, 'display.glb')) ? { original } : {}) })
+        ...(existsSync(join(original, 'model.bbs.bobj')) ? { original } : {}) })
     }
   } catch (error) { console.error('App 5 library characters were not loaded:', error instanceof Error ? error.message : error) }
 
@@ -435,7 +430,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (!selection || typeof selection.uuid !== 'string' || !byUuid.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) {
           throw new UserError('Each selected Action requires a run UUID and a requiredActions.key tag')
         }
-        return { uuid: selection.uuid, key: selection.key.trim() }
+        return { uuid: selection.uuid, key: selection.key.trim(), ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}) }
       })
       if (new Set(selected.map((item) => item.uuid)).size !== selected.length) throw new UserError('An Action can only be selected once')
       const characters = new Map(listLibraryCharacters().map((character) => [character.charId, character]))
@@ -447,6 +442,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (invalid) throw new UserError(`Character ${character.name} does not require Action key: ${invalid.key}`)
       }
       const selectedCharacters = charIds.map((charId) => characters.get(charId)!)
+      const isOriginalCharacter = (character: any) => character.rig === 'verity' || existsSync(join(resolveLibraryPath(), 'characters', character.charId, 'original', 'model.bbs.bobj'))
       const supportedRigs = new Set(['mixamo65', 'verity', 'minecraft20'])
       const unsupported = selectedCharacters.find((character) => !supportedRigs.has(character.rig))
       if (unsupported) throw new UserError(`Character ${unsupported.name} has unsupported rig ${unsupported.rig}`, 409)
@@ -457,14 +453,16 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const normalizedGlb = readFileSync(join(state.dir, normalizedFile.name))
       // Resolve and parse every destination before importing or creating any draft. A bad mixed selection leaves no partial drafts.
       const verityModels = new Map<string, { resolved: ReturnType<typeof resolveCharacter>; model: VerityModel }>()
-      for (const character of selectedCharacters) if (character.rig === 'verity') {
+      for (const character of selectedCharacters) if (isOriginalCharacter(character)) {
         const resolved = resolveCharacter(character.charId)
-        if (!resolved.modelPath.endsWith('.bobj')) throw new UserError(`Verity character ${character.name} has no original .bobj model`, 409)
-        try { verityModels.set(character.charId, { resolved, model: loadVerityModel(resolved.modelPath) }) }
+        const originalBobj = join(resolveLibraryPath(), 'characters', character.charId, 'original', 'model.bbs.bobj')
+        const modelPath = resolved.modelPath.endsWith('.bobj') ? resolved.modelPath : originalBobj
+        if (!existsSync(modelPath)) throw new UserError(`Verity character ${character.name} has no original .bobj model`, 409)
+        try { verityModels.set(character.charId, { resolved: { ...resolved, modelPath }, model: loadVerityModel(modelPath) }) }
         catch (error) { throw new UserError(`Cannot load original Verity model for ${character.name}: ${error instanceof Error ? error.message : error}`, 409) }
       }
       const verityArtifacts = new Map<string, { bobj: string; glb: Uint8Array }>()
-      for (const action of selected) for (const character of selectedCharacters) if (character.rig === 'verity') {
+      for (const action of selected) for (const character of selectedCharacters) if (isOriginalCharacter(character)) {
         const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
         const entry = byUuid.get(action.uuid) as any, selectedGlb = selectGlbAnimation(normalizedGlb, entry.glbAnimationIndex ?? sourceIndex)
         const destination = verityModels.get(character.charId)!, added = await destination.model.convertNormalized(selectedGlb)
@@ -518,13 +516,13 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           if (!source) throw new UserError(`Selected Action is not in the ${character.rig} pack: ${action.uuid}`)
           const existing = getAction({ actionUuid: source.uuid })
           const normalizedTags = mixamoPack ? getAction({ actionUuid: action.uuid }).tags : []
-          setActionMetadata({ actionUuid: source.uuid, tags: [...new Set([...existing.tags, ...normalizedTags, action.key])] })
+          setActionMetadata({ actionUuid: source.uuid, ...(action.name ? { name: action.name } : {}), ...(action.nameVi ? { nameVi: action.nameVi } : {}), ...(action.sourceName ? { sourceName: action.sourceName } : {}), tags: [...new Set([...existing.tags, ...normalizedTags, action.key])] })
           const draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
           const draftPath = join(resolveLibraryPath(), 'packs', draft.packId)
           if (character.rig === 'minecraft20') {
             writeFileSync(join(draftPath, 'anim.bobj'), selectBobjActions(minecraftBobj, new Set([minecraftNames.get(action.uuid)!])))
           }
-          if (character.rig === 'verity') {
+          if (isOriginalCharacter(character)) {
             const artifact = verityArtifacts.get(`${charId}:${action.uuid}`)!
             writeFileSync(join(draftPath, 'anim.original.bbs.bobj'), artifact.bobj)
             writeFileSync(join(draftPath, 'anim.original.glb'), artifact.glb)

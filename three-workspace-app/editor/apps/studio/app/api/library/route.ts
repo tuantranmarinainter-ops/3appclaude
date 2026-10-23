@@ -45,7 +45,7 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function PATCH(request: Request): Promise<Response> {
   try {
-    const body = await request.json() as { operation?: string; charId?: string; actionUuid?: string; category?: string; tags?: string[]; nameVi?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
+    const body = await request.json() as { operation?: string; charId?: string; actionUuid?: string; category?: string; tags?: string[]; name?: string; nameVi?: string; sourceName?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
     if (body.operation === 'approve') {
       if (!body.charId || !body.actionUuid) return Response.json({ error: 'charId and actionUuid are required' }, { status: 400 })
       return Response.json({ action: approveCharacterAction(body.charId, body.actionUuid) })
@@ -56,7 +56,7 @@ export async function PATCH(request: Request): Promise<Response> {
     }
     if (!body.actionUuid) return Response.json({ error: 'actionUuid is required' }, { status: 400 })
     if (body.category !== undefined && !ACTION_CATEGORIES.includes(body.category as ActionCategory)) return Response.json({ error: 'Unknown category' }, { status: 400 })
-    setActionMetadata({ actionUuid: body.actionUuid, category: body.category as ActionCategory | undefined, tags: body.tags, nameVi: body.nameVi })
+    setActionMetadata({ actionUuid: body.actionUuid, category: body.category as ActionCategory | undefined, tags: body.tags, name: body.name, nameVi: body.nameVi, sourceName: body.sourceName })
     return Response.json({ ok: true })
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 }) }
 }
