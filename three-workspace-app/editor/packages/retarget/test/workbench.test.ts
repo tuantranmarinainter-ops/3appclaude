@@ -96,7 +96,7 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.doesNotMatch(app, /picker[^\n]*addEventListener\('click'[^\n]*closeActionPicker/)
   assert.match(css, /\.action-picker[^}]*resize: both/)
   assert.match(app, /executeTransfer\(\{ indices, toCharacter, toShared/)
-  assert.match(app, /transferRetry[\s\S]*transferSelected\(failed\)/)
+  assert.match(app, /transferRetry[\s\S]*transferSelected\(failed, config\)/)
 })
 
 test('one-click transfer orchestrator uses the exact selection, supports shared-only, and retries only failures', async () => {

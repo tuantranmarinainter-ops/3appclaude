@@ -46,7 +46,7 @@ const state = {
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
-  transferFailed: [], transferRunning: false, requestBobj: false,
+  transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -359,7 +359,7 @@ async function chooseTarget(target) {
   renderTargets(); renderAll(); refreshSteps()
   setOverlay('right', 'Đang tải nhân vật đích…')
   try { await viewer.loadTarget(target.displayUrl ?? target.url); setOverlay('right', '') } catch (error) { setOverlay('right', `Không tải được nhân vật đích: ${error.message}`, true) }
-  if (state.source) inspectNow()
+  if (state.source) await inspectNow()
 }
 
 // ---------------------------------------------------------------- step 3: inspect
@@ -582,8 +582,9 @@ function renderTransferKeys() {
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
 $('transferCharacter').addEventListener('change', renderTransferKeys)
-async function transferSelected(indices) {
-  const config = { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
+async function transferSelected(indices, retryConfig = null) {
+  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
+  state.transferConfig = Object.freeze({ ...config })
   const toCharacter = config.toCharacter, toShared = config.toShared
   if (!toCharacter && !toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
   if (!indices.length) throw new Error('Chưa chọn animation.')
@@ -591,22 +592,23 @@ async function transferSelected(indices) {
   for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
   const selectedCharacter = state.libraryCharacters?.find((item) => item.charId === config.charId)
   const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
-  if (selectedCharacter?.rig === 'mixamo65' && characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
+  if (selectedCharacter?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${selectedCharacter.name} chưa có model đích trong Workbench. Tải lại Workbench sau khi thêm nhân vật.`)
+  if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
   renderActionPicker(); $('transferStatus').textContent = `Đang chuẩn hoá ${indices.length} animation…`
   const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact),
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
       charIds: [config.charId], actions: succeeded.map((action) => ({ uuid: action.uuid, key: config.key })),
     } }),
-    importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {}),
+    importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {} }),
   })
   const succeeded = transferred.actions, drafts = transferred.drafts, shared = transferred.shared
   state.transferFailed = transferred.failed
-  if (!succeeded.length) throw new Error('Không animation nào chuẩn hoá thành công.')
+  $('transferRetry').hidden = !state.transferFailed.length
+  if (!succeeded.length) throw new Error(`Không animation nào chuẩn hoá thành công. Có thể thử lại ${state.transferFailed.length} action lỗi.`)
   const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
   const summary = [`Đã chuyển ${succeeded.length} animation`, ...(toCharacter ? [`→ ${character?.name ?? 'nhân vật'} (${drafts.length} Nháp)`] : []), ...(toShared ? [`+ kho dùng chung (${shared?.created === false ? 'đã có' : '1 gói'})`] : [])].join(' ')
   $('transferStatus').textContent = state.transferFailed.length ? `${summary}. Lỗi ${state.transferFailed.length}: ${state.transferFailed.map((index) => state.inspect.actions[index]?.displayName ?? index).join(', ')}` : summary
-  $('transferRetry').hidden = !state.transferFailed.length
-  state.libraryCharacters = null
+  if (!state.transferFailed.length) { state.libraryCharacters = null; state.transferConfig = null }
   return { normalized: succeeded.length, drafts: drafts.length, sharedPacks: toShared ? 1 : 0, failed: state.transferFailed }
 }
 $('transferStart').addEventListener('click', async () => {
@@ -616,9 +618,9 @@ $('transferStart').addEventListener('click', async () => {
   finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 $('transferRetry').addEventListener('click', async () => {
-  const failed = [...state.transferFailed]
+  const failed = [...state.transferFailed], config = state.transferConfig
   $('transferRetry').hidden = true
-  try { await transferSelected(failed) } catch (error) { $('transferStatus').textContent = `Thử lại thất bại: ${error.message}` }
+  try { await transferSelected(failed, config) } catch (error) { $('transferStatus').textContent = `Thử lại thất bại: ${error.message}`; $('transferRetry').hidden = !state.transferFailed.length }
   finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 
