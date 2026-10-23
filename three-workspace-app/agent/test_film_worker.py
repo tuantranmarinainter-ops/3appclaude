@@ -133,6 +133,23 @@ class FilmWorkerIntegrationTests(unittest.TestCase):
                 run_film_worker(bad, output)
             self.assertFalse((output / "film-worker-bad").exists())
 
+    def test_editable_original_rig_can_layer_body_pose_tracks_over_native_wing_action(self):
+        actions = re.findall(r"^an\s+(.+)$", MODEL.read_text(encoding="utf-8"), re.MULTILINE)
+        if not actions:
+            self.skipTest("Pinned BOBJ fixture has no native action")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); output = root / "exports"; output.mkdir()
+            document = self.manifest()
+            document["models"][0]["actions"] = actions
+            document["actors"][0]["animationKeyframes"] = [
+                {"tick": 0, "animationName": actions[0], "slot": "idle", "actionTick": 0},
+            ]
+            manifest = root / "manifest.json"; manifest.write_text(json.dumps(document), encoding="utf-8")
+            result = run_film_worker(manifest, output)
+            self.assertTrue(result["nativeReadback"])
+            report = json.loads((Path(result["packageDirectory"]) / "export-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["poseTracks"], 1)
+
     def test_invalid_asset_hash_and_traversal_fail_without_leaving_package_data(self):
         too_large_revision = self.manifest()
         too_large_revision["sourceRevision"] = 9223372036854775808
