@@ -308,13 +308,17 @@ export function StudioOverlay({
   useEffect(() => {
     if (source !== 'unified') return
     document.body.classList.add('wb-unified-open')
-    return () => document.body.classList.remove('wb-unified-open')
+    return () => {
+      document.body.classList.remove('wb-unified-open')
+      window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: 'scene' } }))
+    }
   }, [source])
 
   useEffect(() => {
     if (source !== 'unified') return
     if (!mounted || !projectState) return
     try { window.localStorage.setItem(`bbs-workspace:${documentId}`, activeWorkspace) } catch { /* Private mode keeps the selection for this session. */ }
+    window.dispatchEvent(new CustomEvent('bbs-workspace-change', { detail: { workspace: activeWorkspace } }))
   }, [activeWorkspace, documentId, mounted, projectState, source])
 
   useEffect(() => {
@@ -500,7 +504,7 @@ export function StudioOverlay({
       <div className="wb-unified-shell" role="dialog" aria-modal="true" aria-label={vi ? 'Dự án hợp nhất' : 'Unified project'}>
         <header className="wb-unified-topbar">
           <div className="wb-unified-brand"><strong id="wb-project-title">{project?.name ?? (vi ? 'Dự án' : 'Project')}</strong><span className={`wb-save-state is-${saveStatus}`} role="status" title={saveStatus === 'error' ? shellError ?? undefined : undefined}>{!projectState ? (vi ? 'Đang mở…' : 'Opening…') : assetBusy ? (vi ? 'Đang xử lý…' : 'Working…') : saveStatus === 'saving' ? (vi ? 'Đang lưu' : 'Saving') : saveStatus === 'error' ? (vi ? 'Lưu thất bại' : 'Save failed') : (vi ? 'Đã lưu' : 'Saved')}</span></div>
-          <nav className="wb-workspace-tabs" aria-label={vi ? 'Workspace' : 'Workspaces'}>
+          <nav className="wb-workspace-tabs" aria-label={vi ? 'Chế độ biên tập trong App 2' : 'Editing modes inside App 2'}>
             {WORKSPACES.map((workspace) => <button key={workspace.id} type="button" aria-current={activeWorkspace === workspace.id ? 'page' : undefined} className={activeWorkspace === workspace.id ? 'is-active' : ''} onClick={() => switchWorkspace(workspace.id)}><span>{workspace.number}</span>{vi ? workspace.vi : workspace.en}</button>)}
           </nav>
           <div className="wb-unified-actions">
