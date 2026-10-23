@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getAction, listLibraryCharacters, resolveLibraryPath, searchLibrary, setActionPreview, type ActionMetadata } from '../../../packages/library/index'
 import * as directorRenderer from '@topview/3d-director-cli/render.mjs'
+import { normalizeStudioOrigin } from './libraryPreviewUtils'
 
 export type LibraryPreviewJob = { uuid: string; state: 'queued' | 'running' | 'complete' | 'failed'; message?: string; renderer?: string }
 const builtinCharacter = 'a3d_char_de37873a79244fbe8a0660ea08d1b4ab'
@@ -32,7 +33,7 @@ async function createPreview(uuid: string): Promise<void> {
     const charId = useCharacter ? character!.charId : builtinCharacter
     const mannequin = action.rig === 'minecraft20' && !useCharacter
     const seconds = Math.min(2.5, Math.max(0.1, action.durationSeconds))
-    type RenderPage = { setViewportSize(size: { width: number; height: number }): Promise<void>; goto(url: string, options: { waitUntil: 'networkidle'; timeout: number }): Promise<unknown>; waitForFunction<T>(callback: () => T, argument?: unknown, options?: { timeout: number }): Promise<unknown>; evaluate<T>(callback: () => T): Promise<T> }
+    type RenderPage = { setViewportSize(size: { width: number; height: number }): Promise<void>; goto(url: string, options: { waitUntil: 'load'; timeout: number }): Promise<unknown>; waitForFunction<T>(callback: () => T, argument?: unknown, options?: { timeout: number }): Promise<unknown>; evaluate<T>(callback: () => T): Promise<T> }
     type RendererInfo = { kind: 'gpu' | 'cpu'; name: string; raw: string }
     type WithPage = <T>(work: (page: RenderPage, origin: string, warnings: string[], network: { blocked: string[] }, localAssetUrls: Record<string, string>, renderer: RendererInfo) => Promise<T>, options?: { allowedOrigins?: string[] }) => Promise<T>
     const withPage = (directorRenderer as unknown as { withPage: WithPage }).withPage
@@ -40,7 +41,7 @@ async function createPreview(uuid: string): Promise<void> {
       job.renderer = renderer.kind === 'gpu' ? `GPU: ${renderer.name}` : `CPU: ${renderer.name}`
       if (renderer.kind !== 'gpu') throw new Error(`GPU rendering unavailable (${renderer.name}); showing the PNG cover instead. Set W01_RENDER_GPU=1 to request hardware rendering.`)
       await page.setViewportSize({ width: 320, height: 320 })
-      await page.goto(`${appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}) })}`, { waitUntil: 'networkidle', timeout: 45_000 })
+      await page.goto(`${appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}) })}`, { waitUntil: 'load', timeout: 45_000 })
       await page.waitForFunction(() => Boolean((window as Window & { __libraryPreviewResult?: unknown }).__libraryPreviewResult), undefined, { timeout: 60_000 })
       return page.evaluate(() => (window as Window & { __libraryPreviewResult?: { data: string; mime: string; error?: string } }).__libraryPreviewResult!)
     }, { allowedOrigins: [appOrigin] })
@@ -76,7 +77,7 @@ async function drain(): Promise<void> {
 }
 
 export function queueLibraryPreviews(options: { origin: string; actionUuids?: string[]; regenerate?: boolean } ): LibraryPreviewJob[] {
-  appOrigin = new URL(options.origin).origin
+  appOrigin = normalizeStudioOrigin(options.origin)
   const all = []
   for (let offset = 0, total = 1; offset < total; offset += 100) {
     const page = searchLibrary({ limit: 100, offset }); total = page.total; all.push(...page.items)
