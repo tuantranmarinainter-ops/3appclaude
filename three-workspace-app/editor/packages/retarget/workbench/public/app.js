@@ -1,6 +1,6 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
 import { Viewer, FPS } from './viewer.js'
-import { executeTransfer } from './transfer.js'
+import { executeTransfer, suggestActionKey } from './transfer.js'
 
 const $ = (id) => document.getElementById(id)
 /** Tiny DOM builder; text always goes through textContent so file/bone names can never inject markup. */
@@ -578,6 +578,12 @@ function renderTransferKeys() {
   const select = clear($('transferActionKey'))
   for (const required of character?.requiredActions ?? []) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
   if (!select.options.length) select.append(h('option', { value: 'idle', text: 'Đứng yên (idle)' }))
+  const selectedNames = selectedActionIndices().map((index) => {
+    const action = state.inspect?.actions?.find((item) => item.index === index)
+    return action?.displayName ?? action?.name
+  }).filter(Boolean)
+  const suggestion = suggestActionKey(character?.requiredActions ?? [], selectedNames)
+  if (suggestion) select.value = suggestion
   $('transferCharacterPack').disabled = !character
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })

@@ -1,4 +1,14 @@
 /** One-click transfer orchestration. Callbacks keep the browser logic testable without duplicating server behavior. */
+export function suggestActionKey(requiredActions, actionNames) {
+  const normalize = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  const names = actionNames.map(normalize).filter(Boolean)
+  if (!names.length) return null
+  return requiredActions.find((action) => {
+    const terms = [action.key, action.label].map(normalize).filter((term) => term && term.length > 2)
+    return terms.some((term) => names.some((name) => name === term || name.includes(term) || term.includes(name)))
+  })?.key ?? null
+}
+
 export async function executeTransfer({ indices, toCharacter, toShared, normalize, importCharacter, importShared }) {
   const requested = [...new Set(indices)]
   if (!requested.length) throw new Error('Chưa chọn animation.')

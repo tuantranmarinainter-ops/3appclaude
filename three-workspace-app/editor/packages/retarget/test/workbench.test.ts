@@ -15,7 +15,7 @@ import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
 import { decodeGlb } from '../cli/glb.ts'
 import { AnimationMixer, LoopOnce, Vector3 } from 'three'
-import { executeTransfer } from '../workbench/public/transfer.js'
+import { executeTransfer, suggestActionKey } from '../workbench/public/transfer.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
@@ -119,6 +119,13 @@ test('one-click transfer orchestrator uses the exact selection, supports shared-
   assert.deepEqual(normalized[2], [1, 3]); assert.equal(sharedOnly.drafts.length, 0)
   assert.equal(characterImports.length, 2, 'shared-only must not create character drafts')
   assert.deepEqual(sharedImports[2], [1, 3])
+})
+
+test('transfer suggests a required action key from selected animation names', () => {
+  const required = [{ key: 'idle', label: 'Đứng yên' }, { key: 'walking', label: 'Đi bộ' }, { key: 'running', label: 'Chạy' }]
+  assert.equal(suggestActionKey(required, ['Fast Walking']), 'walking')
+  assert.equal(suggestActionKey(required, ['Chạy nhanh']), 'running')
+  assert.equal(suggestActionKey(required, ['Unmatched clip']), null)
 })
 
 test('canonical runs without original sidecars enable both Verity destination cards', async () => {
