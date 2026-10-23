@@ -1,3 +1,4 @@
+import { libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
 import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, listLibraryCharacterDetails, rawActions, updateCharacterProfile } from '../../../src/libraryCommands'
 
@@ -6,6 +7,12 @@ export const runtime = 'nodejs'
 export async function GET(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url)
+    const modelCharacter = url.searchParams.get('modelCharacter')
+    if (modelCharacter) {
+      const model = await libraryCharacterModel(modelCharacter)
+      if (url.searchParams.get('fingerprint') !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
+      return new Response(new Uint8Array(model.bytes), { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store' } })
+    }
     const actionUuid = url.searchParams.get('actionUuid')
     if (actionUuid) {
       const action = getAction({ actionUuid })

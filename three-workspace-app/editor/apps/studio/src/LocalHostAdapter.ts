@@ -219,7 +219,7 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   resolveAssetUrl(key: string): string {
     const trimmed = key.trim()
-    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/')) return trimmed
+    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/') || trimmed.startsWith('/api/library?modelCharacter=')) return trimmed
     if (/^https?:\/\//i.test(trimmed)) return trimmed
     const normalized = normalizeAssetKey(trimmed)
     if (!normalized) throw new Error(translateStudio('素材 key 为空'))

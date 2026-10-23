@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
+import { loadUnifiedProject } from '../../src/unifiedApi'
 import { ActionPreview } from './ActionPreview'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 
@@ -28,6 +29,7 @@ export default function LibraryPage() {
   const [query, setQuery] = useState(''), [category, setCategory] = useState('')
   const [selected, setSelected] = useState<Action | null>(null), [copyTarget, setCopyTarget] = useState('')
   const [message, setMessage] = useState('')
+  const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
 
   const loadCharacters = useCallback(async () => {
     const body = await json('/api/library?characters=1')
@@ -47,20 +49,36 @@ export default function LibraryPage() {
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
   }, [category, characterId, query, status, warehouse])
 
+  useEffect(() => {
+    setHasOpener(!!window.opener)
+    const requested = new URLSearchParams(window.location.search).get('unified')
+    if (requested) void loadUnifiedProject(requested).then(({ project }) => setProjectId(project.projectId)).catch(error => setMessage(String(error)))
+  }, [])
   useEffect(() => { void loadCharacters().catch(error => setMessage(String(error))) }, [loadCharacters])
   useEffect(() => { void loadActions().catch(error => setMessage(String(error))) }, [loadActions])
   useEffect(() => { if (tab === 'coverage') void json('/api/library?coverage=1').then(body => setCoverage(body.coverage)).catch(error => setMessage(String(error))) }, [tab])
 
   const selectedCharacter = characters.find(item => item.charId === characterId)
-  const compatibleTargets = useMemo(() => characters.filter(item => item.rig === selected?.rig && item.charId !== selected?.ownerCharId), [characters, selected])
+  const compatibleTargets = useMemo(() => characters.filter(item => (item.rig === selected?.rig || item.rig === 'verity' && selected?.rig === 'mixamo65+verity') && item.charId !== selected?.ownerCharId), [characters, selected])
+  const effectiveCopyTarget = compatibleTargets.some(item => item.charId === copyTarget) ? copyTarget : compatibleTargets[0]?.charId ?? ''
+  async function addCharacter(charId: string) {
+    if (window.opener) { window.opener.postMessage({ type: 'bbs-library-add-character', charId }, window.location.origin); return }
+    if (!projectId) return
+    setAdding(true)
+    try {
+      const { project } = await loadUnifiedProject(projectId)
+      await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'add-to-scene', charId, projectId, expectedRevision: project.revision }) })
+      setMessage('Đã thêm nhân vật vào cảnh App 2.')
+    } finally { setAdding(false) }
+  }
   async function approve() {
     if (!selected?.ownerCharId) return
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'approve', charId: selected.ownerCharId, actionUuid: selected.uuid }) })
     await loadActions(); setMessage('Đã duyệt động tác.')
   }
   async function copy() {
-    if (!selected || !copyTarget) return
-    await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'copy', actionUuid: selected.uuid, toCharId: copyTarget }) })
+    if (!selected || !effectiveCopyTarget) return
+    await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'copy', actionUuid: selected.uuid, toCharId: effectiveCopyTarget }) })
     setMessage('Đã sao chép thành bản Nháp riêng của nhân vật đích.')
   }
   function notifyOpener(type: string) {
@@ -88,16 +106,17 @@ export default function LibraryPage() {
         <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig}</p>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
         <button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
-        <p><select aria-label="Nhân vật đích" value={copyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
+        <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
       </> : <p>Chọn một động tác.</p>}</aside>
     </div></>}
-    {tab === 'characters' && <CharacterProfiles characters={characters} onSaved={loadCharacters} setMessage={setMessage} />}
+    {tab === 'characters' && <CharacterProfiles characters={characters} onSaved={loadCharacters} setMessage={setMessage} onAdd={hasOpener || projectId ? addCharacter : undefined} adding={adding} />}
     {tab === 'coverage' && <CoverageMatrix rows={coverage} onMissing={(key, charId) => { setCharacterId(charId); setQuery(key); setWarehouse(true); setTab('actions') }} />}
+    {projectId && <a href={`/?unified=${encodeURIComponent(projectId)}`}>Quay lại cảnh App 2</a>}
     {message && <p role="status">{message}</p>}
   </main>
 }
 
-function CharacterProfiles({ characters, onSaved, setMessage }: { characters: Character[]; onSaved: () => Promise<void>; setMessage: (value: string) => void }) {
+function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: { onAdd?: (charId: string) => Promise<void>; adding: boolean; characters: Character[]; onSaved: () => Promise<void>; setMessage: (value: string) => void }) {
   async function save(character: Character, form: HTMLFormElement) {
     const data = new FormData(form)
     const personality = { summary: String(data.get('summary') ?? ''), traits: String(data.get('traits') ?? '').split(',').map(value => value.trim()).filter(Boolean) }
@@ -110,7 +129,7 @@ function CharacterProfiles({ characters, onSaved, setMessage }: { characters: Ch
     <label>Tính cách<textarea name="summary" defaultValue={character.personality?.summary} style={{ width: '100%' }} /></label>
     <label>Đặc điểm (cách nhau bằng dấu phẩy)<input name="traits" defaultValue={character.personality?.traits.join(', ')} style={{ width: '100%' }} /></label>
     <label>Động tác cần có (key: nhãn)<textarea name="required" defaultValue={character.requiredActions?.map(item => `${item.key}: ${item.label}`).join('\n')} style={{ width: '100%', minHeight: 130 }} /></label><button type="submit">Lưu hồ sơ</button>
-    {typeof window !== 'undefined' && window.opener && <button type="button" onClick={() => window.opener?.postMessage({ type: 'bbs-library-add-character', charId: character.charId }, window.location.origin)}>Thêm vào cảnh App 2</button>}
+    {onAdd && <button type="button" disabled={adding} onClick={() => void onAdd(character.charId).catch(error => setMessage(String(error)))}>Thêm vào cảnh App 2</button>}
   </form>)}</section>
 }
 

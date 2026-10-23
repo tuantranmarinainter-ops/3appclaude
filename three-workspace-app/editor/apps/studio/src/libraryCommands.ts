@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   copyActionToCharacter,
   coverageMatrix,
+  getAction,
   listCharacterActions,
   listLibraryCharacters,
   resolveCharacter,
@@ -17,6 +18,7 @@ import {
 } from '../../../packages/library/index'
 import { executeUnifiedCommand } from './unifiedProjectStore'
 import { stageAssetUpload } from './unifiedAssetFiles'
+import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction } from './libraryModels'
 
 export type LibraryTextureRef = {
   object: string
@@ -97,9 +99,15 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
   const character = listLibraryCharacters().find((item) => item.charId === input.charId)
   if (!character) throw new Error('Library character was not found')
   const resolved = resolveCharacter(character.charId)
-  if (!resolved.baseModel || resolved.baseModel.format !== 'glb') throw new Error('App 2 placement currently requires a GLB base model')
-  const bytes = await readFile(resolved.modelPath)
-  const staged = await stageAssetUpload(path.basename(resolved.modelPath), new ReadableStream<Uint8Array>({
+  if (!resolved.baseModel) throw new Error('Library character has no base model')
+  if (character.defaultAction && resolved.baseModel.format === 'bobj' && ['verity', 'minecraft20'].includes(character.rig)) {
+    const action = getAction({ actionUuid: character.defaultAction })
+    if (action.ownerCharId !== character.charId) throw new Error('Default native Action must belong to the selected character')
+    await libraryNativeAction(character.charId, path.join(path.dirname(action.glbPath), character.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj'))
+  }
+  const bytes = await libraryBaseGlb(character.charId)
+  const preview = await libraryCharacterModel(character.charId)
+  const staged = await stageAssetUpload(`${resolved.baseModel.modelId}.glb`, new ReadableStream<Uint8Array>({
     start(controller) { controller.enqueue(bytes); controller.close() },
   }))
   const imported = await executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: input.expectedRevision,
@@ -109,6 +117,7 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
   const details = await describeLibraryCharacter(character)
   const library = {
     libraryCharacterId: character.charId,
+    libraryModelFingerprint: preview.fingerprint,
     libraryBaseModelId: resolved.baseModel.modelId,
     librarySkin: details.textures,
     libraryHiddenObjects: [],
