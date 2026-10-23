@@ -769,7 +769,7 @@ function renderTransferKeys() {
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
 function syncBatchDestinationOptions() {
   const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
-  if (state.batch && character?.rig === 'minecraft20') $('optionsForm').elements.bobj.checked = true
+  if (state.batch && (character?.rig === 'minecraft20' || $('transferShared').checked || state.transferConfig?.toShared)) $('optionsForm').elements.bobj.checked = true
   state.requestBobj = !!$('optionsForm').elements.bobj.checked
 }
 $('transferCharacter').addEventListener('change', () => { syncBatchDestinationOptions(); renderTransferKeys(); renderActionPicker() })
@@ -864,7 +864,8 @@ async function transferBatch(groups, retryConfig = null) {
         const licenseSource = config.licenseSource || (entry.inspect.mapping?.family === 'mixamo' ? 'Mixamo (Adobe)' : '')
         const shared = await api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
-          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle' }
+          const edit = state.batchEdits.get(batchKey(entry, sourceAction))
+          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }), ...(licenseSource ? { license: { id: 'internal-only', commitable: false, source: licenseSource } } : {}) } })
         sharedPacks += shared.created === false ? 0 : 1
       }

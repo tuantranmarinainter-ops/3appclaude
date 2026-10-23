@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { loadBobj } from '../cli/loadBobj.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
-import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter, resolveLibraryPath } from '../../library/index.ts'
+import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter, resolveLibraryPath, translateActionName } from '../../library/index.ts'
 import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
@@ -144,8 +144,10 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(app, /\/api\/batches/)
   assert.match(app, /state\.batch && character\.rig === 'minecraft20'/)
   assert.match(app, /function syncBatchDestinationOptions\(\)[\s\S]*?elements\.bobj\.checked = true/)
+  assert.match(app, /character\?\.rig === 'minecraft20' \|\| \$\('transferShared'\)\.checked/)
   assert.match(app, /durationSeconds > 0/)
   assert.match(app, /Tên Anh \$\{entry\.name\}/)
+  assert.match(app, /text: '✎'/)
 })
 
 test('one-click transfer orchestrator uses the exact selection, supports shared-only, and retries only failures', async () => {
@@ -339,7 +341,10 @@ test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-
   try {
     const builtin = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
     const source = join(folder, 'Samba Dancing.glb')
-    writeFileSync(source, syntheticMixamoAnimations(builtin, [{ name: 'mixamo.com', duration: 1 }, { name: 'Take 001', duration: 0 }]))
+    writeFileSync(source, syntheticMixamoAnimations(builtin, [
+      { name: 'mixamo.com', duration: 1 }, { name: 'Take 001', duration: 0 },
+      { name: 'Attack 1', duration: 1 }, { name: 'Stand 2', duration: 1 }, { name: 'agree', duration: 1 },
+    ]))
     const target = (await call('/api/targets')).json.targets[0]
     const started = await post('/api/batches', { paths: [source], targetId: target.id, options: {} })
     assert.equal(started.status, 202, started.text)
@@ -350,10 +355,12 @@ test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-
     }
     assert.equal(batch.state, 'done')
     assert.equal(batch.entries[0].status, 'ready', batch.entries[0].error)
-    assert.deepEqual(batch.entries[0].inspect.actions.map((action: any) => action.name), ['Samba Dancing'])
+    assert.deepEqual(batch.entries[0].inspect.actions.map((action: any) => action.name), ['Samba Dancing', 'Attack 1', 'Stand 2', 'agree'])
     assert.equal(batch.entries[0].inspect.actions[0].nameVi, 'Nhảy samba')
     assert.equal(batch.entries[0].inspect.actions[0].displayName, 'Samba Dancing | Nhảy samba')
     assert.equal(batch.entries[0].inspect.actions[0].sourceName, 'mixamo.com')
+    assert.deepEqual(batch.entries[0].inspect.actions.slice(1, 3).map((action: any) => action.nameVi), ['Tấn công 1', 'Đứng 2'])
+    for (const action of batch.entries[0].inspect.actions) assert.equal(action.nameVi, translateActionName(action.name).vi, `translation for ${action.name}`)
     const sourceId = batch.entries[0].sourceId
     const run = await post('/api/runs', { sourceId, targetId: target.id, options: { actions: [0], actionNames: { 0: { name: 'Samba Dancing', nameVi: 'Nhảy samba' } } } })
     assert.equal(run.status, 200, run.text)
@@ -389,21 +396,27 @@ test('three-file Mixamo batch normalizes two Actions, imports per-file packs/dra
     assert.deepEqual(batch.entries.map((entry: any) => entry.status).sort(), ['error', 'ready', 'ready'])
     const charId = character.json.id.replace(/^lib-/, '')
     for (const entry of batch.entries.filter((item: any) => item.status === 'ready')) {
-      const run = await post('/api/runs', { sourceId: entry.sourceId, targetId: character.json.id, options: { actions: [0] } })
+      const run = await post('/api/runs', { sourceId: entry.sourceId, targetId: character.json.id, options: { actions: [0], bobj: true } })
       assert.equal(run.status, 200, run.text)
       assert.equal(run.json.status, 'PASS', JSON.stringify(run.json.report))
       const action = run.json.manifest.actions[0]
       assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [charId], actions: [{ uuid: action.uuid, key: 'idle' }] })).status, 200)
-      const shared = await post(`/api/runs/${run.json.runId}/library`, { actions: [{ uuid: action.uuid, key: 'dance' }], license: { id: 'internal-only', commitable: false, source: 'Mixamo (Adobe)' } })
+      const shared = await post(`/api/runs/${run.json.runId}/library`, { actions: [{ uuid: action.uuid, key: 'dance', name: action.name, nameVi: translateActionName(action.name).vi, sourceName: action.sourceName }], license: { id: 'internal-only', commitable: false, source: 'Mixamo (Adobe)' } })
       assert.equal(shared.status, 200, shared.text)
       assert.ok(getAction({ actionUuid: action.uuid }).tags.includes('dance'))
+      assert.equal(getAction({ actionUuid: action.uuid }).nameVi, translateActionName(action.name).vi)
     }
     assert.equal(listCharacterActions({ charId }).length, 2)
     const sharedPacks = readdirSync(join(library, 'packs'), { withFileTypes: true }).filter((item) => item.isDirectory()).filter((item) => {
       const meta = JSON.parse(readFileSync(join(library, 'packs', item.name, 'meta.json'), 'utf8'))
       return meta.actions.every((action: any) => !action.ownerCharId)
     })
-    assert.equal(sharedPacks.length, 2)
+    for (const item of sharedPacks) {
+      const pack = join(library, 'packs', item.name)
+      assert.ok(existsSync(join(pack, 'anim.glb')), 'one shared pack contains the Mixamo65 GLB')
+      assert.ok(existsSync(join(pack, 'anim.bobj')), 'the same shared pack contains the Minecraft20 BOBJ variant')
+    }
+    assert.equal(sharedPacks.length, 2, 'one shared pack per source file, without a separate Minecraft20 shared pack')
     const external = syntheticAnimatedMixamo(builtin, 'External Walk'), externalParts = decodeGlb(external), externalJson = externalParts.json
     externalJson.buffers = [{ uri: 'animation.bin', byteLength: externalParts.bin.length }]
     const upload = await call('/api/batch-uploads', { method: 'POST' })

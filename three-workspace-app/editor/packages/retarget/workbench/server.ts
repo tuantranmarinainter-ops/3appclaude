@@ -301,21 +301,18 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           entry.sourceId = sourceId; entry.name = source.name; entry.path = source.uploaded ? undefined : source.path; entry.sha256 = source.sha256; entry.bytes = source.bytes
           entry.inLibrary = libraryHasSourceHash(source.sha256)
           entry.inspect = await inspect(source, target, options, preset, presetFamily)
-          if (entry.inspect.mapping?.family === 'mixamo') {
-            const fileName = basename(source.name, extname(source.name)).replace(/[_-]+/g, ' ').trim()
-            entry.inspect.actions = entry.inspect.actions.flatMap((action: any) => {
-              const sourceName = action.name
-              // Mixamo's downloaded FBX often names its sole animation `mixamo.com`.
-              // Keep that source name for provenance while using the file name for the library/output name.
-              const displayName = /^mixamo\.com$/i.test(sourceName) && fileName ? fileName : sourceName
-              const names = bilingualActionName(displayName)
-              return Number.isFinite(action.durationSeconds) && action.durationSeconds > 0
-                ? [{ ...action, name: displayName, sourceName, ...names }]
-                : []
-            })
-          } else {
-            entry.inspect.actions = entry.inspect.actions.filter((action: any) => Number.isFinite(action.durationSeconds) && action.durationSeconds > 0)
-          }
+          const mixamo = entry.inspect.mapping?.family === 'mixamo'
+          const fileName = mixamo ? basename(source.name, extname(source.name)).replace(/[_-]+/g, ' ').trim() : ''
+          entry.inspect.actions = entry.inspect.actions.flatMap((action: any) => {
+            const sourceName = action.name
+            // Mixamo's downloaded FBX often names its sole animation `mixamo.com`.
+            // Keep that source name for provenance while using the file name for the library/output name.
+            const displayName = mixamo && /^mixamo\.com$/i.test(sourceName) && fileName ? fileName : sourceName
+            const names = bilingualActionName(displayName)
+            return Number.isFinite(action.durationSeconds) && action.durationSeconds > 0
+              ? [{ ...action, name: displayName, sourceName, ...names }]
+              : []
+          })
           if (entry.inspect.blocker) { entry.status = 'error'; entry.error = entry.inspect.blocker.message }
           else if (!entry.inspect.actions.length) { entry.status = 'error'; entry.error = 'File không có animation có thời lượng lớn hơn 0' }
           else if (entry.inLibrary || (existingId && existingId !== sourceId)) { entry.status = 'duplicate'; entry.duplicateOf = existingId }
@@ -563,6 +560,9 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const seen = new Set<string>()
       for (const selection of selectedActions) {
         if (!selection || typeof selection.uuid !== 'string' || !manifestUuids.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) throw new UserError('Each shared Action tag requires a run UUID and a non-empty key')
+        if (selection.name !== undefined && (typeof selection.name !== 'string' || !selection.name.trim())) throw new UserError('A shared Action name must be non-empty text')
+        if (selection.nameVi !== undefined && typeof selection.nameVi !== 'string') throw new UserError('A shared Action Vietnamese name must be text')
+        if (selection.sourceName !== undefined && typeof selection.sourceName !== 'string') throw new UserError('A shared Action source name must be text')
         if (seen.has(selection.uuid)) throw new UserError('A shared Action can only be tagged once')
         seen.add(selection.uuid)
       }
@@ -573,7 +573,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       for (const selection of selectedActions) {
         if (!pack.metadata.actions.some((action) => action.uuid === selection.uuid)) throw new UserError(`Shared pack is missing Action ${selection.uuid}`, 409)
         const existing = getAction({ actionUuid: selection.uuid })
-        setActionMetadata({ actionUuid: selection.uuid, tags: [...new Set([...existing.tags, selection.key.trim()])] })
+        setActionMetadata({ actionUuid: selection.uuid, ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}), tags: [...new Set([...existing.tags, selection.key.trim()])] })
       }
       return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions, created: pack.created,
         actionUuids: pack.metadata.actions.map((action) => action.uuid) })

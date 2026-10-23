@@ -51,6 +51,7 @@ export const ACTION_NAME_GLOSSARY: Readonly<Record<string, string>> = Object.fre
   'pointing': 'Đang chỉ tay', 'thumbs up': 'Giơ ngón cái', 'salute': 'Chào kiểu quân đội', 'bow': 'Cúi chào',
   'nod': 'Gật đầu', 'shake head': 'Lắc đầu', 'shrug': 'Nhún vai', 'pray': 'Cầu nguyện', 'thinking': 'Suy nghĩ',
   'look around': 'Nhìn quanh', 'look left': 'Nhìn trái', 'look right': 'Nhìn phải', 'look up': 'Nhìn lên', 'look down': 'Nhìn xuống',
+  'agree': 'Đồng ý',
   'pick up': 'Nhặt lên', 'put down': 'Đặt xuống', 'push': 'Đẩy', 'pull': 'Kéo', 'carry': 'Mang', 'carry heavy': 'Mang vật nặng',
   'open': 'Mở', 'close': 'Đóng', 'drink': 'Uống', 'eating': 'Đang ăn', 'dig': 'Đào', 'mining': 'Đào mỏ',
   'chop': 'Chặt', 'building': 'Đang xây', 'crafting': 'Đang chế tạo', 'fishing': 'Đang câu cá', 'rowing': 'Đang chèo thuyền',
