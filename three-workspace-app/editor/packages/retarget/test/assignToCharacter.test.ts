@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -148,6 +148,9 @@ test('legacy Minecraft20 skin and Mixamo65 original-rig assignments convert and 
   const verityOriginalGlb = decodeGlb(readFileSync(join(verityPack, 'anim.original.glb'))).json
   assert.ok((verityOriginalGlb.skins?.[0]?.joints?.length ?? 0) > 20, 'original GLB must contain the native Verity rig')
   assert.equal(verityOriginalGlb.animations.length, 2, 'original GLB preserves original actions and adds the assigned Action')
+  assert.equal(minecraftDraft.parentUuid, actionUuid); assert.equal(verityDraft.parentUuid, actionUuid)
+  const packs = readdirSync(join(root, 'packs')).filter((id) => !id.startsWith('.'))
+  assert.equal(packs.length, 3, 'only the shared source pack and the two drafts; conversions leave no shared copy')
   assert.equal(verityDraft.nameVi, 'Đứng yên')
   assert.deepEqual(verityDraft.tags, ['idle'])
   assert.equal(parseBobjActions(readFileSync(join(verityPack, 'anim.original.bbs.bobj'), 'utf8')).size, 2)

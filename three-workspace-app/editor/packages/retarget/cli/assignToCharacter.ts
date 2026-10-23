@@ -1,12 +1,11 @@
-import { randomUUID } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { addDraftToCharacter, listCharacterActions } from '../../library/characterActions.ts'
-import { getAction, importPack, rebuildLibraryIndex } from '../../library/library.ts'
+import { addConvertedDraftToCharacter, addDraftToCharacter, listCharacterActions } from '../../library/characterActions.ts'
+import { getAction, rebuildLibraryIndex } from '../../library/library.ts'
 import { resolveCharacter } from '../../library/characters.ts'
-import { readJsonFile, resolveLibraryPath, safeChild, writeJsonAtomic } from '../../library/store.ts'
+import { readJsonFile, resolveLibraryPath, safeChild } from '../../library/store.ts'
 import type { MotionPackMetadata } from '../../library/types.ts'
 import { bobjModelNodeName, bobjModelToGlb, parseBobjModel } from '../src/bobjModel.ts'
 import { parseBobjActions } from '../src/index.ts'
@@ -48,16 +47,6 @@ function addBobjSkeletonSkin(bytes: Uint8Array, boneNames: string[]): Uint8Array
   if (joints.some((index) => index < 0)) throw new Error('Minecraft20 library GLB is missing a BOBJ joint node')
   decoded.json.skins = [...((decoded.json.skins as unknown[] | undefined) ?? []), { joints }]
   return encodeGlb(decoded.json, decoded.bin)
-}
-
-function buildInputPack(directory: string, bytes: Uint8Array, rig: string, name: string, sourceName: string, durationSeconds: number, fps: number) {
-  const stem = 'assigned'
-  const glbPath = join(directory, `${stem}.glb`), manifestPath = join(directory, `${stem}.manifest.json`)
-  const uuid = randomUUID()
-  writeFileSync(glbPath, bytes)
-  writeFileSync(manifestPath, JSON.stringify({ version: '1.0.0', rig, source: { file: sourceName, sha256: null }, actions: [{ uuid, name, sourceName, durationSeconds, fps, glbAnimationIndex: 0 }] }))
-  writeFileSync(join(directory, `${stem}.report.json`), JSON.stringify({ status: 'PASS' }))
-  return { uuid }
 }
 
 /** Assign selected shared-library Actions to a character using that character's native rig. */
@@ -115,21 +104,12 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
 
         const directory = mkdtempSync(join(tmpdir(), 'w01-assign-'))
         try {
-          buildInputPack(directory, outputGlb, conversionRig === 'verity' ? sourcePack.rig : conversionRig, source.name, source.sourceName ?? source.name, source.durationSeconds, source.fps)
-          const pack = importPack({ root: options.libraryRoot, sourceDirectory: directory, createdBy: 'app1', license: sourcePack.license, category: source.category, tags: source.tags, loop: source.loop })
-          const rawAction = pack.metadata.actions[0]
-          if (!rawAction) throw new Error('Converted Action pack is empty')
-          const draft = addDraftToCharacter({ root: options.libraryRoot, charId: character.character.charId, actionUuid: rawAction.uuid })
-          const root = resolveLibraryPath({ root: options.libraryRoot }), draftPack = safeChild(root, 'packs', draft.packId)
-          const metadataPath = safeChild(draftPack, 'meta.json'), metadata = readJsonFile<MotionPackMetadata>(metadataPath)
-          const draftMetadata = metadata.actions.find((item) => item.uuid === draft.uuid)
-          if (!draftMetadata) throw new Error('Assigned draft metadata is missing')
-          draftMetadata.parentUuid = source.uuid
-          draftMetadata.sourceName = source.sourceName ?? source.name
-          draftMetadata.name = source.name
-          if (source.nameVi) { draftMetadata.nameVi = source.nameVi; draftMetadata.nameViSource = source.nameViSource }
-          draftMetadata.tags = [...source.tags]; draftMetadata.category = source.category; draftMetadata.loop = source.loop; draftMetadata.inPlace = source.inPlace
-          writeJsonAtomic(metadataPath, metadata)
+          // The converted GLB becomes the character's draft directly, linked to the shared Action; the shared store gets no copy.
+          const glbFile = join(directory, 'assigned.glb')
+          writeFileSync(glbFile, outputGlb)
+          const draft = addConvertedDraftToCharacter({ root: options.libraryRoot, charId: character.character.charId, parentUuid: source.uuid, glbFile,
+            rig: conversionRig === 'verity' ? sourcePack.rig : conversionRig, durationSeconds: source.durationSeconds })
+          const draftPack = safeChild(root, 'packs', draft.packId)
           writeFileSync(join(draftPack, sidecarName), sidecar)
           if (originalGlb) writeFileSync(join(draftPack, 'anim.original.glb'), originalGlb)
           rebuildLibraryIndex({ root })

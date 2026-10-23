@@ -17,6 +17,6 @@ export { registerBaseModel, createCharacter, setCharacterSkin, addCharacterActio
 export type { RegisterBaseModelOptions, CreateCharacterOptions } from './characters'
 export type { BaseModelMetadata, CharacterWarning, ResolvedCharacter } from './types'
 export {
-  addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction,
+  addConvertedDraftToCharacter, addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction,
   saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile,
 } from './characterActions'

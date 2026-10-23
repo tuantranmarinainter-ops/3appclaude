@@ -214,6 +214,36 @@ export function setCharacterActionStatus(options: LibraryOptions & { charId: str
   })
 }
 
+/**
+ * Draft from a GLB that App 1 converted for this character (e.g. Mixamo65 -> Minecraft20), linked to the raw shared Action it
+ * came from. Unlike importPack + addDraftToCharacter it leaves no intermediate pack in the shared store.
+ */
+export function addConvertedDraftToCharacter(options: LibraryOptions & {
+  charId: string; parentUuid: string; glbFile: string; rig: string; durationSeconds?: number
+  manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
+}): IndexedAction {
+  const root = resolveLibraryPath(options)
+  return withLibraryLock(root, () => {
+    initializeLibrary(root)
+    const index = writeIndex(root), character = characterAt(root, options.charId), parent = actionAt(index.actions, options.parentUuid)
+    if (parent.ownerCharId) throw new Error('Converted draft parent must be a raw library action')
+    if (!compatibleRig(character.rig, options.rig)) throw new Error(`Rig mismatch: character ${character.rig}, action ${options.rig}`)
+    if (!existsSync(options.glbFile)) throw new Error('Converted GLB file does not exist')
+    const source: IndexedAction = { ...parent, rig: options.rig, glbAnimationIndex: 0 }
+    validatePackGlbContract(options.glbFile, {
+      version: options.manifestContract?.version ?? '1.0.0', rig: options.rig, ...options.manifestContract,
+      actions: [{ uuid: parent.uuid, name: parent.name, durationSeconds: options.durationSeconds ?? parent.durationSeconds, fps: parent.fps, glbAnimationIndex: 0 }],
+    } as NormalizedManifest)
+    const uuid = randomUUID()
+    const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: options.glbFile, uuid,
+      status: 'draft', version: 1, variantOf: uuid, parentUuid: parent.uuid, preserveAnimationIndex: false,
+      durationSeconds: options.durationSeconds, license: sourceLicense(root, parent), manifestContract: options.manifestContract })
+    character.actions = [...new Set([...memberships(root, character, index.actions), created.uuid])]
+    writeCharacter(root, character); writeIndex(root)
+    return created
+  })
+}
+
 export function copyActionToCharacter(options: LibraryOptions & { actionUuid: string; toCharId: string }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
