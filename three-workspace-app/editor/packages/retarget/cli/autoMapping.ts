@@ -3,8 +3,9 @@ import { applyMixamo65MappingPreset } from '../src/mappingPreset.ts'
 import type { MappingSkeleton } from '../src/mapping.ts'
 import type { RetargetBonePair, RetargetRig } from '../src/universal.ts'
 import { suggestGeometryMapping } from './geometryMapping.ts'
+import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
 
-export type SourceFamily = 'mixamo' | 'ue' | 'cc' | 'lol' | 'wc3r' | 'wow' | 'minecraft20' | 'unknown'
+export type SourceFamily = 'mixamo' | 'ue' | 'cc' | 'lol' | 'wc3r' | 'wow' | 'minecraft20' | 'verity' | 'unknown'
 export interface MappedJoint { target: string; targetId: string; source: string | null; sourceId: string | null; via: string | null; ambiguous?: boolean }
 export interface AutoMapping { family: SourceFamily; joints: MappedJoint[]; pairs: RetargetBonePair[]; missingRequired: string[]; requiredTargetIds: string[]; notInSourceRig: string[]
   /** Only set when joints came from hierarchy/rest geometry (`via: 'geometry'`): 0..1 trust, and notes the user must read. */
@@ -122,8 +123,10 @@ const MINECRAFT20_ALIASES = new Map<string, string>([['Hips', 'body'], ['Spine',
   ['RightHand', 'lowrightarmend'], ['LeftUpLeg', 'leftleg'], ['LeftLeg', 'lowleftleg'], ['RightUpLeg', 'rightleg'], ['RightLeg', 'lowlegright']])
 /** Roles the family's rig does not have at all; the target joint keeps its rest under the parent (DECISIONS). */
 const ABSENT_ROLES: Partial<Record<SourceFamily, readonly string[]>> = { minecraft20: ['LeftFoot', 'RightFoot'] }
+const VERITY_ALIASES = new Map(Object.entries(VERITY_TO_MIXAMO).map(([source, target]) => [target, canonical(source)]))
 
 function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): SourceFamily {
+  if (names.has('cog') && names.has('pelvis') && names.has('spine01') && names.has('upperlegl') && names.has('upperarml')) return 'verity'
   if (['hips', 'leftupleg', 'leftarm', 'rightarm'].every((name) => names.has(name))) return 'mixamo'
   if (raw.some((name) => /^cc_?base_/i.test(name.split(':').pop()!))) return 'cc'
   if (names.has('pelvis') && names.has('thighl')) return 'ue'
@@ -166,7 +169,7 @@ export function buildAutoMapping(source: RetargetRig, target: RetargetRig): Auto
   }
   const names = new Set(byName.keys())
   const family = detectFamily(names, source.bones.map((bone) => bone.name ?? bone.id))
-  const aliases = family === 'minecraft20' ? MINECRAFT20_ALIASES : family === 'wow' ? wowAliases(names) : family === 'wc3r' ? wc3ReforgedAliases() : family === 'ue' || family === 'cc' || family === 'lol' ? familyAliases(family, names) : new Map<string, string>()
+  const aliases = family === 'verity' ? VERITY_ALIASES : family === 'minecraft20' ? MINECRAFT20_ALIASES : family === 'wow' ? wowAliases(names) : family === 'wc3r' ? wc3ReforgedAliases() : family === 'ue' || family === 'cc' || family === 'lol' ? familyAliases(family, names) : new Map<string, string>()
   const sourceName = new Map(source.bones.map((bone) => [bone.id, bone.name ?? bone.id]))
   const joints = [...targetIds(target)].map(([name, targetId]): MappedJoint => {
     for (const [key, via] of [[aliases.get(name), `alias:${family}`], [canonical(name), 'exact']] as const) {

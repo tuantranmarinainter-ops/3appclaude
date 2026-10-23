@@ -17,26 +17,14 @@ import { evaluateBobjChannel, parseBobjActions, type BobjAction } from '../src/i
 import { parseBobjArmature } from '../src/reverse.ts'
 import { encodeGlb } from '../cli/glb.ts'
 import { loadAsset } from '../cli/loadAsset.ts'
+import { appendVerityActions, projectVerityFrame, VERITY_METRES_PER_UNIT, VERITY_WORKBENCH_TO_MIXAMO, type VerityAddedAction, type VerityLocals } from '../src/verityRig.ts'
 
 const TICKS = 20, GLB_FPS = 30
-export const VERITY_METRES_PER_UNIT = 1.9 / 3.865407
 const CAMERA_OBJECT = 'verity.mdl/Verity.smd'
+export { VERITY_METRES_PER_UNIT, VERITY_WORKBENCH_TO_MIXAMO as VERITY_TO_MIXAMO }
 
-/** Verity bone → Mixamo65 joint (the 65 the solver drives); every other bone keeps its rest pose. */
-export const VERITY_TO_MIXAMO: Record<string, string> = { COG: 'Hips', Spine_01: 'Spine', Spine_02: 'Spine1', Chest: 'Spine2', Neck: 'Neck', Head: 'Head' }
-for (const [s, side] of [['L', 'Left'], ['R', 'Right']] as const) {
-  Object.assign(VERITY_TO_MIXAMO, {
-    [`Clavicle_${s}`]: `${side}Shoulder`, [`Upper_Arm_${s}`]: `${side}Arm`, [`Lower_Arm_${s}`]: `${side}ForeArm`, [`Hand_${s}`]: `${side}Hand`,
-    [`Upper_Leg_${s}`]: `${side}UpLeg`, [`Lower_Leg_${s}`]: `${side}Leg`, [`Foot_${s}`]: `${side}Foot`, [`Toe_${s}`]: `${side}ToeBase`, [`Toe_${s}_end`]: `${side}Toe_End`,
-  })
-  for (const finger of ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']) {
-    for (const i of [1, 2, 3]) VERITY_TO_MIXAMO[`${finger}_0${i}_${s}`] = `${side}Hand${finger}${i}`
-    VERITY_TO_MIXAMO[`${finger}_03_${s}_end`] = `${side}Hand${finger}4`
-  }
-}
-
-type Locals = Map<string, Matrix4>
-export interface AddedAction { name: string; ticks: number; frames: Locals[] }
+type Locals = VerityLocals
+export type AddedAction = VerityAddedAction
 
 export function loadVerityModel(bobjPath: string, wingActionName = 'idle') {
   const text = readFileSync(bobjPath, 'utf8'), dir = join(bobjPath, '..')
@@ -93,20 +81,11 @@ export function loadVerityModel(bobjPath: string, wingActionName = 'idle') {
       for (let tick = 0; tick <= ticks; tick++) {
         mixer.setTime(Math.min(tick / TICKS, clip.duration)); scene.updateMatrixWorld(true)
         const wings = wingAction ? actionLocals(wingAction, tick % Math.max(1, wingAction.durationTicks)) : null
-        const worlds = new Map<string, Matrix4>(), locals: Locals = new Map()
-        for (const b of armature.bones) {
-          const parentWorld = b.parent ? worlds.get(b.parent)! : new Matrix4()
-          const joint = VERITY_TO_MIXAMO[b.name], node = joint ? nodes.get(joint) : undefined
-          let world: Matrix4
-          if (node) {
-            const p = new Vector3(), q = new Quaternion(); node.matrixWorld.decompose(p, q, new Vector3())
-            const restScale = new Vector3(); restWorld.get(b.name)!.decompose(new Vector3(), new Quaternion(), restScale)
-            world = turn.clone().multiply(new Matrix4().compose(p.multiplyScalar(1 / scale).applyQuaternion(Rinv).add(new Vector3(0, ground, 0)), Rinv.clone().multiply(q), restScale))
-          } else world = parentWorld.clone().multiply(b.name === rootName ? rootLocal : wings && isWing(b.name) ? wings.get(b.name)! : restLocal.get(b.name)!)
-          worlds.set(b.name, world)
-          locals.set(b.name, parentWorld.clone().invert().multiply(world))
-        }
-        frames.push(locals)
+        const solverWorlds = new Map([...nodes].map(([name, node]) => [name, node.matrixWorld]))
+        frames.push(projectVerityFrame(solverWorlds, armature.bones.map((bone) => ({ name: bone.name, parent: bone.parent,
+          restWorld: restWorld.get(bone.name)!, restLocal: restLocal.get(bone.name)! })),
+        { metresPerUnit: scale, groundUnits: ground, sourceFacingInverse: Rinv, rootActionDelta: turn },
+        rootName, rootLocal, wings, VERITY_WORKBENCH_TO_MIXAMO))
       }
       playing.stop(); mixer.uncacheRoot(scene)
       added.push({ name, ticks, frames })
@@ -116,36 +95,14 @@ export function loadVerityModel(bobjPath: string, wingActionName = 'idle') {
 
   /** Original `.bobj` byte for byte + `an` blocks (location/rotation[/scale] per tick, Z·Y·X Euler unwrapped). */
   function appendBobj(added: AddedAction[]): string {
-    const fmt = (v: number) => (Math.abs(v) < 5e-7 ? 0 : v).toFixed(6)
-    const lines: string[] = []
-    for (const action of added) {
-      lines.push(`an ${action.name}`)
-      for (const b of armature.bones) {
-        const loc: number[][] = [[], [], []], rot: number[][] = [[], [], []], scl: number[][] = [[], [], []]
-        for (const frame of action.frames) {
-          const t = new Vector3(), q = new Quaternion(), s = new Vector3()
-          restLocal.get(b.name)!.clone().invert().multiply(frame.get(b.name)!).decompose(t, q, s)
-          const e = new Euler().setFromQuaternion(q, 'ZYX')
-          ;[t.x, t.y, t.z].forEach((v, i) => loc[i]!.push(v)); [s.x, s.y, s.z].forEach((v, i) => scl[i]!.push(v))
-          ;[e.x, e.y, e.z].forEach((v, i) => { const prev = rot[i]!.at(-1); rot[i]!.push(prev === undefined ? v : v + Math.round((prev - v) / (2 * Math.PI)) * 2 * Math.PI) })
-        }
-        const groups: string[] = []
-        const channel = (path: string, values: number[][], rest: number) => values.forEach((series, i) => {
-          if (series.every((v) => Math.abs(v - rest) < 1e-6)) return
-          groups.push(`ag ${path} ${i}`, ...series.map((v, tick) => `kf ${tick} ${fmt(v)} LINEAR ${tick} ${fmt(v)} ${tick} ${fmt(v)}`))
-        })
-        channel('location', loc, 0); channel('rotation', rot, 0); channel('scale', scl, 1)
-        if (groups.length) lines.push(`ao ${b.name}`, ...groups)
-      }
-    }
-    return text + (text.endsWith('\n') ? '' : '\n') + (lines.length ? lines.join('\n') + '\n' : '')
+    return appendVerityActions(text, armature.bones.map((bone) => ({ name: bone.name, restLocal: restLocal.get(bone.name)! })), added)
   }
 
   /** Re-evaluates appended Actions from `bobjText` with the reference evaluator: max joint position error (units). */
   function roundTripError(bobjText: string, added: AddedAction[]) {
     const written = parseBobjActions(bobjText)
     let max = 0
-    for (const action of added) for (const tick of [0, Math.floor(action.ticks / 2), action.ticks]) {
+    for (const action of added) for (const tick of [...new Set([0, Math.floor(action.ticks / 3), Math.floor(action.ticks * 2 / 3), action.ticks])]) {
       const evaluated = actionLocals(written.get(action.name)!, tick), a = new Map<string, Matrix4>(), b = new Map<string, Matrix4>()
       for (const bone of armature.bones) {
         a.set(bone.name, (bone.parent ? a.get(bone.parent)!.clone() : new Matrix4()).multiply(evaluated.get(bone.name)!))

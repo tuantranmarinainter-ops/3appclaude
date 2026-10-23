@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AnimationClip, Bone, Group, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
+import { AnimationClip, AnimationMixer, Bone, Euler, Group, LoopOnce, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, MIXAMO65_REQUIRED_JOINTS } from '../cli/autoMapping.ts'
 import { loadAsset, removeFbxBoneAliases } from '../cli/loadAsset.ts'
 import { runNormalize } from '../cli/normalizeCore.ts'
+import { decodeGlb } from '../cli/glb.ts'
+import { validateGlbContract } from '../cli/glbContract.ts'
+import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const targetPath = resolve(here, '../../../../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
@@ -55,6 +58,189 @@ test('auto mapping resolves UE names to the required Mixamo65 joints', async () 
   const broken = createThreeRigAdapter(ueSource({ withoutLeftHand: true }), { fingerprint: 'ue-broken' })
   assert.deepEqual(buildAutoMapping(broken.rig, dst.rig).missingRequired, ['LeftHand'])
   src.dispose(); dst.dispose(); broken.dispose()
+})
+
+function veritySource() {
+  const root = new Group(); root.scale.setScalar(1.7)
+  const bones = new Map<string, Bone>(), sourceByTarget = new Map(Object.entries(VERITY_TO_MIXAMO).map(([source, target]) => [target, source]))
+  const add = (name: string, parent: Object3D, position: Vector3) => { const bone = new Bone(); bone.name = name; bone.position.copy(position); parent.add(bone); bones.set(name, bone); return bone }
+  const rootBone = add('Root', root, new Vector3())
+  const cog = add('COG', rootBone, new Vector3(0, 1, 0))
+  const pelvis = add('Pelvis', cog, new Vector3(0, -0.03, 0)); pelvis.quaternion.setFromAxisAngle(new Vector3(0, 1, 0), 0.17)
+  for (const [target, parentTarget] of MIXAMO65_BONE_PARENTS) {
+    if (target === 'Hips') continue
+    const source = sourceByTarget.get(target)!
+    const parentSource = sourceByTarget.get(parentTarget!)!
+    const parent = /^(Left|Right)UpLeg$/.test(target) ? pelvis : bones.get(parentSource)!
+    const side = target.startsWith('Left') ? 1 : target.startsWith('Right') ? -1 : 0
+    const position = /UpLeg$/.test(target) ? new Vector3(0.11 * side, -0.08, 0) :
+      /Leg$/.test(target) ? new Vector3(0, -0.42, 0) : /Foot$/.test(target) ? new Vector3(0, -0.4, 0.08) :
+      /Arm$/.test(target) ? new Vector3(0.18 * side, 0, 0) : /ForeArm$/.test(target) ? new Vector3(0.25 * side, 0, 0) :
+      /Hand$/.test(target) ? new Vector3(0.22 * side, 0, 0) : new Vector3(side * 0.03, 0.08, 0)
+    const bone = add(source, parent, position)
+    if (target === 'Head') bone.quaternion.setFromEuler(new Euler(0.23, -0.19, 0.11))
+  }
+  const jaw = add('Jaw', bones.get('Head')!, new Vector3(0, -0.08, 0.04))
+  jaw.quaternion.setFromEuler(new Euler(0.12, 0.07, -0.04))
+  const wing = add('Wing_Bone_L', bones.get('Chest')!, new Vector3(0.22, 0.02, -0.04))
+  add('camera', rootBone, new Vector3(0, -2, 0))
+  add('Jaw_end_end', jaw, new Vector3(0, -0.04, 0.02))
+  add('Wing_end_end', wing, new Vector3(0.1, 0, 0))
+  for (let index = 0; index < 12; index++) add(`Helper_${index}`, index % 2 ? bones.get('Chest')! : rootBone, new Vector3(0, index * 0.005, 0))
+  const q = (axis: Vector3, angle: number) => new Quaternion().setFromAxisAngle(axis, angle).toArray()
+  root.animations = [
+    new AnimationClip('original', 1, [new QuaternionKeyframeTrack('Jaw.quaternion', [0, 1], [...jaw.quaternion.toArray(), ...q(new Vector3(1, 0, 0), 0.2)])]),
+    new AnimationClip('selected', 2, [
+      new VectorKeyframeTrack('COG.position', [0, 0.5, 1, 1.5, 2], [0, 1, 0, 0.02, 1.01, 0.03, 0.04, 1.02, 0.06, 0.06, 1.01, 0.09, 0.08, 1, 0.12]),
+      new QuaternionKeyframeTrack('Head.quaternion', [0, 0.5, 1, 1.5, 2], [0, 0, 0, 1, ...q(new Vector3(1, 0, 0), 0.1), ...q(new Vector3(1, 0, 0), 0.2), ...q(new Vector3(1, 0, 0), 0.3), ...q(new Vector3(1, 0, 0), 0.4)]),
+      new QuaternionKeyframeTrack('Jaw.quaternion', [0, 0.5, 1, 1.5, 2], [...jaw.quaternion.toArray(), ...q(new Vector3(1, 0, 0), 0.18), ...q(new Vector3(1, 0, 0), 0.3), ...q(new Vector3(1, 0, 0), 0.42), ...q(new Vector3(1, 0, 0), 0.5)]),
+      new QuaternionKeyframeTrack('Wing_Bone_L.quaternion', [0, 2], [0, 0, 0, 1, ...q(new Vector3(0, 0, 1), 0.8)]),
+    ]),
+  ]
+  return root
+}
+
+test('Verity CLI auto preset writes 65 skin joints, animated Jaw scene extra, and no wing keys', async () => {
+  const source = veritySource()
+  const target = await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true })
+  const src = createThreeRigAdapter(source, { fingerprint: 'verity' }), dst = createThreeRigAdapter(target, { fingerprint: 'mixamo' })
+  const mapping = buildAutoMapping(src.rig, dst.rig)
+  assert.equal(mapping.family, 'verity')
+  assert.equal(mapping.pairs.length, 65)
+  assert.deepEqual(mapping.missingRequired, [])
+  assert.equal(mapping.joints.find((joint) => joint.target === 'Hips')?.source, 'COG')
+  assert.ok(!mapping.joints.some((joint) => ['Pelvis', 'Root', 'Jaw', 'Wing_Bone_L'].includes(joint.source ?? '')))
+  src.dispose(); dst.dispose()
+
+  source.updateMatrixWorld(true); target.updateMatrixWorld(true)
+  const sourceHead = source.getObjectByName('Head')!, sourceJaw = source.getObjectByName('Jaw')!
+  let targetHead: Object3D | undefined; target.traverse((node) => { if (/Head$/.test(node.name) && !/HeadTop/.test(node.name)) targetHead = node })
+  const sourceHeadRestQ = new Quaternion(), sourceHeadScale = new Vector3(), targetHeadRestQ = new Quaternion()
+  sourceHead.matrixWorld.decompose(new Vector3(), sourceHeadRestQ, sourceHeadScale)
+  targetHead!.matrixWorld.decompose(new Vector3(), targetHeadRestQ, new Vector3())
+  const expectedMixer = new AnimationMixer(source), expectedAction = expectedMixer.clipAction(source.animations[1]!).play()
+  expectedMixer.setTime(0.5); source.updateMatrixWorld(true)
+  const sourceJawRelative = sourceHead.matrixWorld.clone().invert().multiply(sourceJaw.matrixWorld)
+  const sourceJawPosition = new Vector3(); sourceJawRelative.decompose(sourceJawPosition, new Quaternion(), new Vector3())
+  const expectedBasis = targetHeadRestQ.clone().invert().multiply(sourceHeadRestQ)
+  const expectedJawLocalPosition = sourceJawPosition.multiplyScalar(0.4915394 * (sourceHeadScale.x + sourceHeadScale.y + sourceHeadScale.z) / 3).applyQuaternion(expectedBasis)
+  expectedAction.stop(); expectedMixer.uncacheRoot(source)
+
+  const result = await runNormalize({ source, sourceLabel: 'verity.glb', sourceSha256: '7'.repeat(64), target,
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [1], actionRanges: { 1: [0.5, 1.5] },
+    unitMeters: 0.4915394, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(result.status, 'PASS', JSON.stringify(result.report))
+  assert.deepEqual(result.manifest.actions.map((action) => [action.name, action.sourceActionIndex, action.durationSeconds]), [['selected', 1, 1]])
+  assert.equal((result.manifest as any).extraBoneMode, 'scene-nodes')
+  assert.equal((result.manifest as any).extraBones.length, 19)
+  validateGlbContract(result.glb!, result.manifest as any)
+  const { json, bin } = decodeGlb(result.glb!)
+  const skinNames = json.skins[0].joints.map((index: number) => json.nodes[index].name)
+  assert.equal(skinNames.length, 65)
+  assert.deepEqual([...skinNames].sort(), MIXAMO65_BONE_PARENTS.map(([name]) => name).sort())
+  const jaw = json.nodes.findIndex((node: any) => node.name === 'X_Head_Jaw')
+  const wing = json.nodes.findIndex((node: any) => node.name.startsWith('X_Spine2_Wing_Bone_L'))
+  assert.ok(jaw >= 0 && wing >= 0)
+  assert.equal((result.manifest as any).extraBones.every((bone: any) => json.nodes.some((node: any) => node.name === bone.name)), true)
+  const targets = json.animations[0].channels.map((channel: any) => [json.nodes[channel.target.node].name, channel.target.path])
+  assert.ok(targets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'rotation'))
+  assert.ok(targets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'translation'))
+  assert.ok(!targets.some(([name]: string[]) => name.startsWith('X_Spine2_Wing')))
+  const restOnlyExtras = new Set((result.manifest as any).extraBones.map((bone: any) => bone.name).filter((name: string) => name !== 'X_Head_Jaw'))
+  assert.ok(!targets.some(([name]: string[]) => restOnlyExtras.has(name)))
+  const jawInput = json.animations[0].samplers[json.animations[0].channels.find((channel: any) => channel.target.node === jaw).sampler].input
+  assert.equal(json.accessors[jawInput].max[0], 1)
+  const jawTranslationChannel = json.animations[0].channels.find((channel: any) => channel.target.node === jaw && channel.target.path === 'translation')
+  const jawTranslationAccessor = json.accessors[json.animations[0].samplers[jawTranslationChannel.sampler].output]
+  const jawTranslationView = json.bufferViews[jawTranslationAccessor.bufferView]
+  const serializedJawStart = [...new Float32Array(bin.buffer, bin.byteOffset + (jawTranslationView.byteOffset ?? 0), 3)]
+
+  const reloaded = createThreeRigAdapter(await loadAsset(result.glb!, 'glb'), { fingerprint: 'verity-output',
+    jointNames: [...MIXAMO65_BONE_PARENTS.map(([name]) => name), ...(result.manifest as any).extraBones.map((bone: any) => bone.name)] })
+  const worldQ = (name: string, time: number) => {
+    const bone = reloaded.rig.bones.find((item) => item.name === name)!
+    const sample = reloaded.sample(0, time).find((item) => item.id === bone.id)!
+    return new Quaternion().setFromRotationMatrix(new Matrix4().fromArray(sample.world))
+  }
+  const angleDelta = (name: string) => worldQ(name, 0).angleTo(worldQ(name, 1)) * 180 / Math.PI
+  const hipsDegrees = angleDelta('Hips'), headDegrees = angleDelta('Head')
+  const firstPose = new Map(reloaded.sample(0, 0).map((item) => [reloaded.rig.bones.find((bone) => bone.id === item.id)?.name, new Matrix4().fromArray(item.world)]))
+  const actualJawLocal = firstPose.get('Head')!.clone().invert().multiply(firstPose.get('X_Head_Jaw')!)
+  const actualJawLocalPosition = new Vector3().setFromMatrixPosition(actualJawLocal)
+  console.log('Verity CLI GLB measurements', JSON.stringify({ skinJoints: skinNames.length, animations: json.animations.length,
+    jawChannels: targets.filter(([name]: string[]) => name === 'X_Head_Jaw').length, wingChannels: targets.filter(([name]: string[]) => name.startsWith('X_Spine2_Wing')).length,
+    hipsDegrees, headDegrees, jawPositionError: actualJawLocalPosition.distanceTo(expectedJawLocalPosition), expectedJawLocalPosition: expectedJawLocalPosition.toArray(), actualJawLocalPosition: actualJawLocalPosition.toArray(), serializedJawStart }))
+  assert.ok(hipsDegrees <= 2)
+  assert.ok(Math.abs(headDegrees - 0.2 * 180 / Math.PI) <= 2)
+  assert.ok(actualJawLocalPosition.distanceTo(expectedJawLocalPosition) <= 1e-4)
+
+  const normalizedSource = await loadAsset(result.glb!, 'glb')
+  const secondTarget = await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true })
+  const second = await runNormalize({ source: normalizedSource, sourceLabel: 'verity-normalized.glb', sourceSha256: result.manifest.glbSha256,
+    sourceExtraManifest: result.manifest as any, sourceExtraGlb: result.glb!, target: secondTarget,
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [0],
+    unitMeters: 1, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(second.status, 'PASS', JSON.stringify(second.report))
+  assert.equal((second.manifest as any).extraBoneMode, 'scene-nodes')
+  assert.equal((second.manifest as any).extraBones.length, 19)
+  assert.deepEqual(second.manifest.actions.map((action) => [action.sourceActionIndex, action.durationSeconds]), [[0, 1]])
+  validateGlbContract(second.glb!, second.manifest as any)
+  const secondJson = decodeGlb(second.glb!).json
+  const secondSkinNames = secondJson.skins[0].joints.map((index: number) => secondJson.nodes[index].name)
+  assert.equal(secondSkinNames.length, 65)
+  assert.deepEqual([...secondSkinNames].sort(), MIXAMO65_BONE_PARENTS.map(([name]) => name).sort())
+  assert.equal((second.manifest as any).extraBones.every((bone: any) => secondJson.nodes.some((node: any) => node.name === bone.name)), true)
+  const secondTargets = secondJson.animations[0].channels.map((channel: any) => [secondJson.nodes[channel.target.node].name, channel.target.path])
+  assert.ok(secondTargets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'rotation'))
+  assert.ok(secondTargets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'translation'))
+  assert.ok(!secondTargets.some(([name]: string[]) => name !== 'X_Head_Jaw' && name.startsWith('X_')))
+  const extraValues = (decoded: ReturnType<typeof decodeGlb>, path: 'translation' | 'rotation') => {
+    const node = decoded.json.nodes.findIndex((item: any) => item.name === 'X_Head_Jaw')
+    const channel = decoded.json.animations[0].channels.find((item: any) => item.target.node === node && item.target.path === path)
+    const accessor = decoded.json.accessors[decoded.json.animations[0].samplers[channel.sampler].output]
+    const view = decoded.json.bufferViews[accessor.bufferView], width = path === 'rotation' ? 4 : 3
+    return new Float32Array(decoded.bin.buffer, decoded.bin.byteOffset + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), accessor.count * width)
+  }
+  const firstDecoded = { json, bin }, secondDecoded = decodeGlb(second.glb!)
+  const firstJawP = extraValues(firstDecoded, 'translation'), secondJawP = extraValues(secondDecoded, 'translation')
+  const firstJawQ = extraValues(firstDecoded, 'rotation'), secondJawQ = extraValues(secondDecoded, 'rotation')
+  for (const frame of [0, 15, 30]) {
+    const positionError = new Vector3().fromArray(firstJawP, frame * 3).distanceTo(new Vector3().fromArray(secondJawP, frame * 3))
+    const rotationError = new Quaternion().fromArray(firstJawQ, frame * 4).normalize().angleTo(new Quaternion().fromArray(secondJawQ, frame * 4).normalize())
+    console.log('Verity re-normalize Jaw sample', JSON.stringify({ frame, positionError, rotationError }))
+    assert.ok(positionError <= 1e-6)
+    assert.ok(rotationError <= 1e-5)
+  }
+  assert.ok(new Quaternion().fromArray(firstJawQ, 30 * 4).normalize().angleTo(new Quaternion().fromArray(firstJawQ, 0).normalize()) > 0.01,
+    'full-duration Jaw endpoint must not wrap to the first key')
+
+  const trimmedSource = await loadAsset(result.glb!, 'glb'), trimmedExpected = await loadAsset(result.glb!, 'glb')
+  const expectedJaw = trimmedExpected.getObjectByName('X_Head_Jaw')!, expectedMixer2 = new AnimationMixer(trimmedExpected)
+  const expectedAction2 = expectedMixer2.clipAction(trimmedExpected.animations[0]!).setLoop(LoopOnce, 1).play()
+  expectedAction2.clampWhenFinished = true
+  const expectedTrimmed = [0.25, 0.75].map((time) => {
+    expectedMixer2.setTime(time)
+    return { position: expectedJaw.position.clone(), rotation: expectedJaw.quaternion.clone().normalize() }
+  })
+  const trimmed = await runNormalize({ source: trimmedSource, sourceLabel: 'verity-normalized.glb', sourceSha256: result.manifest.glbSha256,
+    sourceExtraManifest: result.manifest as any, sourceExtraGlb: result.glb!, target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }),
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [0], range: [0.25, 0.75],
+    unitMeters: 1, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(trimmed.status, 'PASS', JSON.stringify(trimmed.report))
+  assert.deepEqual(trimmed.manifest.actions.map((action) => [action.sourceActionIndex, action.durationSeconds]), [[0, 0.5]])
+  validateGlbContract(trimmed.glb!, trimmed.manifest as any)
+  const trimmedDecoded = decodeGlb(trimmed.glb!), trimmedP = extraValues(trimmedDecoded, 'translation'), trimmedQ = extraValues(trimmedDecoded, 'rotation')
+  for (const [frame, expected] of [[0, expectedTrimmed[0]!], [15, expectedTrimmed[1]!]] as const) {
+    assert.ok(new Vector3().fromArray(trimmedP, frame * 3).distanceTo(expected.position) <= 1e-6)
+    assert.ok(new Quaternion().fromArray(trimmedQ, frame * 4).normalize().angleTo(expected.rotation) <= 1e-5)
+  }
+  const probe = process.env.K3_LIBRARY_PROBE_DIR
+  if (probe) {
+    mkdirSync(probe, { recursive: true }); writeFileSync(join(probe, 'model.glb'), result.glb!)
+    writeFileSync(join(probe, 'model.manifest.json'), JSON.stringify(result.manifest, null, 2) + '\n')
+    writeFileSync(join(probe, 'model.report.json'), JSON.stringify(result.report, null, 2) + '\n')
+  }
+  reloaded.dispose()
 })
 
 test('auto mapping resolves League of Legends (lol2gltf) names', async () => {
