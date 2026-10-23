@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { AnimationClip, AnimationMixer, Euler, Matrix4, PropertyBinding, Quaternion, Vector3, type Bone, type Object3D, type SkinnedMesh } from 'three'
+import { AnimationClip, AnimationMixer, Euler, LoopOnce, Matrix4, PropertyBinding, Quaternion, Vector3, type Bone, type Object3D, type SkinnedMesh } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import type { GroundMode } from '../src/groundAdjust.ts'
@@ -108,7 +108,8 @@ function veritySceneExtras(root: Object3D, unitMeters: number) {
     sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number, targetHeadRest: Matrix4, sourceAlignment: Quaternion): SceneExtraAnimation {
       const clip = clips[sourceActionIndex]!
       const saved = nodes.map((node) => ({ node, position: node.position.clone(), quaternion: node.quaternion.clone(), scale: node.scale.clone() }))
-      const start = range?.[0] ?? 0, mixer = new AnimationMixer(root), action = mixer.clipAction(clip).play()
+      const start = range?.[0] ?? 0, mixer = new AnimationMixer(root), action = mixer.clipAction(clip).setLoop(LoopOnce, 1).play()
+      action.clampWhenFinished = true
       const frameCount = Math.round(duration * CONTRACT_FPS), times: number[] = [], translations: number[] = [], rotations: number[] = []
       for (let frame = 0; frame <= frameCount; frame++) {
         const time = Math.min(duration, frame / CONTRACT_FPS)
@@ -128,6 +129,33 @@ function veritySceneExtras(root: Object3D, unitMeters: number) {
       for (const item of saved) { item.node.position.copy(item.position); item.node.quaternion.copy(item.quaternion); item.node.scale.copy(item.scale) }
       root.updateMatrixWorld(true)
       return { animationIndex, extras: [{ name: jawDefinition.name, times, translations, rotations }] }
+    },
+  }
+}
+
+function existingVeritySceneExtras(root: Object3D, manifest: NormalizeRequest['sourceExtraManifest']) {
+  if (manifest?.version !== '1.1.0' || manifest.rig !== 'mixamo65+verity' || manifest.extraBoneMode !== 'scene-nodes') return null
+  const clips = [...root.animations]
+  const jaw = root.getObjectByName('X_Head_Jaw')
+  if (!jaw || jaw.parent?.name !== 'Head') throw new TypeError('Verity scene-node Jaw must be a direct child of Head')
+  const nodes: Object3D[] = []; root.traverse((node) => nodes.push(node))
+  return {
+    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number): SceneExtraAnimation {
+      const clip = clips[sourceActionIndex]
+      if (!clip) throw new RangeError(`Source Action ${sourceActionIndex} does not exist`)
+      const saved = nodes.map((node) => ({ node, position: node.position.clone(), quaternion: node.quaternion.clone(), scale: node.scale.clone() }))
+      const start = range?.[0] ?? 0, mixer = new AnimationMixer(root), action = mixer.clipAction(clip).setLoop(LoopOnce, 1).play()
+      action.clampWhenFinished = true
+      const frameCount = Math.round(duration * CONTRACT_FPS), times: number[] = [], translations: number[] = [], rotations: number[] = []
+      for (let frame = 0; frame <= frameCount; frame++) {
+        const time = Math.min(duration, frame / CONTRACT_FPS)
+        mixer.setTime(start + time)
+        times.push(time); translations.push(...jaw.position.toArray()); rotations.push(...jaw.quaternion.normalize().toArray())
+      }
+      action.stop(); mixer.uncacheRoot(root)
+      for (const item of saved) { item.node.position.copy(item.position); item.node.quaternion.copy(item.quaternion); item.node.scale.copy(item.scale) }
+      root.updateMatrixWorld(true)
+      return { animationIndex, extras: [{ name: 'X_Head_Jaw', times, translations, rotations }] }
     },
   }
 }
@@ -312,6 +340,7 @@ export async function inspectNormalize(request: NormalizeRequest) {
 export async function runNormalize(request: NormalizeRequest) {
   request.signal?.throwIfAborted()
   const inferredVerity = request.sourceExtraManifest ? null : veritySceneExtras(request.source, request.unitMeters ?? 1)
+  const existingVerity = existingVeritySceneExtras(request.source, request.sourceExtraManifest)
   const started = Date.now()
   const rootPolicy = request.rootPolicy ?? 'preserve'
   await request.onProgress?.('inspect', 0, 1)
@@ -361,7 +390,9 @@ export async function runNormalize(request: NormalizeRequest) {
   const sceneExtraMode = sourceExtraManifest?.extraBoneMode === 'scene-nodes'
   if (extras.length && !sceneExtraMode && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
   const extraAnimations = inferredVerityEnabled ? exported.map((item, animationIndex) => inferredVerityEnabled.sample(item.action.index,
-    request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment)) : []
+    request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment)) :
+    existingVerity ? exported.map((item, animationIndex) => existingVerity.sample(item.action.index,
+      request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex)) : []
   const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb, sourceExtraManifest!, { animations: extraAnimations }).glb : mergedGlb
   const extraNames = new Set(extras.map((bone) => bone.name))
   const droppedExtraTracks = [...new Set(request.source.animations.flatMap((clip) => clip.tracks

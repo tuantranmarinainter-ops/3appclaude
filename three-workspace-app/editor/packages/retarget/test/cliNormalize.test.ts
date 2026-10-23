@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AnimationClip, AnimationMixer, Bone, Euler, Group, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
+import { AnimationClip, AnimationMixer, Bone, Euler, Group, LoopOnce, Matrix4, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3, VectorKeyframeTrack } from 'three'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, MIXAMO65_REQUIRED_JOINTS } from '../cli/autoMapping.ts'
@@ -173,6 +173,67 @@ test('Verity CLI auto preset writes 65 skin joints, animated Jaw scene extra, an
   assert.ok(hipsDegrees <= 2)
   assert.ok(Math.abs(headDegrees - 0.2 * 180 / Math.PI) <= 2)
   assert.ok(actualJawLocalPosition.distanceTo(expectedJawLocalPosition) <= 1e-4)
+
+  const normalizedSource = await loadAsset(result.glb!, 'glb')
+  const secondTarget = await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true })
+  const second = await runNormalize({ source: normalizedSource, sourceLabel: 'verity-normalized.glb', sourceSha256: result.manifest.glbSha256,
+    sourceExtraManifest: result.manifest as any, sourceExtraGlb: result.glb!, target: secondTarget,
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [0],
+    unitMeters: 1, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(second.status, 'PASS', JSON.stringify(second.report))
+  assert.equal((second.manifest as any).extraBoneMode, 'scene-nodes')
+  assert.equal((second.manifest as any).extraBones.length, 19)
+  assert.deepEqual(second.manifest.actions.map((action) => [action.sourceActionIndex, action.durationSeconds]), [[0, 1]])
+  validateGlbContract(second.glb!, second.manifest as any)
+  const secondJson = decodeGlb(second.glb!).json
+  const secondSkinNames = secondJson.skins[0].joints.map((index: number) => secondJson.nodes[index].name)
+  assert.equal(secondSkinNames.length, 65)
+  assert.deepEqual([...secondSkinNames].sort(), MIXAMO65_BONE_PARENTS.map(([name]) => name).sort())
+  assert.equal((second.manifest as any).extraBones.every((bone: any) => secondJson.nodes.some((node: any) => node.name === bone.name)), true)
+  const secondTargets = secondJson.animations[0].channels.map((channel: any) => [secondJson.nodes[channel.target.node].name, channel.target.path])
+  assert.ok(secondTargets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'rotation'))
+  assert.ok(secondTargets.some(([name, path]: string[]) => name === 'X_Head_Jaw' && path === 'translation'))
+  assert.ok(!secondTargets.some(([name]: string[]) => name !== 'X_Head_Jaw' && name.startsWith('X_')))
+  const extraValues = (decoded: ReturnType<typeof decodeGlb>, path: 'translation' | 'rotation') => {
+    const node = decoded.json.nodes.findIndex((item: any) => item.name === 'X_Head_Jaw')
+    const channel = decoded.json.animations[0].channels.find((item: any) => item.target.node === node && item.target.path === path)
+    const accessor = decoded.json.accessors[decoded.json.animations[0].samplers[channel.sampler].output]
+    const view = decoded.json.bufferViews[accessor.bufferView], width = path === 'rotation' ? 4 : 3
+    return new Float32Array(decoded.bin.buffer, decoded.bin.byteOffset + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), accessor.count * width)
+  }
+  const firstDecoded = { json, bin }, secondDecoded = decodeGlb(second.glb!)
+  const firstJawP = extraValues(firstDecoded, 'translation'), secondJawP = extraValues(secondDecoded, 'translation')
+  const firstJawQ = extraValues(firstDecoded, 'rotation'), secondJawQ = extraValues(secondDecoded, 'rotation')
+  for (const frame of [0, 15, 30]) {
+    const positionError = new Vector3().fromArray(firstJawP, frame * 3).distanceTo(new Vector3().fromArray(secondJawP, frame * 3))
+    const rotationError = new Quaternion().fromArray(firstJawQ, frame * 4).normalize().angleTo(new Quaternion().fromArray(secondJawQ, frame * 4).normalize())
+    console.log('Verity re-normalize Jaw sample', JSON.stringify({ frame, positionError, rotationError }))
+    assert.ok(positionError <= 1e-6)
+    assert.ok(rotationError <= 1e-5)
+  }
+  assert.ok(new Quaternion().fromArray(firstJawQ, 30 * 4).normalize().angleTo(new Quaternion().fromArray(firstJawQ, 0).normalize()) > 0.01,
+    'full-duration Jaw endpoint must not wrap to the first key')
+
+  const trimmedSource = await loadAsset(result.glb!, 'glb'), trimmedExpected = await loadAsset(result.glb!, 'glb')
+  const expectedJaw = trimmedExpected.getObjectByName('X_Head_Jaw')!, expectedMixer2 = new AnimationMixer(trimmedExpected)
+  const expectedAction2 = expectedMixer2.clipAction(trimmedExpected.animations[0]!).setLoop(LoopOnce, 1).play()
+  expectedAction2.clampWhenFinished = true
+  const expectedTrimmed = [0.25, 0.75].map((time) => {
+    expectedMixer2.setTime(time)
+    return { position: expectedJaw.position.clone(), rotation: expectedJaw.quaternion.clone().normalize() }
+  })
+  const trimmed = await runNormalize({ source: trimmedSource, sourceLabel: 'verity-normalized.glb', sourceSha256: result.manifest.glbSha256,
+    sourceExtraManifest: result.manifest as any, sourceExtraGlb: result.glb!, target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }),
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [0], range: [0.25, 0.75],
+    unitMeters: 1, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(trimmed.status, 'PASS', JSON.stringify(trimmed.report))
+  assert.deepEqual(trimmed.manifest.actions.map((action) => [action.sourceActionIndex, action.durationSeconds]), [[0, 0.5]])
+  validateGlbContract(trimmed.glb!, trimmed.manifest as any)
+  const trimmedDecoded = decodeGlb(trimmed.glb!), trimmedP = extraValues(trimmedDecoded, 'translation'), trimmedQ = extraValues(trimmedDecoded, 'rotation')
+  for (const [frame, expected] of [[0, expectedTrimmed[0]!], [15, expectedTrimmed[1]!]] as const) {
+    assert.ok(new Vector3().fromArray(trimmedP, frame * 3).distanceTo(expected.position) <= 1e-6)
+    assert.ok(new Quaternion().fromArray(trimmedQ, frame * 4).normalize().angleTo(expected.rotation) <= 1e-5)
+  }
   const probe = process.env.K3_LIBRARY_PROBE_DIR
   if (probe) {
     mkdirSync(probe, { recursive: true }); writeFileSync(join(probe, 'model.glb'), result.glb!)
