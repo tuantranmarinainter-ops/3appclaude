@@ -28,7 +28,8 @@ async function createPreview(uuid: string): Promise<void> {
     const action = getAction({ actionUuid: uuid })
     const characters = listLibraryCharacters()
     const character = action.ownerCharId ? characters.find(item => item.charId === action.ownerCharId) : undefined
-    const useCharacter = Boolean(character)
+    // Minecraft20 characters keep a .bobj model and a skin; their previews use the box mannequin on the action's own skeleton.
+    const useCharacter = Boolean(character?.model.toLowerCase().endsWith('.glb'))
     const charId = useCharacter ? character!.charId : builtinCharacter
     const mannequin = action.rig === 'minecraft20' && !useCharacter
     const seconds = Math.min(2.5, Math.max(0.1, action.durationSeconds))
