@@ -7,7 +7,7 @@ import test from 'node:test'
 import { MIXAMO65_BONE_PARENTS } from '../retarget/src/mixamo65'
 import {
   addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, listLibraryCharacters,
-  importPack, removeCharacterAction, saveCharacterActionVersion, searchLibrary, setCharacterActionStatus, setCharacterProfile,
+  getAction, importPack, removeCharacterAction, saveCharacterActionVersion, searchLibrary, setCharacterActionStatus, setCharacterProfile,
 } from './index'
 import { callLibraryTool } from './mcp'
 import { readJsonFile, writeIndex, writeJsonAtomic } from './store'
@@ -96,6 +96,7 @@ test('raw to draft to immutable edited versions preserves ancestry and latest se
   assert.equal(draft.status, 'draft'); assert.equal(draft.version, 1); assert.equal(draft.variantOf, draft.uuid)
   assert.equal(draft.parentUuid, rawUuid); assert.equal(draft.glbAnimationIndex, 4)
   assert.deepEqual([draft.nameVi, draft.nameViSource], ['Nguồn đứng yên', 'manual'])
+  assert.equal(draft.sourceName, getAction({ root, actionUuid: rawUuid }).sourceName, 'drafts keep the source name for tracing')
   const legacyDraft = addDraftToCharacter({ root, charId: 'verity-b', actionUuid: legacyRawUuid })
   assert.deepEqual([legacyDraft.nameVi, legacyDraft.nameViSource], ['Đi bộ', 'glossary'], 'legacy raw records gain a translation when drafted')
   assert.deepEqual(readJsonFile<MotionPackMetadata>(join(root, 'packs', draft.packId, 'meta.json')).license,

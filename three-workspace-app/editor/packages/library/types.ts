@@ -50,6 +50,8 @@ export interface NormalizedManifest {
 export interface ActionMetadata {
   uuid: string
   name: string
+  /** Original imported animation name, retained while the display name is edited. */
+  sourceName?: string
   /** Vietnamese display name. Missing on records created before bilingual metadata. */
   nameVi?: string
   nameViSource?: 'glossary' | 'words' | 'manual'

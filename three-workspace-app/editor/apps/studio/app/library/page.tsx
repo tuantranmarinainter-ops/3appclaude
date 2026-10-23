@@ -84,10 +84,10 @@ export default function LibraryPage() {
     await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'copy', actionUuid: selected.uuid, toCharId: effectiveCopyTarget }) })
     setMessage('Đã sao chép thành bản Nháp riêng của nhân vật đích.')
   }
-  async function saveVietnameseName(nameVi: string) {
+  async function saveActionName(name: string, nameVi: string) {
     if (!selected) return
-    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, nameVi }) })
-    await loadActions(); setMessage('Đã lưu tên tiếng Việt.')
+    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, name, nameVi }) })
+    await loadActions(); setMessage('Đã lưu tên động tác.')
   }
   function notifyOpener(type: string) {
     if (!selected || !window.opener) return setMessage('Mở Thư viện từ App 2 để dùng thao tác này.')
@@ -112,7 +112,7 @@ export default function LibraryPage() {
       </section>
       <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
         <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig}</p>
-        <form key={selected.uuid} onSubmit={event => { event.preventDefault(); void saveVietnameseName(String(new FormData(event.currentTarget).get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
+        <form key={selected.uuid} onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); void saveActionName(String(data.get('name') ?? ''), String(data.get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Anh <input name="name" required defaultValue={selected.name} /></label><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
         <button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
         <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>

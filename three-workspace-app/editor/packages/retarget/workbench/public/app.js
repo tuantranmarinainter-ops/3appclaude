@@ -1,5 +1,6 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
 import { Viewer, FPS } from './viewer.js'
+import { executeTransfer, suggestActionKey } from './transfer.js'
 
 const $ = (id) => document.getElementById(id)
 /** Tiny DOM builder; text always goes through textContent so file/bone names can never inject markup. */
@@ -41,10 +42,11 @@ const state = {
   source: null, targets: [], target: null,
   inspect: null, inspecting: false, inspectError: null, inspectSeq: 0,
   rows: [], filter: 'all', search: '', preset: null, presetFamily: null, dirty: false,
-  actionRanges: {}, checked: new Set(), actionFilter: '',
+  actionRanges: {}, checked: new Set(), actionFilter: '', actionEdits: new Map(), actionKeys: new Map(),
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
+  transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -135,14 +137,107 @@ function selectAction(sourceIndex) {
   $('bindInfo').textContent = parts.join(' · ')
   $('bindInfo').classList.toggle('bad', bad)
   renderActions(false)
+  renderActionPicker()
 }
 
 function fillActionSelect() {
   const select = clear($('actionSel'))
   const actions = state.inspect?.actions ?? []
-  for (const action of actions) select.append(h('option', { value: String(action.index), text: `${action.index} · ${action.name} (${fmt(action.durationSeconds)} s)${state.result && !state.stale && !state.actionMap.has(action.index) ? ' — chưa xuất' : ''}` }))
+  for (const action of actions) select.append(h('option', { value: String(action.index), text: `${action.index} · ${action.displayName ?? action.name} (${fmt(action.durationSeconds)} s)${state.result && !state.stale && !state.actionMap.has(action.index) ? ' — chưa xuất' : ''}` }))
   select.disabled = !actions.length
+  renderActionPicker()
 }
+
+// ---------------------------------------------------------------- pinned source Action picker
+const picker = $('actionPicker'), pickerStorageKey = 'w01.actionPicker.v1'
+function openActionPicker() {
+  picker.hidden = false; $('actionPickerBtn').setAttribute('aria-expanded', 'true'); renderActionPicker()
+  // Tag suggestions need the character's required actions: load the library list once, then render again.
+  if (!state.libraryCharacters) api('/api/library/characters').then((body) => { state.libraryCharacters = body.characters; renderActionPicker() }).catch(() => { /* defaults stay */ })
+}
+/** Library defaults (`requiredActions`) used before a character is chosen. */
+const DEFAULT_REQUIRED_ACTIONS = ['idle', 'walk', 'run', 'talk', 'happy', 'sad', 'surprised', 'angry', 'attack', 'hit', 'fall', 'jump'].map((key) => ({ key, label: key[0].toUpperCase() + key.slice(1) }))
+function pickerRequiredActions() {
+  const charId = $('transferCharacter')?.value || (state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : '')
+  const required = state.libraryCharacters?.find((item) => item.charId === charId)?.requiredActions
+  return required?.length ? required : DEFAULT_REQUIRED_ACTIONS
+}
+function closeActionPicker() { picker.hidden = true; $('actionPickerBtn').setAttribute('aria-expanded', 'false') }
+function savePickerBounds() {
+  if (picker.hidden || picker.offsetWidth < 100 || picker.offsetHeight < 100) return
+  try { localStorage.setItem(pickerStorageKey, JSON.stringify({ left: picker.style.left, top: picker.style.top, width: picker.style.width, height: picker.style.height })) } catch { /* storage can be disabled or full */ }
+}
+function restorePickerBounds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(pickerStorageKey) ?? 'null')
+    if (saved) for (const key of ['left', 'top', 'width', 'height']) if (typeof saved[key] === 'string' && /^\d+(?:\.\d+)?px$/.test(saved[key])) picker.style[key] = saved[key]
+    const left = Math.max(0, Math.min(innerWidth - 120, parseFloat(picker.style.left) || 0)), top = Math.max(0, Math.min(innerHeight - 60, parseFloat(picker.style.top) || 0))
+    picker.style.left = `${left}px`; picker.style.top = `${top}px`
+  } catch { /* ignore corrupt local preference */ }
+}
+function actionMatches(action, query) { const q = query.trim().toLocaleLowerCase('vi'); return !q || `${action.name} ${action.nameVi ?? ''} ${action.index}`.toLocaleLowerCase('vi').includes(q) }
+function actionQuality(action) {
+  const mapped = state.actionMap.get(action.index), skipped = state.result?.report?.skippedActions?.find((item) => item.index === action.index)
+  if (skipped) return { text: skipped.code, class: 'warn', title: skipped.message }
+  if (mapped?.perAction) return { text: mapped.perAction.status, class: mapped.perAction.status, title: (mapped.quality?.warnings ?? []).map((item) => item.message).join('\n') }
+  return { text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra', class: action.ready ? 'PASS' : 'warn', title: '' }
+}
+function renderActionPicker() {
+  if (!picker || picker.hidden) return
+  const actions = state.inspect?.actions ?? [], query = $('actionPickerSearch').value
+  $('actionPickerCount').textContent = `đã chọn ${selectedActionIndices().length}/${actions.length}`
+  $('transferOpen').disabled = !actions.length || !selectedActionIndices().length || !state.target || state.transferRunning
+  const body = h('tbody')
+  for (const action of actions.filter((item) => actionMatches(item, query))) {
+    const check = h('input', { type: 'checkbox', 'aria-label': `Chọn ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => {
+      event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false); renderActionPicker()
+    } }); check.checked = state.checked.has(action.index)
+    const quality = actionQuality(action)
+    const edit = state.actionEdits.get(action.index) ?? { name: action.name, nameVi: action.nameVi ?? '' }
+    const startRename = (event) => { event.stopPropagation(); state.renamingAction = action.index; renderActionPicker() }
+    let name
+    if (state.renamingAction === action.index) {
+      const english = h('input', { type: 'text', class: 'rename', value: edit.name, 'aria-label': `Tên tiếng Anh ${action.name}`, onclick: (event) => event.stopPropagation() })
+      const vietnamese = h('input', { type: 'text', class: 'rename', value: edit.nameVi, placeholder: 'Tên tiếng Việt', 'aria-label': `Tên tiếng Việt ${action.name}`, onclick: (event) => event.stopPropagation() })
+      const save = () => {
+        const trimmed = english.value.trim()
+        if (!trimmed) { toast('Tên tiếng Anh không được để trống', 'err'); english.focus(); return }
+        state.actionEdits.set(action.index, { name: trimmed, nameVi: vietnamese.value.trim() }); state.renamingAction = null; renderActionPicker()
+      }
+      const cancel = () => { state.renamingAction = null; renderActionPicker() }
+      const keys = (event) => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); save() } else if (event.key === 'Escape') { event.preventDefault(); cancel() } }
+      english.addEventListener('keydown', keys); vietnamese.addEventListener('keydown', keys)
+      name = h('td', { class: 'name renaming' }, english, h('span', { text: ' | ' }), vietnamese,
+        h('button', { type: 'button', class: 'icon', title: 'Lưu tên (Enter)', text: '✓', onclick: (event) => { event.stopPropagation(); save() } }),
+        h('button', { type: 'button', class: 'icon', title: 'Huỷ (Esc)', text: '✕', onclick: (event) => { event.stopPropagation(); cancel() } }))
+      queueMicrotask(() => english.focus())
+    } else {
+      name = h('td', { class: 'name', ondblclick: startRename }, h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
+        h('button', { type: 'button', class: 'icon rename-btn', title: 'Đổi tên (nhấp đúp vào tên)', 'aria-label': `Đổi tên ${edit.name}`, text: '✎', onclick: startRename }))
+    }
+    const required = pickerRequiredActions()
+    const keySelect = h('select', { 'aria-label': `Thẻ động tác ${edit.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.actionKeys.set(action.index, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
+    if (required.length) { keySelect.value = state.actionKeys.get(action.index) ?? suggestActionKey(required, [edit.name]) ?? ''; if (keySelect.value) state.actionKeys.set(action.index, keySelect.value) }
+    body.append(h('tr', { class: `clickable${state.selected === action.index ? ' active' : ''}`, dataset: { index: String(action.index) }, onclick: () => selectAction(action.index) },
+      h('td', {}, check), h('td', { class: 'num', text: String(action.index + 1) }), name, h('td', {}, keySelect),
+      h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality' }, h('span', { class: `chip ${quality.class}`, title: quality.title, text: quality.text }))))
+  }
+  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 6, class: 'empty', text: 'Không có animation khớp.' })))
+  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
+}
+$('actionPickerBtn').addEventListener('click', openActionPicker)
+$('actionPickerClose').addEventListener('click', closeActionPicker)
+$('actionPickerSearch').addEventListener('input', renderActionPicker)
+$('actionPickerAll').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerNone').addEventListener('click', () => { state.checked.clear(); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerInvert').addEventListener('click', () => { for (const action of state.inspect?.actions ?? []) state.checked.has(action.index) ? state.checked.delete(action.index) : state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+window.addEventListener('keydown', (event) => { if ((event.key === 'a' || event.key === 'A') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input,textarea,select')) { event.preventDefault(); openActionPicker() } })
+let pickerDrag = null
+$('actionPickerHandle').addEventListener('pointerdown', (event) => { if (event.target.closest('button')) return; const rect = picker.getBoundingClientRect(); pickerDrag = { x: event.clientX - rect.left, y: event.clientY - rect.top }; event.currentTarget.setPointerCapture(event.pointerId) })
+$('actionPickerHandle').addEventListener('pointermove', (event) => { if (!pickerDrag) return; picker.style.left = `${Math.max(0, Math.min(innerWidth - 120, event.clientX - pickerDrag.x))}px`; picker.style.top = `${Math.max(0, Math.min(innerHeight - 60, event.clientY - pickerDrag.y))}px` })
+$('actionPickerHandle').addEventListener('pointerup', () => { pickerDrag = null; savePickerBounds() })
+new ResizeObserver(savePickerBounds).observe(picker)
+restorePickerBounds()
 
 // ---------------------------------------------------------------- steps
 function setStep(n, status, label) {
@@ -300,7 +395,7 @@ async function chooseTarget(target) {
   renderTargets(); renderAll(); refreshSteps()
   setOverlay('right', 'Đang tải nhân vật đích…')
   try { await viewer.loadTarget(target.displayUrl ?? target.url); setOverlay('right', '') } catch (error) { setOverlay('right', `Không tải được nhân vật đích: ${error.message}`, true) }
-  if (state.source) inspectNow()
+  if (state.source) await inspectNow()
 }
 
 // ---------------------------------------------------------------- step 3: inspect
@@ -340,8 +435,7 @@ async function inspectNow() {
     if (!state.preset) state.presetFamily = result.mapping.family
     state.rows = result.mapping.joints.map((joint) => ({ ...joint, original: joint.source }))
     state.dirty = false
-    if (!state.checked.size) state.checked = new Set(result.actions.map((action) => action.index))
-    else state.checked = new Set([...state.checked].filter((index) => result.actions[index]))
+    state.checked = new Set([...state.checked].filter((index) => result.actions.some((action) => action.index === index)))
     if (state.selected === null || !result.actions[state.selected]) state.selected = result.actions.length ? 0 : null
   } catch (error) {
     if (seq !== state.inspectSeq) return
@@ -371,6 +465,7 @@ function renderInspectInfo() {
 // ---------------------------------------------------------------- step 4: options
 const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
+  state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
   if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale]')) inspectSoon()
   renderOptionHints()
@@ -427,11 +522,11 @@ function selectedActionIndices() {
   const actions = state.inspect?.actions ?? []
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
-async function runNow() {
+async function runNow(onlyActions = null, actionNames = null) {
   const reason = canRunReason()
   if (reason) { toast(reason, 'err'); return }
-  const all = selectedActionIndices()
-  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  const all = onlyActions ?? selectedActionIndices()
+  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true
   $('progress').hidden = false
   setProgress('queued', 0, 1, 0)
@@ -450,6 +545,7 @@ async function runNow() {
     if (current.state === 'CANCELLED') { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok'); return }
     if (current.state === 'error') throw new Error(current.error)
     await finishRun(current.result, options)
+    return current.result
   } catch (error) {
     toast(`Chạy thất bại: ${error.message}`, 'err', true)
     $('runInfo').textContent = `Chạy thất bại: ${error.message}`
@@ -493,10 +589,84 @@ async function finishRun(result, options) {
   } else setOverlay('right', `Không có GLB: ${result.status}${report.blocker ? ` — ${report.blocker.code}` : ''}`)
   toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
 }
-$('runBtn').addEventListener('click', runNow)
+$('runBtn').addEventListener('click', () => runNow())
 $('cancelBtn').addEventListener('click', async () => {
   if (!state.run) return
   try { await api(`/api/runs/${state.run}/cancel`, { method: 'POST' }) } catch (error) { toast(error.message, 'err') }
+})
+
+async function prepareTransfer() {
+  if (!state.libraryCharacters) state.libraryCharacters = (await api('/api/library/characters')).characters
+  const select = clear($('transferCharacter'))
+  const compatible = state.libraryCharacters.filter((character) => compatibleLibraryCharacter(character).enabled)
+  for (const character of compatible) select.append(h('option', { value: character.charId, text: `${character.name} · ${character.rig}` }))
+  const targetCharacter = state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : ''
+  if (compatible.some((character) => character.charId === targetCharacter)) select.value = targetCharacter
+  const character = compatible.find((item) => item.charId === select.value)
+  $('transferCharacterPack').checked = !!character
+  $('transferCharacterPack').disabled = !character
+  renderTransferKeys()
+  $('transferConfirm').hidden = false
+  renderActionPicker()
+}
+function renderTransferKeys() {
+  const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
+  const select = clear($('transferActionKey'))
+  for (const required of character?.requiredActions ?? []) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
+  if (!select.options.length) select.append(h('option', { value: 'idle', text: 'Đứng yên (idle)' }))
+  const selectedNames = selectedActionIndices().map((index) => {
+    const action = state.inspect?.actions?.find((item) => item.index === index)
+    return action?.displayName ?? action?.name
+  }).filter(Boolean)
+  const suggestion = suggestActionKey(character?.requiredActions ?? [], selectedNames)
+  if (suggestion) select.value = suggestion
+  $('transferCharacterPack').disabled = !character
+}
+$('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
+$('transferCharacter').addEventListener('change', () => { renderTransferKeys(); renderActionPicker() })
+async function transferSelected(indices, retryConfig = null) {
+  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
+  state.transferConfig = Object.freeze({ ...config })
+  const toCharacter = config.toCharacter, toShared = config.toShared
+  if (!toCharacter && !toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
+  if (!indices.length) throw new Error('Chưa chọn animation.')
+  state.transferRunning = true
+  for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
+  const selectedCharacter = state.libraryCharacters?.find((item) => item.charId === config.charId)
+  const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
+  if (selectedCharacter?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${selectedCharacter.name} chưa có model đích trong Workbench. Tải lại Workbench sau khi thêm nhân vật.`)
+  if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
+  renderActionPicker(); $('transferStatus').textContent = `Đang chuẩn hoá ${indices.length} animation…`
+  const transferNames = {}
+  const nameCounts = new Map()
+  for (const index of indices) { const edit = state.actionEdits.get(index); if (!edit) continue; const base = edit.name.trim(); const count = nameCounts.get(base.toLocaleLowerCase()) ?? 0; nameCounts.set(base.toLocaleLowerCase(), count + 1); transferNames[index] = { ...edit, name: count ? `${base}_${count + 1}` : base } }
+  const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact, transferNames),
+    importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
+      charIds: [config.charId], actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
+    } }),
+    importShared: (result) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: {} }),
+  })
+  const succeeded = transferred.actions, drafts = transferred.drafts, shared = transferred.shared
+  state.transferFailed = transferred.failed
+  $('transferRetry').hidden = !state.transferFailed.length
+  if (!succeeded.length) throw new Error(`Không animation nào chuẩn hoá thành công. Có thể thử lại ${state.transferFailed.length} action lỗi.`)
+  const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
+  const summary = [`Đã chuyển ${succeeded.length} animation`, ...(toCharacter ? [`→ ${character?.name ?? 'nhân vật'} (${drafts.length} Nháp)`] : []), ...(toShared ? [`+ kho dùng chung (${shared?.created === false ? 'đã có' : '1 gói'})`] : [])].join(' ')
+  $('transferStatus').textContent = state.transferFailed.length ? `${summary}. Lỗi ${state.transferFailed.length}: ${state.transferFailed.map((index) => state.inspect.actions[index]?.displayName ?? index).join(', ')}` : summary
+  if (!state.transferFailed.length) { state.libraryCharacters = null; state.transferConfig = null }
+  return { normalized: succeeded.length, drafts: drafts.length, sharedPacks: toShared ? 1 : 0, failed: state.transferFailed }
+}
+$('transferStart').addEventListener('click', async () => {
+  $('transferStart').disabled = true
+  try { await transferSelected(selectedActionIndices()); toast('Đã chuyển animation vào thư viện', 'ok') }
+  catch (error) { $('transferStatus').textContent = `Chuyển thất bại: ${error.message}`; toast(error.message, 'err', true) }
+  finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
+})
+$('transferRetry').addEventListener('click', async () => {
+  const failed = [...state.transferFailed], config = state.transferConfig
+  $('transferRetry').hidden = true
+  try { await transferSelected(failed, config) } catch (error) { $('transferStatus').textContent = `Thử lại thất bại: ${error.message}`; $('transferRetry').hidden = !state.transferFailed.length }
+  finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 
 // ---------------------------------------------------------------- tabs
@@ -693,7 +863,7 @@ function renderActions(rebuild) {
   if (!info) { box.append(h('div', { class: 'empty', text: 'Kiểm tra nguồn để xem danh sách Action.' })); return }
   const withResult = !!state.result && !state.stale
   const q = state.actionFilter.trim().toLowerCase()
-  const shown = info.actions.filter((action) => !q || action.name.toLowerCase().includes(q) || String(action.index) === q)
+  const shown = info.actions.filter((action) => !q || `${action.name} ${action.nameVi ?? ''}`.toLowerCase().includes(q) || String(action.index) === q)
   const toolbar = h('div', { class: 'toolbar' },
     h('input', { type: 'search', placeholder: 'Lọc Action theo tên / số…', value: state.actionFilter, 'aria-label': 'Lọc Action', oninput: (event) => { state.actionFilter = event.target.value; renderActions(true); box.querySelector('input[type=search]').focus() } }),
     h('button', { type: 'button', text: 'Chọn hết', onclick: () => { info.actions.forEach((action) => state.checked.add(action.index)); markRunInputsChanged() } }),
@@ -723,7 +893,7 @@ function renderActions(rebuild) {
     const status = !(action.durationSeconds > 0) ? 'rỗng' : action.ready ? 'sẵn sàng' : `kênh không hỗ trợ (${action.issueCount})`
     body.append(h('tr', { class: `clickable ${state.selected === action.index ? 'sel' : ''}`, dataset: { index: String(action.index) }, tabindex: '0', onclick: () => selectAction(action.index),
       onkeydown: (event) => { if (event.key === 'Enter') selectAction(action.index) } },
-      h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
+      h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index) }), h('td', { text: action.displayName ?? action.name }), h('td', { class: 'num', text: fmt(action.durationSeconds) }),
       h('td', {}, rangeInputs), h('td', { text: status }),
       withResult ? [h('td', {}, per ? chip(per.status) : skipped ? h('span', { class: 'chip warn', title: skipped.message, text: skipped.code }) : '–'),
         h('td', { class: 'num', text: per ? `${fmt(per.hipsHeightRangeMeters[0])}–${fmt(per.hipsHeightRangeMeters[1])}` : '–' }),
@@ -756,7 +926,7 @@ function renderMc20() {
   if (preview) box.append(h('h3', { text: 'Preview .bobj' }), h('img', { class: 'img', src: preview.url, alt: 'Preview Minecraft20' }))
   box.append(h('p', { class: 'note info', text: 'Chưa kiểm: mở file .bobj trong BBS FS thật (cần thử trong game).' }),
     h('h3', { text: 'Action' }), h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Tên .bobj' }), h('th', { text: 'Tên GLB' }), h('th', { class: 'num', text: 'Tick' }), h('th', { class: 'num', text: 'Kênh' }))),
-      h('tbody', {}, mc.actions.slice(0, 500).map((action) => h('tr', {}, h('td', { text: action.name }), h('td', { text: action.glbName }), h('td', { class: 'num', text: String(action.ticks) }), h('td', { class: 'num', text: String(action.channels) }))))))
+      h('tbody', {}, mc.actions.slice(0, 500).map((action) => h('tr', {}, h('td', { text: action.name }), h('td', { text: state.inspect?.actions?.find((item) => item.name === action.glbName)?.displayName ?? action.glbName }), h('td', { class: 'num', text: String(action.ticks) }), h('td', { class: 'num', text: String(action.channels) }))))))
 }
 
 // ---- Tải về
@@ -775,11 +945,6 @@ function renderDownloads() {
     const url = URL.createObjectURL(blob)
     list.append(h('a', { href: url, download: `${stem}.mapping.json` }, h('span', { text: `Preset mapping · ${stem}.mapping.json (dùng với CLI --mapping)` }), h('span', { text: fmtBytes(blob.size) })))
   }
-  if (state.result && !state.stale && state.result.status === 'PASS') {
-    const host = h('div', { class: 'character-library' }, h('h3', { text: 'Đưa Action vào bộ của nhân vật' }), h('div', { class: 'empty', text: 'Đang đọc nhân vật thư viện…' }))
-    box.append(host)
-    void renderCharacterLibrary(host)
-  }
   if (!list.children.length) box.append(h('div', { class: 'empty', text: 'Chưa có file. Chạy chuẩn hoá hoặc xác nhận mapping để có file tải về.' }))
   else box.append(list, h('p', { class: 'note info', text: 'File nằm trong thư mục tạm của phiên Workbench; tải về để giữ lại. File nguồn của bạn không bị sửa.' }))
 }
@@ -790,7 +955,7 @@ function compatibleLibraryCharacter(character) {
   if (character.rig === 'verity' && (rig === 'mixamo65' || rig === 'mixamo65+verity')) {
     return { enabled: true, reason: '' }
   }
-  if (character.rig === 'minecraft20' && state.result?.files?.some((file) => file.kind === 'bobj')) {
+  if (character.rig === 'minecraft20' && (state.result?.files?.some((file) => file.kind === 'bobj') || state.requestBobj)) {
     return { enabled: true, reason: '' }
   }
   return { enabled: false, reason: `Không khớp rig ${rig}.` }

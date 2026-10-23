@@ -32,7 +32,7 @@ export interface SourceRecord { id: string; name: string; format: AssetFormat; p
 export interface TargetRecord { id: string; file: string; path: string; sha256: string; hipsHeightMeters: number; name?: string; library?: boolean; original?: string }
 
 export interface RunOptions {
-  actionRanges?: Record<number, [number, number]>; actions?: number[]; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
+  actionRanges?: Record<number, [number, number]>; actions?: number[]; actionNames?: Record<number, { name: string; nameVi?: string }>; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
 }
 
@@ -59,6 +59,15 @@ export function parseOptions(value: unknown): RunOptions {
     if (!Array.isArray(raw.actions) || raw.actions.some((index) => !Number.isInteger(index) || index < 0)) throw new UserError('options.actions must be "all" or a list of Action indices')
     actions = raw.actions as number[]
   }
+  let actionNames: RunOptions['actionNames']
+  if (raw.actionNames !== undefined) {
+    if (!raw.actionNames || typeof raw.actionNames !== 'object' || Array.isArray(raw.actionNames)) throw new UserError('options.actionNames must map Action indices to names')
+    actionNames = {}
+    for (const [key, value] of Object.entries(raw.actionNames as Record<string, any>)) {
+      if (!/^\d+$/.test(key) || !value || typeof value.name !== 'string' || !value.name.trim() || (value.nameVi !== undefined && typeof value.nameVi !== 'string')) throw new UserError('options.actionNames contains an invalid name')
+      actionNames[Number(key)] = { name: value.name.trim(), ...(typeof value.nameVi === 'string' && value.nameVi.trim() ? { nameVi: value.nameVi.trim() } : {}) }
+    }
+  }
   let actionRanges: Record<number, [number, number]> | undefined
   if (raw.actionRanges !== undefined) {
     if (!raw.actionRanges || typeof raw.actionRanges !== 'object' || Array.isArray(raw.actionRanges)) throw new UserError('options.actionRanges must be an object')
@@ -70,6 +79,7 @@ export function parseOptions(value: unknown): RunOptions {
   }
   return {
     actionRanges,
+    ...(actionNames ? { actionNames } : {}),
     ...(actions ? { actions } : {}),
     previewAction: number('previewAction', (n) => Number.isInteger(n) && n >= 0, 'a non-negative Action index'),
     unitMeters: number('unitMeters', (n) => n > 0, 'a positive number'),
@@ -195,6 +205,28 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
   let status: string = result.status
   let manifest: unknown
   if ('glb' in result) {
+    const names = options.actionNames ?? {}
+    if (Object.keys(names).length) {
+      const buffer = Buffer.from(result.glb), view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+      if (view.getUint32(0, true) !== 0x46546c67) throw new UserError('Cannot rename animations in an invalid GLB', 409)
+      const jsonLength = view.getUint32(12, true), document = JSON.parse(buffer.toString('utf8', 20, 20 + jsonLength))
+      for (const action of result.manifest.actions as any[]) {
+        const replacement = names[action.sourceActionIndex]
+        if (!replacement) continue
+        action.sourceName ??= action.name
+        action.name = replacement.name
+        if (replacement.nameVi) action.nameVi = replacement.nameVi
+        if (document.animations?.[action.glbAnimationIndex]) document.animations[action.glbAnimationIndex].name = action.name
+      }
+      const json = Buffer.from(JSON.stringify(document)), padded = Buffer.alloc((json.length + 3) & ~3, 0x20); json.copy(padded)
+      const binaryOffset = 20 + jsonLength, binaryLength = buffer.length > binaryOffset ? view.getUint32(binaryOffset, true) : 0
+      const binary = binaryLength ? buffer.subarray(binaryOffset + 8, binaryOffset + 8 + binaryLength) : Buffer.alloc(0)
+      const out = Buffer.alloc(12 + 8 + padded.length + (binaryLength ? 8 + binary.length : 0)); out.write('glTF', 0); out.writeUInt32LE(2, 4); out.writeUInt32LE(out.length, 8)
+      out.writeUInt32LE(padded.length, 12); out.writeUInt32LE(0x4e4f534a, 16); padded.copy(out, 20)
+      if (binaryLength) { const offset = 20 + padded.length; out.writeUInt32LE(binary.length, offset); out.writeUInt32LE(0x004e4942, offset + 4); binary.copy(out, offset + 8) }
+      result.glb = new Uint8Array(out)
+      ;(result.manifest as any).glbSha256 = sha256(result.glb)
+    }
     manifest = result.manifest
     write('.glb', 'glb', result.glb); write('.manifest.json', 'manifest', JSON.stringify(result.manifest, null, 2))
     if (result.preview) write('.preview.png', 'preview', result.preview)

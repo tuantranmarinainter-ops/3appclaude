@@ -92,7 +92,7 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
     boundCharacter: null, source: { file: input.source.name, sha256: null },
     actions: [{
       uuid: input.uuid, name: input.source.name, durationSeconds: input.durationSeconds ?? input.source.durationSeconds, fps: input.source.fps,
-      ...bilingual,
+      ...bilingual, ...(input.source.sourceName ? { sourceName: input.source.sourceName } : {}),
       category: input.source.category, tags: [...input.source.tags], loop: input.source.loop, inPlace: input.source.inPlace,
       parentUuid: input.parentUuid, cover: null,
       glbAnimationIndex: input.preserveAnimationIndex ? input.source.glbAnimationIndex : 0,
