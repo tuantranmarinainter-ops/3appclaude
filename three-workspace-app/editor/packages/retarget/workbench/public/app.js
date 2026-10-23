@@ -44,6 +44,7 @@ const state = {
   actionRanges: {}, checked: new Set(), actionFilter: '',
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
+  libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
 }
 
 // ---------------------------------------------------------------- feedback
@@ -471,6 +472,8 @@ async function finishRun(result, options) {
   const report = result.report
   const manifestActions = result.manifest?.actions ?? []
   manifestActions.forEach((entry, glbIndex) => state.actionMap.set(entry.sourceActionIndex, { glbIndex, duration: entry.durationSeconds, uuid: entry.uuid, quality: report.roundtrip?.perAction?.[glbIndex]?.quality, perAction: report.roundtrip?.perAction?.[glbIndex] }))
+  state.libraryDestinations = new Set()
+  state.libraryActions = new Map(manifestActions.map((entry) => [entry.uuid, 'idle']))
   fillActionSelect()
   renderAll()
   activateTab('overview')
@@ -773,20 +776,86 @@ function renderDownloads() {
     list.append(h('a', { href: url, download: `${stem}.mapping.json` }, h('span', { text: `Preset mapping · ${stem}.mapping.json (dùng với CLI --mapping)` }), h('span', { text: fmtBytes(blob.size) })))
   }
   if (state.result && !state.stale && state.result.status === 'PASS') {
-    const status = h('span', { class: 'note info', text: '' })
-    const send = h('button', { type: 'button', class: 'primary', text: 'Gửi sang App 2 (thư viện chung)' })
-    send.addEventListener('click', async () => {
-      send.disabled = true; status.textContent = 'Đang đưa vào thư viện…'
-      try {
-        const pack = await api(`/api/runs/${state.result.runId}/library`, { method: 'POST', json: {} })
-        status.textContent = `${pack.created ? 'Đã thêm' : 'Đã có sẵn'} gói ${pack.packId} (${pack.actions} Action, rig ${pack.rig}). Trong App 2 mở Thư viện để đặt lên nhân vật.`
-        toast('Đã gửi sang thư viện App 2', 'ok')
-      } catch (error) { status.textContent = `Không gửi được: ${error.message}`; send.disabled = false }
-    })
-    box.append(h('div', { class: 'send-app2' }, send, status))
+    const host = h('div', { class: 'character-library' }, h('h3', { text: 'Đưa Action vào bộ của nhân vật' }), h('div', { class: 'empty', text: 'Đang đọc nhân vật thư viện…' }))
+    box.append(host)
+    void renderCharacterLibrary(host)
   }
   if (!list.children.length) box.append(h('div', { class: 'empty', text: 'Chưa có file. Chạy chuẩn hoá hoặc xác nhận mapping để có file tải về.' }))
   else box.append(list, h('p', { class: 'note info', text: 'File nằm trong thư mục tạm của phiên Workbench; tải về để giữ lại. File nguồn của bạn không bị sửa.' }))
+}
+
+function compatibleLibraryCharacter(character) {
+  const rig = state.result?.manifest?.rig ?? 'mixamo65'
+  if (character.rig === rig) return { enabled: true, reason: '' }
+  if (character.rig === 'verity' && (rig === 'mixamo65' || rig === 'mixamo65+verity')) {
+    return { enabled: true, reason: '' }
+  }
+  if (character.rig === 'minecraft20' && state.result?.files?.some((file) => file.kind === 'bobj')) {
+    return { enabled: true, reason: '' }
+  }
+  return { enabled: false, reason: `Không khớp rig ${rig}.` }
+}
+
+async function renderCharacterLibrary(host) {
+  try {
+    if (!state.libraryCharacters) state.libraryCharacters = (await api('/api/library/characters')).characters
+    if (!host.isConnected || state.stale || !state.result) return
+    clear(host).append(h('h3', { text: 'Đưa Action vào bộ của nhân vật' }))
+    const characters = state.libraryCharacters
+    if (!characters.length) { host.append(h('div', { class: 'empty', text: 'Chưa có nhân vật trong App 5.' })); return }
+    const cards = h('div', { class: 'destination-grid' })
+    for (const character of characters) {
+      const compatible = compatibleLibraryCharacter(character)
+      const checked = state.libraryDestinations.has(character.charId)
+      const input = h('input', { type: 'checkbox', disabled: !compatible.enabled, 'aria-label': `Chọn ${character.name}`,
+        onchange: (event) => { event.target.checked ? state.libraryDestinations.add(character.charId) : state.libraryDestinations.delete(character.charId); renderCharacterLibrary(host) } })
+      input.checked = checked
+      cards.append(h('label', { class: `destination-card${checked ? ' selected' : ''}${compatible.enabled ? '' : ' disabled'}`, title: compatible.reason }, input,
+        h('span', {}, h('b', { text: character.name }), h('small', { text: `${character.rig} · ${character.counts.draft} nháp · ${character.counts.edited} đã chỉnh · ${character.counts.approved} đã duyệt` }),
+          !compatible.enabled ? h('small', { class: 'bad', text: compatible.reason }) : null)))
+    }
+    const actions = state.result.manifest?.actions ?? []
+    const commonKeys = (() => {
+      const chosen = characters.filter((character) => state.libraryDestinations.has(character.charId))
+      if (!chosen.length) return characters.flatMap((character) => character.requiredActions ?? []).filter((item, index, all) => all.findIndex((other) => other.key === item.key) === index)
+      return (chosen[0].requiredActions ?? []).filter((item) => chosen.every((character) => (character.requiredActions ?? []).some((required) => required.key === item.key)))
+    })()
+    const actionTools = h('div', { class: 'toolbar' },
+      h('button', { type: 'button', text: 'Chọn hết', onclick: () => { for (const action of actions) state.libraryActions.set(action.uuid, state.libraryActions.get(action.uuid) ?? commonKeys[0]?.key ?? 'idle'); renderCharacterLibrary(host) } }),
+      h('button', { type: 'button', text: 'Bỏ hết', onclick: () => { state.libraryActions.clear(); renderCharacterLibrary(host) } }),
+      h('span', { class: 'chip', text: `${state.libraryActions.size}/${actions.length} Action sẽ vào bộ nhân vật` }))
+    const rows = h('tbody')
+    for (const action of actions) {
+      const selected = state.libraryActions.has(action.uuid)
+      const check = h('input', { type: 'checkbox', 'aria-label': `Đưa Action ${action.name} vào bộ nhân vật`, onchange: (event) => {
+        event.target.checked ? state.libraryActions.set(action.uuid, commonKeys[0]?.key ?? 'idle') : state.libraryActions.delete(action.uuid); renderCharacterLibrary(host)
+      } }); check.checked = selected
+      const key = h('select', { disabled: !selected, 'aria-label': `Thẻ động tác ${action.name}`, onchange: (event) => state.libraryActions.set(action.uuid, event.target.value) },
+        commonKeys.map((required) => h('option', { value: required.key, text: `${required.label} (${required.key})` })))
+      if (selected && !commonKeys.some((required) => required.key === state.libraryActions.get(action.uuid))) state.libraryActions.set(action.uuid, commonKeys[0]?.key ?? 'idle')
+      key.value = state.libraryActions.get(action.uuid) ?? ''
+      const sourceIndex = action.sourceActionIndex
+      rows.append(h('tr', { class: 'clickable', onclick: (event) => { if (!event.target.closest('input,select')) selectAction(sourceIndex) } }, h('td', {}, check), h('td', { text: action.name }), h('td', {}, key), h('td', {}, h('button', { type: 'button', text: 'Xem nguồn + đích', onclick: () => selectAction(sourceIndex) }))))
+    }
+    const status = h('span', { class: 'note info', text: '' })
+    const chosenNames = characters.filter((character) => state.libraryDestinations.has(character.charId)).map((character) => character.name)
+    const send = h('button', { type: 'button', class: 'primary', disabled: !chosenNames.length || !state.libraryActions.size || !commonKeys.length,
+      text: chosenNames.length === 1 ? `Đưa vào thư viện của ${chosenNames[0]}` : `Đưa vào thư viện của ${chosenNames.length || '…'} nhân vật` })
+    send.addEventListener('click', async () => {
+      send.disabled = true; status.textContent = 'Đang tạo các bản Nháp…'
+      try {
+        const result = await api(`/api/runs/${state.result.runId}/character-library`, { method: 'POST', json: {
+          charIds: [...state.libraryDestinations], actions: [...state.libraryActions].map(([uuid, key]) => ({ uuid, key })),
+        } })
+        status.textContent = `Đã tạo ${result.drafts.length} bản Nháp trong ${chosenNames.length} bộ nhân vật.`
+        toast('Đã đưa Action vào bộ nhân vật', 'ok')
+        state.libraryCharacters = null
+      } catch (error) { status.textContent = `Không đưa được vào thư viện: ${error.message}`; send.disabled = false }
+    })
+    host.append(cards, h('h4', { text: 'Action và thẻ động tác' }), actionTools,
+      h('table', { class: 'library-actions' }, h('thead', {}, h('tr', {}, h('th'), h('th', { text: 'Action' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Xem thử' }))), rows),
+      h('div', { class: 'send-app2' }, send, status))
+  } catch (error) { clear(host).append(h('div', { class: 'note bad', text: `Không đọc được thư viện: ${error.message}` })) }
 }
 
 // ---------------------------------------------------------------- boot
