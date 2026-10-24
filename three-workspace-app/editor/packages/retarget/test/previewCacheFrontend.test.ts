@@ -50,7 +50,7 @@ function harness() {
     ${implementation('runPreview')}
     ${implementation('runNow')}
     ({ schedulePreview, previewPayload, cachedPreview, prefetchNextPreview, runPreview, runNow, previewResults, previewPending })`, context)
-  return { ...api, state, options, requests, finishes, timers, preloads, setFinish: (fn: any) => { context.finishRun = fn } }
+  return { ...api, viewer: context.viewer, state, options, requests, finishes, timers, preloads, setReason: (fn: any) => { context.canRunReason = fn }, setFinish: (fn: any) => { context.finishRun = fn } }
 }
 
 test('preview key covers source, target, mapping/family, range, action and every readOptions field', () => {
@@ -201,4 +201,23 @@ test('next-row prefetch warms animation clips only, excluding model and original
     h.requests[0].resolve(result); await flush()
     assert.deepEqual(h.preloads, expected)
   }
+})
+
+test('quiet preview holds render work only while loading, and always resumes after failure', async () => {
+  const h = harness()
+  const run = h.runNow([0], null, { quiet: true }); await flush()
+  assert.equal(h.viewer.suspended, true)
+  h.requests[0].reject(Error('offline')); await run
+  assert.equal(h.viewer.suspended, false)
+  assert.equal(h.state.running, false)
+})
+
+test('debounced review releases renderer when validation changes before the run starts', async () => {
+  const h = harness()
+  h.schedulePreview(70)
+  assert.equal(h.viewer.suspended, true)
+  h.setReason(() => 'Mapping chưa xác nhận')
+  await [...h.timers.values()][0].callback()
+  assert.equal(h.viewer.suspended, false)
+  assert.equal(h.requests.length, 0)
 })

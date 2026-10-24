@@ -135,7 +135,7 @@ function threeRoot(): string {
 }
 
 type RunState = { id: string; state: 'running' | 'done' | 'error' | 'CANCELLED'; controller: AbortController; stage: string; done: number; total: number; startedAt: number; elapsedMs: number; dir: string
-  result?: { runId: string; status: string; report: Record<string, any>; manifest: unknown; files: Array<RunFile & { url: string }> }; error?: string }
+  finished?: Promise<void>; result?: { runId: string; status: string; report: Record<string, any>; manifest: unknown; files: Array<RunFile & { url: string }> }; error?: string }
 type BatchEntry = { sourceId: string | null; name: string; path?: string; sha256?: string; bytes?: number; status: 'queued' | 'inspecting' | 'ready' | 'duplicate' | 'error'; duplicateOf?: string; inLibrary?: boolean; inspect?: Record<string, any>; error?: string }
 type BatchState = { id: string; state: 'running' | 'done' | 'cancelled'; stage: string; done: number; total: number; entries: BatchEntry[]; controller: AbortController }
 
@@ -419,7 +419,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       state.stage = stage; state.done = done; state.total = total; state.elapsedMs = Date.now() - state.startedAt
       await new Promise<void>((ok) => setImmediate(ok)) // let HTTP polls through between Actions
     }
-    void (async () => {
+    state.finished = (async () => {
       try {
         const result = await runPipeline(source, target, options, body.mappingPreset ?? null, family, dir, onProgress, state.controller.signal)
         state.result = { runId: id, status: result.status, report: result.report, manifest: result.manifest,
@@ -553,7 +553,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const state = startRun(source, target, body)
       if (body.wait === false) return json(res, 202, runView(state))
       // Synchronous mode: resolve when the run finishes (same JSON the polling endpoint serves under `result`).
-      while (state.state === 'running') await new Promise((ok) => setTimeout(ok, 20))
+      await state.finished
       if (state.state === 'CANCELLED') return json(res, 200, { runId: state.id, status: 'CANCELLED', files: [] })
       if (state.state === 'error') return fail(res, 500, `Run failed: ${state.error}`)
       return json(res, 200, { ...state.result!, elapsedMs: state.elapsedMs })
