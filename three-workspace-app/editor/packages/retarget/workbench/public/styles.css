@@ -148,6 +148,8 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .destination-card span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .destination-card small { color: var(--muted); }
 .destination-card small.bad { color: var(--fail); }
+.transfer-destinations { min-width: 100%; margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.transfer-destinations legend { padding: 0 4px; }
 .library-actions select { min-width: 180px; }
 
 .action-picker { position: fixed; left: 34%; top: 14%; width: min(680px, 62vw); height: min(620px, 72vh); min-width: 420px; min-height: 300px; z-index: 40; resize: both; overflow: hidden; grid-template-rows: auto auto minmax(80px, 1fr) auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: 0 16px 48px rgba(0,0,0,.38); }
