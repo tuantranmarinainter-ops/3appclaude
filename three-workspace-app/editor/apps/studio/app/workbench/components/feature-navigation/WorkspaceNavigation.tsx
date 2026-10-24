@@ -12,6 +12,13 @@ const missingHint: Record<Exclude<WorkspaceId, 'scene' | 'library'>, string> = {
   vfx: 'Chưa cấu hình NEXT_PUBLIC_VFX_URL',
 }
 
+/** Where a page wants the 5-workspace bar. Rendered only after the page hydrated, so the portal never adds DOM React did not expect. */
+export function WorkspaceNavigationSlot() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  return mounted ? <div id="studio-workspace-navigation" className="workspace-navigation-host" /> : null
+}
+
 export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
   const pathname = usePathname()
   const search = useSearchParams()
