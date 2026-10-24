@@ -109,6 +109,8 @@ export interface LibraryIndex {
   packs: Array<Pick<MotionPackMetadata, 'packId' | 'rig' | 'createdAt' | 'license' | 'boundCharacter'>>
   actions: IndexedAction[]
   characters: CharacterMetadata[]
+  /** Present only when old data had to be repaired (e.g. one Action uuid in two packs). */
+  warnings?: string[]
 }
 
 export interface CharacterMetadata {

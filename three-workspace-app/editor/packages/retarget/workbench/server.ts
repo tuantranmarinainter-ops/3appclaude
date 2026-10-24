@@ -606,12 +606,15 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}),
         ...(body.license && typeof body.license === 'object' && typeof body.license.id === 'string' && typeof body.license.commitable === 'boolean' ? { license: body.license } : {}) })
       for (const selection of selectedActions) {
-        if (!pack.metadata.actions.some((action) => action.uuid === selection.uuid)) throw new UserError(`Shared pack is missing Action ${selection.uuid}`, 409)
+        // An Action uuid lives in one pack only: ones the import skipped (reusedActionUuids) are already in the library under that uuid.
+        if (!pack.metadata.actions.some((action) => action.uuid === selection.uuid) && !pack.reusedActionUuids?.includes(selection.uuid)) throw new UserError(`Shared pack is missing Action ${selection.uuid}`, 409)
         const existing = getAction({ actionUuid: selection.uuid })
         setActionMetadata({ actionUuid: selection.uuid, ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}), tags: [...new Set([...existing.tags, selection.key.trim()])] })
       }
-      return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions, created: pack.created,
-        actionUuids: pack.metadata.actions.map((action) => action.uuid) })
+      const inPack = new Set([...pack.metadata.actions.map((action) => action.uuid), ...(pack.reusedActionUuids ?? [])])
+      return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions + (pack.reusedActionUuids?.length ?? 0), created: pack.created,
+        actionUuids: ((state.result.manifest as any)?.actions ?? []).map((action: any) => action.uuid).filter((uuid: string) => inPack.has(uuid)),
+        ...(pack.reusedActionUuids?.length ? { reusedActionUuids: pack.reusedActionUuids } : {}) })
     }
     if (method === 'POST' && (match = path.match(/^\/api\/runs\/(\w+)\/character-library$/))) {
       const state = runs.get(match[1]!)
@@ -695,6 +698,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (reuse) return { uuid: reuse.uuid, packId: reuse.packId }
         importedPack ??= importPack({ sourceDirectory: state.dir, createdBy: 'app1' })
         const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        if (importedPack.reusedActionUuids?.includes(action.uuid)) return { uuid: action.uuid, packId: getAction({ actionUuid: action.uuid }).packId }
         const imported = importedPack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
         return imported ? { uuid: imported.uuid, packId: importedPack.packId } : null
       }

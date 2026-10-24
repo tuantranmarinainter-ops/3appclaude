@@ -694,6 +694,43 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
   }
 })
 
+test('partial overlap (Run first, then Run+Walk) never puts one Action uuid in two shared packs, via /library and /character-library', async () => {
+  const priorLibrary = process.env.W01_LIBRARY, libraries: string[] = []
+  try {
+    const model = join(characters, readdirSync(characters).find((name) => name.endsWith('.glb'))!)
+    const target = (await call('/api/targets')).json.targets[0]
+    const source = await post('/api/sources', { path: join(bobjDir, 'minecraft-actions.bobj') })
+    const running = [...parseBobjActions(readFileSync(join(bobjDir, 'minecraft-actions.bobj'), 'utf8')).keys()].indexOf('running')
+    const runOf = async (actions: number[]) => { const run = await post('/api/runs', { sourceId: source.json.sourceId, targetId: target.id, options: { actions } }); assert.equal(run.status, 200, run.text); return run.json }
+    const listSharedUuids = (library: string) => readdirSync(join(library, 'packs')).filter((id) => !id.startsWith('.'))
+      .flatMap((id) => JSON.parse(readFileSync(join(library, 'packs', id, 'meta.json'), 'utf8')).actions.filter((action: any) => !action.ownerCharId).map((action: any) => action.uuid as string))
+    for (const route of ['library', 'character-library'] as const) {
+      const library = mkdtempSync(join(tmpdir(), `w01-overlap-${route}-`)); libraries.push(library); process.env.W01_LIBRARY = library
+      const character = registerLibraryCharacter({ name: `Đích ${route}`, rig: 'mixamo65', modelFile: model })
+      const send = (run: any, indexes: number[]) => post(`/api/runs/${run.runId}/${route}`, route === 'library'
+        ? { actions: indexes.map((index) => ({ uuid: run.manifest.actions[index].uuid, key: 'walk' })) }
+        : { charIds: [character.charId], actions: indexes.map((index) => ({ uuid: run.manifest.actions[index].uuid, key: 'walk' })) })
+      const first = await runOf([running]); assert.equal((await send(first, [0])).status, 200)
+      const second = await runOf([0, running]); const sent = await send(second, [0, 1])
+      assert.equal(sent.status, 200, sent.text)
+      const uuids = listSharedUuids(library)
+      assert.equal(uuids.length, new Set(uuids).size, `${route}: duplicated uuids ${uuids}`)
+      assert.deepEqual([...new Set(second.manifest.actions.map((action: any) => action.uuid))].sort(), [...uuids].sort(), `${route}: both run Actions exist once`)
+      if (route === 'library') assert.deepEqual([...sent.json.actionUuids].sort(), [...uuids].sort())
+      else {
+        assert.equal(sent.json.drafts.length, 2)
+        const drafts = listCharacterActions({ charId: character.charId, latestOnly: true }); assert.deepEqual([...new Set(drafts.map((action) => action.parentUuid))].sort(), [...uuids].sort()); assert.equal(new Set(drafts.map((action) => action.uuid)).size, drafts.length)
+      }
+      const index = JSON.parse(readFileSync(join(library, 'index.json'), 'utf8'))
+      assert.equal(index.warnings, undefined)
+    }
+  } finally {
+    if (priorLibrary === undefined) delete process.env.W01_LIBRARY
+    else process.env.W01_LIBRARY = priorLibrary
+    for (const library of libraries) rmSync(library, { recursive: true, force: true })
+  }
+})
+
 test('selected Action is rebuilt against each Verity destination base without leaking other new Actions', async () => {
   const library = mkdtempSync(join(tmpdir(), 'w01-verity-library-')), fixtures = mkdtempSync(join(tmpdir(), 'w01-verity-models-'))
   const priorLibrary = process.env.W01_LIBRARY
