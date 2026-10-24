@@ -131,6 +131,9 @@ test('serves the page, the app module and a bound loopback address only', async 
 
 test('source Action picker is pinned, persisted, and closes only through its X button', async () => {
   const html = (await call('/')).text, app = (await call('/app.js')).text, css = (await call('/styles.css')).text
+  assert.match(app, /text: 'Sửa mapping'/)
+  assert.match(app, /batchPresets/)
+  assert.match(app, /if \(!state\.preset && entry\.inspect\.mapping\?\.needsUserConfirmation\)/)
   assert.match(html, /id="actionPicker"[^>]*hidden/)
   assert.match(html, /id="actionPickerClose"/)
   assert.match(html, /id="actionPickerInvert"/)
@@ -145,9 +148,6 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(app, /selectedBatchGroups/)
   assert.match(app, /\/api\/batches/)
   assert.match(app, /state\.batch && character\.rig === 'minecraft20'/)
-  assert.match(app, /text: 'Sửa mapping'/)
-  assert.match(app, /batchPresets/)
-  assert.match(app, /if \(!state\.preset && entry\.inspect\.mapping\?\.needsUserConfirmation\)/)
   assert.match(app, /function syncBatchDestinationOptions\(\)[\s\S]*?elements\.bobj\.checked = true/)
   assert.match(app, /character\?\.rig === 'minecraft20' \|\| \$\('transferShared'\)\.checked/)
   assert.match(app, /durationSeconds > 0/)
