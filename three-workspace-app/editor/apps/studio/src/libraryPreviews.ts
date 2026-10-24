@@ -32,6 +32,7 @@ async function createPreview(uuid: string): Promise<void> {
     const useCharacter = Boolean(character?.model.toLowerCase().endsWith('.glb'))
     const charId = useCharacter ? character!.charId : builtinCharacter
     const mannequin = action.rig === 'minecraft20' && !useCharacter
+    const skin = mannequin && character?.rig === 'minecraft20' ? `/api/library/character/${encodeURIComponent(character.charId)}/skin` : ''
     const seconds = Math.min(2.5, Math.max(0.1, action.durationSeconds))
     type RenderPage = { setViewportSize(size: { width: number; height: number }): Promise<void>; goto(url: string, options: { waitUntil: 'load'; timeout: number }): Promise<unknown>; waitForFunction<T>(callback: () => T, argument?: unknown, options?: { timeout: number }): Promise<unknown>; evaluate<T>(callback: () => T): Promise<T> }
     type RendererInfo = { kind: 'gpu' | 'cpu'; name: string; raw: string }
@@ -41,7 +42,7 @@ async function createPreview(uuid: string): Promise<void> {
       job.renderer = renderer.kind === 'gpu' ? `GPU: ${renderer.name}` : `CPU: ${renderer.name}`
       if (renderer.kind !== 'gpu') throw new Error(`GPU rendering unavailable (${renderer.name}); showing the PNG cover instead. Set W01_RENDER_GPU=1 to request hardware rendering.`)
       await page.setViewportSize({ width: 320, height: 320 })
-      await page.goto(`${queueState.appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}) })}`, { waitUntil: 'load', timeout: 45_000 })
+      await page.goto(`${queueState.appOrigin}/library/preview-render?${new URLSearchParams({ actionUuid: uuid, charId, animationIndex: String(action.glbAnimationIndex), ...(mannequin ? { mannequin: '1' } : {}), ...(skin ? { skin } : {}) })}`, { waitUntil: 'load', timeout: 45_000 })
       await page.waitForFunction(() => Boolean((window as Window & { __libraryPreviewResult?: unknown }).__libraryPreviewResult), undefined, { timeout: 60_000 })
       return page.evaluate(() => (window as Window & { __libraryPreviewResult?: { data: string; mime: string; error?: string } }).__libraryPreviewResult!)
     }, { allowedOrigins: [queueState.appOrigin] })

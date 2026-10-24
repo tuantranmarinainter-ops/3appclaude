@@ -8,6 +8,54 @@ declare global { interface Window { __libraryPreviewResult?: { data: string; mim
 const PREVIEW_BACKGROUND = '#d9dde3'
 const PREVIEW_MANNEQUIN = '#5d6878'
 
+// Minecraft player-skin boxes on the Minecraft20 skeleton (same table as App 1 `skinnedCharacterGlb`):
+// [bone, skin part, min, max] in rest world pixels (1/16 block), feet at y=0, facing +Z.
+const PX = 1 / 16
+const SKIN_PARTS = {
+  head: { u: 0, v: 0, w: 8, d: 8, top: 32 }, body: { u: 16, v: 16, w: 8, d: 4, top: 24 },
+  rarm: { u: 40, v: 16, w: 4, d: 4, top: 24 }, larm: { u: 32, v: 48, w: 4, d: 4, top: 24 },
+  rleg: { u: 0, v: 16, w: 4, d: 4, top: 12 }, lleg: { u: 16, v: 48, w: 4, d: 4, top: 12 },
+} as const
+const SKIN_BOXES: ReadonlyArray<readonly [string, keyof typeof SKIN_PARTS, [number, number, number], [number, number, number]]> = [
+  ['head', 'head', [-4, 24, -4], [4, 32, 4]], ['low_body', 'body', [-4, 18, -2], [4, 24, 2]], ['body', 'body', [-4, 12, -2], [4, 18, 2]],
+  ['left_arm', 'larm', [4, 18, -2], [8, 24, 2]], ['low_left_arm', 'larm', [4, 12, -2], [8, 18, 2]],
+  ['right_arm', 'rarm', [-8, 18, -2], [-4, 24, 2]], ['low_right_arm', 'rarm', [-8, 12, -2], [-4, 18, 2]],
+  ['left_leg', 'lleg', [0, 6, -2], [4, 12, 2]], ['low_left_leg', 'lleg', [0, 0, -2], [4, 6, 2]],
+  ['right_leg', 'rleg', [-4, 6, -2], [0, 12, 2]], ['low_leg_right', 'rleg', [-4, 0, -2], [0, 6, 2]],
+]
+
+/** One textured box per Minecraft20 bone, parented rigidly to that bone at its rest pose. Returns false if the skeleton is not Minecraft20. */
+function addMinecraftBoxes(THREE: typeof import('three'), model: import('three').Object3D, canonical: (name: string) => string, material: import('three').Material): boolean {
+  const bones = new Map<string, import('three').Object3D>()
+  model.traverse(object => { if ((object as import('three').Bone).isBone) bones.set(canonical(object.name), object) })
+  if (!SKIN_BOXES.every(([bone]) => bones.has(canonical(bone)))) return false
+  model.updateMatrixWorld(true)
+  for (const [boneName, part, [x0, y0, z0], [x1, y1, z1]] of SKIN_BOXES) {
+    const bone = bones.get(canonical(boneName))!, p = SKIN_PARTS[part], row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
+    const faces: Array<[number[][], number[]]> = [
+      [[[x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]], [p.u + p.d, row0, p.u + p.d + p.w, row1]],
+      [[[x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]], [p.u + 2 * p.d + p.w, row0, p.u + 2 * p.d + 2 * p.w, row1]],
+      [[[x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]], [p.u, row0, p.u + p.d, row1]],
+      [[[x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]], [p.u + p.d + p.w, row0, p.u + 2 * p.d + p.w, row1]],
+      [[[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [p.u + p.d, p.v, p.u + p.d + p.w, p.v + p.d]],
+      [[[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], [p.u + p.d + p.w, p.v, p.u + p.d + 2 * p.w, p.v + p.d]],
+    ]
+    const position: number[] = [], uv: number[] = [], index: number[] = []
+    for (const [corners, [u0, v0, u1, v1]] of faces) {
+      const base = position.length / 3, coords = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+      corners.forEach((corner, i) => { position.push(...corner.map(value => value * PX)); uv.push(coords[i]![0]! / 64, 1 - coords[i]![1]! / 64) })
+      index.push(base, base + 3, base + 2, base, base + 2, base + 1)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+    geometry.setIndex(index); geometry.computeVertexNormals()
+    // Boxes are in the model's rest space; bring them into this bone's rest frame so they follow it rigidly.
+    geometry.applyMatrix4(bone.matrixWorld.clone().invert().multiply(model.matrixWorld))
+    const mesh = new THREE.Mesh(geometry, material); mesh.castShadow = true; bone.add(mesh)
+  }
+  return true
+}
+
 export default function PreviewRenderClient() {
   useEffect(() => {
     let disposed = false
@@ -59,9 +107,22 @@ export default function PreviewRenderClient() {
         if (!clip) throw new Error('Action animation clip is missing from its GLB')
         const modelScene = mannequin ? action.scene : character!.scene
         const isBone = (object: import('three').Object3D | null): object is import('three').Bone => Boolean((object as import('three').Bone | null)?.isBone)
+        const canonical = (name: string) => name.split(':').at(-1)!.replace(/^mixamorig\d*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+        let blocky = false
         if (mannequin) {
+          const meshes: import('three').Object3D[] = []
+          modelScene.traverse(object => { if ((object as import('three').Mesh).isMesh) meshes.push(object) })
+          for (const mesh of meshes) mesh.parent?.remove(mesh)
+          // Minecraft20 skeletons are pivots, not joint chains: dress them as block characters (the character's skin when known).
+          const skinUrl = query.get('skin')
+          const skin = skinUrl ? await new THREE.TextureLoader().loadAsync(skinUrl).catch(() => null) : null
+          if (skin) { skin.magFilter = THREE.NearestFilter; skin.minFilter = THREE.NearestFilter; skin.colorSpace = THREE.SRGBColorSpace }
+          const blockMaterial = skin ? new THREE.MeshStandardMaterial({ map: skin, roughness: 0.9, alphaTest: 0.5 }) : new THREE.MeshStandardMaterial({ color: PREVIEW_MANNEQUIN, roughness: 0.85 })
+          blocky = addMinecraftBoxes(THREE, modelScene, canonical, blockMaterial)
+        }
+        if (mannequin && !blocky) {
           const bones: import('three').Bone[] = []
-          modelScene.traverse(object => { if (isBone(object)) bones.push(object); if ((object as import('three').Mesh).isMesh) object.parent?.remove(object) })
+          modelScene.traverse(object => { if (isBone(object)) bones.push(object) })
           modelScene.updateMatrixWorld(true)
           const restBounds = new THREE.Box3(); for (const bone of bones) restBounds.expandByPoint(bone.getWorldPosition(new THREE.Vector3()))
           const thickness = Math.max(0.02, restBounds.getSize(new THREE.Vector3()).y * 0.05)
@@ -80,7 +141,6 @@ export default function PreviewRenderClient() {
         }
         modelScene.traverse(object => { if ((object as import('three').Mesh).isMesh) { object.castShadow = true; object.frustumCulled = false } })
         scene.add(modelScene)
-        const canonical = (name: string) => name.split(':').at(-1)!.replace(/^mixamorig\d*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
         const targets = new Map<string, import('three').Object3D>()
         modelScene.traverse(object => { if (object.name) targets.set(canonical(object.name), object) })
         // Library GLBs and character GLBs may wrap the skeleton in differently oriented/scaled armature nodes (Blender exports a
