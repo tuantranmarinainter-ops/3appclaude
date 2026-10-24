@@ -1709,11 +1709,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     try {
       const action = getAction({ actionUuid })
       const libraryCharacter = typeof node.metadata?.libraryCharacterId === 'string' ? resolveCharacter(node.metadata.libraryCharacterId) : null
-      const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.character.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
-      const libraryTopology = !!libraryCharacter && libraryCharacter.character.rig === 'minecraft20' && action.rig === 'minecraft20'
+      const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.baseModel.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
+      const libraryTopology = !!libraryCharacter && (libraryCharacter.baseModel?.rig ?? libraryCharacter.character.rig) === 'minecraft20' && action.rig === 'minecraft20'
       const rigMatches = !!nativeCharacter || libraryTopology || action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
       if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
-      const bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), libraryCharacter?.character.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
+      const bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), libraryCharacter?.baseModel?.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
       const sourceHash = createHash('sha256').update(bytes).digest('hex')
       const existing = project.motions[action.uuid]
       if (existing) {

@@ -106,10 +106,10 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
   if (!character) throw new Error('Library character was not found')
   const resolved = resolveCharacter(character.charId)
   if (!resolved.baseModel) throw new Error('Library character has no base model')
-  if (character.defaultAction && resolved.baseModel.format === 'bobj' && ['verity', 'minecraft20'].includes(character.rig)) {
+  if (character.defaultAction && resolved.baseModel.format === 'bobj' && ['verity', 'minecraft20'].includes(resolved.baseModel.rig)) {
     const action = getAction({ actionUuid: character.defaultAction })
     if (action.ownerCharId !== character.charId) throw new Error('Default native Action must belong to the selected character')
-    await libraryNativeAction(character.charId, path.join(path.dirname(action.glbPath), character.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj'))
+    await libraryNativeAction(character.charId, path.join(path.dirname(action.glbPath), resolved.baseModel.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj'))
   }
   const bytes = await libraryBaseGlb(character.charId)
   const preview = await libraryCharacterModel(character.charId)

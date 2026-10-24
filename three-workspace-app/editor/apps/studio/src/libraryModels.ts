@@ -69,7 +69,7 @@ export async function libraryNativeAction(charId: string, sidecar: string) {
   const original = await readFile(resolved.modelPath)
   if (createHash('sha256').update(original).digest('hex') !== resolved.baseModel.sha256) throw new Error('Library model checksum mismatch')
   const extended = await readFile(sidecar)
-  if (resolved.character.rig === 'minecraft20') {
+  if (resolved.baseModel.rig === 'minecraft20') {
     if (/^(arm_bone|arm_name|o|v|vw|f)\s/m.test(extended.toString('utf8'))) throw new Error('Minecraft Action sidecar must contain only animation data')
     const model = parseBobjModel(original.toString('utf8') + '\n' + extended.toString('utf8'))
     const { parseBobjActions } = await import('../../../packages/retarget/src/index')

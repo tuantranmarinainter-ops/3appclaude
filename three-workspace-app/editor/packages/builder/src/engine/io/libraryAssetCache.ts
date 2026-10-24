@@ -88,6 +88,8 @@ export function libraryAssetCacheKey(urlOrKey: string): string | null {
 }
 
 export function instanceCacheKey(url: string): string {
+  // Studio library characters differ only by the query (?modelCharacter=<id>&fingerprint=); stripping it would share one model between them.
+  if (url.startsWith('/api/library?modelCharacter=')) return url
   return url.split('?')[0] ?? url
 }
 
