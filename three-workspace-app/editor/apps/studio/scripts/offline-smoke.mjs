@@ -42,6 +42,7 @@ async function main() {
   }
   const external = []
   const failed = []
+  const pageErrors = []
   let draftId = null
   let context = null
   const browser = await chromium.launch()
@@ -55,6 +56,7 @@ async function main() {
       return route.abort('internetdisconnected')
     })
     const page = await context.newPage()
+    page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('response', (res) => {
       if (res.status() >= 400) failed.push(`${res.status()} ${res.url()}`)
     })
@@ -80,6 +82,7 @@ async function main() {
       if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT })
       if (external.length) fail(`external requests: ${external.join(', ')}`)
       if (failed.length) fail(`failed responses: ${failed.join(', ')}`)
+      if (pageErrors.length) fail(`page errors: ${pageErrors.join(', ')}`)
       console.log(`offline smoke ok: unified project ${unifiedId}, pose search ${search.total} hits, one 5-item navigation bar, 0 external requests`)
       return
     }
@@ -129,6 +132,7 @@ async function main() {
 
     if (external.length) fail(`external requests: ${external.join(', ')}`)
     if (failed.length) fail(`failed responses: ${failed.join(', ')}`)
+    if (pageErrors.length) fail(`page errors: ${pageErrors.join(', ')}`)
     console.log(`offline smoke ok: draft ${draftId}, ${characters.length} characters, pose search ${search.total} hits, 0 external requests, poses ${poses.join(',')}`)
   } finally {
     if (draftId && context) {

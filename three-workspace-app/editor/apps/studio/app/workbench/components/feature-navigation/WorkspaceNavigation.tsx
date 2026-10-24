@@ -31,26 +31,11 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
   const unified = search.get('unified')
 
   useEffect(() => {
-    const ownedHost = document.createElement('div')
-    ownedHost.className = 'workspace-navigation-host'
-    const place = () => {
-      const overlayHost = document.getElementById('studio-workspace-navigation')
-      const header = document.querySelector('.wb-hero, .studio-shell-content > main > h1')
-      if (overlayHost) {
-        ownedHost.remove()
-        setHost(overlayHost)
-      } else if (header) {
-        if (header.nextElementSibling !== ownedHost) header.after(ownedHost)
-        setHost(ownedHost)
-      } else {
-        ownedHost.remove()
-        setHost(null)
-      }
-    }
+    const place = () => setHost(document.getElementById('studio-workspace-navigation'))
     place()
     const observer = new MutationObserver(place)
     observer.observe(document.body, { childList: true, subtree: true })
-    return () => { observer.disconnect(); ownedHost.remove() }
+    return () => observer.disconnect()
   }, [pathname])
   useEffect(() => {
     const update = () => {
