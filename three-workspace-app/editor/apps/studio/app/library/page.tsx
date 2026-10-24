@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { loadUnifiedProject } from '../../src/unifiedApi'
 import { ActionPreview } from './ActionPreview'
 import { AutoPreviewVideo } from './AutoPreviewVideo'
+import { WorkspaceNavigationSlot } from '../workbench/components/feature-navigation/WorkspaceNavigation'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 import { formatBilingual } from '../../../../packages/library/actionNames'
 
@@ -111,6 +112,7 @@ export default function LibraryPage() {
 
   return <main style={{ padding: 24, color: '#eee', background: '#111318', minHeight: '100vh', fontFamily: 'system-ui' }}>
     <h1>App 5 · Thư viện</h1>
+    <WorkspaceNavigationSlot />
     <nav style={{ display: 'flex', gap: 8, marginBottom: 18 }}><button onClick={() => setTab('actions')}>Động tác</button><button onClick={() => setTab('characters')}>Nhân vật</button><button onClick={() => setTab('coverage')}>Bảng động tác</button></nav>
     {tab === 'actions' && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>

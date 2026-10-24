@@ -10,6 +10,7 @@ import { DEFAULT_FPS, DEFAULT_FRAMES, DRAFT_QUERY_KEY, PROJECT_QUERY_KEY, UNIFIE
 import { useStudioT } from '../../src/locale'
 import { useWorkbenchDrafts } from './hooks/useWorkbenchDrafts'
 import { LanguageMenu } from './components/LanguageMenu'
+import { WorkspaceNavigationSlot } from './components/feature-navigation/WorkspaceNavigation'
 import { useStudioLocale } from '../../src/devtools/localePreference'
 import { buildWorkbenchHref, isValidDraftId, readDraftQuery } from './utils'
 import './styles.css'
@@ -89,8 +90,9 @@ export function WorkbenchClient() {
           <h1 className="wb-title">{vi ? 'Dự án của bạn' : 'Your projects'}</h1>
           <p className="wb-sub">{vi ? 'Mở dự án gần đây hoặc tạo dự án mới để bắt đầu.' : 'Open a recent project or create one to get started.'}</p>
         </header>
+        <WorkspaceNavigationSlot />
 
-        {error && <div className="wb-error">{error}</div>}
+        {error &&<div className="wb-error">{error}</div>}
 
         <section className="wb-section wb-recent-projects">
           <div className="wb-section-head"><h2>{vi ? 'Dự án gần đây' : 'Recent projects'}</h2><span className="wb-count">{unifiedProjects.length}</span></div>
