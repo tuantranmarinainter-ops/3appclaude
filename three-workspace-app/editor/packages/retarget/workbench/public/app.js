@@ -693,7 +693,7 @@ $('drop').addEventListener('keydown', (event) => { if (event.key === 'Enter' || 
 async function queueDrop(dataTransfer) {
   const files = []
   const readEntry = (entry) => new Promise((resolveEntry, rejectEntry) => {
-    if (entry.isFile) entry.file((file) => { file.batchPath = String(entry.fullPath ?? file.name).replace(/^\/+/, ''); resolveEntry(file) }, rejectEntry)
+    if (entry.isFile) entry.file((file) => { file.batchPath = String(entry.fullPath ?? file.name).replace(/^\/+/, ''); files.push(file); resolveEntry() }, rejectEntry)
     else if (entry.isDirectory) {
       const reader = entry.createReader(), found = []
       const next = () => reader.readEntries(async (items) => {
@@ -703,11 +703,13 @@ async function queueDrop(dataTransfer) {
       next()
     } else resolveEntry()
   })
-  const items = [...(dataTransfer?.items ?? [])]
-  if (items.some((item) => item.webkitGetAsEntry?.())) {
-    try { for (const item of items) { const entry = item.webkitGetAsEntry?.(); if (entry) await readEntry(entry); else if (item.kind === 'file') files.push(item.getAsFile()) } }
+  // Drag data becomes protected after the drop callback; capture handles before the first await.
+  const fallback = [...(dataTransfer?.files ?? [])]
+  const items = [...(dataTransfer?.items ?? [])].filter((item) => item.kind === 'file').map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }))
+  if (items.some((item) => item.entry)) {
+    try { for (const item of items) { if (item.entry) await readEntry(item.entry); else if (item.file) files.push(item.file) } }
     catch (error) { toast(`Không đọc được thư mục thả vào: ${error.message}`, 'err'); return }
-  } else files.push(...(dataTransfer?.files ?? []))
+  } else files.push(...fallback)
   const batchFiles = files.filter((file) => /\.(glb|gltf|fbx|bobj|bin|png|jpe?g|webp|ktx2)$/i.test(file.name))
   if (batchFiles.some((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name))) await queueBatch({ files: batchFiles })
 }
