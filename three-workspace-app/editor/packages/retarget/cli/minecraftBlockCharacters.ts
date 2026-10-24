@@ -206,7 +206,7 @@ const SKIN_BOXES: ReadonlyArray<readonly [string, keyof typeof SKIN_PARTS, [numb
 ]
 
 /** One quad per box face (corners TL TR BR BL seen from outside, px units; uv rect in skin px; front +Z, character left +X). */
-function* skinFaces(): Generator<{ bone: string; normal: number[]; corners: number[][]; uv: number[] }> {
+function* skinFaces(): Generator<{ bone: string; normal: number[]; corners: number[][]; uv: number[] }, void, undefined> {
   for (const [bone, part, [x0, y0, z0], [x1, y1, z1]] of SKIN_BOXES) {
     const p = SKIN_PARTS[part], row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
     yield* [

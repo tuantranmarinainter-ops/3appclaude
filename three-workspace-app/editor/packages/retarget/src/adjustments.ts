@@ -1,4 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
+import { HAND_REFERENCE_POSES } from './handReferencePoses'
 import type { RetargetRig } from './universal'
 import type { UniversalBakeFrame } from './universalBake'
 
@@ -32,20 +33,25 @@ export interface AdjustmentSettings {
   speed: number
   /** Extra rotation in degrees per Mixamo65 joint short name (e.g. leftarm), local XYZ axes, applied last. */
   jointOffsets: Record<string, readonly [number, number, number]>
+  /** Per-joint axes: local (default), world, or another joint's short name. */
+  jointAxes: Record<string, string>
+  handPose: 'original' | 'open' | 'natural' | 'fist'
+  handStrength: number
+  handSide: Side
 }
-type NumericKey = 'intensity' | 'stride' | 'vertical' | 'shoulderWidth' | 'upperArm' | 'forearm' | 'legLength' | 'armSpace' | 'legSpace' | 'trimStart' | 'trimEnd' | 'speed'
+type NumericKey = 'intensity' | 'stride' | 'vertical' | 'shoulderWidth' | 'upperArm' | 'forearm' | 'legLength' | 'armSpace' | 'legSpace' | 'trimStart' | 'trimEnd' | 'speed' | 'handStrength'
 export const DEFAULT_ADJUSTMENTS: Readonly<AdjustmentSettings> = { intensity: 1, stride: 1, vertical: 1, shoulderWidth: 1, upperArm: 1, forearm: 1, legLength: 1, armSpace: 0, legSpace: 0,
-  proportionSide: 'both', strideSide: 'both', mirror: false, trimStart: 0, trimEnd: 0, speed: 1, jointOffsets: {} }
+  proportionSide: 'both', strideSide: 'both', mirror: false, trimStart: 0, trimEnd: 0, speed: 1, jointOffsets: {}, jointAxes: {}, handPose: 'original', handStrength: 1, handSide: 'both' }
 export const ADJUSTMENT_LIMITS: Readonly<Record<NumericKey, readonly [number, number]>> = {
   intensity: [0, 2], stride: [0, 2], vertical: [0, 2], shoulderWidth: [0.7, 1.4], upperArm: [0.7, 1.4], forearm: [0.7, 1.4], legLength: [0.8, 1.25], armSpace: [-0.5, 1], legSpace: [-0.5, 1],
-  trimStart: [0, 0.9], trimEnd: [0, 0.9], speed: [0.25, 4],
+  trimStart: [0, 0.9], trimEnd: [0, 0.9], speed: [0.25, 4], handStrength: [0, 1],
 }
 const SPACE_GAIN = 0.55
 
 const short = (name?: string) => (name ?? '').replace(/^.*[:|]/, '').replace(/[^A-Za-z0-9]/g, '').toLowerCase().replace(/^mixamorig/, '')
 
 export function resolveAdjustments(value?: Partial<AdjustmentSettings> | null): AdjustmentSettings {
-  const result: AdjustmentSettings = { ...DEFAULT_ADJUSTMENTS, jointOffsets: {} }
+  const result: AdjustmentSettings = { ...DEFAULT_ADJUSTMENTS, jointOffsets: {}, jointAxes: {} }
   for (const key of Object.keys(ADJUSTMENT_LIMITS) as NumericKey[]) {
     const item = value?.[key]
     if (item === undefined || item === null) continue
@@ -54,7 +60,7 @@ export function resolveAdjustments(value?: Partial<AdjustmentSettings> | null): 
     result[key] = item
   }
   if (result.trimStart + result.trimEnd > 0.95) throw new RangeError('adjustments.trimStart + trimEnd must leave at least 5% of the clip')
-  for (const key of ['proportionSide', 'strideSide'] as const) {
+  for (const key of ['proportionSide', 'strideSide', 'handSide'] as const) {
     const item = value?.[key]
     if (item === undefined || item === null) continue
     if (item !== 'both' && item !== 'left' && item !== 'right') throw new RangeError(`adjustments.${key} must be both, left or right`)
@@ -62,6 +68,18 @@ export function resolveAdjustments(value?: Partial<AdjustmentSettings> | null): 
   }
   if (value?.mirror !== undefined && typeof value.mirror !== 'boolean') throw new RangeError('adjustments.mirror must be a boolean')
   result.mirror = value?.mirror === true
+  if (value?.handPose !== undefined) {
+    if (!['original', 'open', 'natural', 'fist'].includes(value.handPose)) throw new RangeError('adjustments.handPose is invalid')
+    result.handPose = value.handPose
+  }
+  for (const field of ['jointAxes', 'jointOffsets'] as const) {
+    const item = value?.[field]
+    if (item !== undefined && (!item || typeof item !== 'object' || Array.isArray(item))) throw new RangeError(`adjustments.${field} must be an object`)
+  }
+  for (const [joint, axes] of Object.entries(value?.jointAxes ?? {})) {
+    if (typeof axes !== 'string' || !/^[A-Za-z][A-Za-z0-9_:|]*$/.test(axes)) throw new RangeError(`adjustments.jointAxes.${joint} is invalid`)
+    result.jointAxes[short(joint)] = short(axes)
+  }
   for (const [joint, angles] of Object.entries(value?.jointOffsets ?? {})) {
     if (!Array.isArray(angles) || angles.length !== 3 || angles.some((n) => typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) > 360)) throw new RangeError(`adjustments.jointOffsets.${joint} must be [x, y, z] degrees`)
     if (angles.some((n) => n !== 0)) result.jointOffsets[short(joint)] = [angles[0]!, angles[1]!, angles[2]!]
@@ -69,7 +87,7 @@ export function resolveAdjustments(value?: Partial<AdjustmentSettings> | null): 
   return result
 }
 export const isDefaultAdjustments = (settings: AdjustmentSettings) => (Object.keys(ADJUSTMENT_LIMITS) as NumericKey[]).every((key) => settings[key] === DEFAULT_ADJUSTMENTS[key])
-  && settings.proportionSide === 'both' && settings.strideSide === 'both' && !settings.mirror && !Object.keys(settings.jointOffsets).length
+  && (settings.handPose === 'original' || settings.handStrength === 0) && settings.proportionSide === 'both' && settings.strideSide === 'both' && !settings.mirror && !Object.keys(settings.jointOffsets).length
 
 export interface AdjustmentReport { applied: boolean; settings: AdjustmentSettings; framesBefore: number; framesAfter: number }
 
@@ -91,6 +109,9 @@ export function adjustFrames(rig: RetargetRig, frames: UniversalBakeFrame[], set
   const byName = new Map(names.map((name, i) => [name, i]))
   const restLocalQ = rig.bones.map((_, i) => new Quaternion().setFromRotationMatrix(parentIndex[i]! >= 0 ? restWorld[parentIndex[i]!]!.clone().invert().multiply(restWorld[i]!) : restWorld[i]!))
   const restWorldQ = restWorld.map((m) => new Quaternion().setFromRotationMatrix(m))
+  for (const [name, axes] of Object.entries(settings.jointAxes)) {
+    if (!byName.has(name) || !['local', 'world'].includes(axes) && !byName.has(axes)) throw new RangeError(`Unknown joint axes: ${name} / ${axes}`)
+  }
   const hipsIndex = byName.get('hips')
   const restHips = hipsIndex === undefined ? null : restWorld[hipsIndex]!
   const enabled = (name: string, side: Side) => { const of = sideOf(name); return !of || side === 'both' || side === of }
@@ -110,7 +131,7 @@ export function adjustFrames(rig: RetargetRig, frames: UniversalBakeFrame[], set
   }
   if (settings.speed !== 1) { const t0 = frames[0]!.timeSeconds; for (const frame of frames) frame.timeSeconds = (frame.timeSeconds - t0) / settings.speed + t0 }
   const needsPose = settings.mirror || settings.intensity !== 1 || settings.stride !== 1 || settings.vertical !== 1 || settings.armSpace !== 0 || settings.legSpace !== 0
-    || Object.keys(settings.jointOffsets).length > 0 || positionScale.some((value) => value !== 1)
+    || settings.handPose !== 'original' && settings.handStrength > 0 || Object.keys(settings.jointOffsets).length > 0 || positionScale.some((value) => value !== 1)
 
   for (const frame of needsPose ? frames : []) {
     const pose = new Map(frame.bones.map((bone) => [bone.targetBoneId, bone]))
@@ -167,8 +188,22 @@ export function adjustFrames(rig: RetargetRig, frames: UniversalBakeFrame[], set
         const pushed = direction.clone().addScaledVector(axis, (name.startsWith('left') ? 1 : -1) * space * SPACE_GAIN).normalize()
         rotation.copy(parentQ.invert().multiply(new Quaternion().setFromUnitVectors(direction, pushed).multiply(worldQ))).normalize()
       }
+      if (settings.handPose !== 'original' && settings.handStrength > 0 && enabled(name, settings.handSide) && /^(left|right)hand(thumb|index|middle|ring|pinky)[1-4]$/.test(name)) {
+        const delta = HAND_REFERENCE_POSES[settings.handPose]?.[name]
+        const desired = restLocalQ[i]!.clone().multiply(delta ? new Quaternion().fromArray(delta) : new Quaternion())
+        rotation.slerp(desired, settings.handStrength)
+      }
       const offset = settings.jointOffsets[name]
-      if (offset) rotation.multiply(new Quaternion().setFromEuler(new Euler(offset[0] * Math.PI / 180, offset[1] * Math.PI / 180, offset[2] * Math.PI / 180, 'XYZ')))
+      if (offset) {
+        const delta = new Quaternion().setFromEuler(new Euler(offset[0] * Math.PI / 180, offset[1] * Math.PI / 180, offset[2] * Math.PI / 180, 'XYZ'))
+        const axes = settings.jointAxes[name] ?? 'local'
+        if (axes === 'local') rotation.multiply(delta)
+        else {
+          const basis = axes === 'world' ? new Quaternion() : new Quaternion().setFromRotationMatrix(new Matrix4().fromArray(original[byName.get(axes)!]!.world))
+          const parentQ = new Quaternion().setFromRotationMatrix(parentWorld)
+          rotation.premultiply(parentQ.clone().invert().multiply(basis).multiply(delta).multiply(basis.clone().invert()).multiply(parentQ))
+        }
+      }
       rotations.push(rotation); positions.push(position)
       worlds[i] = parentWorld.clone().multiply(new Matrix4().compose(position, rotation, new Vector3().fromArray(bone.scale)))
     }

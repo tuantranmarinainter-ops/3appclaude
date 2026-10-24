@@ -108,7 +108,7 @@ function veritySceneExtras(root: Object3D, unitMeters: number) {
       })
       return { version: '1.1.0', rig: 'mixamo65+verity', extraBoneMode: 'scene-nodes', extraBones }
     },
-    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number, targetHeadRest: Matrix4, sourceAlignment: Quaternion): SceneExtraAnimation {
+    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number, targetHeadRest: Matrix4, sourceAlignment: Quaternion, speed = 1): SceneExtraAnimation {
       const clip = clips[sourceActionIndex]!
       const saved = nodes.map((node) => ({ node, position: node.position.clone(), quaternion: node.quaternion.clone(), scale: node.scale.clone() }))
       const start = range?.[0] ?? 0, mixer = new AnimationMixer(root), action = mixer.clipAction(clip).setLoop(LoopOnce, 1).play()
@@ -116,7 +116,7 @@ function veritySceneExtras(root: Object3D, unitMeters: number) {
       const frameCount = Math.round(duration * CONTRACT_FPS), times: number[] = [], translations: number[] = [], rotations: number[] = []
       for (let frame = 0; frame <= frameCount; frame++) {
         const time = Math.min(duration, frame / CONTRACT_FPS)
-        mixer.setTime(start + time); root.updateMatrixWorld(true)
+        mixer.setTime(Math.min(range?.[1] ?? clip.duration, start + time * speed)); root.updateMatrixWorld(true)
         const sourceLocal = relative(jawDefinition)
         const sourcePosition = new Vector3(), sourceRotation = new Quaternion(), sourceScale = new Vector3()
         const restPosition = new Vector3(), restRotation = new Quaternion()
@@ -143,7 +143,7 @@ function existingVeritySceneExtras(root: Object3D, manifest: NormalizeRequest['s
   if (!jaw || jaw.parent?.name !== 'Head') throw new TypeError('Verity scene-node Jaw must be a direct child of Head')
   const nodes: Object3D[] = []; root.traverse((node) => nodes.push(node))
   return {
-    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number): SceneExtraAnimation {
+    sample(sourceActionIndex: number, range: readonly [number, number] | undefined, duration: number, animationIndex: number, speed = 1): SceneExtraAnimation {
       const clip = clips[sourceActionIndex]
       if (!clip) throw new RangeError(`Source Action ${sourceActionIndex} does not exist`)
       const saved = nodes.map((node) => ({ node, position: node.position.clone(), quaternion: node.quaternion.clone(), scale: node.scale.clone() }))
@@ -152,7 +152,7 @@ function existingVeritySceneExtras(root: Object3D, manifest: NormalizeRequest['s
       const frameCount = Math.round(duration * CONTRACT_FPS), times: number[] = [], translations: number[] = [], rotations: number[] = []
       for (let frame = 0; frame <= frameCount; frame++) {
         const time = Math.min(duration, frame / CONTRACT_FPS)
-        mixer.setTime(start + time)
+        mixer.setTime(Math.min(range?.[1] ?? clip.duration, start + time * speed))
         times.push(time); translations.push(...jaw.position.toArray()); rotations.push(...jaw.quaternion.normalize().toArray())
       }
       action.stop(); mixer.uncacheRoot(root)
@@ -393,10 +393,17 @@ export async function runNormalize(request: NormalizeRequest) {
   const extras = sourceExtraManifest ? validateExtraBones(sourceExtraManifest) : []
   const sceneExtraMode = sourceExtraManifest?.extraBoneMode === 'scene-nodes'
   if (extras.length && !sceneExtraMode && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
+  // Match the exact retained bake samples, then play the source extras at the same speed.
+  const extraRange = (index: number): readonly [number, number] => {
+    const [start, end] = request.actionRanges?.[index] ?? request.range ?? [0, prunedActions[index]!.durationSeconds]
+    const steps = Math.ceil((end - start) * CONTRACT_FPS), count = steps + 1
+    const from = Math.min(Math.floor(count * adjustments.trimStart), count - 1), to = Math.max(from + 1, count - Math.floor(count * adjustments.trimEnd))
+    return [start + Math.min(from / CONTRACT_FPS, end - start), start + Math.min((to - 1) / CONTRACT_FPS, end - start)]
+  }
   const extraAnimations = inferredVerityEnabled ? exported.map((item, animationIndex) => inferredVerityEnabled.sample(item.action.index,
-    request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment)) :
+    extraRange(item.action.index), item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment, adjustments.speed)) :
     existingVerity ? exported.map((item, animationIndex) => existingVerity.sample(item.action.index,
-      request.actionRanges?.[item.action.index] ?? request.range, item.action.durationSeconds, animationIndex)) : []
+      extraRange(item.action.index), item.action.durationSeconds, animationIndex, adjustments.speed)) : []
   const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb, sourceExtraManifest!, { animations: extraAnimations }).glb : mergedGlb
   const extraNames = new Set(extras.map((bone) => bone.name))
   const droppedExtraTracks = [...new Set(request.source.animations.flatMap((clip) => clip.tracks

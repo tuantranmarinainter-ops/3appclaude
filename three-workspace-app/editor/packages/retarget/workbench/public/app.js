@@ -334,14 +334,14 @@ function setStep(n, status, label) {
   el.classList.add(status)
   $(`state${n}`).textContent = label
 }
-function canRunReason() {
+function canRunReason(actions = selectedActionIndices()) {
   if (!state.source) return 'Chọn nguồn ở bước 1.'
   if (state.inspecting) return 'Đang kiểm tra…'
   if (!state.inspect) return 'Bấm "Kiểm tra" ở bước 3.'
   if (state.inspect.blocker) return `Đang bị chặn: ${state.inspect.blocker.code}.`
   if (state.dirty) return 'Mapping đã sửa nhưng chưa xác nhận (tab Mapping).'
   if (state.inspect.mapping.needsUserConfirmation && !state.preset) return 'Mapping gợi ý theo hình học: cần xác nhận ở tab Mapping trước khi chạy.'
-  if (!selectedActionIndices().length) return 'Chưa chọn Action nào để xuất (tab Actions).'
+  if (!actions.length) return 'Chưa chọn Action nào để xuất (tab Actions).'
   return null
 }
 function refreshSteps() {
@@ -554,7 +554,7 @@ async function chooseTarget(target) {
 
 // ---------------------------------------------------------------- step 3: inspect
 function adjustmentSummary(adjustments) {
-  const changed = [...ADJUST_KEYS, 'proportionSide', 'strideSide', 'mirror'].filter((key) => adjustments[key] !== adjustments.defaults?.[key])
+  const changed = [...ADJUST_KEYS, 'proportionSide', 'strideSide', 'mirror', 'handPose', 'handSide'].filter((key) => adjustments[key] !== adjustments.defaults?.[key])
   const offsets = Object.keys(adjustments.jointOffsets ?? {})
   return changed.length || offsets.length ? [...changed.map((key) => `${key} ${adjustments[key]}`), ...offsets.map((joint) => `${joint} ${adjustments.jointOffsets[joint].join('/')}°`)].join(', ') : 'không đổi'
 }
@@ -567,13 +567,13 @@ function groundSummary(ground) {
   return `${ground.mode}: nâng tối đa ${(max * 100).toFixed(1)} cm ở ${rows.length}/${ground.perAction.length} Action${tail}`
 }
 
-const ADJUST_KEYS = ['armSpace', 'legSpace', 'shoulderWidth', 'upperArm', 'forearm', 'legLength', 'intensity', 'stride', 'vertical', 'trimStart', 'trimEnd', 'speed']
+const ADJUST_KEYS = ['armSpace', 'legSpace', 'shoulderWidth', 'upperArm', 'forearm', 'legLength', 'intensity', 'stride', 'vertical', 'trimStart', 'trimEnd', 'speed', 'handStrength']
 const ADJUST_JOINTS = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']
-const adjustJointOffsets = {}
+const adjustJointOffsets = {}, adjustJointAxes = {}
 function readAdjustments() {
   const form = $('optionsForm')
   return { ...Object.fromEntries(ADJUST_KEYS.map((key) => [key, Number(form.elements[`adj_${key}`].value)])), proportionSide: form.elements.adj_proportionSide.value, strideSide: form.elements.adj_strideSide.value,
-    mirror: form.elements.adj_mirror.checked, jointOffsets: Object.fromEntries(Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0))) }
+    mirror: form.elements.adj_mirror.checked, handPose: form.elements.adj_handPose.value, handSide: form.elements.adj_handSide.value, jointAxes: { ...adjustJointAxes }, jointOffsets: Object.fromEntries(Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0))) }
 }
 function renderAdjustOutputs() {
   const form = $('optionsForm')
@@ -584,8 +584,9 @@ function renderAdjustOutputs() {
   const list = Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0)).map(([joint, angles]) => `${joint} ${angles.join('°, ')}°`)
   $('adjJointList').textContent = list.length ? `Đang xoay: ${list.join(' · ')}` : ''
 }
-function loadAdjustJoint() { const angles = adjustJointOffsets[$('adjJoint').value] ?? [0, 0, 0]; $('adjJointX').value = angles[0]; $('adjJointY').value = angles[1]; $('adjJointZ').value = angles[2] }
-for (const name of ADJUST_JOINTS) $('adjJoint').append(h('option', { value: name, text: name }))
+function loadAdjustJoint() { const angles = adjustJointOffsets[$('adjJoint').value] ?? [0, 0, 0]; $('adjJointX').value = angles[0]; $('adjJointY').value = angles[1]; $('adjJointZ').value = angles[2]; $('adjJointAxes').value = adjustJointAxes[$('adjJoint').value] ?? 'local' }
+for (const name of ADJUST_JOINTS) { $('adjJoint').append(h('option', { value: name, text: name })); $('adjJointAxes').append(h('option', { value: name, text: `Node: ${name}` })) }
+$('adjJointAxes').addEventListener('change', (event) => { event.stopPropagation(); adjustJointAxes[$('adjJoint').value] = $('adjJointAxes').value; markOptionsChanged({ target: optionsForm.elements.adj_armSpace }) })
 $('adjJoint').addEventListener('change', (event) => { event.stopPropagation(); loadAdjustJoint() })
 for (const id of ['adjJointX', 'adjJointY', 'adjJointZ']) $(id).addEventListener('input', (event) => {
   event.stopPropagation()
@@ -650,16 +651,27 @@ function renderInspectInfo() {
 // ---------------------------------------------------------------- step 4: options
 const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
+  if (event?.target?.matches('#adjustLive, #adjJoint, #adjJointAxes, #adjJointX, #adjJointY, #adjJointZ')) return
   state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
   if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale], [name^=adj_]')) inspectSoon()
   renderAdjustOutputs()
   renderOptionHints()
+  if ($('adjustLive').checked && event?.target?.matches('[name^=adj_]')) { clearTimeout(adjustPreviewTimer); adjustPreviewTimer = setTimeout(previewAdjustments, 450) }
 }
+let adjustPreviewTimer = 0
+async function previewAdjustments() {
+  if (state.running) { clearTimeout(adjustPreviewTimer); adjustPreviewTimer = setTimeout(previewAdjustments, 450); return }
+  if (state.selected === null) { toast('Chọn một Action để xem thử.', 'err'); return }
+  await runNow([state.selected])
+}
+$('adjustPreview').addEventListener('click', previewAdjustments)
 $('adjustReset').addEventListener('click', () => {
   for (const key of ADJUST_KEYS) optionsForm.elements[`adj_${key}`].value = optionsForm.elements[`adj_${key}`].dataset.default
   optionsForm.elements.adj_proportionSide.value = 'both'; optionsForm.elements.adj_strideSide.value = 'both'; optionsForm.elements.adj_mirror.checked = false
   for (const key of Object.keys(adjustJointOffsets)) delete adjustJointOffsets[key]
+  for (const key of Object.keys(adjustJointAxes)) delete adjustJointAxes[key]
+  optionsForm.elements.adj_handPose.value = 'original'; optionsForm.elements.adj_handSide.value = 'both'
   loadAdjustJoint()
   markOptionsChanged({ target: optionsForm.elements.adj_armSpace })
 })
@@ -717,7 +729,7 @@ function selectedActionIndices() {
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
 async function runNow(onlyActions = null, actionNames = null) {
-  const reason = canRunReason()
+  const reason = canRunReason(onlyActions ?? selectedActionIndices())
   if (reason) { toast(reason, 'err'); return }
   const all = onlyActions ?? selectedActionIndices()
   const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }

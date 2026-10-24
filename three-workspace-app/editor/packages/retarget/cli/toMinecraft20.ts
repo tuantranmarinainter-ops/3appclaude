@@ -75,6 +75,8 @@ export function untwistLimbs(armature: Armature, worlds: ReadonlyMap<string, Mat
     if (!bone || !locals.has(hand)) continue
     const restLocal = new Matrix4().fromArray([...bone.restLocal])
     maxHandDegrees = Math.max(maxHandDegrees, degreesOf(rotationOf(restLocal.clone().invert().multiply(locals.get(hand)!))))
+    // Lock wrist rotation while retaining the explicitly adjusted forearm length.
+    restLocal.setPosition(new Vector3().setFromMatrixPosition(locals.get(hand)!))
     locals.set(hand, restLocal)
   }
   for (const [upper, lower] of LIMBS) {

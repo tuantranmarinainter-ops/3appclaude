@@ -234,6 +234,18 @@ test('Verity CLI auto preset writes 65 skin joints, animated Jaw scene extra, an
     assert.ok(new Vector3().fromArray(trimmedP, frame * 3).distanceTo(expected.position) <= 1e-6)
     assert.ok(new Quaternion().fromArray(trimmedQ, frame * 4).normalize().angleTo(expected.rotation) <= 1e-5)
   }
+  const adjusted = await runNormalize({ source: await loadAsset(result.glb!, 'glb'), sourceLabel: 'verity-normalized.glb', sourceSha256: result.manifest.glbSha256,
+    sourceExtraManifest: result.manifest as any, sourceExtraGlb: result.glb!, target: await loadAsset(readFileSync(targetPath), 'glb', { skeletonOnly: true }),
+    targetLabel: 'mixamo65.glb', targetSha256: '8'.repeat(64), actions: [0], range: [0.25, 0.75],
+    adjustments: { trimStart: 0.2, trimEnd: 0.2, speed: 2 }, unitMeters: 1, calibrate: 'off', facingDegrees: 0, ground: 'off' })
+  assert.equal(adjusted.status, 'PASS', JSON.stringify(adjusted.report))
+  assert.ok(Math.abs(adjusted.manifest.actions[0]!.durationSeconds - 0.15) < 1e-7)
+  const adjustedDecoded = decodeGlb(adjusted.glb!), adjustedQ = extraValues(adjustedDecoded, 'rotation')
+  for (const [frame, sourceTime] of [[0, 0.35], [adjustedQ.length / 4 - 1, 0.65]]) {
+    expectedMixer2.setTime(sourceTime!)
+    const error = new Quaternion().fromArray(adjustedQ, frame! * 4).normalize().angleTo(expectedJaw.quaternion.clone().normalize())
+    assert.ok(error < 1e-5, `adjusted Jaw sample ${frame}: ${error}`)
+  }
   const probe = process.env.K3_LIBRARY_PROBE_DIR
   if (probe) {
     mkdirSync(probe, { recursive: true }); writeFileSync(join(probe, 'model.glb'), result.glb!)
