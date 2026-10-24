@@ -205,6 +205,40 @@ const SKIN_BOXES: ReadonlyArray<readonly [string, keyof typeof SKIN_PARTS, [numb
   ['right_leg', 'rleg', [-4, 6, -2], [0, 12, 2]], ['low_leg_right', 'rleg', [-4, 0, -2], [0, 6, 2]],
 ]
 
+/** One quad per box face (corners TL TR BR BL seen from outside, px units; uv rect in skin px; front +Z, character left +X). */
+function* skinFaces(): Generator<{ bone: string; normal: number[]; corners: number[][]; uv: number[] }> {
+  for (const [bone, part, [x0, y0, z0], [x1, y1, z1]] of SKIN_BOXES) {
+    const p = SKIN_PARTS[part], row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
+    yield* [
+      { bone, normal: [0, 0, 1], corners: [[x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]], uv: [p.u + p.d, row0, p.u + p.d + p.w, row1] },
+      { bone, normal: [0, 0, -1], corners: [[x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]], uv: [p.u + 2 * p.d + p.w, row0, p.u + 2 * p.d + 2 * p.w, row1] },
+      { bone, normal: [-1, 0, 0], corners: [[x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]], uv: [p.u, row0, p.u + p.d, row1] },
+      { bone, normal: [1, 0, 0], corners: [[x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]], uv: [p.u + p.d + p.w, row0, p.u + 2 * p.d + p.w, row1] },
+      { bone, normal: [0, 1, 0], corners: [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], uv: [p.u + p.d, p.v, p.u + p.d + p.w, p.v + p.d] },
+      { bone, normal: [0, -1, 0], corners: [[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], uv: [p.u + p.d + p.w, p.v, p.u + p.d + 2 * p.w, p.v + p.d] },
+    ]
+  }
+}
+
+/**
+ * Native BBS `.bobj` of the skinned block character: the Minecraft20 armature plus one object (`Body`, texture
+ * `textures/Body/default.png` = the 64x64 skin) rigidly weighted to the same bones/boxes as `skinnedCharacterGlb`.
+ */
+export const SKIN_BOBJ_OBJECT = 'Body'
+export function skinnedMinecraft20Bobj(armatureText: string): string {
+  const lines = [armatureText.replace(/\s+$/, ''), `o ${SKIN_BOBJ_OBJECT}`, 'o_arm minecraft20'], uvs: string[] = [], normals: string[] = [], faces: string[] = []
+  let vertex = 0
+  const fixed = (value: number) => String(Math.round(value * 1e6) / 1e6)
+  for (const { bone, corners, normal, uv: [u0, v0, u1, v1] } of skinFaces()) {
+    const coords = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], first = vertex + 1, vt = uvs.length + 1, vn = normals.length + 1
+    corners.forEach((corner, i) => { lines.push(`v ${corner.map((v) => fixed(v * PX)).join(' ')}`, `vw ${bone} 1`); uvs.push(`vt ${fixed(coords[i]![0]! / 64)} ${fixed(1 - coords[i]![1]! / 64)}`); vertex++ })
+    normals.push(`vn ${normal.join(' ')}`)
+    const corner = (i: number) => `${first + i}/${vt + i}/${vn}`
+    for (const [a, b, c] of [[0, 3, 2], [0, 2, 1]] as const) faces.push(`f ${corner(a)} ${corner(b)} ${corner(c)}`)
+  }
+  return [...lines, ...uvs, ...normals, ...faces, ''].join('\n')
+}
+
 /**
  * Block character wearing a 64x64 Minecraft player skin (base layer, nearest filtering) on the same Minecraft20 skeleton as
  * `characterGlb`, so Actions bound to these node names keep working. `extras` are flat-coloured boxes (e.g. the staff).
@@ -215,24 +249,12 @@ export function skinnedCharacterGlb(root: Object3D, name: string, skinPng: Uint8
   const ibm = new Float32Array(bones.length * 16)
   bones.forEach((bone, i) => ibm.set(bone.matrixWorld.clone().invert().toArray(), i * 16))
   const position: number[] = [], normal: number[] = [], uv: number[] = [], joints: number[] = [], weights: number[] = [], indices: number[] = []
-  for (const [bone, part, [x0, y0, z0], [x1, y1, z1]] of SKIN_BOXES) {
+  for (const { bone, corners, normal: n, uv: [u0, v0, u1, v1] } of skinFaces()) {
     const joint = jointOf.get(bone)
     if (joint === undefined) throw new TypeError(`Unknown Minecraft20 bone ${bone}`)
-    const p = SKIN_PARTS[part], row0 = p.v + p.d + (p.top - y1), row1 = p.v + p.d + (p.top - y0)
-    // [normal, corners TL TR BR BL seen from outside, uv rect u0 v0 u1 v1 in skin px]; front +Z, character left +X
-    const faces: Array<[number[], number[][], number[]]> = [
-      [[0, 0, 1], [[x0, y1, z1], [x1, y1, z1], [x1, y0, z1], [x0, y0, z1]], [p.u + p.d, row0, p.u + p.d + p.w, row1]],
-      [[0, 0, -1], [[x1, y1, z0], [x0, y1, z0], [x0, y0, z0], [x1, y0, z0]], [p.u + 2 * p.d + p.w, row0, p.u + 2 * p.d + 2 * p.w, row1]],
-      [[-1, 0, 0], [[x0, y1, z0], [x0, y1, z1], [x0, y0, z1], [x0, y0, z0]], [p.u, row0, p.u + p.d, row1]],
-      [[1, 0, 0], [[x1, y1, z1], [x1, y1, z0], [x1, y0, z0], [x1, y0, z1]], [p.u + p.d + p.w, row0, p.u + 2 * p.d + p.w, row1]],
-      [[0, 1, 0], [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [p.u + p.d, p.v, p.u + p.d + p.w, p.v + p.d]],
-      [[0, -1, 0], [[x0, y0, z1], [x1, y0, z1], [x1, y0, z0], [x0, y0, z0]], [p.u + p.d + p.w, p.v, p.u + p.d + 2 * p.w, p.v + p.d]],
-    ]
-    for (const [n, corners, [u0, v0, u1, v1]] of faces) {
-      const base = position.length / 3, coords = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
-      corners.forEach((corner, i) => { position.push(...corner.map((v) => v * PX)); normal.push(...n); uv.push(coords[i]![0]! / 64, coords[i]![1]! / 64); joints.push(joint, 0, 0, 0); weights.push(1, 0, 0, 0) })
-      indices.push(base, base + 3, base + 2, base, base + 2, base + 1)
-    }
+    const base = position.length / 3, coords = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]
+    corners.forEach((corner, i) => { position.push(...corner.map((v) => v * PX)); normal.push(...n); uv.push(coords[i]![0]! / 64, coords[i]![1]! / 64); joints.push(joint, 0, 0, 0); weights.push(1, 0, 0, 0) })
+    indices.push(base, base + 3, base + 2, base, base + 2, base + 1)
   }
   w.json.images = [{ bufferView: w.view(skinPng), mimeType: 'image/png', name: `${name}_skin` }]
   w.json.samplers = [{ magFilter: 9728, minFilter: 9728 }]

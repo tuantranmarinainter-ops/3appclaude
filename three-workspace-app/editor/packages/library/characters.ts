@@ -239,6 +239,20 @@ export function setCharacterSkin(options: LibraryOptions & { charId: string; ski
     return character
   })
 }
+/** Link an old-schema character to a registered base model; every other field and file stays as it was. */
+export function setCharacterBaseModel(options: LibraryOptions & { charId: string; baseModelId: string }): CharacterMetadata {
+  const root = resolveLibraryPath(options)
+  return withLibraryLock(root, () => {
+    initializeLibrary(root)
+    const character = characterRecord(root, options.charId)
+    baseRecord(root, options.baseModelId)
+    if (character.baseModelId === options.baseModelId) return character
+    character.baseModelId = options.baseModelId
+    writeJsonAtomic(safeChild(root, 'characters', character.charId, 'meta.json'), character)
+    writeIndex(root)
+    return character
+  })
+}
 export function addCharacterActions(options: LibraryOptions & { charId: string; actions: string[]; defaultAction?: string }): CharacterMetadata {
   return changeActions(options, false)
 }
