@@ -56,9 +56,22 @@ try {
     assert.equal(response.body.ok, true, JSON.stringify(response.body))
     fixture = (await api(`${base}/api/unified/projects/${projectId}`)).body.project
   }
+  const owners = Object.values(fixture.characters).map(actor => {
+    const charId = fixture.scene.content.nodes.find(node => node.id === actor.nodeId)?.metadata?.libraryCharacterId
+    assert.ok(charId, `No library owner for ${actor.name}`)
+    return charId
+  })
   const document = structuredClone(fixture.scene)
+  document.content.nodes = document.content.nodes.filter(node => node.type !== 'character')
   document.content.timeline.animation.motionClips = []
   await prepare('scene.apply', { operations: [{ type: 'document.replace', document }] })
+  // Re-add from the current library: old seed Characters may still reference pre-L3 mannequin assets.
+  for (const charId of owners) {
+    const added = await api(`${base}/api/library`, { method: 'POST', body: JSON.stringify({ operation: 'add-to-scene', projectId, expectedRevision: fixture.revision, charId }) })
+    assert.equal(added.status, 200, JSON.stringify(added.body))
+    fixture = (await api(`${base}/api/unified/projects/${projectId}`)).body.project
+  }
+  assert.equal(Object.keys(fixture.characters).length, 3)
   runEvidence.libraryDrafts = []
   for (const actor of Object.values(fixture.characters)) {
     const node = fixture.scene.content.nodes.find(n => n.id === actor.nodeId)
