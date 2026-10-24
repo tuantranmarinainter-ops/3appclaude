@@ -4,10 +4,11 @@ import { appendVerityActions } from './verityRig'
 import { nativeSkeletonFingerprint } from './nativeSkeleton'
 
 /** Bake an edited native GLB onto its own base, retaining the original bytes as a prefix. */
-export function nativeActionBobj(original: Buffer, bytes: Buffer, uuid: string): string {
-  const model = parseBobjModel(original.toString('utf8'))
+export function nativeActionBobj(original: Uint8Array, bytes: Uint8Array, uuid: string): string {
+  const dec = new TextDecoder(), originalText = dec.decode(original), view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const model = parseBobjModel(originalText)
   if (nativeSkeletonFingerprint(bobjModelToGlb(model, { faceForward: true }).bytes) !== nativeSkeletonFingerprint(bytes)) throw new Error('Result requires the character native skeleton')
-  const jsonLength = bytes.readUInt32LE(12), json = JSON.parse(bytes.toString('utf8',20,20+jsonLength)), binary = bytes.subarray(28+jsonLength)
+  const jsonLength = view.getUint32(12, true), json = JSON.parse(dec.decode(bytes.subarray(20,20+jsonLength))), binary = bytes.subarray(28+jsonLength), bin = new DataView(binary.buffer, binary.byteOffset, binary.byteLength)
   if (json.animations?.length !== 1) throw new Error('Native result requires one Action')
   const root = buildBobjModel(model).root, nodes = new Map<string, typeof root>()
   root.traverse(node => { nodes.set(node.name, node as typeof root) })
@@ -17,7 +18,7 @@ export function nativeActionBobj(original: Buffer, bytes: Buffer, uuid: string):
     const start=view.byteOffset??0, relative=accessor.byteOffset??0, stride=view.byteStride??width*4, count=accessor.count, length=view.byteLength
     if (![start,relative,stride,count,length].every(Number.isSafeInteger) || start<0 || relative<0 || count<1 || count>2000000 || stride<width*4 || stride%4 || stride>252 || length<0 || start+length>binary.length || relative+(count-1)*stride+width*4>length) throw new Error('Native animation accessor exceeds its buffer')
     const offset=start+relative
-    return Array.from({length:count*width},(_,i)=>{const value=binary.readFloatLE(offset+Math.floor(i/width)*stride+i%width*4);if(!Number.isFinite(value))throw new Error('Native animation accessor is not finite');return value})
+    return Array.from({length:count*width},(_,i)=>{const value=bin.getFloat32(offset+Math.floor(i/width)*stride+i%width*4,true);if(!Number.isFinite(value))throw new Error('Native animation accessor is not finite');return value})
   }
   const tracks = json.animations[0].channels.map((channel: any) => {
     const sampler=json.animations[0].samplers[channel.sampler], source=json.nodes[channel.target.node], node=nodes.get(source.name), width=channel.target.path==='rotation'?4:3
@@ -36,5 +37,5 @@ export function nativeActionBobj(original: Buffer, bytes: Buffer, uuid: string):
     frames.push(new Map(bones.map(bone=>{const node=nodes.get(bobjModelNodeName(bone.name))!;node.updateMatrix();return [bone.name,node.matrix.clone()]})))
   }
   playing.stop();mixer.uncacheRoot(root)
-  return appendVerityActions(original.toString('utf8'),bones,[{name:clip.name,ticks,frames}])
+  return appendVerityActions(originalText,bones,[{name:clip.name,ticks,frames}])
 }

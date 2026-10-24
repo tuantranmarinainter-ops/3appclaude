@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto'
+import { sha256Hex } from './sha256'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 
 /** Stable across GLB node reindexing; includes every joint, parent and rest transform. */
 export function nativeSkeletonFingerprint(bytes: Uint8Array): string {
-  const buffer = Buffer.from(bytes)
-  const json = JSON.parse(buffer.toString('utf8', 20, 20 + buffer.readUInt32LE(12)))
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const json = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + view.getUint32(12, true))))
   const nodes = json.nodes ?? [], joints = new Set<number>((json.skins ?? []).flatMap((skin: any) => skin.joints ?? []))
   if (!joints.size) throw new Error('Native GLB has no skeleton')
   const parents = new Map<number, number>()
@@ -20,5 +20,5 @@ export function nativeSkeletonFingerprint(bytes: Uint8Array): string {
     const matrix = node.matrix ? new Matrix4().fromArray(node.matrix) : new Matrix4().compose(new Vector3().fromArray(node.translation ?? [0,0,0]), new Quaternion().fromArray(node.rotation ?? [0,0,0,1]), new Vector3().fromArray(node.scale ?? [1,1,1]))
     return [node.name, parent === undefined ? null : nodes[parent].name, matrix.elements.map(value => { if (!Number.isFinite(value)) throw new Error('Invalid native rest transform'); return Number(value.toFixed(5)) })]
   }).sort((a,b) => String(a[0]).localeCompare(String(b[0])))
-  return createHash('sha256').update(JSON.stringify(signature)).digest('hex')
+  return sha256Hex(JSON.stringify(signature))
 }
