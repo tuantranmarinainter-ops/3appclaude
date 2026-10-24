@@ -243,6 +243,8 @@ export class Viewer {
     const tick = (now) => {
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
+      // Keep the last frame while a foreground bake needs the CPU; playback resumes on completion/error.
+      if (this.suspended) { requestAnimationFrame(tick); return }
       if (this.playing && this.duration > 0) this.time = (this.time + dt * this.speed) % this.duration
       this.apply()
       this.left.render(); this.right.render()
@@ -376,9 +378,8 @@ export class Viewer {
     } else this.right.setClip(null)
     this.duration = duration ?? this.right.clip?.duration ?? sourceClip?.duration ?? 1
     this.time = 0
-    // Re-frame on the first pose so cameras fit the character as animated (root offsets included at t=0).
+    // Switching clips keeps the cameras fixed; Frame All measures the current posed bounds on demand.
     this.apply()
-    this.left.updateBounds(); this.right.updateBounds()
     return { source: sourceClip ? { duration: sourceClip.duration, tracks: sourceClip.tracks.length } : null, right: rightInfo }
   }
 

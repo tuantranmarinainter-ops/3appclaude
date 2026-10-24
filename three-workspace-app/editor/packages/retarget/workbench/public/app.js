@@ -213,8 +213,8 @@ function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
   else left = ensureLeft(entry)
   left.catch(() => {}).then(() => {
     if (!action || state.batchCurrent !== key) return
-    selectAction(action.index)
     if (!(state.actionMap.has(action.index) && !state.stale)) schedulePreview(70)
+    selectAction(action.index)
   })
   refreshSteps()
 }
@@ -228,7 +228,7 @@ function ensureLeft(entry) {
   return promise
 }
 function resetBatchView() {
-  shownBatchEntry = null; leftLoad = null; clearTimeout(previewTimer); clearTimeout(prefetchTimer); previewResults.clear(); previewSeq++
+  shownBatchEntry = null; leftLoad = null; clearTimeout(previewTimer); clearTimeout(prefetchTimer); previewResults.clear(); viewer.suspended = false; previewSeq++
   state.batchRows = []; state.reviewRows = []; state.batchCurrent = null
   renderReview(true)
 }
@@ -237,11 +237,12 @@ function schedulePreview(delay = 70) {
   if (!state.batch || state.selected === null || !state.target) return
   clearTimeout(previewTimer)
   if (previewResults.has(JSON.stringify(previewPayload(state.selected)))) { runPreview(); return }
+  if (!canRunReason([state.selected])) viewer.suspended = true
   previewTimer = setTimeout(runPreview, delay)
 }
 async function runPreview() {
   clearTimeout(previewTimer)
-  if (!state.batch || state.selected === null) return
+  if (!state.batch || state.selected === null) { viewer.suspended = false; return }
   const seq = ++previewSeq
   if (state.running) {
     if (state.run) api(`/api/runs/${state.run}/cancel`, { method: 'POST' }).catch(() => {})
@@ -917,15 +918,18 @@ function selectedActionIndices() {
 async function runNow(onlyActions = null, actionNames = null, { quiet = false } = {}) {
   clearTimeout(prefetchTimer)
   if (!quiet) {
+    clearTimeout(previewTimer)
     while (state.running) await sleep(20)
+    viewer.suspended = false
     clearTimeout(prefetchTimer)
     await previewQueue.catch(() => {})
   }
   const reason = canRunReason(onlyActions ?? runActions())
-  if (reason) { if (quiet) setOverlay('right', reason, true); else toast(reason, 'err'); return }
+  if (reason) { if (quiet) { viewer.suspended = false; setOverlay('right', reason, true) } else toast(reason, 'err'); return }
   const all = onlyActions ?? runActions()
   const options = { ...readOptions(), actionRanges: state.actionRanges, preview: !quiet, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true; state.runAbort = false; state.runQuiet = quiet
+  if (quiet) viewer.suspended = true
   $('progress').hidden = false; $('cancelBtn').hidden = false
   if (quiet) setOverlay('right', '')
   setProgress('queued', 0, 1, 0)
@@ -965,6 +969,7 @@ async function runNow(onlyActions = null, actionNames = null, { quiet = false } 
     state.run = null
     $('cancelBtn').hidden = true
     state.running = false; state.runQuiet = false
+    if (quiet) viewer.suspended = false
     if ($('rightMsg').dataset.progress) { delete $('rightMsg').dataset.progress; if (!$('rightMsg').classList.contains('err')) setOverlay('right', '') }
     $('progress').hidden = true
     refreshSteps()
