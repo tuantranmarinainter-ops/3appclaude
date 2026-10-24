@@ -386,6 +386,19 @@ test('K2b reports rest -X and first-action +Z facing while preserving the origin
   assert.deepEqual(loaded.getObjectByName('bobj-model')!.quaternion.toArray(), [0, 0, 0, 1])
 })
 
+test('faceForward turns the rest pose to +Z after binding and leaves the animated Root rotation untouched', async () => {
+  const boneAt = (name: string, x: number, y: number, z: number) => `arm_bone ${name} Root ${x} ${y + 1} ${z} 1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
+  const legs = [boneAt('Upper_Leg_L', 0, 40, 10), boneAt('Upper_Leg_R', 0, 40, -10), boneAt('Foot_L', 0, 0, 10), boneAt('Foot_R', 0, 0, -10), boneAt('Toe_L', -5, 0, 10), boneAt('Toe_R', -5, 0, -10)].join('\n')
+  const text = fixture.replace('o verity.mdl/Verity.smd', `${legs}\no verity.mdl/Verity.smd`).replace('an idle', `an idle\nao Root\nag rotation 1\nkf 0 ${Math.PI / 2} LINEAR\nkf 2 ${Math.PI / 2} LINEAR`)
+  const plain = await loadAsset(bobjModelToGlb(parseBobjModel(text, { unitMeters: 0.02 })).bytes, 'glb', { keepMeshes: true })
+  const turned = await loadAsset(bobjModelToGlb(parseBobjModel(text, { unitMeters: 0.02 }), { faceForward: true }).bytes, 'glb', { keepMeshes: true })
+  const toe = (scene: any) => { scene.updateMatrixWorld(true); return scene.getObjectByName('Toe_L').getWorldPosition(new Vector3()).sub(scene.getObjectByName('Foot_L').getWorldPosition(new Vector3())) }
+  assert.ok(toe(plain).normalize().distanceTo(new Vector3(-1, 0, 0)) < 1e-5)
+  assert.ok(toe(turned).normalize().distanceTo(new Vector3(0, 0, 1)) < 1e-5)
+  const mixer = new AnimationMixer(turned); mixer.clipAction(turned.animations[0]).play(); mixer.setTime(0)
+  assert.ok(turned.getObjectByName('Root')!.quaternion.clone().normalize().angleTo(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), Math.PI / 2)) < 1e-6)
+})
+
 test('K2b Verity preset gives synthetic 1.9m body and 1.17m COG hip above the visible floor', () => {
   const floor = -0.03, cog = 1.17 / 0.4915394 + floor
   const text = fixture.replace('arm_name synthetic', 'arm_name verity.mdl').replace(/^v (\S+) (\S+) (\S+)$/gm, (_, x, y, z) => `v ${x} ${Number(y) / 80 * 3.865407 + floor} ${z}`).replace('o verity.mdl/Verity.smd', `${bone('COG', 'Root', 0, cog)}\no verity.mdl/Verity.smd`)
