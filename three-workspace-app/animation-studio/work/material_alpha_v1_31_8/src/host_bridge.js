@@ -158,11 +158,11 @@
     const studio=window.__studio,context=localContext()
     if(studio.state.draft||studio.state.sourceClip||context.preview)throw Error('PATCH_PENDING')
   }
-  async function openShot(bytes,interactive=true) {
+  async function openShot(bytes,interactive=true,blank=false) {
     const studio=window.__studio
     if(!studio.shot?.openZip)throw Error('CONTRACT_UNSUPPORTED')
     if(studio.state.draft||studio.state.dirty&&JSON.stringify(studio.serialized(false))!==savedSnapshot&&savedSnapshot)throw Error('UNSAVED_CHANGES')
-    if(await studio.shot.openZip(bytes,{interactive})===false)throw Error('OPEN_CANCELLED')
+    if(await studio.shot.openZip(bytes,{interactive,blank})===false)throw Error('OPEN_CANCELLED')
     savedSnapshot=JSON.stringify(studio.serialized(false))
     return shotIdentity()
   }
@@ -322,7 +322,7 @@
         if (studio.state.draft || studio.state.dirty && JSON.stringify(studio.serialized(false)) !== savedSnapshot && savedSnapshot) throw new Error('Có animation chưa lưu. Hãy lưu hoặc bỏ sửa trước khi mở shot.')
         if (!studio.shot?.openZip) throw new Error('Bản Animation Studio này không hỗ trợ gói shot.')
         await resetLocal(); loadedSha = null; loadedRig = null
-        await openShot(value.bytes)
+        await openShot(value.bytes,true,value.blank===true)
         const session = studio.shot.session
         if (session) { loadedSha = session.character.glbSha256; loadedRig = editorIdentity(); await bindLocal().catch(e => { localError = e.message }) }
         reply(requestId, true, { shotId: session?.shot?.shotId, characterId: session?.character?.characterId })

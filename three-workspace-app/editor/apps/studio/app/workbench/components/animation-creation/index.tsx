@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSilhouetteSync } from './hooks/useSilhouetteSync'
+import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 
@@ -75,6 +76,10 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     const character = project.characters[characterId]
     const asset = character && project.assets[character.assetId]
     if (!character || !asset || busy) return
+    try {
+      const entry=libraryAnimationEntry(project,characterId,existingMotionId)
+      if(entry){await openShot(entry.range,entry.blank);return}
+    } catch(cause) { setError(cause instanceof Error?cause.message:String(cause));return }
     setBusy(true); setError(''); setStatus('Đang nạp rig vào Animation Studio…')
     try {
       const response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(asset.id)}/source`)
@@ -113,23 +118,25 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }
 
   /** App 2 → App 3: export the shot from the scene (shot.export), then open its ZIP in the editor. */
-  async function openShot() {
+  async function openShot(range: [number, number] = shotRange, blank = false) {
     if (busy || !characterId || !cameraId) return
     setBusy(true); setError(''); setStatus('Đang xuất gói shot từ cảnh…')
     try {
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.export',
-        args: { cameraNodeId: cameraId, frameStart: shotRange[0], frameEnd: shotRange[1], editableCharacterIds: [characterId] } })
+        args: { cameraNodeId: cameraId, frameStart: range[0], frameEnd: range[1], editableCharacterIds: [characterId] } })
       const job = await loadUnifiedJob(projectId, String(response.result.jobId))
       const file = job.result?.files.find((item) => item.name.endsWith('.zip')) ?? job.result?.files[0]
       if (!file) throw new Error('shot.export không trả file ZIP.')
       const bytes = await (await loadUnifiedJobFile(projectId, job.jobId, file.id)).arrayBuffer()
       setStatus('Đang mở gói shot trong Animation Studio…')
-      await request('shotOpen', { bytes })
+      await request('shotOpen', { bytes, blank })
+      setShotRange(range)
+      setMotionId(''); setClipId(''); setRevisionConflict(false)
       setShotId(String(response.result.shotId))
       openedRevision.current = latest.project.revision
       setOpened(true)
-      setStatus(`Đã mở shot ${String(response.result.shotId).slice(0, 8)} (frame ${shotRange[0]}–${shotRange[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
+      setStatus(`Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
   }
