@@ -174,6 +174,15 @@ test('review index 1 preserves exact GLB and indices; subsequent normal exports 
     assert.equal((review.manifest as any).actions[0].name, 'selected-index-one')
     assert.deepEqual(review.report.actions.map((a: any) => [a.index, a.name, a.durationSeconds]),
       normal.report.actions.map((a: any) => [a.index, a.name, a.durationSeconds]))
+    // Reusing full-asset inspection must keep different rows and changed options byte-identical to export.
+    for (const raw of [{ actions: [2] }, { actions: [1], facingDegrees: 90 }, { actions: [2] }]) {
+      const expected = await run(raw)
+      const bytes = readFileSync(join(dir, expected.files.find(f => f.kind === 'glb')!.name))
+      const actual = await run({ ...raw, review: true })
+      assert.deepEqual(readFileSync(join(dir, actual.files.find(f => f.kind === 'glb')!.name)), bytes)
+      assert.equal((actual.manifest as any).actions[0].sourceActionIndex, raw.actions[0])
+    }
+    await assert.rejects(run({ review: true, actions: [99] }), /does not exist/)
     const after = await inspect(source, target, parseOptions({}), undefined)
     assert.deepEqual(after.actions, before.actions); assert.deepEqual(after.loss, before.loss)
     const exported = await run({})
@@ -181,6 +190,13 @@ test('review index 1 preserves exact GLB and indices; subsequent normal exports 
     assert.deepEqual((exported.manifest as any).actions.map((a: any) => a.sourceActionIndex), [0, 1, 2])
     assert.equal(exported.report.loss.scaleTracks.dropped, 1, 'unselected scale diagnostics survive review')
     assert.equal(exported.report.actions.length, 3)
+    const changed = Buffer.from(binary)
+    changed.writeFloatLE(.2, offset + 28); changed.writeFloatLE(Math.sqrt(.96), offset + 36)
+    writeFileSync(sourcePath, encodeGlb(json, changed))
+    const updatedNormal = await run({ actions: [2] })
+    const updatedBytes = readFileSync(join(dir, updatedNormal.files.find(f => f.kind === 'glb')!.name))
+    const updatedReview = await run({ actions: [2], review: true })
+    assert.deepEqual(readFileSync(join(dir, updatedReview.files.find(f => f.kind === 'glb')!.name)), updatedBytes)
     await assert.rejects(run({ review: true }), /exactly one Action/)
     await assert.rejects(run({ review: true, actions: [0, 1] }), /exactly one Action/)
     assert.equal(parseOptions({ review: 'true' }).review, false)
