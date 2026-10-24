@@ -867,7 +867,8 @@ async function transferBatch(groups, retryConfig = null) {
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
           return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }), ...(licenseSource ? { license: { id: 'internal-only', commitable: false, source: licenseSource } } : {}) } })
-        sharedPacks += shared.created === false ? 0 : 1
+        // One shared pack per source file; it may already exist when the character drafts were made first.
+        sharedPacks += 1
       }
       completed += succeeded.length
       if (failedActions.length) { entry.error = `${failedActions.length} animation lỗi`; state.batchFailedEntries.push({ entry, actions: failedActions }) }
@@ -875,7 +876,7 @@ async function transferBatch(groups, retryConfig = null) {
   }
   $('batchRetry').hidden = state.batchFailedEntries.length === 0
   const targetName = state.libraryCharacters?.find((item) => item.charId === config.charId)?.name ?? 'nhân vật'
-  $('transferStatus').textContent = `${state.batchCancelRequested ? 'Đã huỷ' : 'Đã chuyển'} ${completed} animation${config.toCharacter ? ` → ${targetName} (${drafts} Nháp)` : ''}${config.toShared ? ` + kho dùng chung (${sharedPacks} gói mới)` : ''}${state.batchFailedEntries.length ? ` · ${state.batchFailedEntries.length} file lỗi, có thể thử lại` : ''}`
+  $('transferStatus').textContent = `${state.batchCancelRequested ? 'Đã huỷ' : 'Đã chuyển'} ${completed} animation${config.toCharacter ? ` → ${targetName} (${drafts} Nháp)` : ''}${config.toShared ? ` + kho dùng chung (${sharedPacks} gói)` : ''}${state.batchFailedEntries.length ? ` · ${state.batchFailedEntries.length} file lỗi, có thể thử lại` : ''}`
   state.batchProgress = null
   $('batchCancel').hidden = true; $('batchCancel').textContent = 'Huỷ kiểm tra lô'
   return { completed, failed: state.batchFailedEntries.length }
