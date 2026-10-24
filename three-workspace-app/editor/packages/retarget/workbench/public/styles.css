@@ -22,9 +22,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, .drop:focus-vis
 input[type=text], input[type=number], select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-width: 0; }
 input[type=text], input[type=number] { width: 100%; }
 
-.topbar { display: flex; align-items: baseline; gap: 16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none; }
+.topbar { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex: none; }
 .topbar h1 { font-size: 16px; } .topbar h1 span { font-weight: 400; color: var(--muted); margin-left: 8px; }
 .topbar-note { color: var(--muted); font-size: 12px; margin-left: auto; }
+.temp-storage { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.temp-storage output { color: var(--text); font-family: var(--mono); }
+.temp-storage button { padding: 3px 8px; font-size: 12px; }
 
 .layout { --steps-width: 320px; --results-width: 460px; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--steps-width) 6px minmax(420px, 1fr) 6px var(--results-width); gap: 0; }
 .panel-divider { position: relative; z-index: 12; touch-action: none; background: var(--border); }

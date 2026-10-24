@@ -14,6 +14,10 @@
   <header class="topbar">
     <h1>W01 · App 1 <span>Chuẩn hoá Rig &amp; Animation → Mixamo65</span></h1>
     <div class="topbar-note" id="topNote">Chạy cục bộ 127.0.0.1 · file nguồn chỉ đọc, kết quả là bản mới trong thư mục tạm</div>
+    <div class="temp-storage" title="Dung lượng file tải lên và kết quả của phiên Workbench này">
+      <span>Phiên tạm: <output id="tempStorageSize" aria-live="polite">…</output></span>
+      <button type="button" id="tempStorageCleanup">Dọn dữ liệu tạm</button>
+    </div>
   </header>
 
   <nav class="workspace-navigation" aria-label="5 workspace" data-active-workspace="normalize"></nav>
@@ -302,6 +306,7 @@
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <script src="/workspace-navigation.js" defer></script>
+  <script src="/temp-storage.js" defer></script>
   <script type="module" src="/resizable-panels.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
