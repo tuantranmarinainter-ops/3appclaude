@@ -93,11 +93,6 @@ type StudioWindow = Window & {
 }
 
 type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics'
-const WORKSPACES: Array<{ id: Workspace; number: string; vi: string; en: string }> = [
-  { id: 'retarget', number: '1', vi: 'Chuẩn hóa', en: 'Standardize' },
-  { id: 'scene', number: '2', vi: 'Dựng cảnh', en: 'Scene' },
-  { id: 'animation', number: '3', vi: 'Animation', en: 'Animation' },
-]
 
 function installDebugHooks(api: DirectorApi): void {
   const target = window as StudioWindow
@@ -487,6 +482,19 @@ export function StudioOverlay({
     setDrawer(null)
     void openPanel(WORKSPACE_PANELS[workspace])
   }
+  useEffect(() => {
+    if (source !== 'unified') return
+    const onWorkspaceRequest = (event: Event) => {
+      const workspace = (event as CustomEvent<{ workspace?: string }>).detail?.workspace
+      if (workspace === 'retarget' || workspace === 'scene' || workspace === 'animation') {
+        openAnimationOnSwitch.current = false
+        setDrawer(null)
+        void openPanel(WORKSPACE_PANELS[workspace])
+      }
+    }
+    window.addEventListener('bbs-workspace-request', onWorkspaceRequest)
+    return () => window.removeEventListener('bbs-workspace-request', onWorkspaceRequest)
+  }, [openPanel, source])
   const openAnimationControls = () => {
     if (activeWorkspace === 'animation') { setDrawer('animation'); return }
     openAnimationOnSwitch.current = true
@@ -506,9 +514,6 @@ export function StudioOverlay({
       <div className="wb-unified-shell" role="dialog" aria-modal="true" aria-label={vi ? 'Dự án hợp nhất' : 'Unified project'}>
         <header className="wb-unified-topbar">
           <div className="wb-unified-brand"><strong id="wb-project-title">{project?.name ?? (vi ? 'Dự án' : 'Project')}</strong><span className={`wb-save-state is-${saveStatus}`} role="status" title={saveStatus === 'error' ? shellError ?? undefined : undefined}>{!projectState ? (vi ? 'Đang mở…' : 'Opening…') : assetBusy ? (vi ? 'Đang xử lý…' : 'Working…') : saveStatus === 'saving' ? (vi ? 'Đang lưu' : 'Saving') : saveStatus === 'error' ? (vi ? 'Lưu thất bại' : 'Save failed') : (vi ? 'Đã lưu' : 'Saved')}</span></div>
-          <nav className="wb-workspace-tabs" aria-label={vi ? 'Chế độ biên tập trong App 2' : 'Editing modes inside App 2'}>
-            {WORKSPACES.map((workspace) => <button key={workspace.id} type="button" aria-current={activeWorkspace === workspace.id ? 'page' : undefined} className={activeWorkspace === workspace.id ? 'is-active' : ''} onClick={() => switchWorkspace(workspace.id)}><span>{workspace.number}</span>{vi ? workspace.vi : workspace.en}</button>)}
-          </nav>
           <div className="wb-unified-actions">
             <h2 id="wb-history-title" className="wb-sr-only">Undo / Redo</h2>
             <input ref={assetInputRef} className="wb-sr-only" type="file" multiple accept=".glb,.gltf,.png,.jpg,.jpeg,.wav,.mp3,.ogg" aria-label={vi ? 'Chọn model GLB/GLTF hoặc texture để nhập' : 'Choose GLB/GLTF models or textures to import'} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void importAssets(files) }} />

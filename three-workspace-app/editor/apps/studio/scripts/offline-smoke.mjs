@@ -60,9 +60,29 @@ async function main() {
     })
 
     await page.goto(base)
-    await page.locator('.wb-other-projects > summary').click()
-    await page.getByRole('button', { name: /Start from blank/ }).click()
+    await page.locator('.wb-hero-actions .wb-cta').click()
     await page.getByRole('button', { name: /创建并打开|Create and open/ }).click()
+    await page.waitForURL(/unified=/, { timeout: 60_000 })
+    const unifiedId = new URL(page.url()).searchParams.get('unified')
+    if (unifiedId) {
+      await page.locator('.wb-unified-shell').waitFor({ timeout: 60_000 })
+      if (await page.getByText(/登录|sign in/i).count()) fail('login UI is visible')
+      const search = await page.evaluate(async () => {
+        const res = await fetch('/api/local-assets/search?kind=pose&keyword=sit&pageNo=1&pageSize=5')
+        return res.json()
+      })
+      if (!search.total) fail('pose search returned nothing')
+      const navigation = page.locator('.workspace-navigation')
+      if (await navigation.locator('li').count() !== 5) fail('unified workspace navigation is not a single five-item bar')
+      if (await page.locator('.wb-workspace-tabs').count()) fail('duplicate App 2 workspace navigation is visible')
+      await page.getByRole('button', { name: 'Dựng cảnh', exact: true }).click()
+      await page.waitForFunction(() => window.__store?.getState?.().ready === true, null, { timeout: 60_000 })
+      if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT })
+      if (external.length) fail(`external requests: ${external.join(', ')}`)
+      if (failed.length) fail(`failed responses: ${failed.join(', ')}`)
+      console.log(`offline smoke ok: unified project ${unifiedId}, pose search ${search.total} hits, one 5-item navigation bar, 0 external requests`)
+      return
+    }
     await page.waitForFunction(() => window.__store?.getState?.().ready === true, null, { timeout: 60_000 })
     draftId = new URL(page.url()).searchParams.get('draft')
     if (!draftId) fail('draft id missing from URL')

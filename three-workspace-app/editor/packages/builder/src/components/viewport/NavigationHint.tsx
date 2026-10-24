@@ -64,7 +64,7 @@ export function NavigationHint({ hidden }: { hidden: boolean }) {
             <span>›</span>
           </div>
           <div className="t3d-navigation-hint-look-copy">
-            <span className="t3d-navigation-hint-label">{t('viewport.controlDirection')}</span>
+            <span className="t3d-navigation-hint-label">{t('topbar.shortcutOrbitRotate')}</span>
             <span className="t3d-navigation-hint-look-description">{t('topbar.shortcutLeftDrag')}</span>
           </div>
         </div>

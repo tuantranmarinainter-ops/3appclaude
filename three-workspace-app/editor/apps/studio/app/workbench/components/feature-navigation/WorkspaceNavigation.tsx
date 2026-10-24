@@ -27,6 +27,7 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
       : search.get('workspace') === 'animation' ? 'animation' : 'scene'
   const [active, setActive] = useState<WorkspaceId>(routeActive)
   const [host, setHost] = useState<HTMLElement | null>(null)
+  const [unifiedOpen, setUnifiedOpen] = useState(false)
   const unified = search.get('unified')
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
   }, [pathname])
   useEffect(() => {
     const update = () => {
+      setUnifiedOpen(document.body.classList.contains('wb-unified-open'))
       const workspace = document.body.dataset.bbsWorkspace
       setActive(pathname.startsWith('/library') ? 'library' : workspace === 'retarget' ? 'normalize'
         : workspace === 'animation' ? 'animation' : workspace === 'scene' ? 'scene' : routeActive)
@@ -66,13 +68,19 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
   return createPortal(<nav className="workspace-navigation" aria-label="5 workspace">
     <ol>
       {WORKSPACES.map((workspace) => {
-        const href = workspaceHref(workspace.id, urls, unified)
+        const internal = unifiedOpen && (workspace.id === 'normalize' || workspace.id === 'scene' || workspace.id === 'animation')
+        const href = internal ? null : workspaceHref(workspace.id, urls, unified)
         const current = workspace.id === active
         const hint = !href && workspace.id !== 'scene' && workspace.id !== 'library'
           ? missingHint[workspace.id]
           : undefined
         return <li key={workspace.id}>
-          {href
+          {internal
+            ? <button type="button" aria-current={current ? 'page' : undefined} className={current ? 'is-active' : undefined}
+                onClick={() => window.dispatchEvent(new CustomEvent('bbs-workspace-request', { detail: { workspace: workspace.id === 'normalize' ? 'retarget' : workspace.id } }))}>
+                <span aria-hidden="true">{workspace.number}</span>{workspace.label}
+              </button>
+            : href
             ? <a href={href} aria-current={current ? 'page' : undefined} className={current ? 'is-active' : undefined}>
                 <span aria-hidden="true">{workspace.number}</span>{workspace.label}
               </a>
