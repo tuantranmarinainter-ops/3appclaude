@@ -93,3 +93,8 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
 > chạy song song C1/C3/C4/C5/C7, C2 sau C1. Kiểm bằng số và ảnh trên bản sao dữ liệu, giữ nguyên SHA Samba, không ghi vào `C:\w01-library`.
 > Mỗi việc một nhánh `ai1/c<n>-…`, một PR; build, typecheck, test trên Windows; **không tự merge**; xong báo mã việc + số PR.
 > Ngoài ra kiểm lại PR #84 (F1: App 3 three-step workflow) xem có trùng với C1/C2 không và gộp hợp lý.
+
+## Việc chờ (chưa giao, người dùng ghi chú)
+- **C8 — Khung "Duyệt animation" của App 1 co giãn được** (ghi 2026-10-24, *chưa code*): cột danh sách chọn animation (từ #105) kéo
+  được độ rộng bằng thanh chia, kéo cao/thấp nếu đặt dưới; nhớ kích thước đã kéo (localStorage). Dùng lại kiểu thanh chia của W2
+  (khung dọc/ngang kéo được) cho đồng bộ.
