@@ -32,12 +32,21 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
   evaluateFrame(scene,args.frameStart,snapshot)
   for(const character of Object.values(project.characters)) {
     const covering=timeline.animation.motionClips.filter(c=>c.target.nodeId===character.nodeId&&c.frameStart<=args.frameEnd&&c.frameEnd>=args.frameStart)
-    if(covering.length!==1||covering[0]!.frameStart>args.frameStart||covering[0]!.frameEnd<args.frameEnd)throw new TypeError('MVP shot requires one covering MotionClip per Character')
+    if(covering.length!==1||covering[0]!.frameStart>args.frameStart||covering[0]!.frameEnd<args.frameEnd) {
+      if(args.editableCharacterIds.includes(character.id)) throw new TypeError(`Shot editable Character ${character.name} requires one MotionClip covering frames ${args.frameStart}–${args.frameEnd}`)
+      continue
+    }
     const clip=covering[0]!,motion=project.motions[clip.motion.assetId],binding=project.bindings[clip.id]
     if(!motion||!binding)throw new TypeError('Shot Motion or Binding is missing')
-    const manifests=project.extensions.app1Manifests,manifest=isRecord(manifests)?manifests[motion.assetId]:undefined
-    if(!isRecord(manifest))throw new TypeError('Shot requires an imported App 1 manifest for every Character Motion')
     const source=motion.edit?await resolveProjectBlob(project.projectId,motion.sourceClip):(await resolveUnifiedAssetFile(project,motion.assetId,'source')).bytes
+    const manifests=project.extensions.app1Manifests
+    const storedManifest=isRecord(manifests)?manifests[motion.assetId]:undefined
+    const metadataRoot=project.extensions.retargetMotionMetadata
+    const metadata=isRecord(metadataRoot)?metadataRoot[motion.id]:undefined
+    const manifest=isRecord(storedManifest)?storedManifest:isRecord(metadata)&&motion.edit===null&&motion.evaluator!=='animation-1.31.8' ? {
+      version:'1.0.0',glbSha256:sha256(source),actions:[{uuid:motion.id,glbAnimationIndex:Number.isSafeInteger(metadata.clipIndex)?metadata.clipIndex:0,name:typeof metadata.name==='string'&&metadata.name.trim()?metadata.name:project.assets[motion.assetId]?.displayName??motion.id,fps:30,durationSeconds:motion.durationSeconds}]
+    } : undefined
+    if(!manifest)throw new TypeError(`Shot requires an imported App 1 manifest for ${character.name}`)
     const prefix=`characters/${character.id}`,glb=prefix+'.glb',manifestPath=prefix+'.manifest.json'
     files[glb]=source;files[manifestPath]=jsonBytes(manifest)
     const t=snapshot.transforms.get(character.nodeId);if(!t)throw new TypeError('Character placement is unavailable')

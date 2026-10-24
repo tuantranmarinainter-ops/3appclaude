@@ -159,6 +159,24 @@ test('shot.export creates a two-character ZIP accepted by TS and Python validato
   assert.throws(()=>unzipPackage(Buffer.from('broken zip')))
 })
 
+test('shot export keeps covered characters and synthesizes a manifest for an unmanifested native GLB', async () => {
+  const { createShotPackage } = await import('../src/shotExchange')
+  const { validateShot } = await import('../src/shotPackage')
+  const fixture = await shotFixture()
+  const project = structuredClone(fixture.project)
+  const [editableCharacterId, omittedCharacterId] = fixture.characters
+  const omitted = project.characters[omittedCharacterId]!
+  const omittedClip = project.scene.content.timeline.animation.motionClips.find((clip) => clip.target.nodeId === omitted.nodeId)!
+  project.scene.content.timeline.animation.motionClips = project.scene.content.timeline.animation.motionClips.filter((clip) => clip.id !== omittedClip.id)
+  delete project.bindings[omittedClip.id]
+  project.extensions.app1Manifests = {}
+  const built = await createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [editableCharacterId] })
+  assert.deepEqual(validateShot(built.files), [])
+  assert.deepEqual(built.shot.characters.map((character) => character.characterId), [editableCharacterId])
+  assert.equal(JSON.parse(Buffer.from(built.files['characters/' + editableCharacterId + '.manifest.json']!).toString()).actions.length, 1)
+  await assert.rejects(createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [omittedCharacterId] }), /requires one MotionClip/)
+})
+
 for (const constant of [false,true]) test(`Result round trip (${constant ? 'constant' : 'dynamic'} placement) and layout preserve atomic history`, async () => {
   const {getUnifiedJob,readUnifiedJobFile}=await import('../src/unifiedJobs')
   const {unzipPackage,zipPackage,jsonBytes,sha256,validateResult}=await import('../src/shotPackage')

@@ -32,7 +32,11 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   const [shotRange, setShotRange] = useState<[number, number]>([timeline.frameStart, timeline.frameEnd])
   const [shotId, setShotId] = useState('')
   const [withBobj, setWithBobj] = useState(false)
-  const nativeMotions = useMemo(() => Object.values(project.motions).filter((motion) => motion.evaluator === 'animation-1.31.8' && motion.edit), [project])
+  const nativeMotions = useMemo(() => Object.values(project.motions).filter((motion) => {
+    const asset = project.assets[motion.assetId]
+    const boundToCharacter = Object.values(project.bindings).some((binding) => binding.motionId === motion.id && binding.characterId === characterId)
+    return asset?.source.mediaType === 'model/gltf-binary' && (motion.edit || boundToCharacter)
+  }), [characterId, project])
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
@@ -52,6 +56,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }, [receive, onEditorDirty])
 
   useEffect(() => { if (!characters.some((character) => character.id === characterId)) setCharacterId(characters[0]?.id ?? '') }, [characters, characterId])
+  useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
 
   function request(type: 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport', value?: unknown): Promise<BridgeReply['value']> {
@@ -79,16 +84,19 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       if (existingMotionId) {
         const motion = project.motions[existingMotionId]
         const motionAsset = motion && project.assets[motion.assetId]
-        if (!motion || !motionAsset || !motion.edit) throw new Error('Animation này chưa có dữ liệu chỉnh sửa native.')
-        const [motionResponse, editResponse] = await Promise.all([
-          fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(motionAsset.id)}/source?format=glb`),
-          fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(motionAsset.id)}/nativeEdit-${motion.edit.sha256}`),
-        ])
-        if (!motionResponse.ok || !editResponse.ok) throw new Error('Không tải lại được dữ liệu animation đã lưu.')
-        const [motionBytes, edit] = await Promise.all([motionResponse.arrayBuffer(), editResponse.json()])
+        if (!motion || !motionAsset) throw new Error('Animation này không còn trong project.')
+        const motionResponse = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(motionAsset.id)}/source?format=glb`)
+        if (!motionResponse.ok) throw new Error('Không tải lại được dữ liệu animation đã lưu.')
+        const motionBytes = await motionResponse.arrayBuffer()
         const clip = Object.values(project.bindings).find((binding) => binding.motionId === existingMotionId && binding.characterId === characterId)
         nextClipId = clip?.clipId ?? ''
-        await request('open', { bytes: motionBytes, name: `${motionAsset.displayName}.glb`, nativeProject: edit })
+        const value: { bytes: ArrayBuffer; name: string; nativeProject?: Record<string, unknown> } = { bytes: motionBytes, name: `${motionAsset.displayName}.glb` }
+        if (motion.edit) {
+          const editResponse = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(motionAsset.id)}/nativeEdit-${motion.edit.sha256}`)
+          if (!editResponse.ok) throw new Error('Không tải lại được dữ liệu chỉnh sửa native.')
+          value.nativeProject = await editResponse.json()
+        }
+        await request('open', value)
       } else {
         const extension = asset.source.mediaType === 'application/vnd.autodesk.fbx' ? '.fbx' : '.glb'
         await request('open', { bytes, name: `${asset.displayName}${extension}` })
