@@ -94,7 +94,9 @@ async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<type
     const sourceAction = sourceMixer.clipAction(expected), loadedAction = loadedMixer.clipAction(actual)
     sourceAction.clampWhenFinished = true; loadedAction.clampWhenFinished = true
     sourceAction.setLoop(LoopOnce, 1).play(); loadedAction.setLoop(LoopOnce, 1).play()
-    for (const time of [0, expected.duration / 2, expected.duration]) {
+    // BBS plays whole 20 Hz ticks: compare first, middle and last tick.
+    const lastTick = Math.floor(expected.duration * 20 + 1e-6)
+    for (const time of [0, Math.round(lastTick / 2) / 20, lastTick / 20]) {
       sourceMixer.setTime(time); loadedMixer.setTime(time); reference.updateMatrixWorld(true); loaded.updateMatrixWorld(true); sampledEndpoints++
       const evaluated = new Map(evaluateBobjAction(armature, actions.get(expected.name)!, time * 20).map((bone) => [bone.name.replace(/\./g, '_'), bone.worldMatrix]))
       for (const [name] of sourceBones) {
@@ -106,7 +108,7 @@ async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<type
     }
     sourceMixer.uncacheRoot(reference); loadedMixer.uncacheRoot(loaded)
   }
-  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-3 ? 'PASS' : 'FAIL'
+  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-4 ? 'PASS' : 'FAIL'
   return { status, joints: loadedBones.size, animations: loaded.animations.length, sampledEndpoints, maxTrackError, maxEndpointPositionError }
 }
 
@@ -283,6 +285,23 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         try { return JSON.parse(readFileSync(join(packs, item.name, 'meta.json'), 'utf8')).source?.sha256 === hash } catch { return false }
       })
     } catch { return false }
+  }
+  /** Raw shared Mixamo65 Actions already imported from this source file (same file hash), for reuse as draft parents. */
+  const sharedActionsFromSource = (hash: string | undefined) => {
+    const found: Array<{ uuid: string; packId: string; name: string; sourceName?: string }> = []
+    if (!hash) return found
+    try {
+      const packs = join(resolveLibraryPath(), 'packs')
+      for (const item of existsSync(packs) ? readdirSync(packs, { withFileTypes: true }) : []) {
+        if (!item.isDirectory() || item.name.startsWith('.')) continue
+        try {
+          const meta = JSON.parse(readFileSync(join(packs, item.name, 'meta.json'), 'utf8'))
+          if (meta.source?.sha256 !== hash || meta.rig !== 'mixamo65') continue
+          for (const action of meta.actions ?? []) if (!action.ownerCharId) found.push({ uuid: action.uuid, packId: item.name, name: action.name, sourceName: action.sourceName })
+        } catch { /* unreadable pack: not a reuse candidate */ }
+      }
+    } catch { /* no library yet */ }
+    return found
   }
   function startBatch(inputs: Array<{ path?: string; sourceId?: string; uploaded?: boolean }>, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily?: import('../cli/autoMapping.ts').SourceFamily): BatchState {
     if (inputs.length > 2000) throw new UserError('A batch can contain at most 2000 files', 413)
@@ -566,6 +585,20 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (seen.has(selection.uuid)) throw new UserError('A shared Action can only be tagged once')
         seen.add(selection.uuid)
       }
+      // Same source file already shared (e.g. sent to another character first): tag those Actions instead of a duplicate pack.
+      const manifestActions = new Map(((state.result.manifest as any)?.actions ?? []).map((action: any) => [action.uuid, action]))
+      const reusable = sharedActionsFromSource((state.result.manifest as any)?.source?.sha256)
+      const reused = selectedActions.map((selection: any) => {
+        const manifestAction = manifestActions.get(selection.uuid) as any, wanted = manifestAction?.sourceName ?? manifestAction?.name
+        return reusable.find((candidate) => (candidate.sourceName ?? candidate.name) === wanted || candidate.name === manifestAction?.name)
+      })
+      if (selectedActions.length && reused.every(Boolean)) {
+        for (const [index, selection] of selectedActions.entries()) {
+          const target = reused[index]!, existing = getAction({ actionUuid: target.uuid })
+          setActionMetadata({ actionUuid: target.uuid, ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), tags: [...new Set([...existing.tags, selection.key.trim()])] })
+        }
+        return json(res, 200, { packId: reused[0]!.packId, rig: 'mixamo65', actions: reused.length, created: false, actionUuids: reused.map((item) => item!.uuid) })
+      }
       const pack = importPack({ sourceDirectory: state.dir, createdBy: 'app1',
         ...(typeof body.category === 'string' ? { category: body.category as typeof categories[number] } : {}),
         ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}),
@@ -640,7 +673,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         const bobj = state.result.files.find((file) => file.kind === 'bobj')
         if (!bobj) throw new UserError('Minecraft20 destinations require a run with .bobj output enabled', 409)
         const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8'); minecraftBobj = bobjText
-        const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8')) as ReturnType<typeof loadBobj> & { animations: any[] }
+        // Library GLBs are sampled on every BBS tick so App 2 playback matches the .bobj between sparse keys (Soldier Run was 1.9 cm off at 30 fps).
+        const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8'), { bakeFps: 60 }) as ReturnType<typeof loadBobj> & { animations: any[] }
         root.updateMatrixWorld(true)
         const glb = minecraft20LibraryGlb(root)
         const measurement = await measureMinecraft20Glb(glb, root, bobjText)
@@ -649,7 +683,19 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         }
         minecraftGlb = glb; minecraftMeasurement = measurement
       }
-      const mixamoPack = importPack({ sourceDirectory: state.dir, createdBy: 'app1' })
+      // Sending the same source file to another character reuses its shared Actions as draft parents instead of importing a
+      // second copy of the run (each run has fresh Action uuids, so its GLB never deduplicates by hash).
+      const reusable = sharedActionsFromSource((state.result.manifest as any)?.source?.sha256)
+      let importedPack: ReturnType<typeof importPack> | null = null
+      const sharedSource = (action: { uuid: string }) => {
+        const manifestAction = byUuid.get(action.uuid) as any, wanted = manifestAction.sourceName ?? manifestAction.name
+        const reuse = reusable.find((candidate) => (candidate.sourceName ?? candidate.name) === wanted || candidate.name === manifestAction.name)
+        if (reuse) return { uuid: reuse.uuid, packId: reuse.packId }
+        importedPack ??= importPack({ sourceDirectory: state.dir, createdBy: 'app1' })
+        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        const imported = importedPack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
+        return imported ? { uuid: imported.uuid, packId: importedPack.packId } : null
+      }
       const minecraftNames = new Map<string, string>(), minecraftIndex = new Map<string, number>()
       if (needsMinecraft) for (const action of selected) {
         const manifestAction = byUuid.get(action.uuid) as any
@@ -658,10 +704,11 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         minecraftNames.set(action.uuid, state.result.report.minecraft20.actions[bobjIndex].name); minecraftIndex.set(action.uuid, bobjIndex)
       }
       const drafts: Array<{ charId: string; actionUuid: string; packId: string; key: string }> = []
+      let sharedPackId = ''
       for (const action of selected) {
-        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
-        const source = mixamoPack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
+        const source = sharedSource(action)
         if (!source) throw new UserError(`Selected Action is not in the shared pack: ${action.uuid}`)
+        sharedPackId ||= source.packId
         const existing = getAction({ actionUuid: source.uuid })
         setActionMetadata({ actionUuid: source.uuid, ...(action.name ? { name: action.name } : {}), ...(action.nameVi ? { nameVi: action.nameVi } : {}), ...(action.sourceName ? { sourceName: action.sourceName } : {}), tags: [...new Set([...existing.tags, action.key])] })
         for (const charId of charIds) {
@@ -686,7 +733,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key })
         }
       }
-      return json(res, 200, { packId: mixamoPack.packId, drafts })
+      return json(res, 200, { packId: sharedPackId, drafts })
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/steve$/))) {
       const state = runs.get(match[1]!), file = state?.result?.files.find((item) => item.kind === 'bobj')
