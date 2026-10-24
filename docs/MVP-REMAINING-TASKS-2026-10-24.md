@@ -98,3 +98,8 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
 - **C8 — Khung "Duyệt animation" của App 1 co giãn được** (ghi 2026-10-24, *chưa code*): cột danh sách chọn animation (từ #105) kéo
   được độ rộng bằng thanh chia, kéo cao/thấp nếu đặt dưới; nhớ kích thước đã kéo (localStorage). Dùng lại kiểu thanh chia của W2
   (khung dọc/ngang kéo được) cho đồng bộ.
+- **C9 — App 1: chuyển animation trong "Duyệt animation" chậm > 1 s** (ghi 2026-10-24, *chưa code, chờ lệnh*). Đo: server chỉ
+  0,11 s (Xbot) – 0,35 s (wc3)/lượt; phần còn lại do: chờ 250 ms trước khi chạy (`schedulePreview(250)`), hỏi trạng thái mỗi 300 ms
+  (`runNow` dùng `wait:false`), không lưu kết quả đã xem, và `pipeline.ts` đọc + parse lại **toàn bộ** file nguồn mỗi lượt (nghi là
+  nguyên nhân App 1 hết bộ nhớ 4 GB với nguồn ~400 animation). Hướng sửa: cache asset đã parse (LRU), `wait:true` cho xem thử,
+  debounce ~70 ms khi đổi dòng, cache kết quả theo (dòng + tuỳ chọn), tải trước dòng kế. Mục tiêu < 0,3 s; giữ SHA Samba.
