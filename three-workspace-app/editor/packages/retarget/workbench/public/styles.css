@@ -1,17 +1,11 @@
 :root {
-  --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eef0f3; --text: #1b2330; --muted: #5d6877; --border: #d5d9e0;
-  --accent: #2563eb; --accent-text: #ffffff; --pass: #15803d; --pass-bg: #dcfce7; --warn: #b45309; --warn-bg: #fef3c7;
-  --fail: #b91c1c; --fail-bg: #fee2e2; --block: #6d28d9; --block-bg: #ede9fe; --idle-bg: #e5e7eb;
-  --viewer-bg: #e9edf3; --viewer-grid: #b9c1cd; --viewer-bone: #d97706; --left-foot: #2563eb; --right-foot: #ea580c;
+  /* Always dark (user preference): the Workbench no longer follows the OS light theme. */
+  color-scheme: dark;
+  --bg: #12161c; --surface: #1a2029; --surface-2: #232b36; --text: #e6e9ee; --muted: #9aa5b4; --border: #333d4b;
+  --accent: #5b8def; --accent-text: #0b1220; --pass: #4ade80; --pass-bg: #123222; --warn: #fbbf24; --warn-bg: #3a2c0b;
+  --fail: #f87171; --fail-bg: #3b1818; --block: #c4b5fd; --block-bg: #2a2147; --idle-bg: #2b3340;
+  --viewer-bg: #1c2128; --viewer-grid: #39414d; --viewer-bone: #ffd34d; --left-foot: #60a5fa; --right-foot: #fb923c;
   --radius: 8px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161c; --surface: #1a2029; --surface-2: #232b36; --text: #e6e9ee; --muted: #9aa5b4; --border: #333d4b;
-    --accent: #5b8def; --accent-text: #0b1220; --pass: #4ade80; --pass-bg: #123222; --warn: #fbbf24; --warn-bg: #3a2c0b;
-    --fail: #f87171; --fail-bg: #3b1818; --block: #c4b5fd; --block-bg: #2a2147; --idle-bg: #2b3340;
-    --viewer-bg: #1c2128; --viewer-grid: #39414d; --viewer-bone: #ffd34d; --left-foot: #60a5fa; --right-foot: #fb923c;
-  }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
