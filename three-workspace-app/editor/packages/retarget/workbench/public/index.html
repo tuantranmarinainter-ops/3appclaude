@@ -209,6 +209,21 @@
         <figure class="pane"><figcaption id="leftCaption">Nguồn gốc</figcaption><div class="canvas" id="leftHost"></div><div class="overlay" id="leftMsg">Chọn file nguồn ở bước 1</div></figure>
         <div class="panel-divider panel-divider-vertical" data-resize-panel="viewer" role="separator" aria-orientation="vertical" aria-label="Đổi độ rộng hai khung 3D" tabindex="0"></div>
         <figure class="pane"><figcaption id="rightCaption">Kết quả trên nhân vật đích</figcaption><div class="canvas" id="rightHost"></div><div class="overlay" id="rightMsg">Chọn nhân vật đích</div></figure>
+        <aside class="review" id="review" aria-label="Duyệt animation của lô" hidden>
+          <header><strong>Duyệt animation</strong><span class="chip" id="reviewCount">đã chọn 0/0</span></header>
+          <div class="review-tools">
+            <input type="search" id="reviewSearch" placeholder="Tìm tên animation / file…" aria-label="Tìm animation trong lô">
+            <button type="button" id="reviewPrev" title="Animation trước (↑ / ←)" aria-label="Animation trước">◀</button>
+            <button type="button" id="reviewNext" title="Animation sau (↓ / →)" aria-label="Animation sau">▶</button>
+          </div>
+          <div class="review-tools">
+            <button type="button" id="reviewAll">Chọn hết</button>
+            <button type="button" id="reviewNone">Bỏ hết</button>
+            <button type="button" id="reviewInvert">Đảo chọn</button>
+          </div>
+          <div class="review-list" id="reviewList" tabindex="0" role="listbox" aria-label="Danh sách animation: ↑↓ ←→ để duyệt, Space để giữ/bỏ"><div class="review-inner" id="reviewInner"></div></div>
+          <footer><button type="button" class="primary" id="reviewTransfer">Chuyển sang nhân vật đích</button><small>↑↓ ←→ duyệt · Space giữ/bỏ · tick = Giữ</small></footer>
+        </aside>
       </div>
       <div class="panel-divider panel-divider-horizontal" data-resize-panel="timeline" role="separator" aria-orientation="horizontal" aria-label="Đổi chiều cao timeline" tabindex="0"></div>
       <div class="transport">

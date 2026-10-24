@@ -79,6 +79,24 @@ legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
 
 .stage { --source-width: 50%; --transport-height: 104px; display: grid; grid-template-rows: minmax(180px, 1fr) 6px var(--transport-height); min-width: 0; min-height: 0; }
 .viewers { min-height: 0; display: grid; grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr); gap: 0; background: var(--border); }
+.viewers.has-review { grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr) minmax(240px, 300px); }
+.review { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--border); }
+.review[hidden] { display: none; }
+.review header { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.review-tools { display: flex; gap: 4px; padding: 4px 8px 0; }
+.review-tools input { flex: 1; min-width: 0; }
+.review-tools button { padding: 4px 8px; white-space: nowrap; }
+.review-list { position: relative; flex: 1; min-height: 60px; overflow-y: auto; margin-top: 6px; border-top: 1px solid var(--border); outline: none; }
+.review-inner { position: relative; width: 100%; }
+.review-row { position: absolute; left: 0; right: 0; height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; cursor: pointer; border-left: 3px solid transparent; font-size: 12px; }
+.review-row:hover { background: var(--surface-2); }
+.review-row.dropped { opacity: .5; }
+.review-row.dropped .nm { text-decoration: line-through; }
+.review-row.current { background: color-mix(in srgb, var(--accent) 24%, transparent); border-left-color: var(--accent); opacity: 1; }
+.review-row .idx { color: var(--muted); min-width: 28px; text-align: right; font-family: var(--mono); }
+.review-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-row .dur { color: var(--muted); font-family: var(--mono); }
+.review footer { padding: 6px 8px; border-top: 1px solid var(--border); display: grid; gap: 2px; }
 .pane { position: relative; margin: 0; background: var(--viewer-bg); min-width: 0; min-height: 0; overflow: hidden; }
 .pane figcaption { position: absolute; z-index: 2; top: 8px; left: 10px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--surface) 82%, transparent); padding: 2px 8px; border-radius: 99px; }
 .canvas { position: absolute; inset: 0; } .canvas canvas { display: block; }
