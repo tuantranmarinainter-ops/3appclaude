@@ -32,14 +32,19 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
   const [message, setMessage] = useState('')
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryQuery, setLibraryQuery] = useState('')
-  const [libraryActions, setLibraryActions] = useState<Array<{ uuid: string; name: string; nameVi?: string; rig: string; tags: string[] }>>([])
+  const [libraryActions, setLibraryActions] = useState<Array<{ uuid: string; name: string; nameVi?: string; rig: string; tags: string[]; own?: boolean }>>([])
   const [librarySelected, setLibrarySelected] = useState<string[]>([])
   const [libraryCreateNew, setLibraryCreateNew] = useState(false)
   const [libraryJob, setLibraryJob] = useState<{ jobId: string; status: string; completed: number; total: number; results: Array<{ assignedUuid?: string; status: string; reason?: string }> } | null>(null)
   const selectedCharacter = project?.characters[characterId]
   const selectedCharacterNode = project?.scene.content.nodes.find((node) => node.id === selectedCharacter?.nodeId)
-  const libraryCharacterId = typeof (selectedCharacterNode?.metadata as Record<string, unknown> | undefined)?.libraryCharacterId === 'string'
-    ? String((selectedCharacterNode?.metadata as Record<string, unknown>).libraryCharacterId) : ''
+  const [pickerCharacterId, setPickerCharacterId] = useState('')
+  const libraryCharacters = useMemo(() => project ? Object.values(project.characters).flatMap((character) => {
+    const id = (project.scene.content.nodes.find((node) => node.id === character.nodeId)?.metadata as Record<string, unknown> | undefined)?.libraryCharacterId
+    return typeof id === 'string' && id ? [{ id: character.id, name: character.name, libraryCharacterId: id }] : []
+  }) : [], [project])
+  const pickerCharacter = libraryCharacters.find((item) => item.id === pickerCharacterId)
+  const libraryCharacterId = pickerCharacter?.libraryCharacterId ?? ''
 
   useEffect(() => { if (active) setAnimationMounted(true) }, [active])
 
@@ -134,25 +139,37 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
     finally { setBusy(false) }
   }
 
-  async function openLibraryPicker() {
-    if (!libraryCharacterId) return
+  async function openLibraryPicker(targetId?: string) {
+    const target = libraryCharacters.find((item) => item.id === (targetId ?? (libraryCharacters.some((item) => item.id === characterId) ? characterId : libraryCharacters[0]?.id)))
+    if (!target) return
+    setPickerCharacterId(target.id)
     try {
-      const response = await fetch(`/api/library?raw=1${libraryQuery ? `&q=${encodeURIComponent(libraryQuery)}` : ''}`, { cache: 'no-store' })
-      const body = await response.json() as { actions?: typeof libraryActions; error?: string }
-      if (!response.ok) throw new Error(body.error ?? `Library lookup failed (${response.status})`)
-      setLibraryActions(body.actions ?? []); setLibrarySelected([]); setLibraryOpen(true)
+      const q = libraryQuery ? `&q=${encodeURIComponent(libraryQuery)}` : ''
+      const [shared, own] = await Promise.all([fetch(`/api/library?raw=1${q}`, { cache: 'no-store' }), fetch(`/api/library?charId=${encodeURIComponent(target.libraryCharacterId)}`, { cache: 'no-store' })])
+      const body = await shared.json() as { actions?: typeof libraryActions; error?: string }
+      if (!shared.ok) throw new Error(body.error ?? `Library lookup failed (${shared.status})`)
+      const ownBody = own.ok ? await own.json() as { actions?: typeof libraryActions } : {}
+      const needle = libraryQuery.trim().toLowerCase()
+      const owned = (ownBody.actions ?? []).filter((action) => !needle || `${action.name} ${action.nameVi ?? ''}`.toLowerCase().includes(needle)).map((action) => ({ ...action, tags: action.tags ?? [], own: true }))
+      const seen = new Set(owned.map((action) => action.uuid))
+      setLibraryActions([...owned, ...(body.actions ?? []).filter((action) => !seen.has(action.uuid))]); setLibrarySelected([]); setLibraryOpen(true)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
   async function assignLibraryActions() {
-    if (!libraryCharacterId || !librarySelected.length || !characterId) return
+    if (!libraryCharacterId || !librarySelected.length || !pickerCharacterId) return
     setBusy(true); setError(''); setMessage('')
     try {
-      const response = await fetch('/api/library/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: librarySelected, charId: libraryCharacterId, createNew: libraryCreateNew }) })
-      const body = await response.json() as { job?: { jobId: string; status: string; completed: number; total: number; results: Array<{ assignedUuid?: string; status: string; reason?: string }> }; error?: string }
-      if (!response.ok || !body.job) throw new Error(body.error ?? `Assignment failed (${response.status})`)
-      let job = body.job
-      setLibraryJob(job)
+      const ownUuids = librarySelected.filter((uuid) => libraryActions.some((action) => action.own && action.uuid === uuid)), sharedUuids = librarySelected.filter((uuid) => !ownUuids.includes(uuid))
+      const ownResults = ownUuids.map((uuid) => ({ assignedUuid: uuid, status: 'ok' }))
+      let job: NonNullable<typeof libraryJob> = { jobId: '', status: 'completed', completed: 0, total: 0, results: [] }
+      if (sharedUuids.length) {
+        const response = await fetch('/api/library/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: sharedUuids, charId: libraryCharacterId, createNew: libraryCreateNew }) })
+        const body = await response.json() as { job?: typeof job; error?: string }
+        if (!response.ok || !body.job) throw new Error(body.error ?? `Assignment failed (${response.status})`)
+        job = body.job
+        setLibraryJob(job)
+      }
       while (job.status === 'queued' || job.status === 'running') {
         await new Promise(resolve => window.setTimeout(resolve, 500))
         const poll = await fetch(`/api/library/assign?jobId=${encodeURIComponent(job.jobId)}`, { cache: 'no-store' })
@@ -160,11 +177,12 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
         if (!poll.ok || !next.job) throw new Error(next.error ?? `Assignment status failed (${poll.status})`)
         job = next.job; setLibraryJob(job)
       }
+      job = { ...job, total: job.total + ownResults.length, results: [...ownResults, ...job.results] }
       const placed: string[] = []
       let revision = (await loadUnifiedProject(projectId)).project.revision
       for (const result of job.results) if (result.assignedUuid && ['ok', 'already-exists'].includes(result.status)) {
         const latest = await loadUnifiedProject(projectId); revision = latest.project.revision
-        await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: revision, command: 'library.place', args: { actionUuid: result.assignedUuid, characterId } })
+        await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: revision, command: 'library.place', args: { actionUuid: result.assignedUuid, characterId: pickerCharacterId } })
         placed.push(result.assignedUuid)
       }
       const refreshed = await loadUnifiedProject(projectId); setProject(refreshed.project)
@@ -220,7 +238,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
       <label>{vi ? 'Nhân vật tương thích' : 'Compatible character'}<select value={characterId} onChange={(event) => { setCharacterId(event.target.value); setEditDirty(true) }} disabled={!compatibleCharacters.length}>
         {compatibleCharacters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
       </select></label>
-      {libraryCharacterId && <button type="button" onClick={() => void openLibraryPicker()} disabled={busy}>{vi ? 'Lấy từ kho…' : 'Get from library…'}</button>}
+      {!!libraryCharacters.length && <button type="button" onClick={() => void openLibraryPicker()} disabled={busy}>{vi ? 'Lấy từ kho…' : 'Get from library…'}</button>}
       <label>{vi ? 'Frame bắt đầu' : 'Start frame'}<input type="number" min="0" step="1" value={frameStart} onChange={(event) => { setFrameStart(event.target.value); setEditDirty(true) }} /></label>
       {editingBinding && <label>{vi ? 'Frame kết thúc (bao gồm)' : 'End frame (inclusive)'}<input type="number" min={Number(frameStart)} step="1" value={frameEnd} onChange={(event) => { setFrameEnd(event.target.value); setEditDirty(true) }} /></label>}
       <details className="wb-animation-advanced"><summary>{vi ? 'Điều chỉnh clip' : 'Clip settings'}</summary><div className="wb-animation-advanced-fields">
@@ -248,16 +266,17 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
     {libraryJob && <p role="status">{libraryJob.status} · {libraryJob.completed}/{libraryJob.total}</p>}
     {!!clips.length && <ol aria-label={vi ? 'Clip trên timeline' : 'Timeline clips'}>{clips.map((clip) => <li key={clip.id}>{clip.motion.name} · {Object.values(project?.characters ?? {}).find((item) => item.nodeId === clip.target.nodeId)?.name ?? (vi ? 'Nhân vật' : 'Character')} · {clip.frameStart}–{clip.frameEnd} {project?.bindings[clip.id] && <button type="button" disabled={busy} onClick={() => editClip(clip.id)} aria-label={`${vi ? 'Sửa' : 'Edit'} ${clip.motion.name}`}>{vi ? 'Sửa clip' : 'Edit clip'}</button>}</li>)}</ol>}
     </section>
-    </HostDrawer>
     {libraryOpen && <div role="dialog" aria-modal="true" aria-label={vi ? 'Lấy động tác từ kho' : 'Get Actions from library'} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#0009', display: 'grid', placeItems: 'center' }}>
       <section style={{ width: 'min(720px,92vw)', maxHeight: '80vh', overflow: 'auto', padding: 20, color: '#eee', background: '#20242c' }}>
         <h2>{vi ? 'Lấy từ kho dùng chung' : 'Get from shared library'}</h2>
+        <label>{vi ? 'Nhân vật nhận' : 'Target character'} <select aria-label={vi ? 'Nhân vật nhận động tác' : 'Target character for Actions'} value={pickerCharacterId} disabled={busy} onChange={event => void openLibraryPicker(event.target.value)}>{libraryCharacters.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <input aria-label={vi ? 'Tìm động tác' : 'Search Actions'} value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder={vi ? 'Tìm tên Anh/Việt' : 'Search English/Vietnamese names'} />
-        <button type="button" onClick={() => void openLibraryPicker()}>{vi ? 'Tìm' : 'Search'}</button>
-        <div style={{ maxHeight: '50vh', overflow: 'auto' }}>{libraryActions.map(action => <label key={action.uuid} style={{ display: 'block', padding: 5 }}><input type="checkbox" checked={librarySelected.includes(action.uuid)} onChange={event => setLibrarySelected(current => event.target.checked ? [...current, action.uuid] : current.filter(id => id !== action.uuid))} /> {action.name}{action.nameVi ? ` | ${action.nameVi}` : ''} · {action.rig} · {action.tags.join(', ')}</label>)}{!libraryActions.length && <p>{vi ? 'Kho chưa có động tác phù hợp.' : 'No shared Actions found.'}</p>}</div>
+        <button type="button" onClick={() => void openLibraryPicker(pickerCharacterId)}>{vi ? 'Tìm' : 'Search'}</button>
+        <div style={{ maxHeight: '50vh', overflow: 'auto' }}>{libraryActions.map(action => <label key={action.uuid} style={{ display: 'block', padding: 5 }}><input type="checkbox" checked={librarySelected.includes(action.uuid)} onChange={event => setLibrarySelected(current => event.target.checked ? [...current, action.uuid] : current.filter(id => id !== action.uuid))} /> {action.own && <b>{vi ? '[của nhân vật] ' : '[character] '}</b>}{action.name}{action.nameVi ? ` | ${action.nameVi}` : ''} · {action.rig} · {action.tags.join(', ')}</label>)}{!libraryActions.length && <p>{vi ? 'Kho chưa có động tác phù hợp.' : 'No shared Actions found.'}</p>}</div>
         <label><input type="checkbox" checked={libraryCreateNew} onChange={event => setLibraryCreateNew(event.target.checked)} /> {vi ? 'Tạo bản mới dù đã có' : 'Create a new copy if already assigned'}</label>
         <p><button type="button" disabled={busy || !librarySelected.length} onClick={() => void assignLibraryActions()}>{busy ? `${libraryJob?.completed ?? 0}/${libraryJob?.total ?? librarySelected.length}` : vi ? `Gán ${librarySelected.length} động tác` : `Assign ${librarySelected.length} Actions`}</button> {busy && libraryJob && <button type="button" onClick={() => void cancelLibraryAssignment()}>{vi ? 'Hủy job' : 'Cancel job'}</button>} <button type="button" disabled={busy} onClick={() => setLibraryOpen(false)}>{vi ? 'Đóng' : 'Close'}</button></p>
       </section>
     </div>}
+    </HostDrawer>
   </div>
 }
