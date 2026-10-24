@@ -44,8 +44,8 @@ test('App3 silhouette: two-color pixels, exact off restoration, view-only shortc
   await command('character.add',{assetId:imported.result.assetIds.find(id=>project.assets[id].kind==='model'),skeletonId:Object.keys(project.skeletons)[0],name:'Silhouette actor'},projectId);
   await page.goto(`${base}/?unified=${projectId}`);
   // Enable App2 first: covers the event emitted before the iframe is ready.
-  const app2=page.locator('#wb-silhouette-toggle');await app2.click();await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
-  const iframe=page.locator('.wb-animation-creation-frame');await iframe.waitFor();const frame=await (await iframe.elementHandle()).contentFrame();assert.ok(frame);await frame.waitForURL(/animation-studio\/v1\.32\.0\/index\.html/);
+  const app2=page.locator('#wb-silhouette-toggle');await app2.click();await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();
+  const iframe=page.locator('.wb-animation-creation-frame');await iframe.waitFor();const frame=await (await iframe.elementHandle()).contentFrame();assert.ok(frame);await frame.waitForURL(/animation-studio\/v1\.33\.0\/index\.html/);
   await frame.waitForFunction(()=>window.__studio?.ready&&window.__studio.silhouette.enabled,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
   await frame.waitForFunction(()=>window.__app3LocalBridge?.status().bound,null,{timeout:60000});

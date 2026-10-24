@@ -79,7 +79,7 @@ async function hostFixture(ambiguous=false) {
   assert.equal(url,'/api/unified/commands');const e=JSON.parse(init.body);
   try{return{ok:true,json:async()=>({ok:true,result:execute(p,e.command,e.args,e.requestId)})}}catch(error){return{ok:false,json:async()=>({error:{code:error.code}})}}
  }};vm.runInNewContext(readFileSync(new URL('./host_bridge.js',import.meta.url),'utf8'),sandbox);
- const send=(type,value,overrides={})=>handlers.message({origin:parent.location.origin,source:parent,data:{channel:'bbs-animation-studio-v1.32.0',requestId:randomUUID(),type,value},...overrides});
+ const send=(type,value,overrides={})=>handlers.message({origin:parent.location.origin,source:parent,data:{channel:'bbs-animation-studio-v1.33.0',requestId:randomUUID(),type,value},...overrides});
  await send('open',{bytes:bytes.buffer,name:'fixture.glb'});
  return{p,parent,studio,context,send,timers,messages,handlers,parentHandlers,sandbox,activeCalls:()=>activeCalls};
 }

@@ -14,7 +14,7 @@ import { validateResult, type PackageFiles } from './shotPackage'
 const identity=(l:Record<string,unknown>)=>Object.fromEntries(['sessionId','epoch','characterId','serverInstance'].map(k=>[k,l[k]]))
 const receiver=(l:Record<string,unknown>)=>({...identity(l),receiverToken:l.receiverToken})
 test('real Python TASK-2 result validator accepts the contract example and rejects hash/unsafe packages',async()=>{
- const docs=await readFile(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8'),shot:PackageFiles={},result:PackageFiles={}
+ const docs=(await readFile(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8')).replace(/\r\n/g,'\n'),shot:PackageFiles={},result:PackageFiles={}
  for(const m of docs.matchAll(/<!-- example:(shot|result)\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))(m[1]==='shot'?shot:result)[m[2]!]=Buffer.from(m[3]+'\n')
  shot['characters/hero.glb']=Buffer.from('shot-contract-fixture-v1\n');shot['references/stage.glb']=Buffer.from('shot-contract-reference-v1\n');result['edits/hero.glb']=Buffer.from('shot-contract-edited-v1\n')
  assert.deepEqual(validateResult(result,shot),[])
@@ -50,7 +50,7 @@ test('shot-open resolves immutable broker-owned package proof and rejects cross-
  const dir=await mkdtemp(path.join(tmpdir(),'app3-shot-proof-')),prior=process.env.BBS_UNIFIED_PROJECTS_DIR;process.env.BBS_UNIFIED_PROJECTS_DIR=dir
  try{
   const {saveShotExport}=await import('./shotExchange'),{storeShotArtifact}=await import('./unifiedJobs'),{jsonBytes,zipPackage}=await import('./shotPackage')
-  const docs=await readFile(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8'),files:PackageFiles={}
+  const docs=(await readFile(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8')).replace(/\r\n/g,'\n'),files:PackageFiles={}
   for(const m of docs.matchAll(/<!-- example:shot\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))files[m[1]!]=Buffer.from(m[2]+'\n')
   files['characters/hero.glb']=Buffer.from('shot-contract-fixture-v1\n');files['references/stage.glb']=Buffer.from('shot-contract-reference-v1\n')
   const shot=JSON.parse(Buffer.from(files['shot.json']!).toString()),projectId=randomUUID(),characterId=randomUUID(),assetId=randomUUID(),sourceSha256='a'.repeat(64)

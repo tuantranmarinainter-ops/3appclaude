@@ -2,14 +2,16 @@ import { MIXAMO65_BONE_PARENTS } from '@bbs/retarget'
 import { createHash } from 'node:crypto'
 import { isRecord } from '@bbs/animation-workspace-shared'
 import type { ImportedAsset } from './unifiedAssetFiles'
+import { nativeSkeletonFingerprint } from '../../../packages/retarget/src/nativeSkeleton'
 
 /** Bind App 1 Action identities to decoded clips before any project transaction. */
-export function attachApp1Manifest(imported: ImportedAsset, bytes: Buffer, value: unknown): void {
+export function attachApp1Manifest(imported: ImportedAsset, bytes: Buffer, value: unknown, expectedNativeFingerprint?: string): void {
   if (!isRecord(value) || typeof value.version !== 'string' || !/^1\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(value.version) ||
       value.glbSha256 !== createHash('sha256').update(bytes).digest('hex') || !Array.isArray(value.actions) || !value.actions.length) {
     throw new TypeError('APP1_MANIFEST_INVALID: version, GLB SHA-256 or actions are invalid')
   }
-  if (!['mixamo65', 'minecraft20'].includes(imported.skeleton?.family ?? '') || value.actions.length !== imported.motions.length || imported.issues?.length) {
+  const nativeRig = !!expectedNativeFingerprint && nativeSkeletonFingerprint(bytes) === expectedNativeFingerprint && ['verity', 'minecraft20'].includes(typeof value.rig === 'string' ? value.rig : '')
+  if (!nativeRig && !['mixamo65', 'minecraft20'].includes(imported.skeleton?.family ?? '') || value.actions.length !== imported.motions.length || imported.issues?.length) {
     throw new TypeError('APP1_ACTION_MISSING: every manifest Action must resolve to a supported rig GLB clip')
   }
   const used = new Set<string>(), indices = new Set<number>()

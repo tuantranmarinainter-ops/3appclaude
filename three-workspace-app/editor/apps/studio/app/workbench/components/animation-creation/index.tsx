@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSilhouetteSync } from './hooks/useSilhouetteSync'
+import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 
-const CHANNEL = 'bbs-animation-studio-v1.32.0'
-const FRAME_URL = '/animation-studio/v1.32.0/index.html'
-const BRIDGE_URL = '/animation-studio/v1.32.0/host-bridge.js'
+const CHANNEL = 'bbs-animation-studio-v1.33.0'
+const FRAME_URL = '/animation-studio/v1.33.0/index.html'
+const BRIDGE_URL = '/animation-studio/v1.33.0/host-bridge.js'
 
 type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { state?: { project?: Record<string, unknown> }; nativeProject?: Record<string, unknown>; derivativeBase64?: string; fps?: number; duration?: number; shotId?: string; characterId?: string; zip?: ArrayBuffer }; error?: string }
 
@@ -41,7 +42,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
-    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.32.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
+    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.33.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
     if (event.data.type === 'dirty') { const dirty = event.data.dirty === true; setEditorDirty(dirty); onEditorDirty(dirty); return }
     const item = pending.current.get(event.data.requestId)
     if (!item) return
@@ -75,6 +76,10 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     const character = project.characters[characterId]
     const asset = character && project.assets[character.assetId]
     if (!character || !asset || busy) return
+    try {
+      const entry=libraryAnimationEntry(project,characterId,existingMotionId)
+      if(entry){await openShot(entry.range,entry.blank);return}
+    } catch(cause) { setError(cause instanceof Error?cause.message:String(cause));return }
     setBusy(true); setError(''); setStatus('Đang nạp rig vào Animation Studio…')
     try {
       const response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(asset.id)}/source`)
@@ -113,23 +118,25 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }
 
   /** App 2 → App 3: export the shot from the scene (shot.export), then open its ZIP in the editor. */
-  async function openShot() {
+  async function openShot(range: [number, number] = shotRange, blank = false) {
     if (busy || !characterId || !cameraId) return
     setBusy(true); setError(''); setStatus('Đang xuất gói shot từ cảnh…')
     try {
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.export',
-        args: { cameraNodeId: cameraId, frameStart: shotRange[0], frameEnd: shotRange[1], editableCharacterIds: [characterId] } })
+        args: { cameraNodeId: cameraId, frameStart: range[0], frameEnd: range[1], editableCharacterIds: [characterId] } })
       const job = await loadUnifiedJob(projectId, String(response.result.jobId))
       const file = job.result?.files.find((item) => item.name.endsWith('.zip')) ?? job.result?.files[0]
       if (!file) throw new Error('shot.export không trả file ZIP.')
       const bytes = await (await loadUnifiedJobFile(projectId, job.jobId, file.id)).arrayBuffer()
       setStatus('Đang mở gói shot trong Animation Studio…')
-      await request('shotOpen', { bytes })
+      await request('shotOpen', { bytes, blank })
+      setShotRange(range)
+      setMotionId(''); setClipId(''); setRevisionConflict(false)
       setShotId(String(response.result.shotId))
       openedRevision.current = latest.project.revision
       setOpened(true)
-      setStatus(`Đã mở shot ${String(response.result.shotId).slice(0, 8)} (frame ${shotRange[0]}–${shotRange[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
+      setStatus(`Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
   }
@@ -139,9 +146,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     if (busy || !shotId) return
     setBusy(true); setError(''); setStatus('Đang xuất gói kết quả…')
     try {
-      const exported = await request('shotExport', { includeMinecraft20: withBobj })
-      if (!exported?.zip) throw new Error('Editor không trả gói kết quả.')
-      const upload = await uploadUnifiedAsset(new File([exported.zip], `${shotId}.result.zip`, { type: 'application/zip' }))
+      let zip: ArrayBuffer | undefined
+      if (!editorDirty) {
+        const saved = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/shots/${encodeURIComponent(shotId)}/draft`, { cache: 'no-store' })
+        if (saved.ok) zip = await saved.arrayBuffer()
+      }
+      zip ??= (await request('shotExport', { includeMinecraft20: withBobj }))?.zip
+      if (!zip) throw new Error('Editor không trả gói kết quả.')
+      const upload = await uploadUnifiedAsset(new File([zip], `${shotId}.result.zip`, { type: 'application/zip' }))
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId } })
       setShotId('')
@@ -227,7 +239,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     </header>
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>
-    <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.32.0" src={FRAME_URL} onLoad={() => {
+    <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.33.0" src={FRAME_URL} onLoad={() => {
       const doc = frame.current?.contentDocument
       if (!doc) return
       const hello = () => { void request('ping').then(() => setBridgeReady(true)).catch((cause: Error) => setError(cause.message)) }
