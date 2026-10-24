@@ -22,6 +22,8 @@ const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
 const characters = resolve(here, '../../../../builtin-assets/characters')
 const xbot = 'C:/w01-samples/Xbot.glb'
 const haveXbot = existsSync(xbot)
+const robotExpressive = 'C:/w01-samples/mvp-src/RobotExpressive.glb'
+const haveRobotExpressive = existsSync(robotExpressive)
 
 function syntheticVerity(helperCount: number, wingCount: number): string {
   const matrix = (x: number, y: number, z: number) => `1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
@@ -143,6 +145,8 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(app, /selectedBatchGroups/)
   assert.match(app, /\/api\/batches/)
   assert.match(app, /state\.batch && character\.rig === 'minecraft20'/)
+  assert.match(app, /text: 'Sửa mapping'/)
+  assert.match(app, /batchPresets/)
   assert.match(app, /function syncBatchDestinationOptions\(\)[\s\S]*?elements\.bobj\.checked = true/)
   assert.match(app, /character\?\.rig === 'minecraft20' \|\| \$\('transferShared'\)\.checked/)
   assert.match(app, /durationSeconds > 0/)
@@ -336,6 +340,33 @@ test('batch inspection walks folders recursively and isolates a corrupt file as 
     const uploadedBatch = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: target.id, options: {} })
     assert.equal(uploadedBatch.status, 202)
   } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('RobotExpressive batch error can be repaired with a preset and retried', { skip: haveRobotExpressive ? false : 'C:/w01-samples/mvp-src/RobotExpressive.glb not present' }, async () => {
+  const target = (await call('/api/targets')).json.targets[0]
+  const started = await post('/api/batches', { paths: [robotExpressive], targetId: target.id, options: {} })
+  assert.equal(started.status, 202, started.text)
+  let batch = started.json
+  for (let attempt = 0; attempt < 200 && batch.state === 'running'; attempt++) {
+    await new Promise((ok) => setTimeout(ok, 20))
+    batch = (await call(`/api/batches/${started.json.batchId}`)).json
+  }
+  assert.equal(batch.state, 'done')
+  const entry = batch.entries[0]
+  assert.equal(entry.status, 'error')
+  assert.equal(entry.error, 'Missing main joints: Spine, LeftArm, LeftForeArm, LeftHand, LeftUpLeg, LeftLeg, LeftFoot, RightArm, RightForeArm, RightHand, RightUpLeg, RightLeg, RightFoot')
+  assert.equal(entry.inspect.actions.length, 14)
+  assert.equal(entry.inspect.mapping.mapped, 3)
+
+  const assignments = { Hips: 'Hips', Spine: 'Abdomen', LeftUpLeg: 'UpperLegL', LeftLeg: 'LowerLegL', LeftFoot: 'FootL', RightUpLeg: 'UpperLegR', RightLeg: 'LowerLegR', RightFoot: 'FootR', Neck: 'Neck', Head: 'Head', LeftShoulder: 'ShoulderL', LeftArm: 'UpperArmL', LeftForeArm: 'LowerArmL', LeftHand: 'Palm1L', RightShoulder: 'ShoulderR', RightArm: 'UpperArmR', RightForeArm: 'LowerArmR', RightHand: 'Palm1R' }
+  const presetResponse = await post('/api/preset', { sourceId: entry.sourceId, targetId: target.id, assignments })
+  assert.equal(presetResponse.status, 200, presetResponse.text)
+  const repaired = await post('/api/inspect', { sourceId: entry.sourceId, targetId: target.id, options: {}, mappingPreset: presetResponse.json.preset, presetFamily: presetResponse.json.family })
+  assert.equal(repaired.status, 200, repaired.text)
+  assert.equal(repaired.json.blocker, null)
+  assert.equal(repaired.json.mapping.mapped, 18)
+  assert.deepEqual(repaired.json.mapping.missingRequired, [])
+  assert.equal(repaired.json.actions.length, 14)
 })
 
 test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-duration Take 001 clips', async () => {
