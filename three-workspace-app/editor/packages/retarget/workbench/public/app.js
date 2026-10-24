@@ -152,6 +152,12 @@ $('tgMesh').addEventListener('change', (event) => viewer.setToggle('mesh', event
 $('tgSkel').addEventListener('change', (event) => viewer.setToggle('skeleton', event.target.checked))
 $('tgGrid').addEventListener('change', (event) => viewer.setToggle('grid', event.target.checked))
 $('frameBtn').addEventListener('click', () => viewer.frameAll())
+try { viewer.autoFitOnAnimationChange = localStorage.getItem('w01.workbench.autoFitCamera') === 'true' } catch { /* Camera control works without storage. */ }
+$('autoFitCamera').checked = viewer.autoFitOnAnimationChange
+$('autoFitCamera').addEventListener('change', (event) => {
+  viewer.autoFitOnAnimationChange = event.target.checked
+  try { localStorage.setItem('w01.workbench.autoFitCamera', String(event.target.checked)) } catch { /* Camera control works without storage. */ }
+})
 $('actionSel').addEventListener('change', (event) => {
   const index = Number(event.target.value), entry = state.batch?.entries.find((item) => item.sourceId === state.source?.sourceId), action = entry?.inspect?.actions?.find((item) => item.index === index)
   if (entry && action) previewBatchAction(entry, action); else selectAction(index)
