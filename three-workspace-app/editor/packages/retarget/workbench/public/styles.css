@@ -248,3 +248,5 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .bone-options [role="option"], .bone-options [role="status"] { padding: 7px 10px; overflow-wrap: anywhere; cursor: pointer; }
 .bone-options [role="option"]:hover, .bone-options [aria-selected="true"] { background: #365477; }
 
+#mapRows tr.needs-choice { background: #ffb02024; }
+#mapRows tr.needs-choice td:first-child { color: var(--fail); font-weight: 600; }

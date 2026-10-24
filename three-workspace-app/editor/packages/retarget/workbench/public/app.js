@@ -1,4 +1,5 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
+import { mappingTransaction } from './mapping-transaction.js'
 import { boneChooser, closeBoneChooser } from './bone-chooser.js'
 import { mappingDrag } from './mapping-drag.js'
 import { Viewer, FPS } from './viewer.js'
@@ -97,6 +98,7 @@ for (const [key, title, type, min, max] of [
   })
   $('jointSettings').append(h('label', {}, title, input))
 }
+let mappingUndo = null
 let activeMappingTarget = null
 let hoveredMappingTarget = null
 function syncMappingHighlights() {
@@ -105,21 +107,48 @@ function syncMappingHighlights() {
   viewer.right.joints.selected = new Set(selected ? [selected.target] : [])
   viewer.left.joints.mapped = new Set(state.rows.filter((row) => row.source).map((row) => row.source))
   viewer.right.joints.mapped = new Set(state.rows.filter((row) => row.source).map((row) => row.target))
-  for (const tr of document.querySelectorAll('#mapRows tr')) tr.classList.toggle('active-mapping', tr.dataset.target === activeMappingTarget)
+  for (const tr of document.querySelectorAll('#mapRows tr')) {
+    const row = state.rows.find((item) => item.target === tr.dataset.target)
+    tr.classList.toggle('active-mapping', tr.dataset.target === activeMappingTarget)
+    tr.classList.toggle('needs-choice', !!row?.needsChoice)
+    const input = tr.querySelector('input')
+    if (input && document.activeElement !== input) input.value = row?.source ?? ''
+  }
 }
 // One assignment boundary shared by source-point picking and the mapping chooser.
 function assignMappingSource(target, source) {
   const row = state.rows.find((item) => item.target === target)
   if (!row || !state.inspect) return false
   if (source && !state.inspect.sourceBones.some((bone) => bone.name === source)) { toast(`"${source}" không phải xương của nguồn này.`, 'err'); return false }
-  row.source = source || null
-  row.via = row.source === row.original ? row.via : row.source ? 'edited' : null
-  state.dirty = state.rows.some((item) => item.source !== item.original) || state.dirty
+  const transaction = mappingTransaction(state.rows, target, source || null)
+  if (!transaction) return true // Re-selecting the same source keeps the last Undo.
+  // shortcut: one transaction of Undo; extend only if multi-step history is requested.
+  const repaired = transaction.before.some((item, i) => item.source !== state.rows[i].source)
+  mappingUndo = { rows: transaction.before, dirty: state.dirty || repaired, stale: state.stale || (repaired && !!state.result),
+    active: activeMappingTarget, preset: state.preset, family: state.presetFamily,
+    source: state.source, target: state.target, inspect: state.inspect, result: state.result }
+  state.rows = transaction.rows
+  state.dirty = true
   state.stale = state.stale || !!state.result
   state.inspectSeq++ // an in-flight inspect would overwrite the edit
+  state.inspecting = false
   renderMapping(); refreshSteps()
   return true
 }
+function canUndoMapping() {
+  return mappingUndo && mappingUndo.source === state.source && mappingUndo.target === state.target && mappingUndo.inspect === state.inspect
+}
+function undoMapping() {
+  if (!canUndoMapping()) return
+  const saved = mappingUndo
+  state.rows = saved.rows; state.dirty = saved.dirty
+  state.stale = saved.result === state.result ? saved.stale : state.stale
+  state.preset = saved.preset; state.presetFamily = saved.family
+  activeMappingTarget = saved.active
+  state.inspectSeq++; state.inspecting = false; mappingUndo = null
+  renderMapping(); refreshSteps()
+}
+
 viewer.left.joints.onPick = (source) => {
   if (!activeMappingTarget) { toast('Chọn ô mapping cần sửa, rồi bấm điểm xương nguồn.'); return }
   assignMappingSource(activeMappingTarget, source)
@@ -166,6 +195,12 @@ $('tgMesh').addEventListener('change', (event) => viewer.setToggle('mesh', event
 $('tgSkel').addEventListener('change', (event) => viewer.setToggle('skeleton', event.target.checked))
 $('tgGrid').addEventListener('change', (event) => viewer.setToggle('grid', event.target.checked))
 $('frameBtn').addEventListener('click', () => viewer.frameAll())
+try { viewer.autoFitOnAnimationChange = localStorage.getItem('w01.workbench.autoFitCamera') === 'true' } catch { /* Camera control works without storage. */ }
+$('autoFitCamera').checked = viewer.autoFitOnAnimationChange
+$('autoFitCamera').addEventListener('change', (event) => {
+  viewer.autoFitOnAnimationChange = event.target.checked
+  try { localStorage.setItem('w01.workbench.autoFitCamera', String(event.target.checked)) } catch { /* Camera control works without storage. */ }
+})
 $('actionSel').addEventListener('change', (event) => {
   const index = Number(event.target.value), entry = state.batch?.entries.find((item) => item.sourceId === state.source?.sourceId), action = entry?.inspect?.actions?.find((item) => item.index === index)
   if (entry && action) previewBatchAction(entry, action); else selectAction(index)
@@ -707,7 +742,7 @@ $('drop').addEventListener('keydown', (event) => { if (event.key === 'Enter' || 
 async function queueDrop(dataTransfer) {
   const files = []
   const readEntry = (entry) => new Promise((resolveEntry, rejectEntry) => {
-    if (entry.isFile) entry.file((file) => { file.batchPath = String(entry.fullPath ?? file.name).replace(/^\/+/, ''); resolveEntry(file) }, rejectEntry)
+    if (entry.isFile) entry.file((file) => { file.batchPath = String(entry.fullPath ?? file.name).replace(/^\/+/, ''); files.push(file); resolveEntry() }, rejectEntry)
     else if (entry.isDirectory) {
       const reader = entry.createReader(), found = []
       const next = () => reader.readEntries(async (items) => {
@@ -717,11 +752,13 @@ async function queueDrop(dataTransfer) {
       next()
     } else resolveEntry()
   })
-  const items = [...(dataTransfer?.items ?? [])]
-  if (items.some((item) => item.webkitGetAsEntry?.())) {
-    try { for (const item of items) { const entry = item.webkitGetAsEntry?.(); if (entry) await readEntry(entry); else if (item.kind === 'file') files.push(item.getAsFile()) } }
+  // Drag data becomes protected after the drop callback; capture handles before the first await.
+  const fallback = [...(dataTransfer?.files ?? [])]
+  const items = [...(dataTransfer?.items ?? [])].filter((item) => item.kind === 'file').map((item) => ({ entry: item.webkitGetAsEntry?.(), file: item.getAsFile() }))
+  if (items.some((item) => item.entry)) {
+    try { for (const item of items) { if (item.entry) await readEntry(item.entry); else if (item.file) files.push(item.file) } }
     catch (error) { toast(`Không đọc được thư mục thả vào: ${error.message}`, 'err'); return }
-  } else files.push(...(dataTransfer?.files ?? []))
+  } else files.push(...fallback)
   const batchFiles = files.filter((file) => /\.(glb|gltf|fbx|bobj|bin|png|jpe?g|webp|ktx2)$/i.test(file.name))
   if (batchFiles.some((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name))) await queueBatch({ files: batchFiles })
 }
@@ -907,6 +944,7 @@ function renderInspectInfo() {
 const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
   if (event?.target?.matches('#adjustLive, #adjJoint, #adjJointAxes, #adjJointX, #adjJointY, #adjJointZ')) return
+  mappingUndo = null
   state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
   if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale], [name^=adj_]')) inspectSoon()
@@ -1414,6 +1452,7 @@ function renderMapping() {
     h('span', { class: 'seg row' }, FILTERS.map(([key, label]) => h('button', { type: 'button', 'aria-pressed': String(state.filter === key), onclick: () => { state.filter = key; renderMapping() }, text: label }))))
   const actions = h('div', { class: 'toolbar' },
     h('button', { type: 'button', class: 'primary', style: 'width:auto', onclick: confirmMapping, text: 'Xác nhận mapping', disabled: !state.dirty && !!state.preset }),
+    h('button', { type: 'button', onclick: undoMapping, text: 'Hoàn tác', disabled: !canUndoMapping() }),
     h('button', { type: 'button', onclick: resetMapping, text: 'Đặt lại tự động', disabled: !state.dirty && !state.preset }),
     h('span', { class: 'chip', id: 'mapCount', text: `${mapped}/65 đã map` }))
   const body = h('tbody', { id: 'mapRows' })
@@ -1431,14 +1470,14 @@ function renderMapping() {
         assignMappingSource(row.target, value)
       })
       const dup = row.source && used.get(row.source) > 1
-      body.append(h('tr', { dataset: { target: row.target }, onmouseenter: () => { hoveredMappingTarget = row.target; syncMappingHighlights() }, onmouseleave: () => { hoveredMappingTarget = null; syncMappingHighlights() }, class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''}` },
+      body.append(h('tr', { dataset: { target: row.target }, onmouseenter: () => { hoveredMappingTarget = row.target; syncMappingHighlights() }, onmouseleave: () => { hoveredMappingTarget = null; syncMappingHighlights() }, class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''} ${row.needsChoice ? 'needs-choice' : ''}` },
         h('td', { text: row.target }), h('td', {}, boneChooser(input, [...names], (value) => {
           if (assignMappingSource(row.target, value)) {
             const next = [...document.querySelectorAll('#mapRows input')].find((item) => item.dataset.target === row.target)
             next?.focus({ preventScroll: true })
           }
         }), dup ? h('small', { class: 'dup', text: 'Xương này đang gán cho nhiều khớp' }) : null),
-        h('td', {}, h('span', { class: `via ${row.ambiguous ? 'ambiguous' : row.via ?? ''}`, text: row.ambiguous ? 'ambiguous' : row.via ?? (missing.has(row.target) ? 'thiếu bắt buộc' : '—') }))))
+        h('td', {}, h('span', { class: `via ${row.ambiguous ? 'ambiguous' : row.via ?? ''}`, text: row.needsChoice ? 'Cần chọn lại' : row.ambiguous ? 'ambiguous' : row.via ?? (missing.has(row.target) ? 'thiếu bắt buộc' : '—') }))))
     }
     if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 3, class: 'empty', text: 'Không có dòng nào khớp bộ lọc.' })))
   }
@@ -1523,6 +1562,7 @@ function renderActions(rebuild) {
   box.append(toolbar, h('table', {}, h('thead', {}, head), body))
 }
 function markRunInputsChanged(rebuild = true) {
+  mappingUndo = null
   if (state.result) state.stale = true
   if (rebuild) renderActions(true)
   else { const chipEl = $('tab-actions').querySelector('.toolbar .chip'); if (chipEl) chipEl.textContent = `${selectedActionIndices().length}/${state.inspect.actions.length} sẽ xuất` }
