@@ -127,7 +127,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       await request('shotOpen', { bytes })
       setShotId(String(response.result.shotId))
       openedRevision.current = latest.project.revision
-      setOpened(false)
+      setOpened(true)
       setStatus(`Đã mở shot ${String(response.result.shotId).slice(0, 8)} (frame ${shotRange[0]}–${shotRange[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
@@ -159,6 +159,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     if (busy || !characterId || !opened) return
     setBusy(true); setError(''); setStatus('Đang tạo và kiểm tra animation…')
     try {
+      if (shotId) {
+        await request('saved')
+        setOpened(false)
+        setEditorDirty(false)
+        onEditorDirty(false)
+        setStatus('Đã lưu bản chỉnh của shot trong editor · hãy bấm "Trả kết quả về cảnh" để cập nhật timeline.')
+        return
+      }
       const result = await request('save')
       if (!result?.nativeProject || !result.derivativeBase64) throw new Error('Editor không trả native project và GLB animation.')
       const latest = await loadUnifiedProject(projectId)
