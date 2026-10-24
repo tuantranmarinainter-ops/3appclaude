@@ -16,6 +16,12 @@ Mở `http://127.0.0.1:3101`. Máy chủ chỉ bind `127.0.0.1`, từ chối Hos
 `%TEMP%\w01-workbench\<phiên>\` (in ra khi khởi động); không bao giờ ghi vào repo hay cạnh file của bạn. File nguồn chỉ đọc.
 `three` (loader, OrbitControls, Draco decoder) được phục vụ từ gói đã cài của `packages/retarget`.
 
+Để chuyển dữ liệu tạm khỏi ổ hệ thống, đặt `W01_WORKBENCH_TMP` tới một thư mục gốc, ví dụ
+`W01_WORKBENCH_TMP=S:\Claude\tmp`; phiên sẽ nằm trong `S:\Claude\tmp\w01-workbench\`. Khi khởi động, Workbench xoá
+phiên quá 7 ngày nếu PID trong khoá phiên không còn chạy. Đổi thời hạn bằng `W01_WORKBENCH_RETENTION_DAYS` (0–3650).
+Mỗi lượt xem thử mới cũng thay và xoá kết quả xem thử cũ của cùng file/Action. Thanh trên cùng hiện dung lượng phiên;
+**Dọn dữ liệu tạm** xoá kết quả đã hoàn tất và mọi phiên không còn server dùng (không xoá upload đang dùng hoặc lượt đang chạy).
+
 ## Luồng
 
 1. **Nguồn** — kéo-thả `.glb/.fbx/.bobj` (≤ 512 MB) hoặc dán đường dẫn cục bộ (cần cho `.gltf` có `.bin` ngoài; file lớn).
@@ -47,6 +53,8 @@ trượt chân, cảnh báo), **Minecraft20** (preview + sai số), **Tải về
 | `POST /api/runs` | `{ sourceId, targetId, options, mappingPreset?, presetFamily?, wait? }`; mặc định chờ xong và trả `{ runId, status, report, manifest, files[] }`; `wait:false` → 202 và poll `GET /api/runs/<id>`; đang có lượt khác → 409 + `runId` đang chạy |
 | `GET /api/runs/<id>` | `{ state: running\|done\|error, stage, done, total, elapsedMs, result? }` |
 | `GET /api/runs/<id>/files/<tên>` | chỉ các file lượt chạy đó đã tạo |
+| `GET /api/temp-storage` | dung lượng/thư mục phiên và số ngày giữ phiên cũ |
+| `POST /api/temp-storage/cleanup` | xoá kết quả đã xong và phiên không còn PID sống; giữ lượt đang chạy/upload đang dùng |
 
 `options`: `actions`, `previewAction`, `unitMeters`, `upAxis`, `rootPolicy`, `rootScale`, `calibrate`, `facingDegrees`, `mode`, `bobj`, `bobjRoot`, `preview`
 (cùng ý nghĩa với cờ CLI `normalize`).
@@ -55,7 +63,7 @@ trượt chân, cảnh báo), **Minecraft20** (preview + sai số), **Tải về
 
 - Nguồn `.bobj` không có mesh: khung trái chỉ hiện thông báo (rig dựng từ armature, không vẽ).
 - `.gltf` tải lên (raw) bị từ chối vì mất `.bin` ngoài — dùng đường dẫn. Viewer của `.gltf` ngoài bỏ texture (chỉ để xem).
-- Chạy tuần tự một lượt một lúc; không huỷ giữa chừng. Phiên và file tạm bị xoá khi tắt máy chủ bằng đường đóng sạch, còn kill đột ngột thì để lại trong `%TEMP%`.
+- Chạy tuần tự một lượt một lúc. Phiên bị xoá khi tắt máy chủ sạch; kill đột ngột để lại khoá PID và lần khởi động sau sẽ dọn khi phiên quá thời hạn.
 - Cảnh báo chất lượng chỉ đo, chưa sửa chuyển động (chưa foot lock/IK). Chưa kiểm `.bobj` trong BBS FS thật.
 - Mapping sửa tay chỉ gán 1 xương nguồn cho 1 khớp (chưa soạn chuỗi nhiều xương/trọng số trong UI).
 - Kiểm bằng trình duyệt thật ở độ rộng ≥ 1280 px; dưới đó bố cục xếp dọc.

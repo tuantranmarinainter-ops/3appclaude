@@ -9,7 +9,6 @@ import { createHash, randomBytes } from 'node:crypto'
 import { copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -31,6 +30,7 @@ import {
   resolveCharacter, resolveLibraryPath, setActionMetadata, translateActionName, formatBilingual,
 } from '../../library/index.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
+import { cleanupStaleSessions, createSession, directorySize, resolveWorkbenchTempRoot, retentionDays } from './tempStorage.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const publicDir = resolve(here, 'public')
@@ -139,14 +139,17 @@ type RunState = { id: string; state: 'running' | 'done' | 'error' | 'CANCELLED';
 type BatchEntry = { sourceId: string | null; name: string; path?: string; sha256?: string; bytes?: number; status: 'queued' | 'inspecting' | 'ready' | 'duplicate' | 'error'; duplicateOf?: string; inLibrary?: boolean; inspect?: Record<string, any>; error?: string }
 type BatchState = { id: string; state: 'running' | 'done' | 'cancelled'; stage: string; done: number; total: number; entries: BatchEntry[]; controller: AbortController }
 
-export async function startWorkbench(options: { port?: number } = {}): Promise<Workbench> {
+export async function startWorkbench(options: { port?: number; tempRoot?: string; retentionDays?: number } = {}): Promise<Workbench> {
   const root = threeRoot()
-  const sessionId = `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`
-  const sessionDir = join(tmpdir(), 'w01-workbench', sessionId)
-  mkdirSync(join(sessionDir, 'uploads'), { recursive: true }); mkdirSync(join(sessionDir, 'runs'), { recursive: true })
+  const tempRoot = options.tempRoot ?? resolveWorkbenchTempRoot({ configured: process.env.W01_WORKBENCH_TMP })
+  const keepDays = options.retentionDays ?? retentionDays()
+  const startupCleanup = cleanupStaleSessions(tempRoot, { retentionDays: keepDays })
+  const sessionDir = createSession(tempRoot)
+  if (startupCleanup.removedSessions) console.log(`workbench temp cleanup: removed ${startupCleanup.removedSessions} stale session(s), freed ${startupCleanup.freedBytes} bytes`)
 
   const sources = new Map<string, SourceRecord>()
   const runs = new Map<string, RunState>()
+  const previewRuns = new Map<string, string>()
   const batches = new Map<string, BatchState>()
   const batchUploads = new Map<string, string>()
   const sourceByHash = new Map<string, string>()
@@ -406,9 +409,20 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     return packGltf(stripGltfTextures(JSON.parse(readFileSync(record.path, 'utf8'))), dirname(record.path))
   }
 
+  function discardRun(state: RunState): number {
+    if (state.state === 'running') return 0
+    const bytes = directorySize(state.dir)
+    try { rmSync(state.dir, { recursive: true, force: true }) } catch { return 0 }
+    runs.delete(state.id)
+    for (const [row, id] of previewRuns) if (id === state.id) previewRuns.delete(row)
+    return bytes
+  }
+
   function startRun(source: SourceRecord, target: TargetRecord, body: Record<string, any>): RunState {
     const options = parseOptions(body.options)
     const family = parseFamily(body.presetFamily)
+    const previewIndex = options.previewAction ?? options.actions?.[0]
+    const previewRow = options.review && previewIndex !== undefined ? `${source.id}:${previewIndex}` : null
     const id = randomBytes(6).toString('hex')
     const dir = join(sessionDir, 'runs', id)
     mkdirSync(dir, { recursive: true })
@@ -425,6 +439,14 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         state.result = { runId: id, status: result.status, report: result.report, manifest: result.manifest,
           files: result.files.map((file) => ({ ...file, url: `/api/runs/${id}/files/${encodeURIComponent(file.name)}` })) }
         state.state = 'done'
+        if (previewRow) {
+          const previous = previewRuns.get(previewRow)
+          previewRuns.set(previewRow, id)
+          if (previous && previous !== id) {
+            const old = runs.get(previous)
+            if (old) discardRun(old)
+          }
+        }
       } catch (error) {
         if (state.controller.signal.aborted) {
           state.state = 'CANCELLED'; state.stage = 'CANCELLED'
@@ -443,6 +465,21 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     const method = req.method ?? 'GET'
     let match: RegExpMatchArray | null
+    if (method === 'GET' && path === '/api/temp-storage') return json(res, 200, {
+      sessionBytes: directorySize(sessionDir), sessionDir, retentionDays: keepDays,
+    })
+    if (method === 'POST' && path === '/api/temp-storage/cleanup') {
+      let removedRuns = 0, freedBytes = 0
+      for (const state of [...runs.values()]) {
+        if (state.state === 'running') continue
+        const wasPresent = runs.has(state.id)
+        freedBytes += discardRun(state)
+        if (wasPresent && !runs.has(state.id)) removedRuns++
+      }
+      const stale = cleanupStaleSessions(tempRoot, { retentionDays: 0 })
+      return json(res, 200, { sessionBytes: directorySize(sessionDir), sessionDir, retentionDays: keepDays,
+        removedRuns, removedSessions: stale.removedSessions, freedBytes: freedBytes + stale.freedBytes })
+    }
     if (method === 'GET' && path === '/api/workspace-navigation') return json(res, 200, {
       studioUrl: process.env.W01_STUDIO_URL ?? null,
       animationUrl: process.env.W01_ANIMATION_STUDIO_URL ?? null,
@@ -793,7 +830,12 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       fail(res, error instanceof TypeError || error instanceof RangeError ? 400 : 500, error instanceof Error ? error.message : 'Internal error')
     })
   })
-  await new Promise<void>((ok, bad) => { server.once('error', bad); server.listen(options.port ?? 0, '127.0.0.1', () => ok()) })
+  try {
+    await new Promise<void>((ok, bad) => { server.once('error', bad); server.listen(options.port ?? 0, '127.0.0.1', () => ok()) })
+  } catch (error) {
+    rmSync(sessionDir, { recursive: true, force: true })
+    throw error
+  }
   const address = server.address()
   port = typeof address === 'object' && address ? address.port : 0
   return {
@@ -809,5 +851,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   startWorkbench({ port }).then((bench) => {
     console.log(`W01 App 1 Workbench: ${bench.url}`)
     console.log(`session folder (uploads + outputs): ${bench.sessionDir}`)
+    let closing = false
+    const shutdown = () => {
+      if (closing) return
+      closing = true
+      bench.close().finally(() => process.exit(0))
+    }
+    process.once('SIGINT', shutdown)
+    process.once('SIGTERM', shutdown)
   }, (error) => { console.error(`workbench: ${error instanceof Error ? error.message : error}`); process.exit(1) })
 }
