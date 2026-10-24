@@ -22,8 +22,13 @@ export async function migrateLibraryBaseModels(options: { root?: string; dryRun?
   const root = resolveLibraryPath({ root: options.root }), results: BaseModelMigration[] = []
   for (const character of listLibraryCharacters({ root })) {
     const { charId, name } = character, directory = join(root, 'characters', charId)
-    if (character.baseModelId) { results.push({ charId, name, status: 'already', modelId: character.baseModelId }); continue }
     const original = join(directory, 'original', 'model.bbs.bobj'), skin = join(directory, 'skin.png')
+    // Characters sharing one original .bobj (Gỗ Xưa, Tiểu Nhị) differ by textures: each wears its own original/textures as a skin.
+    const ownTextures = join(directory, 'original', 'textures'), needsOwnTextures = existsSync(original) && existsSync(ownTextures) && !character.skin
+    if (character.baseModelId) {
+      if (needsOwnTextures && !options.dryRun) setCharacterSkin({ root, charId, skinDir: ownTextures })
+      results.push({ charId, name, status: 'already', modelId: character.baseModelId }); continue
+    }
     const kind = existsSync(original) ? 'original-bobj' as const : character.rig === 'minecraft20' && existsSync(skin) ? 'minecraft20-skin' as const : undefined
     if (!kind) { results.push({ charId, name, status: 'unsupported', reason: 'no original/model.bbs.bobj and no minecraft20 skin.png' }); continue }
     if (options.dryRun) { results.push({ charId, name, status: 'would-migrate', kind }); continue }
@@ -42,6 +47,7 @@ export async function migrateLibraryBaseModels(options: { root?: string; dryRun?
       setCharacterBaseModel({ root, charId, baseModelId: registered.modelId })
       // The base model is shared (content-addressed); each Minecraft character wears its own skin.png as a character override.
       if (kind === 'minecraft20-skin') setCharacterSkin({ root, charId, skinDir: join(staging, 'skin') })
+      else if (needsOwnTextures) setCharacterSkin({ root, charId, skinDir: ownTextures })
       results.push({ charId, name, status: 'migrated', kind, modelId: registered.modelId })
     } catch (error) { results.push({ charId, name, status: 'unsupported', kind, reason: error instanceof Error ? error.message : String(error) }) }
     finally { rmSync(staging, { recursive: true, force: true }) }
