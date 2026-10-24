@@ -1,4 +1,5 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
+import { boneChooser, closeBoneChooser } from './bone-chooser.js'
 import { Viewer, FPS } from './viewer.js'
 import { jointSettings, JOINT_SETTINGS_KEY } from './joint-overlay.js'
 import { executeTransfer, suggestActionKey } from './transfer.js'
@@ -1372,6 +1373,7 @@ function rowMatches(row) {
   return !q || row.target.toLowerCase().includes(q) || (row.source ?? '').toLowerCase().includes(q)
 }
 function renderMapping() {
+  closeBoneChooser()
   const box = clear($('tab-mapping'))
   hoveredMappingTarget = null
   if (!state.rows.some((row) => row.target === activeMappingTarget)) activeMappingTarget = null
@@ -1387,7 +1389,6 @@ function renderMapping() {
   if (state.preset && !state.dirty) box.append(h('div', { class: 'note info', text: 'Mapping đã xác nhận (preset). Lần chạy sẽ dùng đúng preset này.' }))
   if (state.dirty) box.append(h('div', { class: 'note', text: 'Bạn đã sửa mapping. Bấm "Xác nhận mapping" để tạo preset; chưa xác nhận thì chưa chạy được.' }))
   if (info.mapping.presetFingerprintsMatch === false) box.append(h('div', { class: 'note', text: 'Preset có fingerprint khác nguồn/đích hiện tại — kiểm lại mapping.' }))
-  const list = h('datalist', { id: 'boneList' }, info.sourceBones.map((bone) => h('option', { value: bone.name })))
   const toolbar = h('div', { class: 'toolbar' },
     h('input', { type: 'search', placeholder: 'Lọc theo tên khớp / xương…', value: state.search, 'aria-label': 'Lọc mapping', oninput: (event) => { state.search = event.target.value; renderMappingRows() } }),
     h('span', { class: 'seg row' }, FILTERS.map(([key, label]) => h('button', { type: 'button', 'aria-pressed': String(state.filter === key), onclick: () => { state.filter = key; renderMapping() }, text: label }))))
@@ -1396,11 +1397,12 @@ function renderMapping() {
     h('button', { type: 'button', onclick: resetMapping, text: 'Đặt lại tự động', disabled: !state.dirty && !state.preset }),
     h('span', { class: 'chip', id: 'mapCount', text: `${mapped}/65 đã map` }))
   const body = h('tbody', { id: 'mapRows' })
-  box.append(list, actions, toolbar, h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Khớp Mixamo65' }), h('th', { text: 'Xương nguồn (gõ để tìm, xoá = bỏ map)' }), h('th', { text: 'Cách map' }))), body))
+  box.append(actions, toolbar, h('table', {}, h('thead', {}, h('tr', {}, h('th', { text: 'Khớp Mixamo65' }), h('th', { text: 'Xương nguồn (gõ để tìm, xoá = bỏ map)' }), h('th', { text: 'Cách map' }))), body))
   function renderMappingRowsInner() {
+    closeBoneChooser()
     clear(body)
     for (const row of state.rows.filter(rowMatches)) {
-      const input = h('input', { type: 'text', value: row.source ?? '', list: 'boneList', spellcheck: 'false', 'aria-label': `Xương nguồn cho ${row.target}`, placeholder: '— chưa map —' })
+      const input = h('input', { type: 'text', value: row.source ?? '', spellcheck: 'false', 'aria-label': `Xương nguồn cho ${row.target}`, placeholder: '— chưa map —' })
       input.dataset.target = row.target
       input.addEventListener('focus', () => { activeMappingTarget = row.target; syncMappingHighlights() })
       input.addEventListener('change', () => {
@@ -1410,7 +1412,12 @@ function renderMapping() {
       })
       const dup = row.source && used.get(row.source) > 1
       body.append(h('tr', { dataset: { target: row.target }, onmouseenter: () => { hoveredMappingTarget = row.target; syncMappingHighlights() }, onmouseleave: () => { hoveredMappingTarget = null; syncMappingHighlights() }, class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''}` },
-        h('td', { text: row.target }), h('td', {}, input, dup ? h('small', { class: 'dup', text: 'Xương này đang gán cho nhiều khớp' }) : null),
+        h('td', { text: row.target }), h('td', {}, boneChooser(input, [...names], (value) => {
+          if (assignMappingSource(row.target, value)) {
+            const next = [...document.querySelectorAll('#mapRows input')].find((item) => item.dataset.target === row.target)
+            next?.focus({ preventScroll: true })
+          }
+        }), dup ? h('small', { class: 'dup', text: 'Xương này đang gán cho nhiều khớp' }) : null),
         h('td', {}, h('span', { class: `via ${row.ambiguous ? 'ambiguous' : row.via ?? ''}`, text: row.ambiguous ? 'ambiguous' : row.via ?? (missing.has(row.target) ? 'thiếu bắt buộc' : '—') }))))
     }
     if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 3, class: 'empty', text: 'Không có dòng nào khớp bộ lọc.' })))
