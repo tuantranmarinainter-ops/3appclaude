@@ -167,7 +167,9 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         const saved = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/shots/${encodeURIComponent(shotId)}/draft`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: upload.uploadId }),
         })
-        if (!saved.ok) { const body = await saved.json(); throw new Error(body.error?.message ?? 'Không lưu được bản chỉnh của shot.') }
+        const receipt = await saved.json()
+        if (!saved.ok) throw new Error(receipt.error?.message ?? 'Không lưu được bản chỉnh của shot.')
+        if (receipt.shotId !== shotId || receipt.byteLength !== exported.zip.byteLength || !/^[a-f0-9]{64}$/.test(receipt.sha256 ?? '')) throw new Error('Project không xác nhận đúng gói shot đã lưu.')
         await request('saved')
         setEditorDirty(false)
         onEditorDirty(false)
