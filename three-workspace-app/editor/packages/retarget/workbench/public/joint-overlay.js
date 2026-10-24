@@ -71,12 +71,12 @@ export class JointOverlay {
       const showLabel = showJointLabel(settings, selected, this.mapped.has(key))
       bone.getWorldPosition(this.point).project(camera)
       const visible = (settings.points || showLabel) && this.point.z >= -1 && this.point.z <= 1 && Math.abs(this.point.x) <= 1 && Math.abs(this.point.y) <= 1
+      marker.classList.toggle('selected', selected)
+      marker.setAttribute('aria-pressed', String(selected))
       marker.hidden = !visible
       if (!visible) continue
       marker.style.transform = `translate(${(this.point.x + 1) * width / 2}px,${(1 - this.point.y) * height / 2}px) translate(-50%,-50%)`
-      marker.classList.toggle('selected', selected)
       marker.classList.toggle('label-only', !settings.points)
-      marker.setAttribute('aria-pressed', String(selected))
       label.hidden = !showLabel
     }
   }
