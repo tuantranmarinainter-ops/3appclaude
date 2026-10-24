@@ -7,6 +7,7 @@ declare global { interface Window { __libraryPreviewResult?: { data: string; mim
 
 const PREVIEW_BACKGROUND = '#d9dde3'
 const PREVIEW_MANNEQUIN = '#5d6878'
+const PREVIEW_SECONDS = 2.5
 
 // Minecraft player-skin boxes on the Minecraft20 skeleton (same table as App 1 `skinnedCharacterGlb`):
 // [bone, skin part, min, max] in rest world pixels (1/16 block), feet at y=0, facing +Z.
@@ -163,7 +164,9 @@ export default function PreviewRenderClient() {
           if (property === 'quaternion') for (let i = 0; i < values.length; i += 4) { turn.fromArray(values, i).premultiply(rootTurn).toArray(values, i) }
         }
         const mixer = new THREE.AnimationMixer(modelScene), running = mixer.clipAction(clip); running.play()
-        const seconds = Math.min(2.5, clip.duration), start = Math.max(0, (clip.duration - seconds) / 2)
+        // Mixamo-style: always a 2.5 s loop. Short clips repeat (LoopRepeat) to fill it; long clips show 2.5 s from the middle.
+        running.setLoop(THREE.LoopRepeat, Infinity)
+        const seconds = PREVIEW_SECONDS, start = Math.max(0, (clip.duration - seconds) / 2)
         // Frame the whole recorded motion, not only the first pose.
         const bounds = new THREE.Box3()
         for (let step = 0; step <= 8; step++) { mixer.setTime(start + seconds * step / 8); modelScene.updateMatrixWorld(true); bounds.union(new THREE.Box3().setFromObject(modelScene, true)) }
@@ -176,28 +179,25 @@ export default function PreviewRenderClient() {
         const camera = new THREE.PerspectiveCamera(32, 1, Math.max(0.001, span / 1000), span * 100)
         const radius = span * 0.5 / Math.tan(THREE.MathUtils.degToRad(16)) * 1.08
         camera.position.copy(center).add(new THREE.Vector3(0.45, 0.22, 1).normalize().multiplyScalar(radius)); camera.lookAt(center)
-        const stream = canvas.captureStream(15)
+        // Manual frame capture: the recorder gets a frame per render instead of depending on the browser noticing canvas changes.
+        const stream = canvas.captureStream(0), videoTrack = stream.getVideoTracks()[0] as (MediaStreamTrack & { requestFrame?: () => void }) | undefined
         const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'].find(type => MediaRecorder.isTypeSupported(type))
         if (!mime) throw new Error('This browser cannot record WebM previews')
         const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 180000 })
-        const chunks: BlobPart[] = []
+        const chunks: BlobPart[] = []; let frames = 0, lastFrame = 0
         recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data) }
         recorder.onerror = () => done({ data: '', mime, error: 'Browser video recording failed' })
-        recorder.onstop = async () => {
-          const blob = new Blob(chunks, { type: mime }), bytes = new Uint8Array(await blob.arrayBuffer())
-          let binary = ''; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
-          done({ data: btoa(binary), mime })
-        }
         const clock = new THREE.Clock(); mixer.setTime(start)
         const draw = () => {
           if (disposed) return
-          mixer.update(Math.min(clock.getDelta(), 0.05)); renderer?.render(scene, camera); frame = requestAnimationFrame(draw)
+          mixer.update(Math.min(clock.getDelta(), 0.05)); renderer?.render(scene, camera); if (performance.now() - lastFrame >= 1000 / 15 - 2) { lastFrame = performance.now(); videoTrack?.requestFrame?.(); frames++ } frame = requestAnimationFrame(draw)
         }
         draw(); await new Promise<void>(resolve => { recorder.onstop = async () => {
           const blob = new Blob(chunks, { type: mime }), bytes = new Uint8Array(await blob.arrayBuffer())
+          if (!bytes.length) { done({ data: '', mime, error: `MediaRecorder produced no video data for this preview (${frames} frames rendered, track ${videoTrack?.readyState})` }); resolve(); return }
           let binary = ''; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
           done({ data: btoa(binary), mime }); resolve()
-        }; recorder.start(100); setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, seconds * 1000) })
+        }; recorder.start(100); setTimeout(() => { if (recorder.state === 'inactive') return; recorder.requestData(); recorder.stop() }, seconds * 1000) })
         stream.getTracks().forEach(track => track.stop()); mixer.stopAllAction(); renderer?.dispose()
       } catch (error) { done({ data: '', mime: '', error: error instanceof Error ? error.message : String(error) }) }
     })()

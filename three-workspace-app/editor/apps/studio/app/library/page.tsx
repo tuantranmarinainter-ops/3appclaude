@@ -13,6 +13,7 @@ type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glo
 type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
+const MISSING_PREVIEW_CAP = 20
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
 
@@ -29,7 +30,7 @@ export default function LibraryPage() {
   const [tab, setTab] = useState<'actions' | 'characters' | 'coverage'>('actions')
   const [actions, setActions] = useState<Action[]>([]), [characters, setCharacters] = useState<Character[]>([])
   const [coverage, setCoverage] = useState<Coverage[]>([]), [characterId, setCharacterId] = useState('')
-  const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(false)
+  const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(true)
   const [query, setQuery] = useState(''), [category, setCategory] = useState(''), [sourceFilter, setSourceFilter] = useState(''), [inPlaceOnly, setInPlaceOnly] = useState(false), [sortOrder, setSortOrder] = useState<'name' | 'newest'>('name')
   const [selected, setSelected] = useState<Action | null>(null), [copyTarget, setCopyTarget] = useState('')
   const previousPreviewJobs = useRef<Record<string, { state: string; message?: string }>>({})
@@ -63,11 +64,12 @@ export default function LibraryPage() {
     if (requested) void loadUnifiedProject(requested).then(({ project }) => setProjectId(project.projectId)).catch(error => setMessage(String(error)))
   }, [])
   useEffect(() => { void loadCharacters().catch(error => setMessage(String(error))) }, [loadCharacters])
-  useEffect(() => { void json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).then(body => { const jobs = body.jobs as Array<{ uuid: string; state: string; message?: string }>; setPreviewJobs(Object.fromEntries(jobs.map(job => [job.uuid, job]))) }).catch(error => setMessage(`Không tạo được hàng đợi video: ${String(error)}`)) }, [])
+  useEffect(() => { void json('/api/library/previews').then(body => setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job])))).catch(() => undefined) }, [])
   useEffect(() => { const timer = window.setInterval(() => { void json('/api/library/previews').then(body => { const jobs = Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job])); const completed = Object.entries(jobs).some(([uuid, job]) => job.state === 'complete' && previousPreviewJobs.current[uuid]?.state !== 'complete'); previousPreviewJobs.current = jobs; setPreviewJobs(jobs); if (completed) void loadActions().catch(error => setMessage(String(error))) }).catch(() => undefined) }, 2500); return () => window.clearInterval(timer) }, [loadActions])
   useEffect(() => { void loadActions().catch(error => setMessage(String(error))) }, [loadActions])
   useEffect(() => { if (tab === 'coverage') void json('/api/library?coverage=1').then(body => setCoverage(body.coverage)).catch(error => setMessage(String(error))) }, [tab])
 
+  const missingPreviews = useMemo(() => actions.filter(action => !action.preview && previewJobs[action.uuid]?.state !== 'queued' && previewJobs[action.uuid]?.state !== 'running'), [actions, previewJobs])
   const selectedCharacter = characters.find(item => item.charId === characterId)
   const compatibleTargets = useMemo(() => characters.filter(item => (item.rig === selected?.rig || item.rig === 'verity' && selected?.rig === 'mixamo65+verity') && item.charId !== selected?.ownerCharId), [characters, selected])
   const effectiveCopyTarget = compatibleTargets.some(item => item.charId === copyTarget) ? copyTarget : compatibleTargets[0]?.charId ?? ''
@@ -80,6 +82,12 @@ export default function LibraryPage() {
       await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'add-to-scene', charId, projectId, expectedRevision: project.revision }) })
       setMessage('Đã thêm nhân vật vào cảnh App 2.')
     } finally { setAdding(false) }
+  }
+  async function queueMissingPreviews() {
+    const actionUuids = missingPreviews.slice(0, MISSING_PREVIEW_CAP).map(action => action.uuid)
+    if (!actionUuids.length) return
+    const body = await json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids }) })
+    setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job]))); setMessage(`Đã xếp hàng ${actionUuids.length} video.`)
   }
   async function approve() {
     if (!selected?.ownerCharId) return
@@ -108,6 +116,7 @@ export default function LibraryPage() {
       <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
       <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
       <button onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
+      <button disabled={!missingPreviews.length} title={`Mỗi lần bấm tạo tối đa ${MISSING_PREVIEW_CAP} video`} onClick={() => void queueMissingPreviews().catch(error => setMessage(String(error)))}>{`Tạo video còn thiếu (${missingPreviews.length}, tối đa ${MISSING_PREVIEW_CAP}/lần)`}</button>
       <input aria-label="Tìm động tác" placeholder="Tìm" value={query} onChange={event => setQuery(event.target.value)} />
       <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select><select aria-label="Nguồn" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="">Mọi nguồn</option><option value="mixamo">Mixamo</option><option value="other">Khác</option></select><label><input type="checkbox" checked={inPlaceOnly} onChange={event => setInPlaceOnly(event.target.checked)} /> In Place</label><select aria-label="Sắp xếp" value={sortOrder} onChange={event => setSortOrder(event.target.value as 'name' | 'newest')}><option value="name">Theo tên</option><option value="newest">Mới nhập</option></select>
     </div><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(280px,1fr)', gap: 20 }}>
