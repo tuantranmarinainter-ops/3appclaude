@@ -19,6 +19,8 @@ type Params = Record<string, string | number | StudioError>
 const messages: Record<string, Record<string, string>> = {'ar': ar, 'de': de, 'en': en, 'es': es, 'fr': fr, 'id': id, 'ja': ja, 'ko': ko, 'ms': ms, 'pt': pt, 'ru': ru, 'tr': tr, 'vi': vi, 'zh-CN': zhCN, 'zh-TW': zhTW}
 
 export const DEFAULT_LOCALE = 'en'
+/** Language before the user picks one (user decision 2026-10-24: Vietnamese, not the browser language). English stays the fallback for missing keys. */
+export const INITIAL_LOCALE = 'vi'
 
 /** Same rules as the builder's resolveLocale, over Studio's catalog, without loading the builder. */
 export function resolveLocale(locale?: string | null): string {
@@ -81,7 +83,8 @@ export function negotiateLocale(stored: string | null | undefined, acceptLanguag
     const resolved = resolveLocale(stored)
     if (resolved === stored) return resolved
   }
-  return pickLocale(acceptedLanguages(acceptLanguage))
+  void acceptLanguage
+  return INITIAL_LOCALE
 }
 
 /**
