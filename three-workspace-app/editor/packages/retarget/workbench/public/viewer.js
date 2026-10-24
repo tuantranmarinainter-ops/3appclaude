@@ -78,7 +78,7 @@ class Pane {
 
   /** Puts `object` in the pane (it may be shared between runs, so it is never disposed here). */
   /** `frameLike`: frame the camera on another object's bounds (Minecraft 20 shown at the Mixamo target's framing). */
-  setModel(object, frameLike = null) {
+  setModel(object, frameLike = null, fit = true) {
     this.clear()
     this.object = object
     this.frameLike = frameLike
@@ -96,8 +96,7 @@ class Pane {
     }
     this.mixer = new THREE.AnimationMixer(object)
     this.applyVisibility()
-    this.updateBounds()
-    this.frame()
+    if (fit) { this.updateBounds(); this.frame() }
   }
 
   applyVisibility() {
@@ -239,6 +238,8 @@ export class Viewer {
     this.right.joints.canonical = true
     this.onFrame = onFrame
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
+    this.autoFitOnAnimationChange = false
+    this.hasSourceFrame = false
     this.source = null // { scene, animations }
     this.sourceSeq = 0
     this.targetScene = null
@@ -272,7 +273,8 @@ export class Viewer {
     const loaded = await loadModel(url, format)
     if (seq !== this.sourceSeq) return -1
     this.source = loaded
-    this.left.setModel(this.source.scene)
+    this.left.setModel(this.source.scene, null, !this.hasSourceFrame || this.autoFitOnAnimationChange)
+    this.hasSourceFrame = true
     return this.source.animations.length
   }
 
@@ -309,15 +311,15 @@ export class Viewer {
     this.result = { mode, animations: loaded.animations, scene: loaded.scene, offset }
     this.renamed.clear()
     if (this.steveMode) return
-    if (mode === 'model') this.right.setModel(loaded.scene)
-    else if (this.targetScene) this.right.setModel(this.targetScene)
+    if (mode === 'model') this.right.setModel(loaded.scene, null, this.autoFitOnAnimationChange)
+    else if (this.targetScene && this.right.object !== this.targetScene) this.right.setModel(this.targetScene, null, this.autoFitOnAnimationChange)
   }
 
   clearResult() {
     this.result = null
     this.renamed.clear()
-    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene) }
-    else if (this.targetScene) this.right.setModel(this.targetScene)
+    if (this.steve) { this.steve.clips = []; this.right.setModel(this.steve.scene, null, this.autoFitOnAnimationChange) }
+    else if (this.targetScene) this.right.setModel(this.targetScene, null, this.autoFitOnAnimationChange)
     this.right.setClip(null)
   }
 
@@ -332,11 +334,12 @@ export class Viewer {
       const holder = new THREE.Group(); holder.name = 'steve-holder'; holder.add(scene)
       this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [], skinId }
     }
+    const fit = !this.steveMode || this.autoFitOnAnimationChange
     this.fitSteveToTarget()
     this.steveMode = true
     // Frame on the mannequin itself: the target's bone box can be much shorter than its body (Verity rigs have no head-top
     // joint), which made the mannequin overflow the view.
-    this.right.setModel(this.steve.scene)
+    this.right.setModel(this.steve.scene, null, fit)
   }
 
   /** Scale the mannequin to the target's body height (wings and other add-ons left out; 1.8 m before a target loads). */
@@ -384,8 +387,9 @@ export class Viewer {
     } else this.right.setClip(null)
     this.duration = duration ?? this.right.clip?.duration ?? sourceClip?.duration ?? 1
     this.time = 0
-    // Switching clips keeps the cameras fixed; Frame All measures the current posed bounds on demand.
+    // Auto-fit is optional; manual framing measures the current posed bounds on demand.
     this.apply()
+    if (this.autoFitOnAnimationChange) this.frameAll()
     return { source: sourceClip ? { duration: sourceClip.duration, tracks: sourceClip.tracks.length } : null, right: rightInfo }
   }
 
