@@ -104,6 +104,10 @@ legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
 .review-row .idx { color: var(--muted); min-width: 28px; text-align: right; font-family: var(--mono); }
 .review-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-row .dur { color: var(--muted); font-family: var(--mono); }
+.favorite-toggle { min-width: 28px; padding: 2px 5px; border-color: transparent; background: transparent; color: #f2c14e; font-size: 16px; line-height: 1; }
+.favorite-toggle[aria-pressed="false"] { color: var(--muted); }
+.favorite-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#reviewStarredOnly[aria-pressed="true"], #actionPickerStarredOnly[aria-pressed="true"] { border-color: #f2c14e; background: color-mix(in srgb, #f2c14e 16%, transparent); color: #ffe08a; }
 .review footer { padding: 6px 8px; border-top: 1px solid var(--border); display: grid; gap: 2px; }
 .pane { position: relative; margin: 0; background: var(--viewer-bg); min-width: 0; min-height: 0; overflow: hidden; }
 .pane figcaption { position: absolute; z-index: 2; top: 8px; left: 10px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--surface) 82%, transparent); padding: 2px 8px; border-radius: 99px; }

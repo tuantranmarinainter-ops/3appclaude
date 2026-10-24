@@ -35,7 +35,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [libraryQuery, setLibraryQuery] = useState('')
   const [libraryCategory, setLibraryCategory] = useState('')
-  const [libraryActions, setLibraryActions] = useState<Array<{ uuid: string; name: string; nameVi?: string; category: string; rig: string; tags: string[]; own?: boolean }>>([])
+  const [libraryActions, setLibraryActions] = useState<Array<{ uuid: string; name: string; nameVi?: string; category: string; rig: string; tags: string[]; own?: boolean; favorite?: boolean }>>([])
   const [librarySelected, setLibrarySelected] = useState<string[]>([])
   const [libraryCreateNew, setLibraryCreateNew] = useState(false)
   const [libraryJob, setLibraryJob] = useState<{ jobId: string; status: string; completed: number; total: number; results: Array<{ assignedUuid?: string; status: string; reason?: string }> } | null>(null)
@@ -155,7 +155,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
       const owned = filterLibraryActions((ownBody.actions ?? []).map((action) => ({ ...action, tags: action.tags ?? [], own: true })), libraryQuery, libraryCategory)
       const seen = new Set(owned.map((action) => action.uuid))
       const sharedActions = filterLibraryActions(body.actions ?? [], libraryQuery, libraryCategory)
-      setLibraryActions([...owned, ...sharedActions].filter((action, index, all) => all.findIndex((other) => other.uuid === action.uuid) === index && (index < owned.length || !seen.has(action.uuid)))); setLibrarySelected([]); setLibraryOpen(true)
+      setLibraryActions([...owned, ...sharedActions].filter((action, index, all) => all.findIndex((other) => other.uuid === action.uuid) === index && (index < owned.length || !seen.has(action.uuid))).sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite))); setLibrarySelected([]); setLibraryOpen(true)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
@@ -276,7 +276,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
         <input aria-label={vi ? 'Tìm động tác' : 'Search Actions'} value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} placeholder={vi ? 'Tìm tên Anh/Việt' : 'Search English/Vietnamese names'} />
         <select aria-label={vi ? 'Lọc nhóm động tác' : 'Filter Action group'} value={libraryCategory} onChange={event => setLibraryCategory(event.target.value)}><option value="">{vi ? 'Mọi nhóm' : 'All groups'}</option>{ACTION_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select>
         <button type="button" onClick={() => void openLibraryPicker(pickerCharacterId)}>{vi ? 'Tìm' : 'Search'}</button>
-        <div style={{ maxHeight: '50vh', overflow: 'auto' }}>{libraryActions.map(action => <label key={action.uuid} style={{ display: 'block', padding: 5 }}><input type="checkbox" checked={librarySelected.includes(action.uuid)} onChange={event => setLibrarySelected(current => event.target.checked ? [...current, action.uuid] : current.filter(id => id !== action.uuid))} /> {action.own && <b>{vi ? '[của nhân vật] ' : '[character] '}</b>}{action.name}{action.nameVi ? ` | ${action.nameVi}` : ''} · {action.rig} · {action.tags.join(', ')}</label>)}{!libraryActions.length && <p>{vi ? 'Kho chưa có động tác phù hợp.' : 'No shared Actions found.'}</p>}</div>
+        <div style={{ maxHeight: '50vh', overflow: 'auto' }}>{libraryActions.map(action => <label key={action.uuid} style={{ display: 'block', padding: 5 }}><input type="checkbox" checked={librarySelected.includes(action.uuid)} onChange={event => setLibrarySelected(current => event.target.checked ? [...current, action.uuid] : current.filter(id => id !== action.uuid))} /> {action.favorite && <b aria-label={vi ? 'Yêu thích' : 'Favorite'}>★ </b>}{action.own && <b>{vi ? '[của nhân vật] ' : '[character] '}</b>}{action.name}{action.nameVi ? ` | ${action.nameVi}` : ''} · {action.rig} · {action.tags.join(', ')}</label>)}{!libraryActions.length && <p>{vi ? 'Kho chưa có động tác phù hợp.' : 'No shared Actions found.'}</p>}</div>
         <label><input type="checkbox" checked={libraryCreateNew} onChange={event => setLibraryCreateNew(event.target.checked)} /> {vi ? 'Tạo bản mới dù đã có' : 'Create a new copy if already assigned'}</label>
         <p><button type="button" disabled={busy || !librarySelected.length} onClick={() => void assignLibraryActions()}>{busy ? `${libraryJob?.completed ?? 0}/${libraryJob?.total ?? librarySelected.length}` : vi ? `Gán ${librarySelected.length} động tác` : `Assign ${librarySelected.length} Actions`}</button> {busy && libraryJob && <button type="button" onClick={() => void cancelLibraryAssignment()}>{vi ? 'Hủy job' : 'Cancel job'}</button>} <button type="button" disabled={busy} onClick={() => setLibraryOpen(false)}>{vi ? 'Đóng' : 'Close'}</button></p>
       </section>

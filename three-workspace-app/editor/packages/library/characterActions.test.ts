@@ -92,8 +92,9 @@ function fixture(t: { after(fn: () => void): void }) {
 
 test('raw to draft to immutable edited versions preserves ancestry and latest selection', (t) => {
   const { root, temporary } = fixture(t)
-  const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid })
+  const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid, favorite: true })
   assert.equal(draft.status, 'draft'); assert.equal(draft.version, 1); assert.equal(draft.variantOf, draft.uuid)
+  assert.equal(draft.favorite, true)
   assert.equal(draft.parentUuid, rawUuid); assert.equal(draft.glbAnimationIndex, 4)
   assert.deepEqual([draft.nameVi, draft.nameViSource], ['Nguồn đứng yên', 'manual'])
   assert.equal(draft.sourceName, getAction({ root, actionUuid: rawUuid }).sourceName, 'drafts keep the source name for tracing')
@@ -112,11 +113,13 @@ test('raw to draft to immutable edited versions preserves ancestry and latest se
   assert.deepEqual([v2.nameVi, v3.nameVi], ['Nguồn đứng yên', 'Nguồn đứng yên'])
   assert.deepEqual(readFileSync(join(root, 'packs', v2.packId, 'anim.glb')), editedGlb(2, 'edited version 2'))
   assert.equal(v2.durationSeconds, 2); assert.equal(v3.durationSeconds, 3)
+  assert.equal(v3.favorite, true, 'edited versions keep the character-local favorite')
   assert.deepEqual(listCharacterActions({ root, charId: 'verity-a' }).map((action) => action.version), [1, 2, 3])
   assert.deepEqual(listCharacterActions({ root, charId: 'verity-a', latestOnly: true }).map((action) => action.uuid), [v3.uuid])
   assert.deepEqual(listCharacterActions({ root, charId: 'verity-a', latestOnly: true, status: 'approved' }), [], 'status applies after latest chain selection')
   assert.equal(saveCharacterActionVersion({ root, charId: 'verity-a', baseUuid: draft.uuid, glbFile: editedFile, status: 'edited', actionUuid: v3.uuid }).uuid, v3.uuid)
   const otherChain = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid })
+  assert.deepEqual(listCharacterActions({ root, charId: 'verity-a', latestOnly: true }).map((action) => [action.uuid, !!action.favorite]), [[v3.uuid, true], [otherChain.uuid, false]], 'favorites sort first within a character')
   assert.throws(() => saveCharacterActionVersion({ root, charId: 'verity-a', baseUuid: otherChain.uuid, glbFile: editedFile, status: 'edited', actionUuid: v3.uuid }), /different action/)
   const approved = setCharacterActionStatus({ root, charId: 'verity-a', actionUuid: v3.uuid, status: 'approved' })
   assert.equal(approved.status, 'approved')
@@ -128,9 +131,10 @@ test('raw to draft to immutable edited versions preserves ancestry and latest se
 
 test('copy enforces rig view, removal detaches only, and legacy profiles get twelve defaults', (t) => {
   const { root } = fixture(t)
-  const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid })
+  const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid, favorite: true })
   const copy = copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'verity-b' })
   assert.equal(copy.parentUuid, draft.uuid); assert.equal(copy.ownerCharId, 'verity-b'); assert.equal(copy.status, 'draft')
+  assert.equal(copy.favorite, undefined, 'copying to another character does not copy its favorite pin')
   assert.deepEqual([copy.nameVi, copy.nameViSource], ['Nguồn đứng yên', 'manual'])
   assert.throws(() => copyActionToCharacter({ root, actionUuid: draft.uuid, toCharId: 'steve' }), /Rig mismatch/)
   const extendedPack: MotionPackMetadata = {

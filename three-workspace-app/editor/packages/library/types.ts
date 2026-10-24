@@ -73,6 +73,8 @@ export interface ActionMetadata {
   /** UUID of version 1 in this immutable character-action chain. */
   variantOf?: string
   notes?: string
+  /** Character-local pin. Only character-owned Actions use this flag. */
+  favorite?: boolean
 }
 
 export interface MotionPackMetadata {

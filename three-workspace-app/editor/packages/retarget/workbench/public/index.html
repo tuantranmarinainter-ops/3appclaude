@@ -225,9 +225,10 @@
             <button type="button" id="reviewAll">Chọn hết</button>
             <button type="button" id="reviewNone">Bỏ hết</button>
             <button type="button" id="reviewInvert">Đảo chọn</button>
+            <button type="button" id="reviewStarredOnly" aria-pressed="false">Chỉ ★</button>
           </div>
           <div class="review-list" id="reviewList" tabindex="0" role="listbox" aria-label="Danh sách animation: ↑↓ ←→ để duyệt, Space để giữ/bỏ"><div class="review-inner" id="reviewInner"></div></div>
-          <footer><button type="button" class="primary" id="reviewTransfer">Chuyển sang nhân vật đích</button><small>↑↓ ←→ duyệt · Space giữ/bỏ · tick = Giữ</small></footer>
+          <footer><button type="button" class="primary" id="reviewTransfer">Chuyển sang nhân vật đích</button><small>↑↓ ←→ duyệt · Space giữ/bỏ · S gắn sao · tick = Giữ</small></footer>
         </aside>
       </div>
       <div class="panel-divider panel-divider-horizontal" data-resize-panel="timeline" role="separator" aria-orientation="horizontal" aria-label="Đổi chiều cao timeline" tabindex="0"></div>
@@ -266,6 +267,7 @@
         <button type="button" id="actionPickerAll">Chọn hết</button>
         <button type="button" id="actionPickerNone">Bỏ hết</button>
         <button type="button" id="actionPickerInvert">Đảo chọn</button>
+        <button type="button" id="actionPickerStarredOnly" aria-pressed="false">Chỉ ★</button>
         <span class="chip" id="actionPickerCount">đã chọn 0/0</span>
       </div>
       <div class="action-picker-list" id="actionPickerList"></div>

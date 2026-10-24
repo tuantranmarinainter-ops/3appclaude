@@ -51,6 +51,7 @@ const state = {
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(), transferCharacters: new Set(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
+  favoritesByDestination: new Map(), starredOnly: false,
   batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchPresets: new Map(), batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null, batchCurrent: null, batchRows: [], reviewRows: [], runAbort: false, runQuiet: false,
 }
 
@@ -292,6 +293,35 @@ function actionQuality(action) {
   return { text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra', class: action.ready ? 'PASS' : 'warn', title: '' }
 }
 function batchKey(entry, action) { return `${entry.sourceId}:${action.index}` }
+function singleActionKey(action) { return `${state.source?.sourceId ?? 'source'}:${action.index}` }
+function favoriteDestinationIds() {
+  if (state.transferCharacters.size) return [...state.transferCharacters]
+  if (state.mc20Skin) return [state.mc20Skin]
+  return state.target?.id?.startsWith('lib-') ? [state.target.id.slice(4)] : []
+}
+function favoriteSet(charId) {
+  let selected = state.favoritesByDestination.get(charId)
+  if (!selected) { selected = new Set(); state.favoritesByDestination.set(charId, selected) }
+  return selected
+}
+function favoriteState(key) {
+  const destinations = favoriteDestinationIds(), count = destinations.filter((charId) => favoriteSet(charId).has(key)).length
+  return { destinations, count, any: count > 0, all: destinations.length > 0 && count === destinations.length }
+}
+function favoriteFor(key, charIds) { return charIds.filter((charId) => favoriteSet(charId).has(key)) }
+function toggleFavorite(key, keep) {
+  const current = favoriteState(key)
+  if (!current.destinations.length) { toast('Chọn nhân vật đích trước khi gắn sao.', 'err'); return }
+  for (const charId of current.destinations) current.all ? favoriteSet(charId).delete(key) : favoriteSet(charId).add(key)
+  if (!current.all) keep()
+  renderReview(true); renderActionPicker()
+}
+function favoriteButton(key, label, keep) {
+  const favorite = favoriteState(key), partial = favorite.any && !favorite.all
+  return h('button', { type: 'button', class: 'favorite-toggle', text: favorite.all ? '★' : partial ? '◐' : '☆', disabled: !favorite.destinations.length,
+    'aria-pressed': String(favorite.all), 'aria-label': `${favorite.all ? 'Bỏ sao' : 'Gắn sao'} ${label}`, title: partial ? 'Một số nhân vật đích đã gắn sao' : favorite.destinations.length ? 'Sao riêng cho nhân vật đích (S)' : 'Chọn nhân vật đích trước',
+    onclick: (event) => { event.stopPropagation(); toggleFavorite(key, keep) } })
+}
 function selectedBatchGroups() {
   const entries = state.batch?.entries ?? []
   return entries.map((entry) => ({ entry, actions: (entry.inspect?.actions ?? []).filter((action) => state.batchSelection.has(batchKey(entry, action))) })).filter((group) => group.actions.length)
@@ -419,7 +449,7 @@ function renderReview(refilter = false, reveal = false) {
   $('review').hidden = !show
   document.querySelector('.viewers').classList.toggle('has-review', show)
   if (!show) return
-  if (refilter) { const q = $('reviewSearch').value.trim().toLocaleLowerCase('vi'); state.reviewRows = q ? state.batchRows.filter((row) => row.text.includes(q)) : state.batchRows }
+  if (refilter) { const q = $('reviewSearch').value.trim().toLocaleLowerCase('vi'); state.reviewRows = state.batchRows.filter((row) => (!q || row.text.includes(q)) && (!state.starredOnly || favoriteState(row.key).any)) }
   updateReviewCount()
   $('reviewInner').style.height = `${state.reviewRows.length * REVIEW_ROW}px`
   if (reveal) {
@@ -430,7 +460,8 @@ function renderReview(refilter = false, reveal = false) {
 }
 function updateReviewCount() {
   const total = state.batchRows.length, shown = state.reviewRows.length, kept = state.batchSelection.size
-  $('reviewCount').textContent = `đã chọn ${kept}/${total}${shown !== total ? ` · lọc ${shown}` : ''}`
+  const starred = state.batchRows.filter((row) => favoriteState(row.key).any).length
+  $('reviewCount').textContent = `đã chọn ${kept}/${total} · ★ ${starred}${shown !== total ? ` · lọc ${shown}` : ''}`
   $('reviewTransfer').textContent = `Chuyển sang nhân vật đích (${kept})`
   $('reviewTransfer').disabled = !kept || !state.target || state.transferRunning
 }
@@ -440,7 +471,7 @@ function drawReviewRows() {
   for (let i = first; i < last; i++) {
     const row = rows[i], kept = state.batchSelection.has(row.key), current = row.key === state.batchCurrent, label = reviewLabel(row)
     frag.append(h('div', { class: `review-row${kept ? '' : ' dropped'}${current ? ' current' : ''}`, role: 'option', 'aria-selected': String(current), dataset: { i: String(i) }, style: `top:${i * REVIEW_ROW}px`, title: `${row.entry.name} · ${label}` },
-      h('input', { type: 'checkbox', checked: kept, 'aria-label': `Giữ ${label}` }), h('span', { class: 'idx', text: String(row.action.index + 1) }),
+      h('input', { type: 'checkbox', checked: kept, 'aria-label': `Giữ ${label}` }), favoriteButton(row.key, label, () => setKept(row, true)), h('span', { class: 'idx', text: String(row.action.index + 1) }),
       h('span', { class: 'nm', text: (state.batch.entries.length > 1 ? `${label} · ${row.entry.name}` : label) + (row.entry.status === 'duplicate' ? (row.entry.inLibrary ? ' (đã có trong kho)' : ' (file trùng)') : '') }), h('span', { class: 'dur', text: `${fmt(row.action.durationSeconds)}s` })))
   }
   $('reviewInner').replaceChildren(frag)
@@ -458,6 +489,7 @@ $('reviewInner').addEventListener('click', (event) => {
   const el = event.target.closest('.review-row'), row = el && state.reviewRows[Number(el.dataset.i)]
   if (!row) return
   if (event.target.matches('input')) { setKept(row, event.target.checked); el.classList.toggle('dropped', !event.target.checked); updateReviewCount(); renderActionPicker() }
+  else if (event.target.closest('.favorite-toggle')) return
   else { previewBatchAction(row.entry, row.action); $('reviewList').focus({ preventScroll: true }) }
 })
 $('reviewSearch').addEventListener('input', () => renderReview(true))
@@ -466,6 +498,7 @@ $('reviewNext').addEventListener('click', () => stepReview(1))
 $('reviewAll').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, true); afterSelectionChange() })
 $('reviewNone').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, false); afterSelectionChange() })
 $('reviewInvert').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, !state.batchSelection.has(row.key)); afterSelectionChange() })
+$('reviewStarredOnly').addEventListener('click', () => { state.starredOnly = !state.starredOnly; $('reviewStarredOnly').setAttribute('aria-pressed', String(state.starredOnly)); $('actionPickerStarredOnly').setAttribute('aria-pressed', String(state.starredOnly)); renderReview(true); renderActionPicker() })
 $('reviewTransfer').addEventListener('click', () => { openActionPicker(); $('transferOpen').click() })
 new ResizeObserver(() => { if (!$('review').hidden) drawReviewRows() }).observe($('reviewList'))
 window.addEventListener('keydown', (event) => {
@@ -475,6 +508,10 @@ window.addEventListener('keydown', (event) => {
   if (event.key === ' ' && (event.target === document.body || event.target === $('reviewList'))) {
     const row = state.batchRows.find((item) => item.key === state.batchCurrent)
     if (row) { event.preventDefault(); setKept(row, !state.batchSelection.has(row.key)); afterSelectionChange() }
+  }
+  if ((event.key === 's' || event.key === 'S') && (event.target === document.body || event.target === $('reviewList'))) {
+    const row = state.batchRows.find((item) => item.key === state.batchCurrent)
+    if (row) { event.preventDefault(); toggleFavorite(row.key, () => setKept(row, true)) }
   }
 })
 /** Everything starts kept (files with an error stay dropped; duplicates are kept but tagged "trùng"); the first animation plays in both panes so review can begin at once. */
@@ -516,7 +553,7 @@ function renderBatchActionPicker(query) {
       body.append(group); continue
     }
     const tableBody = h('tbody')
-    for (const action of actions.filter((item) => !query || `${entry.name} ${item.name} ${item.nameVi ?? ''}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')))) {
+    for (const action of actions.filter((item) => (!query || `${entry.name} ${item.name} ${item.nameVi ?? ''}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi'))) && (!state.starredOnly || favoriteState(batchKey(entry, item)).any))) {
       const key = batchKey(entry, action), checkbox = h('input', { type: 'checkbox', 'aria-label': `Chọn ${entry.name}: ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => { event.target.checked ? state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }) : state.batchSelection.delete(key); renderActionPicker() } })
       checkbox.checked = state.batchSelection.has(key)
       const required = pickerRequiredActions(), actionKey = state.batchKeys.get(key) ?? suggestActionKey(required, [action.name]) ?? ''
@@ -543,11 +580,12 @@ function renderBatchActionPicker(query) {
       nameCell.addEventListener('dblclick', startRename)
       nameCell.append(h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
         h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }))
-      tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
+      tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', {}, favoriteButton(key, action.name, () => setKept({ key, entry, action }, true))), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
     }
-    group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
+    group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '★' }), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
   }
-  $('actionPickerCount').textContent = `đã chọn ${selected}/${total} (${selectedFiles} file)`
+  const starred = state.batchRows.filter((row) => favoriteState(row.key).any).length
+  $('actionPickerCount').textContent = `đã chọn ${selected}/${total} (${selectedFiles} file) · ★ ${starred}`
   renderReview()
   $('transferOpen').disabled = selected === 0 || !state.target || state.transferRunning
   if (!body.children.length) body.append(h('p', { class: 'empty', text: 'Chưa có file kiểm tra được.' }))
@@ -559,10 +597,11 @@ function renderActionPicker() {
   $('actionPickerHandle').querySelector('strong').textContent = 'Animation của nguồn'
   $('actionPicker').setAttribute('aria-label', 'Animation của nguồn')
   const actions = state.inspect?.actions ?? [], query = $('actionPickerSearch').value
-  $('actionPickerCount').textContent = `đã chọn ${selectedActionIndices().length}/${actions.length}`
+  const starred = actions.filter((action) => favoriteState(singleActionKey(action)).any).length
+  $('actionPickerCount').textContent = `đã chọn ${selectedActionIndices().length}/${actions.length} · ★ ${starred}`
   $('transferOpen').disabled = !actions.length || !selectedActionIndices().length || !state.target || state.transferRunning
   const body = h('tbody')
-  for (const action of actions.filter((item) => actionMatches(item, query))) {
+  for (const action of actions.filter((item) => actionMatches(item, query) && (!state.starredOnly || favoriteState(singleActionKey(item)).any))) {
     const check = h('input', { type: 'checkbox', 'aria-label': `Chọn ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => {
       event.target.checked ? state.checked.add(action.index) : state.checked.delete(action.index); markRunInputsChanged(false); renderActionPicker()
     } }); check.checked = state.checked.has(action.index)
@@ -593,11 +632,11 @@ function renderActionPicker() {
     const keySelect = h('select', { 'aria-label': `Thẻ động tác ${edit.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.actionKeys.set(action.index, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
     if (required.length) { keySelect.value = state.actionKeys.get(action.index) ?? suggestActionKey(required, [edit.name]) ?? ''; if (keySelect.value) state.actionKeys.set(action.index, keySelect.value) }
     body.append(h('tr', { class: `clickable${state.selected === action.index ? ' active' : ''}`, dataset: { index: String(action.index) }, onclick: () => selectAction(action.index) },
-      h('td', {}, check), h('td', { class: 'num', text: String(action.index + 1) }), name, h('td', {}, keySelect),
+      h('td', {}, check), h('td', {}, favoriteButton(singleActionKey(action), action.name, () => state.checked.add(action.index))), h('td', { class: 'num', text: String(action.index + 1) }), name, h('td', {}, keySelect),
       h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality' }, h('span', { class: `chip ${quality.class}`, title: quality.title, text: quality.text }))))
   }
-  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 6, class: 'empty', text: 'Không có animation khớp.' })))
-  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
+  if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 7, class: 'empty', text: 'Không có animation khớp.' })))
+  clear($('actionPickerList')).append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '★' }), h('th', { text: '#' }), h('th', { text: 'Tên Anh | Việt' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Chất lượng' }))), body))
 }
 $('actionPickerBtn').addEventListener('click', openActionPicker)
 $('actionPickerClose').addEventListener('click', closeActionPicker)
@@ -605,7 +644,13 @@ $('actionPickerSearch').addEventListener('input', renderActionPicker)
 $('actionPickerAll').addEventListener('click', () => { if (state.batch) for (const entry of state.batch.entries) for (const action of entry.inspect?.actions ?? []) state.batchSelection.set(batchKey(entry, action), { sourceId: entry.sourceId, index: action.index }); else for (const action of state.inspect?.actions ?? []) state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
 $('actionPickerNone').addEventListener('click', () => { if (state.batch) state.batchSelection.clear(); else state.checked.clear(); markRunInputsChanged(false); renderActionPicker() })
 $('actionPickerInvert').addEventListener('click', () => { if (state.batch) for (const entry of state.batch.entries) for (const action of entry.inspect?.actions ?? []) { const key = batchKey(entry, action); state.batchSelection.has(key) ? state.batchSelection.delete(key) : state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }) } else for (const action of state.inspect?.actions ?? []) state.checked.has(action.index) ? state.checked.delete(action.index) : state.checked.add(action.index); markRunInputsChanged(false); renderActionPicker() })
+$('actionPickerStarredOnly').addEventListener('click', () => { state.starredOnly = !state.starredOnly; $('actionPickerStarredOnly').setAttribute('aria-pressed', String(state.starredOnly)); $('reviewStarredOnly').setAttribute('aria-pressed', String(state.starredOnly)); renderReview(true); renderActionPicker() })
 window.addEventListener('keydown', (event) => { if ((event.key === 'a' || event.key === 'A') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input,textarea,select')) { event.preventDefault(); openActionPicker() } })
+window.addEventListener('keydown', (event) => {
+  if (state.batch || picker.hidden || (event.key !== 's' && event.key !== 'S') || event.ctrlKey || event.metaKey || event.altKey || event.target.matches('input,textarea,select,[contenteditable]')) return
+  const action = state.inspect?.actions?.find((item) => item.index === state.selected)
+  if (action) { event.preventDefault(); toggleFavorite(singleActionKey(action), () => state.checked.add(action.index)) }
+})
 let pickerDrag = null
 $('actionPickerHandle').addEventListener('pointerdown', (event) => { if (event.target.closest('button')) return; const rect = picker.getBoundingClientRect(); pickerDrag = { x: event.clientX - rect.left, y: event.clientY - rect.top }; event.currentTarget.setPointerCapture(event.pointerId) })
 $('actionPickerHandle').addEventListener('pointermove', (event) => { if (!pickerDrag) return; picker.style.left = `${Math.max(0, Math.min(innerWidth - 120, event.clientX - pickerDrag.x))}px`; picker.style.top = `${Math.max(0, Math.min(innerHeight - 60, event.clientY - pickerDrag.y))}px` })
@@ -1136,7 +1181,7 @@ async function prepareTransfer() {
     const checked = state.transferCharacters.has(character.charId)
     const input = h('input', { type: 'checkbox', value: character.charId, 'aria-label': `Chọn ${character.name}`, onchange: (event) => {
       event.target.checked ? state.transferCharacters.add(character.charId) : state.transferCharacters.delete(character.charId)
-      renderTransferDestinations(); renderTransferKeys(); renderActionPicker()
+      renderTransferDestinations(); renderTransferKeys(); renderReview(true); renderActionPicker()
     } })
     input.checked = checked
     destinations.append(h('label', { class: `destination-card${checked ? ' selected' : ''}` }, input,
@@ -1204,7 +1249,7 @@ async function transferSelected(indices, retryConfig = null) {
   for (const index of indices) { const edit = state.actionEdits.get(index); if (!edit) continue; const base = edit.name.trim(); const count = nameCounts.get(base.toLocaleLowerCase()) ?? 0; nameCounts.set(base.toLocaleLowerCase(), count + 1); transferNames[index] = { ...edit, name: count ? `${base}_${count + 1}` : base } }
   const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact, transferNames),
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
-      charIds: config.charIds, actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
+      charIds: config.charIds, actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, favoriteFor: favoriteFor(`${state.source.sourceId}:${index}`, config.charIds), ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
     } }),
     importShared: (result, succeeded) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => ({ uuid: action.uuid, key: state.actionKeys.get(action.sourceActionIndex) || config.key || 'idle' })) } }),
   })
@@ -1271,7 +1316,7 @@ async function transferBatch(groups, retryConfig = null) {
         const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: config.charIds, actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
-          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
+          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', favoriteFor: favoriteFor(batchKey(entry, sourceAction), config.charIds), name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }) } })
         drafts += sent.drafts?.length ?? succeeded.length
       }
