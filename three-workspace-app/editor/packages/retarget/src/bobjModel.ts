@@ -31,6 +31,8 @@ export interface BobjModelOptions {
   /** Resolves the relative BBS path, e.g. textures/verity.mdl/Verity.smd/default.png. No I/O in the parser. */
   readTexture?: (path: string) => Uint8Array | undefined
   decodeTexture?: (bytes: Uint8Array) => Texture
+  /** Turns the rest pose about +Y so the model faces +Z. Applied after binding: bind inverses and clip tracks keep the native frame. */
+  faceForward?: boolean
 }
 export const bobjModelNodeName = (name: string) => name.replace(/[.\[\]:/]/g, '_')
 
@@ -101,6 +103,13 @@ export function buildBobjModel(model: BobjModel, options: BobjModelOptions = {})
   // Bind inverses stay in the native/common model frame; the wrapper is applied only after binding.
   root.updateMatrixWorld(true)
   const skeleton = new Skeleton([...nodes.values()]); skeleton.calculateInverses()
+  if (options.faceForward) {
+    const facing = modelFacing(model), top = model.armature.bones.find(b => !b.parent)
+    if (facing && top && Math.abs(facing.yawDegrees) > 1e-3) {
+      const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -facing.yawDegrees * Math.PI / 180), node = nodes.get(top.name)!
+      node.position.applyQuaternion(turn); node.quaternion.premultiply(turn)
+    }
+  }
   const helperObjects: string[] = [], visibleVertices = new Set<number>()
   const images = new Map<string, Uint8Array>(), missingTextures: string[] = [], warnings: string[] = []
   let vertexCount = 0

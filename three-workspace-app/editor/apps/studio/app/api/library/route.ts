@@ -9,8 +9,10 @@ export async function GET(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const modelCharacter = url.searchParams.get('modelCharacter')
     if (modelCharacter) {
-      const model = await libraryCharacterModel(modelCharacter)
-      if (url.searchParams.get('fingerprint') !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
+      const fingerprint = url.searchParams.get('fingerprint')
+      let model = await libraryCharacterModel(modelCharacter)
+      if (fingerprint !== model.fingerprint) { const legacy = await libraryCharacterModel(modelCharacter, false); if (legacy.fingerprint === fingerprint) model = legacy }
+      if (fingerprint !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
       return new Response(new Uint8Array(model.bytes), { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store' } })
     }
     const actionUuid = url.searchParams.get('actionUuid')

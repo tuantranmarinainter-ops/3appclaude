@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises'
 import { resolveCharacter } from '../../../packages/library/index'
 import { bobjModelToGlb, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 
+/** Library BOBJ models face +Z at rest like Minecraft20; native clips already carry the Root turn. */
+export const LIBRARY_GLB_OPTIONS = { faceForward: true } as const
+
 export function unpackLibraryGlb(bytes: Buffer) {
   if (bytes.readUInt32LE(0) !== 0x46546c67) throw new Error('Invalid library GLB')
   const size = bytes.readUInt32LE(12)
@@ -21,18 +24,18 @@ export function packLibraryGlb(json: any, binary: Buffer): Buffer {
 }
 
 /** Base bytes never include character overrides: one content-addressed project model. */
-export async function libraryBaseGlb(charId: string): Promise<Buffer> {
+export async function libraryBaseGlb(charId: string, faceForward = true): Promise<Buffer> {
   const resolved = resolveCharacter(charId)
   if (!resolved.baseModel) throw new Error('Library character has no base model')
   const source = await readFile(resolved.modelPath)
   if (createHash('sha256').update(source).digest('hex') !== resolved.baseModel.sha256) throw new Error('Library model checksum mismatch')
   if (resolved.baseModel.format === 'glb') return source
-  return Buffer.from(bobjModelToGlb(parseBobjModel(source.toString('utf8'))).bytes)
+  return Buffer.from(bobjModelToGlb(parseBobjModel(source.toString('utf8')), { faceForward }).bytes)
 }
 
 /** The URL fingerprint covers actual model and texture bytes, not mutable profile fields. */
-export async function libraryCharacterModel(charId: string) {
-  const resolved = resolveCharacter(charId), base = await libraryBaseGlb(charId)
+export async function libraryCharacterModel(charId: string, faceForward = true) {
+  const resolved = resolveCharacter(charId), base = await libraryBaseGlb(charId, faceForward)
   const textures = await Promise.all(Object.entries(resolved.textures).sort(([a], [b]) => a.localeCompare(b)).map(async ([object, file]) => ({ object, bytes: await readFile(file) })))
   const hash = createHash('sha256').update(base)
   for (const item of textures) hash.update(JSON.stringify(item.object)).update(createHash('sha256').update(item.bytes).digest())
@@ -75,12 +78,12 @@ export async function libraryNativeAction(charId: string, sidecar: string) {
     const { parseBobjActions } = await import('../../../packages/retarget/src/index')
     model.actions = parseBobjActions(extended.toString('utf8'))
     if (model.actions.size !== 1) throw new Error('Minecraft Action sidecar must contain one Action')
-    return Buffer.from(bobjModelToGlb(model).bytes)
+    return Buffer.from(bobjModelToGlb(model, LIBRARY_GLB_OPTIONS).bytes)
   }
   if (!extended.subarray(0, original.length).equals(original)) throw new Error('Native Action does not preserve the selected base model')
   const base = parseBobjModel(original.toString('utf8')), model = parseBobjModel(extended.toString('utf8'))
   const added = [...model.actions].filter(([name]) => !base.actions.has(name))
   if (added.length !== 1) throw new Error('Native Action sidecar must contain exactly one added Action')
   model.actions = new Map(added)
-  return Buffer.from(bobjModelToGlb(model).bytes)
+  return Buffer.from(bobjModelToGlb(model, LIBRARY_GLB_OPTIONS).bytes)
 }
