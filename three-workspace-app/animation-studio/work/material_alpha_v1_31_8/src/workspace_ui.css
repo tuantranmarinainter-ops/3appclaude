@@ -83,6 +83,7 @@ body.studio-workspace{font:13px/1.5 'Segoe UI',Arial,sans-serif}
 .studio-debug-uv{position:absolute;z-index:7;left:50%;top:50%;transform:translate(-50%,-50%);width:min(46%,420px);height:min(46%,320px);background:#141a21;border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #0008;pointer-events:none}
 
 /* 1.32.0: one advanced entry, a bounded bottom editor, and a docked scene workspace. */
+/* F1 workflow navigation is layered above the preserved workspace controls. */
 .studio-advanced-tools{position:relative;border:0;margin:0;padding:0;flex:none}
 .studio-advanced-tools>summary{padding:6px 10px;white-space:nowrap;border-radius:6px;font-size:12px}
 .studio-advanced-tools[open]>summary{background:var(--ui-selection)}
@@ -130,3 +131,17 @@ body.studio-workspace{font:13px/1.5 'Segoe UI',Arial,sans-serif}
 .studio-workspace #animationArea[data-editor=graph] .studio-graph-options{position:absolute;right:0;top:0;z-index:9;margin:0;padding:0;background:var(--panel);max-width:100%}
 .studio-workspace #animationArea[data-editor=graph] .studio-graph-options[open]{border:1px solid var(--line);max-height:260px;overflow:auto}
 .studio-workspace #animationArea[data-editor=graph] #minimalKeyOptions{top:-28px}
+
+/* F1 workflow: one clear path through blocking, refinement, and export. */
+#workflowSteps{display:flex;align-items:center;gap:3px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:9px;flex:none}
+#workflowSteps button{min-width:96px;padding:6px 10px;border-radius:6px;white-space:nowrap;color:var(--muted)}
+#workflowSteps button[aria-current="step"]{background:var(--accent);color:var(--action-text,var(--bg));font-weight:700}
+#workflowTools{position:relative;flex:none}
+#workflowTools>summary{list-style:none;cursor:pointer;white-space:nowrap;border:1px solid var(--line);border-radius:7px;padding:5px 8px;color:var(--muted)}
+#workflowTools>summary::-webkit-details-marker{display:none}
+#workflowTools[open] .workflow-tools-content{position:absolute;z-index:80;top:calc(100% + 5px);left:0;display:flex;align-items:center;gap:10px;padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #0008}
+.workflow-tools-content nav{display:flex;align-items:center}
+body[data-workflow-step="refine"] #minimalSidebar .properties>*:not(.area-header,#minimalAdvanced){display:none}
+body[data-workflow-step="refine"] #minimalAdvanced>#limbOptions{display:none}
+@media(max-width:1050px){#workflowSteps button{min-width:0;padding:5px 7px;font-size:11px}.studio-workspace>header{gap:8px}}
+@media(max-width:760px){#workflowSteps button{font-size:10px;padding:4px 5px}#workflowTools>summary{font-size:10px;padding:4px 6px}}

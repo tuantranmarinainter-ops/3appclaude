@@ -5,9 +5,9 @@ import { useSilhouetteSync } from './hooks/useSilhouetteSync'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 
-const CHANNEL = 'bbs-animation-studio-v1.32.0'
-const FRAME_URL = '/animation-studio/v1.32.0/index.html'
-const BRIDGE_URL = '/animation-studio/v1.32.0/host-bridge.js'
+const CHANNEL = 'bbs-animation-studio-v1.33.0'
+const FRAME_URL = '/animation-studio/v1.33.0/index.html'
+const BRIDGE_URL = '/animation-studio/v1.33.0/host-bridge.js'
 
 type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { state?: { project?: Record<string, unknown> }; nativeProject?: Record<string, unknown>; derivativeBase64?: string; fps?: number; duration?: number; shotId?: string; characterId?: string; zip?: ArrayBuffer }; error?: string }
 
@@ -41,7 +41,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
-    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.32.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
+    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.33.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
     if (event.data.type === 'dirty') { const dirty = event.data.dirty === true; setEditorDirty(dirty); onEditorDirty(dirty); return }
     const item = pending.current.get(event.data.requestId)
     if (!item) return
@@ -139,9 +139,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     if (busy || !shotId) return
     setBusy(true); setError(''); setStatus('Đang xuất gói kết quả…')
     try {
-      const exported = await request('shotExport', { includeMinecraft20: withBobj })
-      if (!exported?.zip) throw new Error('Editor không trả gói kết quả.')
-      const upload = await uploadUnifiedAsset(new File([exported.zip], `${shotId}.result.zip`, { type: 'application/zip' }))
+      let zip: ArrayBuffer | undefined
+      if (!editorDirty) {
+        const saved = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/shots/${encodeURIComponent(shotId)}/draft`, { cache: 'no-store' })
+        if (saved.ok) zip = await saved.arrayBuffer()
+      }
+      zip ??= (await request('shotExport', { includeMinecraft20: withBobj }))?.zip
+      if (!zip) throw new Error('Editor không trả gói kết quả.')
+      const upload = await uploadUnifiedAsset(new File([zip], `${shotId}.result.zip`, { type: 'application/zip' }))
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId } })
       setShotId('')
@@ -227,7 +232,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     </header>
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>
-    <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.32.0" src={FRAME_URL} onLoad={() => {
+    <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.33.0" src={FRAME_URL} onLoad={() => {
       const doc = frame.current?.contentDocument
       if (!doc) return
       const hello = () => { void request('ping').then(() => setBridgeReady(true)).catch((cause: Error) => setError(cause.message)) }

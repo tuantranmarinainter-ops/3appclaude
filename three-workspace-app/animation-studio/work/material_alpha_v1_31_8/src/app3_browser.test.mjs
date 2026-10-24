@@ -46,7 +46,7 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   }
   await page.goto(`${base}/?unified=${projectId}`);
   await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
-  const locator=page.locator('.wb-animation-creation-frame');await locator.waitFor();const frame=page.frame({url:/animation-studio\/v1\.32\.0\/index\.html/});assert.ok(frame);
+  const locator=page.locator('.wb-animation-creation-frame');await locator.waitFor();const frame=page.frame({url:/animation-studio\/v1\.33\.0\/index\.html/});assert.ok(frame);
   await frame.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
   await frame.waitForFunction(()=>window.__app3LocalBridge.status().bound,null,{timeout:60000}).catch(async e=>{throw Error(e.message+'; '+await page.locator('.wb-animation-creation-error').allTextContents()+'; '+JSON.stringify(await frame.evaluate(()=>window.__app3LocalBridge.status()))) });
@@ -172,12 +172,12 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   const second=await command('character.add',{assetId,skeletonId,name:'Shared asset second'},projectId);
   await page.reload();await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
   await page.locator('.wb-animation-creation-frame').waitFor();
-  await page.waitForFunction(()=>document.querySelector('.wb-animation-creation-frame')?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.32.0/index.html'));
-  const frame2=page.frame({url:/animation-studio\/v1\.32\.0\/index\.html/});await frame2.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
+  await page.waitForFunction(()=>document.querySelector('.wb-animation-creation-frame')?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.33.0/index.html'));
+  const frame2=page.frame({url:/animation-studio\/v1\.33\.0\/index\.html/});await frame2.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
   await frame2.waitForFunction(()=>window.__app3LocalBridge.status().error==='APP3_BINDING_AMBIGUOUS',null,{timeout:60000});
   assert.equal(await frame2.evaluate(()=>window.__app3LocalBridge.status().bound),false);
-  await page.evaluate(({projectId,characterId})=>{document.querySelector('.wb-animation-creation-frame').contentWindow.postMessage({channel:'bbs-animation-studio-v1.32.0',requestId:crypto.randomUUID(),type:'app3-bind',value:{projectId,characterId}},location.origin)},{projectId,characterId:second.result.characterId});
+  await page.evaluate(({projectId,characterId})=>{document.querySelector('.wb-animation-creation-frame').contentWindow.postMessage({channel:'bbs-animation-studio-v1.33.0',requestId:crypto.randomUUID(),type:'app3-bind',value:{projectId,characterId}},location.origin)},{projectId,characterId:second.result.characterId});
   await frame2.waitForFunction(()=>window.__app3LocalBridge.status().bound);assert.equal(await frame2.evaluate(()=>window.__app3LocalBridge.status().characterId),second.result.characterId);
   assert.deepEqual(errors,[]);
   console.log('E1 runtime: authenticated Python stdio MCP, four fresh reads, 2 known keys, unchanged native JSON, duplicate submit same ticket, shared-asset ambiguity + explicit SHA-verified binding PASS');

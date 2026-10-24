@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import {
   initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic,
 } from './store'
@@ -7,10 +7,13 @@ import {
   CHARACTER_ACTION_STATUSES, DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION,
   type CharacterActionStatus, type CharacterCoverage, type CharacterMetadata,
   type CharacterPersonality, type IndexedAction, type LibraryLicense, type LibraryOptions, type MotionPackMetadata,
-  type NormalizedManifest, type RequiredAction,
+  type BaseModelMetadata, type NormalizedManifest, type RequiredAction,
 } from './types'
 import { validatePackGlbContract } from './importPack'
 import { translateActionName } from './actionNames'
+import { nativeSkeletonFingerprint } from '../retarget/src/nativeSkeleton'
+import { bobjModelToGlb, parseBobjModel } from '../retarget/src/bobjModel'
+import { nativeActionBobj } from '../retarget/src/nativeActionBobj'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -73,6 +76,7 @@ interface NewVersion {
   durationSeconds?: number
   license: LibraryLicense
   manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
+  nativeBobj?: string
 }
 
 function createVersionPack(root: string, input: NewVersion): IndexedAction {
@@ -104,6 +108,10 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
   mkdirSync(staging)
   try {
     copyFileSync(input.glbFile, safeChild(staging, 'anim.glb'))
+    if (input.nativeBobj !== undefined) {
+      writeFileSync(safeChild(staging, 'anim.original.bbs.bobj'), input.nativeBobj)
+      if (input.source.rig === 'minecraft20') writeFileSync(safeChild(staging, 'anim.bobj'), input.nativeBobj.slice(input.nativeBobj.lastIndexOf('\nan ') + 1))
+    }
     writeJsonAtomic(safeChild(staging, 'anim.manifest.json'), {
       version: input.manifestContract?.version ?? '1.0.0', glbSha256, rig: input.source.rig,
       ...input.manifestContract,
@@ -176,7 +184,7 @@ export function addDraftToCharacter(options: LibraryOptions & { charId: string; 
 }
 
 export function saveCharacterActionVersion(options: LibraryOptions & {
-  charId: string; baseUuid: string; glbFile: string; status: 'edited'; notes?: string
+  charId: string; baseUuid: string; glbFile: string; status: 'edited'; notes?: string; rig?: string; actionUuid?: string; nativeBobj?: string
 }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
@@ -187,13 +195,39 @@ export function saveCharacterActionVersion(options: LibraryOptions & {
     if (options.status !== 'edited') throw new Error('Saved character action versions must have edited status')
     if (!existsSync(options.glbFile)) throw new Error('Edited GLB file does not exist')
     const manifestContract = sourceManifestContract(root, source)
-    const inspected = inspectEditedGlb(root, options.glbFile, source.rig, manifestContract)
+    if (options.actionUuid && !UUID.test(options.actionUuid)) throw new Error('actionUuid must be a UUID')
+    if (options.rig && options.rig !== source.rig) {
+      const nativeModel = character.baseModelId ? readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json')) : null
+      if (!['verity', 'minecraft20'].includes(options.rig) || nativeModel?.rig !== options.rig || nativeModel.format !== 'bobj') throw new Error('Edited rig transition must target the character native BOBJ rig')
+    }
+    const editedSource = options.rig && options.rig !== source.rig ? { ...source, rig: options.rig } : source
+    const requestedUuid = options.actionUuid ?? randomUUID()
+    let nativeBobj: string | undefined
+    if (['verity', 'minecraft20'].includes(editedSource.rig) && character.baseModelId) {
+      const model = readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json'))
+      if (model.format !== 'bobj' || model.rig !== editedSource.rig) throw new Error('Edited rig must match the character base model')
+      const original = readFileSync(safeChild(root, 'models', character.baseModelId, model.model))
+      if (createHash('sha256').update(original).digest('hex') !== model.sha256) throw new Error('Native base checksum mismatch')
+      const expected = bobjModelToGlb(parseBobjModel(original.toString('utf8')), { faceForward: true }).bytes
+      if (nativeSkeletonFingerprint(expected) !== nativeSkeletonFingerprint(readFileSync(options.glbFile))) throw new Error('Edited native skeleton does not match the character base')
+      const suppliedUuid = options.nativeBobj?.slice(original.toString('utf8').length).match(/^an app3_([^\r\n]+)$/m)?.[1]
+      if (options.nativeBobj !== undefined && (!suppliedUuid || !UUID.test(suppliedUuid))) throw new Error('Edited native BOBJ has no valid Action identity')
+      nativeBobj = nativeActionBobj(original, readFileSync(options.glbFile), suppliedUuid ?? requestedUuid)
+      if (options.nativeBobj !== undefined && options.nativeBobj !== nativeBobj) throw new Error('Edited native BOBJ does not match the GLB')
+    }
+    const inspected = inspectEditedGlb(root, options.glbFile, editedSource.rig, manifestContract)
+    const editedHash = createHash('sha256').update(readFileSync(options.glbFile)).digest('hex')
+    const existing = index.actions.find((action) => action.uuid.toLowerCase() === requestedUuid.toLowerCase())
+    if (existing) {
+      if (existing.ownerCharId === character.charId && existing.variantOf === source.variantOf && existing.parentUuid === (source.parentUuid ?? source.uuid) && existing.status === 'edited' && existing.rig === editedSource.rig && createHash('sha256').update(readFileSync(safeChild(root, 'packs', existing.packId, 'anim.glb'))).digest('hex') === editedHash && (nativeBobj === undefined || readFileSync(safeChild(root, 'packs', existing.packId, 'anim.original.bbs.bobj'), 'utf8') === nativeBobj)) return existing
+      throw new Error('Requested actionUuid already belongs to a different action')
+    }
     const chain = index.actions.filter((action) => action.ownerCharId === character.charId && action.variantOf === source.variantOf)
     const version = Math.max(...chain.map((action) => action.version ?? 0)) + 1
-    const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: options.glbFile, uuid: randomUUID(),
+    const created = createVersionPack(root, { source: editedSource, ownerCharId: character.charId, glbFile: options.glbFile, uuid: requestedUuid,
       status: status(options.status), version, variantOf: source.variantOf, parentUuid: source.parentUuid ?? source.uuid,
       notes: options.notes, preserveAnimationIndex: false, durationSeconds: inspected.durationSeconds,
-      license: sourceLicense(root, source), manifestContract })
+      license: sourceLicense(root, source), manifestContract, nativeBobj })
     character.actions = [...memberships(root, character, index.actions), created.uuid]
     writeCharacter(root, character); writeIndex(root)
     return created

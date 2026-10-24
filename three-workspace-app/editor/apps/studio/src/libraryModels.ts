@@ -23,6 +23,46 @@ export function packLibraryGlb(json: any, binary: Buffer): Buffer {
   return out
 }
 
+/** Add one animation to a textured character model while preserving its skeleton and meshes. */
+export function composeLibraryActionGlb(characterBytes: Buffer, actionBytes: Buffer, animationIndex = 0): Buffer {
+  const character = unpackLibraryGlb(characterBytes), action = unpackLibraryGlb(actionBytes)
+  const source = action.json.animations?.[animationIndex]
+  if (!source || !Array.isArray(source.channels) || !Array.isArray(source.samplers)) throw new Error('Library Action animation is missing')
+  const normalize = (value: unknown) => String(value ?? '').split(':').pop()!.replace(/^mixamorig\d*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const targets = new Map<string, number>()
+  const jointNodes = new Set<number>((character.json.skins ?? []).flatMap((skin: any) => Array.isArray(skin.joints) ? skin.joints : []))
+  for (const [index, node] of (character.json.nodes ?? []).entries()) if (typeof node.name === 'string') {
+    if (jointNodes.size && !jointNodes.has(index)) continue
+    const key = normalize(node.name)
+    if (targets.has(key)) throw new Error(`Library character has ambiguous normalized bone name: ${node.name}`)
+    targets.set(key, index)
+  }
+  const animation = structuredClone(source)
+  const nodes = action.json.nodes ?? []
+  for (const channel of animation.channels) {
+    const sourceNode = nodes[channel.target?.node]
+    const target = targets.get(normalize(sourceNode?.name))
+    if (target === undefined) throw new Error(`Library Action bone is not present in character model: ${sourceNode?.name ?? 'unknown'}`)
+    channel.target.node = target
+  }
+  const accessors = character.json.accessors ?? [], bufferViews = character.json.bufferViews ?? []
+  const accessorOffset = accessors.length, viewOffset = bufferViews.length, base = Math.ceil(character.binary.length / 4) * 4
+  const actionViews = action.json.bufferViews ?? [], actionAccessors = action.json.accessors ?? []
+  character.json.bufferViews = [...bufferViews, ...actionViews.map((view: any) => ({ ...structuredClone(view), byteOffset: (view.byteOffset ?? 0) + base }))]
+  character.json.accessors = [...accessors, ...actionAccessors.map((accessor: any) => {
+    const copy = structuredClone(accessor)
+    if (copy.bufferView !== undefined) copy.bufferView += viewOffset
+    if (copy.sparse?.indices?.bufferView !== undefined) copy.sparse.indices.bufferView += viewOffset
+    if (copy.sparse?.values?.bufferView !== undefined) copy.sparse.values.bufferView += viewOffset
+    return copy
+  })]
+  for (const sampler of animation.samplers) { sampler.input += accessorOffset; sampler.output += accessorOffset }
+  character.json.animations = [animation]
+  const binary = Buffer.concat([character.binary, Buffer.alloc(base - character.binary.length), action.binary])
+  character.json.buffers[0].byteLength = binary.length
+  return packLibraryGlb(character.json, binary)
+}
+
 /** Base bytes never include character overrides: one content-addressed project model. */
 export async function libraryBaseGlb(charId: string, faceForward = true): Promise<Buffer> {
   const resolved = resolveCharacter(charId)

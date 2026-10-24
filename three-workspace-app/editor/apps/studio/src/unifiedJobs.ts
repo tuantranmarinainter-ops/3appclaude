@@ -102,7 +102,8 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
   const baseBytes = await readFile(character.modelPath)
   if (digest(baseBytes) !== character.baseModel.sha256) throw new TypeError(`Character ${model.characterId} original BOBJ hash changed`)
   let bobj = baseBytes.toString('utf8')
-  if (!/^arm_name\s/m.test(bobj) || !/^arm_bone\s/m.test(bobj)) throw new TypeError(`Character ${model.characterId} has an invalid original BOBJ`)
+  try { parseBobjArmature(bobj) }
+  catch { throw new TypeError(`Character ${model.characterId} has an invalid original BOBJ`) }
   const actionUuids = [...new Set(snapshot.scene.content.timeline.animation.motionClips
     .filter((clip) => clip.target.nodeId === model.nodeId && snapshot.motions[clip.motion.assetId])
     .map((clip) => snapshot.motions[clip.motion.assetId]!.id))]
