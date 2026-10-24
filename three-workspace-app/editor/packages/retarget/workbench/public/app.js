@@ -47,7 +47,7 @@ const state = {
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(), transferCharacters: new Set(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
-  batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchPresets: new Map(), batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null,
+  batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchPresets: new Map(), batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null, batchCurrent: null, batchRows: [], reviewRows: [], runAbort: false, runQuiet: false,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -96,7 +96,10 @@ $('tgMesh').addEventListener('change', (event) => viewer.setToggle('mesh', event
 $('tgSkel').addEventListener('change', (event) => viewer.setToggle('skeleton', event.target.checked))
 $('tgGrid').addEventListener('change', (event) => viewer.setToggle('grid', event.target.checked))
 $('frameBtn').addEventListener('click', () => viewer.frameAll())
-$('actionSel').addEventListener('change', (event) => selectAction(Number(event.target.value)))
+$('actionSel').addEventListener('change', (event) => {
+  const index = Number(event.target.value), entry = state.batch?.entries.find((item) => item.sourceId === state.source?.sourceId), action = entry?.inspect?.actions?.find((item) => item.index === index)
+  if (entry && action) previewBatchAction(entry, action); else selectAction(index)
+})
 
 /** Contact ranges (frame pairs, from report.quality) as colored ticks above the timeline. */
 function drawContacts(contactRanges, total) {
@@ -138,7 +141,7 @@ function selectAction(sourceIndex) {
   $('bindInfo').textContent = parts.join(' · ')
   $('bindInfo').classList.toggle('bad', bad)
   renderActions(false)
-  renderActionPicker()
+  if (state.batch) renderReview(); else renderActionPicker()
 }
 
 function fillActionSelect() {
@@ -188,17 +191,152 @@ function selectedBatchGroups() {
   const entries = state.batch?.entries ?? []
   return entries.map((entry) => ({ entry, actions: (entry.inspect?.actions ?? []).filter((action) => state.batchSelection.has(batchKey(entry, action))) })).filter((group) => group.actions.length)
 }
+/** Shows one batch animation: loads the entry's source into the left pane once per file, then only switches the clip. */
 function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
   if (!entry.sourceId) return
-  state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect?.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
-  const saved = state.batchPresets.get(entry.sourceId)
-  state.inspect = entry.inspect; state.inspectError = null; state.rows = (entry.inspect?.mapping?.joints ?? []).map((joint) => ({ ...joint, original: joint.source })); state.preset = saved?.preset ?? null; state.presetFamily = saved?.family ?? entry.inspect?.mapping?.family ?? null; state.dirty = false
-  state.selected = action?.index ?? null; state.actionMap = new Map(); state.result = null; state.stale = false
-  $('armatureBox').hidden = state.source.format !== 'bobj'
-  clear($('sourceInfo')).append(h('b', { text: entry.name }), h('span', { text: ` · ${entry.inspect?.actions?.length ?? 0} animation · sha256 ${(entry.sha256 ?? '').slice(0, 16)}…` }))
-  if (state.source.format === 'bobj') { viewer.clearSource(); if (action) selectAction(action.index) }
-  else viewer.loadSource(`/api/sources/${entry.sourceId}/file`, state.source.format).then(() => { if (action) selectAction(action.index) }).catch((error) => setOverlay('left', `Không dựng được viewer: ${error.message}`, true))
+  const key = action ? batchKey(entry, action) : null
+  state.batchCurrent = key
+  if (shownBatchEntry !== entry.sourceId) {
+    shownBatchEntry = entry.sourceId
+    state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect?.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
+    const saved = state.batchPresets.get(entry.sourceId)
+    state.inspect = entry.inspect; state.inspectError = null; state.rows = (entry.inspect?.mapping?.joints ?? []).map((joint) => ({ ...joint, original: joint.source })); state.preset = saved?.preset ?? null; state.presetFamily = saved?.family ?? entry.inspect?.mapping?.family ?? null; state.dirty = false
+    state.actionMap = new Map(); state.result = null; state.stale = false
+    viewer.clearResult(); fillActionSelect()
+    $('armatureBox').hidden = state.source.format !== 'bobj'
+    clear($('sourceInfo')).append(h('b', { text: entry.name }), h('span', { text: ` · ${entry.inspect?.actions?.length ?? 0} animation · sha256 ${(entry.sha256 ?? '').slice(0, 16)}…` }))
+  }
+  state.selected = action?.index ?? null
+  renderReview(false, true)
+  let left = Promise.resolve()
+  if (state.source.format === 'bobj') { leftLoad = null; viewer.clearSource(); setOverlay('left', 'Nguồn .bobj là thư viện Action của Minecraft20, không có mesh.') }
+  else left = ensureLeft(entry)
+  left.catch(() => {}).then(() => {
+    if (!action || state.batchCurrent !== key) return
+    selectAction(action.index)
+    if (!(state.actionMap.has(action.index) && !state.stale)) schedulePreview(250)
+  })
   refreshSteps()
+}
+let shownBatchEntry = null, leftLoad = null, previewTimer = 0, previewSeq = 0
+function ensureLeft(entry) {
+  if (leftLoad?.id === entry.sourceId) return leftLoad.promise
+  setOverlay('left', 'Đang tải nguồn vào viewer…')
+  const promise = viewer.loadSource(`/api/sources/${entry.sourceId}/file`, entry.inspect?.format).then((count) => { if (leftLoad?.promise === promise && count >= 0) setOverlay('left', '') })
+    .catch((error) => { if (leftLoad?.promise === promise) setOverlay('left', `Không dựng được viewer cho file này (vẫn xem thử bên phải được):\n${error.message}`, true) })
+  leftLoad = { id: entry.sourceId, promise }
+  return promise
+}
+function resetBatchView() {
+  shownBatchEntry = null; leftLoad = null; clearTimeout(previewTimer); previewSeq++
+  state.batchRows = []; state.reviewRows = []; state.batchCurrent = null
+  renderReview(true)
+}
+/** Preview of the animation on screen, debounced; a newer request cancels the one in flight so nothing queues up or sticks. */
+function schedulePreview(delay = 350) {
+  if (!state.batch || state.selected === null || !state.target) return
+  clearTimeout(previewTimer)
+  previewTimer = setTimeout(runPreview, delay)
+}
+async function runPreview() {
+  clearTimeout(previewTimer)
+  if (!state.batch || state.selected === null) return
+  const seq = ++previewSeq
+  if (state.running) {
+    if (state.run) api(`/api/runs/${state.run}/cancel`, { method: 'POST' }).catch(() => {})
+    else state.runAbort = true
+    while (state.running) await sleep(40)
+    if (seq !== previewSeq) return
+  }
+  await runNow([state.selected], null, { quiet: true })
+}
+
+// ---------------------------------------------------------------- batch review list (virtualized, next to the viewers)
+const REVIEW_ROW = 28
+function buildBatchRows() {
+  state.batchRows = []
+  for (const entry of state.batch?.entries ?? []) {
+    if (!entry.sourceId) continue
+    for (const action of entry.inspect?.actions ?? []) state.batchRows.push({ key: batchKey(entry, action), entry, action, text: `${entry.name} ${action.name} ${action.nameVi ?? ''} ${action.index + 1}`.toLocaleLowerCase('vi') })
+  }
+}
+function reviewLabel(row) {
+  const edit = state.batchEdits.get(row.key)
+  const name = edit?.name ?? row.action.name, vi = edit ? edit.nameVi : row.action.nameVi
+  return vi ? `${name} | ${vi}` : name
+}
+function setKept(row, on) { on ? state.batchSelection.set(row.key, { sourceId: row.entry.sourceId, index: row.action.index }) : state.batchSelection.delete(row.key) }
+function afterSelectionChange() { renderReview(); renderActionPicker() }
+function renderReview(refilter = false, reveal = false) {
+  const show = !!state.batch && state.batchRows.length > 0
+  $('review').hidden = !show
+  document.querySelector('.viewers').classList.toggle('has-review', show)
+  if (!show) return
+  if (refilter) { const q = $('reviewSearch').value.trim().toLocaleLowerCase('vi'); state.reviewRows = q ? state.batchRows.filter((row) => row.text.includes(q)) : state.batchRows }
+  updateReviewCount()
+  $('reviewInner').style.height = `${state.reviewRows.length * REVIEW_ROW}px`
+  if (reveal) {
+    const at = state.reviewRows.findIndex((row) => row.key === state.batchCurrent), list = $('reviewList')
+    if (at >= 0) { if (at * REVIEW_ROW < list.scrollTop) list.scrollTop = at * REVIEW_ROW; else if ((at + 1) * REVIEW_ROW > list.scrollTop + list.clientHeight) list.scrollTop = (at + 1) * REVIEW_ROW - list.clientHeight }
+  }
+  drawReviewRows()
+}
+function updateReviewCount() {
+  const total = state.batchRows.length, shown = state.reviewRows.length, kept = state.batchSelection.size
+  $('reviewCount').textContent = `đã chọn ${kept}/${total}${shown !== total ? ` · lọc ${shown}` : ''}`
+  $('reviewTransfer').textContent = `Chuyển sang nhân vật đích (${kept})`
+  $('reviewTransfer').disabled = !kept || !state.target || state.transferRunning
+}
+function drawReviewRows() {
+  const list = $('reviewList'), rows = state.reviewRows, first = Math.max(0, Math.floor(list.scrollTop / REVIEW_ROW) - 4), last = Math.min(rows.length, Math.ceil((list.scrollTop + (list.clientHeight || 400)) / REVIEW_ROW) + 4)
+  const frag = document.createDocumentFragment()
+  for (let i = first; i < last; i++) {
+    const row = rows[i], kept = state.batchSelection.has(row.key), current = row.key === state.batchCurrent, label = reviewLabel(row)
+    frag.append(h('div', { class: `review-row${kept ? '' : ' dropped'}${current ? ' current' : ''}`, role: 'option', 'aria-selected': String(current), dataset: { i: String(i) }, style: `top:${i * REVIEW_ROW}px`, title: `${row.entry.name} · ${label}` },
+      h('input', { type: 'checkbox', checked: kept, 'aria-label': `Giữ ${label}` }), h('span', { class: 'idx', text: String(row.action.index + 1) }),
+      h('span', { class: 'nm', text: (state.batch.entries.length > 1 ? `${label} · ${row.entry.name}` : label) + (row.entry.status === 'duplicate' ? (row.entry.inLibrary ? ' (đã có trong kho)' : ' (file trùng)') : '') }), h('span', { class: 'dur', text: `${fmt(row.action.durationSeconds)}s` })))
+  }
+  $('reviewInner').replaceChildren(frag)
+}
+function stepReview(delta) {
+  const rows = state.reviewRows
+  if (!rows.length) return
+  const at = rows.findIndex((row) => row.key === state.batchCurrent)
+  const next = rows[at < 0 ? (delta > 0 ? 0 : rows.length - 1) : (at + delta + rows.length) % rows.length]
+  previewBatchAction(next.entry, next.action)
+}
+let reviewFrame = 0
+$('reviewList').addEventListener('scroll', () => { cancelAnimationFrame(reviewFrame); reviewFrame = requestAnimationFrame(drawReviewRows) })
+$('reviewInner').addEventListener('click', (event) => {
+  const el = event.target.closest('.review-row'), row = el && state.reviewRows[Number(el.dataset.i)]
+  if (!row) return
+  if (event.target.matches('input')) { setKept(row, event.target.checked); el.classList.toggle('dropped', !event.target.checked); updateReviewCount(); renderActionPicker() }
+  else { previewBatchAction(row.entry, row.action); $('reviewList').focus({ preventScroll: true }) }
+})
+$('reviewSearch').addEventListener('input', () => renderReview(true))
+$('reviewPrev').addEventListener('click', () => stepReview(-1))
+$('reviewNext').addEventListener('click', () => stepReview(1))
+$('reviewAll').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, true); afterSelectionChange() })
+$('reviewNone').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, false); afterSelectionChange() })
+$('reviewInvert').addEventListener('click', () => { for (const row of state.reviewRows) setKept(row, !state.batchSelection.has(row.key)); afterSelectionChange() })
+$('reviewTransfer').addEventListener('click', () => { openActionPicker(); $('transferOpen').click() })
+new ResizeObserver(() => { if (!$('review').hidden) drawReviewRows() }).observe($('reviewList'))
+window.addEventListener('keydown', (event) => {
+  if (!state.batch || $('review').hidden || event.ctrlKey || event.metaKey || event.altKey || event.target.matches?.('input,textarea,select,[contenteditable]')) return
+  const delta = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 0
+  if (delta) { event.preventDefault(); stepReview(delta); return }
+  if (event.key === ' ' && (event.target === document.body || event.target === $('reviewList'))) {
+    const row = state.batchRows.find((item) => item.key === state.batchCurrent)
+    if (row) { event.preventDefault(); setKept(row, !state.batchSelection.has(row.key)); afterSelectionChange() }
+  }
+})
+/** Everything starts kept (files with an error stay dropped; duplicates are kept but tagged "trùng"); the first animation plays in both panes so review can begin at once. */
+function startBatchReview() {
+  buildBatchRows()
+  for (const entry of state.batch.entries) if (entry.status !== 'error') for (const action of entry.inspect?.actions ?? []) state.batchSelection.set(batchKey(entry, action), { sourceId: entry.sourceId, index: action.index })
+  renderReview(true)
+  const first = state.batchRows.find((row) => state.batchSelection.has(row.key)) ?? state.batchRows[0]
+  if (first) previewBatchAction(first.entry, first.action)
 }
 function openBatchMapping(entry) {
   if (!entry.inspect?.mapping?.joints?.length) return
@@ -263,6 +401,7 @@ function renderBatchActionPicker(query) {
     group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
   }
   $('actionPickerCount').textContent = `đã chọn ${selected}/${total} (${selectedFiles} file)`
+  renderReview()
   $('transferOpen').disabled = selected === 0 || !state.target || state.transferRunning
   if (!body.children.length) body.append(h('p', { class: 'empty', text: 'Chưa có file kiểm tra được.' }))
   clear($('actionPickerList')).append(body)
@@ -334,14 +473,16 @@ function setStep(n, status, label) {
   el.classList.add(status)
   $(`state${n}`).textContent = label
 }
-function canRunReason(actions = selectedActionIndices()) {
+/** Single-file runs export the ticked Actions; in batch mode a run is the preview of the animation on screen. */
+function runActions() { return state.batch ? (state.selected === null ? [] : [state.selected]) : selectedActionIndices() }
+function canRunReason(actions = runActions()) {
   if (!state.source) return 'Chọn nguồn ở bước 1.'
   if (state.inspecting) return 'Đang kiểm tra…'
   if (!state.inspect) return 'Bấm "Kiểm tra" ở bước 3.'
   if (state.inspect.blocker) return `Đang bị chặn: ${state.inspect.blocker.code}.`
   if (state.dirty) return 'Mapping đã sửa nhưng chưa xác nhận (tab Mapping).'
   if (state.inspect.mapping.needsUserConfirmation && !state.preset) return 'Mapping gợi ý theo hình học: cần xác nhận ở tab Mapping trước khi chạy.'
-  if (!actions.length) return 'Chưa chọn Action nào để xuất (tab Actions).'
+  if (!actions.length) return state.batch ? 'Chọn một animation trong danh sách duyệt để chạy.' : 'Chưa chọn Action nào để xuất (tab Actions).'
   return null
 }
 function refreshSteps() {
@@ -363,7 +504,9 @@ function refreshSteps() {
   else setStep(5, reason ? 'locked' : 'active', reason ? 'Chưa sẵn sàng' : 'Sẵn sàng')
   // Step 5's body stays visible once step 3 is done so the reason a run is disabled is readable.
   if (inspect && !inspect.blocker) $('step5').classList.remove('locked')
-  $('runBtn').disabled = state.running || !!reason
+  // Batch mode: the run control stays enabled while running (restarts the preview), next to Huỷ.
+  $('runBtn').disabled = (state.running && !state.batch) || !!reason
+  $('runBtn').textContent = state.batch ? (state.running ? 'Chạy lại animation này' : 'Chạy chuẩn hoá animation này') : 'Chạy chuẩn hoá'
   $('runBtn').title = reason ?? ''
   $('inspectBtn').disabled = !source || state.inspecting || state.running
   $('runInfo').replaceChildren(...(reason && !state.running ? [h('span', { text: reason })] : []),
@@ -373,7 +516,7 @@ function refreshSteps() {
 
 // ---------------------------------------------------------------- step 1: source
 async function useSource(info) {
-  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); $('batchPickerBtn').hidden = true; $('batchStatus').hidden = true
+  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); $('batchPickerBtn').hidden = true; $('batchStatus').hidden = true; resetBatchView()
   state.source = info; state.inspect = null; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
   state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.actionRanges = {}; state.selected = null
   viewer.clearResult(); fillActionSelect(); drawContacts(null, 0); frames = 0; $('timeline').max = '0'
@@ -408,7 +551,7 @@ async function queueBatch({ files = [], paths = [], sourceIds = [], uploadId = n
   if (!state.target) { toast('Chọn nhân vật đích trước khi kiểm tra lô.', 'err'); return }
   if (files.filter((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name)).length + paths.length + sourceIds.length > 2000) { toast('Mỗi lô tối đa 2000 file.', 'err'); return }
   if (files.some((file) => /\.gltf$/i.test(file.name)) && files.some((file) => !file.webkitRelativePath && !file.batchPath)) { toast('Chọn thư mục chứa .gltf để giữ các file .bin/texture bên cạnh, hoặc nhập đường dẫn thư mục.', 'err'); return }
-  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); state.batchKeys.clear(); state.batchEdits.clear(); state.result = null
+  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); state.batchKeys.clear(); state.batchEdits.clear(); state.result = null; resetBatchView()
   $('batchPickerBtn').hidden = true; $('batchStatus').hidden = false
   if (files.length) {
     const staged = await api('/api/batch-uploads', { method: 'POST' })
@@ -437,8 +580,7 @@ async function queueBatch({ files = [], paths = [], sourceIds = [], uploadId = n
       ? `Đã huỷ kiểm tra lô sau ${current.done}/${current.total} file.`
       : `Đã kiểm tra ${current.total} file · ${current.entries.filter((entry) => entry.status === 'ready' || entry.status === 'duplicate').length} dùng được · ${current.entries.filter((entry) => entry.status === 'error').length} lỗi.`
     $('batchPickerBtn').hidden = !current.entries.some((entry) => entry.inspect?.actions?.length)
-    if (!picker.hidden && $('batchPickerBtn').hidden === false) renderActionPicker()
-    else if (!$('batchPickerBtn').hidden) openActionPicker()
+    if (!$('batchPickerBtn').hidden) { startBatchReview(); renderActionPicker() }
   } catch (error) { $('batchStatus').textContent = `Kiểm tra lô thất bại: ${error.message}`; toast(error.message, 'err', true) }
   finally { state.batchRun = null; $('batchCancel').hidden = true }
 }
@@ -657,10 +799,12 @@ function markOptionsChanged(event) {
   if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale], [name^=adj_]')) inspectSoon()
   renderAdjustOutputs()
   renderOptionHints()
-  if ($('adjustLive').checked && event?.target?.matches('[name^=adj_]')) { clearTimeout(adjustPreviewTimer); adjustPreviewTimer = setTimeout(previewAdjustments, 450) }
+  if (state.batch) { if (event?.target?.matches('[name^=adj_], [name=rootScale], [name=ground], [name=rootPolicy], [name=facingDegrees], [name=swapSides], [name=calibrate]')) schedulePreview(450) }
+  else if ($('adjustLive').checked && event?.target?.matches('[name^=adj_]')) { clearTimeout(adjustPreviewTimer); adjustPreviewTimer = setTimeout(previewAdjustments, 450) }
 }
 let adjustPreviewTimer = 0
 async function previewAdjustments() {
+  if (state.batch) { await runPreview(); return }
   if (state.running) { clearTimeout(adjustPreviewTimer); adjustPreviewTimer = setTimeout(previewAdjustments, 450); return }
   if (state.selected === null) { toast('Chọn một Action để xem thử.', 'err'); return }
   await runNow([state.selected])
@@ -728,37 +872,42 @@ function selectedActionIndices() {
   const actions = state.inspect?.actions ?? []
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
-async function runNow(onlyActions = null, actionNames = null) {
-  const reason = canRunReason(onlyActions ?? selectedActionIndices())
-  if (reason) { toast(reason, 'err'); return }
-  const all = onlyActions ?? selectedActionIndices()
+async function runNow(onlyActions = null, actionNames = null, { quiet = false } = {}) {
+  const reason = canRunReason(onlyActions ?? runActions())
+  if (reason) { if (quiet) setOverlay('right', reason, true); else toast(reason, 'err'); return }
+  const all = onlyActions ?? runActions()
   const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
-  state.running = true
-  $('progress').hidden = false
+  state.running = true; state.runAbort = false; state.runQuiet = quiet
+  $('progress').hidden = false; $('cancelBtn').hidden = false
+  if (quiet) setOverlay('right', '')
   setProgress('queued', 0, 1, 0)
   refreshSteps()
   try {
     const started = await api('/api/runs', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, options, wait: false,
       ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) } })
     state.run = started.runId
-    $('cancelBtn').hidden = false
+    if (state.runAbort) await api(`/api/runs/${started.runId}/cancel`, { method: 'POST' }).catch(() => {})
     let current = started, failures = 0
     while (current.state === 'running') {
       await sleep(300)
       try { current = await api(`/api/runs/${started.runId}`); failures = 0 } catch (error) { if (++failures > 5) throw error }
       setProgress(current.stage, current.done, current.total, current.elapsedMs)
     }
-    if (current.state === 'CANCELLED') { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok'); return }
+    if (current.state === 'CANCELLED') { if (!quiet) { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok') } return }
     if (current.state === 'error') throw new Error(current.error)
-    await finishRun(current.result, options)
+    // Preview of an animation the user already moved away from: drop it instead of jumping back.
+    if (quiet && !all.includes(state.selected)) return
+    await finishRun(current.result, options, quiet)
     return current.result
   } catch (error) {
-    toast(`Chạy thất bại: ${error.message}`, 'err', true)
+    if (quiet) setOverlay('right', `Xem thử thất bại: ${error.message}. Chỉnh lại hoặc bấm chạy lại.`, true)
+    else toast(`Chạy thất bại: ${error.message}`, 'err', true)
     $('runInfo').textContent = `Chạy thất bại: ${error.message}`
   } finally {
     state.run = null
     $('cancelBtn').hidden = true
-    state.running = false
+    state.running = false; state.runQuiet = false
+    if ($('rightMsg').dataset.progress) { delete $('rightMsg').dataset.progress; if (!$('rightMsg').classList.contains('err')) setOverlay('right', '') }
     $('progress').hidden = true
     refreshSteps()
   }
@@ -769,8 +918,9 @@ function setProgress(stage, done, total, elapsedMs) {
   const batch = state.batchProgress
   const batchLabel = batch ? ` · file ${batch.file}/${batch.files}, animation ${Math.min(batch.animationBase + done + 1, batch.animations)}/${batch.animations}` : ''
   $('progressText').textContent = `${STAGES[stage] ?? stage}${total > 1 ? ` ${Math.min(done + 1, total)}/${total}` : ''}${batchLabel} · ${(elapsedMs / 1000).toFixed(1)} s`
+  if (state.runQuiet) { setOverlay('right', `Đang xem thử: ${$('progressText').textContent}`); $('rightMsg').dataset.progress = '1' }
 }
-async function finishRun(result, options) {
+async function finishRun(result, options, quiet = false) {
   state.result = result; state.stale = false; state.resultOptions = options
   state.actionMap = new Map()
   const report = result.report
@@ -778,9 +928,7 @@ async function finishRun(result, options) {
   manifestActions.forEach((entry, glbIndex) => state.actionMap.set(entry.sourceActionIndex, { glbIndex, duration: entry.durationSeconds, uuid: entry.uuid, quality: report.roundtrip?.perAction?.[glbIndex]?.quality, perAction: report.roundtrip?.perAction?.[glbIndex] }))
   state.libraryDestinations = new Set()
   state.libraryActions = new Map(manifestActions.map((entry) => [entry.uuid, 'idle']))
-  fillActionSelect()
-  renderAll()
-  activateTab('overview')
+  if (quiet) { renderOverview(); renderDownloads() } else { fillActionSelect(); renderAll(); activateTab('overview') }
   const glb = result.files.find((file) => file.kind === 'glb')
   if (glb) {
     setOverlay('right', 'Đang tải GLB kết quả vào viewer…')
@@ -792,15 +940,15 @@ async function finishRun(result, options) {
       setOverlay('right', '')
     } catch (error) { setOverlay('right', `Không phát được GLB kết quả: ${error.message}`, true) }
     if (state.mc20) await showSteveResult()
-    const first = report.roundtrip?.primaryAction ?? manifestActions[0]?.sourceActionIndex ?? state.selected ?? 0
+    const first = quiet ? state.selected : report.roundtrip?.primaryAction ?? manifestActions[0]?.sourceActionIndex ?? state.selected ?? 0
     selectAction(first)
   } else setOverlay('right', `Không có GLB: ${result.status}${report.blocker ? ` — ${report.blocker.code}` : ''}`)
-  toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
+  if (!quiet || result.status !== 'PASS') toast(`Kết quả: ${result.status}${report.blocker ? ` (${report.blocker.code})` : ''}`, result.status === 'PASS' ? 'ok' : 'err')
 }
-$('runBtn').addEventListener('click', () => runNow())
+$('runBtn').addEventListener('click', () => { if (state.batch) runPreview(); else runNow() })
 $('cancelBtn').addEventListener('click', async () => {
-  if (!state.run) return
-  if (state.batch) state.batchCancelRequested = true
+  if (!state.run) { state.runAbort = true; return }
+  if (state.batch && state.transferRunning) state.batchCancelRequested = true
   try { await api(`/api/runs/${state.run}/cancel`, { method: 'POST' }) } catch (error) { toast(error.message, 'err') }
 })
 
@@ -856,6 +1004,7 @@ function renderTransferKeys() {
   const suggestion = suggestActionKey(requiredActions, selectedNames)
   if (suggestion) select.value = suggestion
   if (!characters.length) $('transferCharacterPack').checked = false
+  else if ($('transferCharacterPack').disabled) $('transferCharacterPack').checked = true
   $('transferCharacterPack').disabled = !characters.length
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
@@ -1172,7 +1321,7 @@ async function confirmMapping() {
       entry.status = state.inspect?.blocker ? 'error' : state.inspect?.actions?.length ? 'ready' : 'error'
       entry.error = state.inspect?.blocker?.message ?? (entry.status === 'error' ? 'File không có animation có thời lượng lớn hơn 0' : undefined)
       if (entry.status === 'ready') for (const action of entry.inspect.actions) state.batchSelection.set(batchKey(entry, action), { sourceId: entry.sourceId, index: action.index })
-      renderActionPicker()
+      buildBatchRows(); renderReview(true); renderActionPicker()
     }
   } catch (error) { toast(`Không tạo được preset: ${error.message}`, 'err') }
 }

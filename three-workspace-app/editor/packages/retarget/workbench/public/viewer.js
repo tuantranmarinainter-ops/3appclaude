@@ -234,6 +234,7 @@ export class Viewer {
     this.onFrame = onFrame
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
     this.source = null // { scene, animations }
+    this.sourceSeq = 0
     this.targetScene = null
     this.result = null // { mode, animations, scene }
     this.renamed = new Map()
@@ -255,15 +256,19 @@ export class Viewer {
 
   seek(seconds) { this.time = Math.max(0, Math.min(seconds, this.duration)) }
 
+  /** Returns the animation count, or -1 when a newer loadSource/clearSource superseded this one (last request wins). */
   async loadSource(url, format) {
+    const seq = ++this.sourceSeq
     this.source = null
     this.left.clear()
-    this.source = await loadModel(url, format)
+    const loaded = await loadModel(url, format)
+    if (seq !== this.sourceSeq) return -1
+    this.source = loaded
     this.left.setModel(this.source.scene)
     return this.source.animations.length
   }
 
-  clearSource() { this.source = null; this.left.clear() }
+  clearSource() { this.sourceSeq++; this.source = null; this.left.clear() }
 
   async loadTarget(url) {
     this.targetScene = (await loadModel(url, 'glb')).scene
