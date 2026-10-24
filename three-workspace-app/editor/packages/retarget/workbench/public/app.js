@@ -214,7 +214,7 @@ function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
   left.catch(() => {}).then(() => {
     if (!action || state.batchCurrent !== key) return
     selectAction(action.index)
-    if (!(state.actionMap.has(action.index) && !state.stale)) schedulePreview(250)
+    if (!(state.actionMap.has(action.index) && !state.stale)) schedulePreview(70)
   })
   refreshSteps()
 }
@@ -228,14 +228,15 @@ function ensureLeft(entry) {
   return promise
 }
 function resetBatchView() {
-  shownBatchEntry = null; leftLoad = null; clearTimeout(previewTimer); previewSeq++
+  shownBatchEntry = null; leftLoad = null; clearTimeout(previewTimer); clearTimeout(prefetchTimer); previewResults.clear(); previewSeq++
   state.batchRows = []; state.reviewRows = []; state.batchCurrent = null
   renderReview(true)
 }
 /** Preview of the animation on screen, debounced; a newer request cancels the one in flight so nothing queues up or sticks. */
-function schedulePreview(delay = 350) {
+function schedulePreview(delay = 70) {
   if (!state.batch || state.selected === null || !state.target) return
   clearTimeout(previewTimer)
+  if (previewResults.has(JSON.stringify(previewPayload(state.selected)))) { runPreview(); return }
   previewTimer = setTimeout(runPreview, delay)
 }
 async function runPreview() {
@@ -249,6 +250,46 @@ async function runPreview() {
     if (seq !== previewSeq) return
   }
   await runNow([state.selected], null, { quiet: true })
+}
+
+// Keep only a small window of results; keys include the source, mapping, target and every bake option.
+const previewResults = new Map(), previewPending = new Map()
+let previewQueue = Promise.resolve(), prefetchTimer = 0
+function previewPayload(action) {
+  return structuredClone({ sourceId: state.source.sourceId, targetId: state.target.id,
+    options: { ...readOptions(), actionRanges: state.actionRanges, actions: [action], previewAction: action, preview: false, review: true }, wait: true,
+    ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) })
+}
+function cachedPreview(payload) {
+  const key = JSON.stringify(payload)
+  if (previewResults.has(key)) {
+    const result = previewResults.get(key)
+    previewResults.delete(key); previewResults.set(key, result)
+    return Promise.resolve(result)
+  }
+  if (previewPending.has(key)) return previewPending.get(key)
+  const promise = previewQueue.catch(() => {}).then(() => api('/api/runs', { method: 'POST', json: payload })).then((result) => {
+    if (result.status !== 'CANCELLED') {
+      previewResults.set(key, result)
+      while (previewResults.size > 12) previewResults.delete(previewResults.keys().next().value)
+    }
+    return result
+  }).finally(() => previewPending.delete(key))
+  previewPending.set(key, promise); previewQueue = promise
+  return promise
+}
+function prefetchNextPreview() {
+  clearTimeout(prefetchTimer)
+  const index = state.reviewRows.findIndex((row) => row.key === state.batchCurrent)
+  const next = state.reviewRows[index + 1]
+  if (index < 0 || !next || next.entry.sourceId !== state.source?.sourceId) return
+  const payload = previewPayload(next.action.index), current = state.batchCurrent
+  prefetchTimer = setTimeout(() => {
+    if (!state.running && state.batchCurrent === current) cachedPreview(payload).then((result) => {
+      const glb = result.files?.find((file) => file.kind === 'glb')
+      if (glb && !result.files.some((file) => file.kind === 'originalGlb') && !result.report.model && result.manifest?.glb?.mode !== 'model') return viewer.preloadResult(glb.url)
+    }).catch(() => {})
+  }, 90)
 }
 
 // ---------------------------------------------------------------- batch review list (virtualized, next to the viewers)
@@ -873,25 +914,41 @@ function selectedActionIndices() {
   return actions.filter((action) => state.checked.has(action.index)).map((action) => action.index)
 }
 async function runNow(onlyActions = null, actionNames = null, { quiet = false } = {}) {
+  clearTimeout(prefetchTimer)
+  if (!quiet) {
+    while (state.running) await sleep(20)
+    clearTimeout(prefetchTimer)
+    await previewQueue.catch(() => {})
+  }
   const reason = canRunReason(onlyActions ?? runActions())
   if (reason) { if (quiet) setOverlay('right', reason, true); else toast(reason, 'err'); return }
   const all = onlyActions ?? runActions()
-  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: true, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  const options = { ...readOptions(), actionRanges: state.actionRanges, preview: !quiet, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
   state.running = true; state.runAbort = false; state.runQuiet = quiet
   $('progress').hidden = false; $('cancelBtn').hidden = false
   if (quiet) setOverlay('right', '')
   setProgress('queued', 0, 1, 0)
   refreshSteps()
   try {
-    const started = await api('/api/runs', { method: 'POST', json: { sourceId: state.source.sourceId, targetId: state.target.id, options, wait: false,
-      ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) } })
-    state.run = started.runId
-    if (state.runAbort) await api(`/api/runs/${started.runId}/cancel`, { method: 'POST' }).catch(() => {})
-    let current = started, failures = 0
-    while (current.state === 'running') {
-      await sleep(300)
-      try { current = await api(`/api/runs/${started.runId}`); failures = 0 } catch (error) { if (++failures > 5) throw error }
-      setProgress(current.stage, current.done, current.total, current.elapsedMs)
+    const payload = quiet ? previewPayload(all[0]) : { sourceId: state.source.sourceId, targetId: state.target.id, options, wait: false,
+      ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) }
+    const requestKey = quiet ? JSON.stringify(payload) : null
+    let current
+    if (quiet) {
+      const result = await cachedPreview(payload)
+      current = { state: result.status === 'CANCELLED' ? 'CANCELLED' : 'done', result }
+      if (state.runAbort || !state.source || !state.target || state.selected === null || requestKey !== JSON.stringify(previewPayload(state.selected))) return
+    } else {
+      const started = await api('/api/runs', { method: 'POST', json: payload })
+      state.run = started.runId
+      if (state.runAbort) await api(`/api/runs/${started.runId}/cancel`, { method: 'POST' }).catch(() => {})
+      current = started
+      let failures = 0
+      while (current.state === 'running') {
+        await sleep(300)
+        try { current = await api(`/api/runs/${started.runId}`); failures = 0 } catch (error) { if (++failures > 5) throw error }
+        setProgress(current.stage, current.done, current.total, current.elapsedMs)
+      }
     }
     if (current.state === 'CANCELLED') { if (!quiet) { $('runInfo').textContent = 'CANCELLED — Đã huỷ lượt chạy'; toast('Đã huỷ lượt chạy', 'ok') } return }
     if (current.state === 'error') throw new Error(current.error)
@@ -910,6 +967,7 @@ async function runNow(onlyActions = null, actionNames = null, { quiet = false } 
     if ($('rightMsg').dataset.progress) { delete $('rightMsg').dataset.progress; if (!$('rightMsg').classList.contains('err')) setOverlay('right', '') }
     $('progress').hidden = true
     refreshSteps()
+    if (quiet && !state.runAbort) prefetchNextPreview()
   }
 }
 function setProgress(stage, done, total, elapsedMs) {

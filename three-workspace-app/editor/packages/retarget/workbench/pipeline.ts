@@ -3,6 +3,7 @@
  * non-baking `inspectNormalize` view the UI needs. Same cores as the CLI; no retarget logic lives here.
  */
 import { createHash } from 'node:crypto'
+import { AnimationClip } from 'three'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +18,7 @@ import { exportMinecraft20 } from '../cli/toMinecraft20.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { DEFAULT_ADJUSTMENTS, resolveAdjustments, type AdjustmentSettings } from '../src/adjustments.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
+import { ParsedAssetCache } from './parsedAssetCache.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 /** The V9.12 Minecraft20 armature shipped with Studio is the default rig for `.bobj` sources and `.bobj` output. */
@@ -36,6 +38,7 @@ export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; actionNames?: Record<number, { name: string; nameVi?: string }>; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
   adjustments: AdjustmentSettings
+  review: boolean
 }
 
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
@@ -92,6 +95,7 @@ export function parseOptions(value: unknown): RunOptions {
     mode: oneOf('mode', ['animation', 'model'], 'animation'), bobj: raw.bobj === true, bobjRoot: oneOf('bobjRoot', ['inPlace', 'follow'], 'inPlace'),
     preview: raw.preview === true,
     adjustments: parseAdjustments(raw.adjustments),
+    review: raw.review === true,
   }
 }
 
@@ -118,14 +122,14 @@ export function describeSource(path: string, name: string, uploaded: boolean, id
 const resourceDir = (record: { path: string }) => dirname(record.path)
 const unitMetersFor = (record: SourceRecord, options: RunOptions) => options.unitMeters ?? (record.format === 'fbx' ? 0.01 : 1)
 
+const parsedAssets = new ParsedAssetCache(8, 256 * 1024 * 1024)
+
 async function loadScenes(source: SourceRecord, target: TargetRecord) {
-  const armature = source.format === 'bobj' ? readFileSync(source.armaturePath ?? DEFAULT_ARMATURE) : undefined
-  const srcBytes = readFileSync(source.path), targetBytes = readFileSync(target.path)
-  return {
-    srcBytes,
-    source: await loadAsset(srcBytes, source.format, { skeletonOnly: true, resourceDir: resourceDir(source), ...(armature ? { bobjArmature: armature } : {}) }),
-    target: await loadAsset(targetBytes, 'glb', { skeletonOnly: true, resourceDir: resourceDir(target) }),
-  }
+  const [src, dst] = await Promise.all([
+    parsedAssets.load(source.path, source.format, source.format === 'bobj' ? source.armaturePath ?? DEFAULT_ARMATURE : undefined),
+    parsedAssets.load(target.path, 'glb'),
+  ])
+  return { srcBytes: src.bytes, source: src.scene, target: dst.scene }
 }
 
 function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptions, scenes: Awaited<ReturnType<typeof loadScenes>>, preset: unknown, presetFamily: SourceFamily | undefined): NormalizeRequest {
@@ -199,6 +203,12 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
   }
   const unitMeters = unitMetersFor(source, options)
   const scenes = await loadScenes(source, target)
+  if (options.review) {
+    if (options.actions?.length !== 1) throw new UserError('Review requires exactly one Action')
+    // Review already has full diagnostics from inspect; avoid cloning/validating 399 unused clips per click.
+    // Empty placeholders keep source indices, names and durations stable. Exports always use the full asset.
+    scenes.source.animations = scenes.source.animations.map((clip, index) => options.actions!.includes(index) ? clip : new AnimationClip(clip.name, clip.duration, []))
+  }
   let modelFiles: ReturnType<typeof readModelSourceFiles> | undefined
   let early: PipelineResult | undefined
   if (options.mode === 'model') {
