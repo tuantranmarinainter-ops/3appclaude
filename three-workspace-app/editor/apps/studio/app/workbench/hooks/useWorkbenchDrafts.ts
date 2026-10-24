@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { translateStudio } from '../../../src/locale'
 import { CAMERA_PRESETS, createInitialDraft, type DirectorDocument } from '@topview/3d-builder'
-import type { DraftRow, DraftsResponse, ProjectRow } from '../types'
+import type { DraftRow, ProjectRow } from '../types'
 import { slugify } from '../utils'
 import { LocalHostAdapter } from '../../../src/LocalHostAdapter'
 import { ensureUnifiedSession, loadUnifiedProjects, sendUnifiedCommand } from '../../../src/unifiedApi'
@@ -22,7 +22,6 @@ async function createLocalDraft(id: string, doc: DirectorDocument): Promise<stri
 }
 
 export function useWorkbenchDrafts() {
-  const [data, setData] = useState<DraftsResponse | null>(null)
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [unifiedProjects, setUnifiedProjects] = useState<UnifiedProjectRow[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -30,9 +29,6 @@ export function useWorkbenchDrafts() {
 
   const reload = useCallback(async () => {
     try {
-      const res = await fetch('/api/drafts', { cache: 'no-store' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setData((await res.json()) as DraftsResponse)
       const listed = await fetch('/api/projects', { cache: 'no-store' })
       setProjects(listed.ok ? ((await listed.json()) as { projects: ProjectRow[] }).projects : [])
       await ensureUnifiedSession()
@@ -106,5 +102,5 @@ export function useWorkbenchDrafts() {
     }
   }
 
-  return { data, projects, unifiedProjects, error, busy, createDraft, createUnifiedProject, removeDraft }
+  return { projects, unifiedProjects, error, busy, createDraft, createUnifiedProject, removeDraft }
 }
