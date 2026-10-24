@@ -117,3 +117,8 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   mũi tên ở một ô thì danh sách node của model nguồn hiện ra nhưng **không có thanh cuộn**, danh sách dài (vd LoL `zyra.glb` 84 xương)
   bị cắt mất phần dưới, không chọn được. Yêu cầu: danh sách có chiều cao tối đa theo khoảng trống màn hình, cuộn bằng chuột/bánh
   xe/bàn phím, không tràn ra ngoài cửa sổ; thêm ô gõ để lọc theo tên; phím ↑/↓/Enter/Esc. Gộp làm cùng C10 (cùng bảng mapping).
+- **C12 — App 1: kéo-thả file/thư mục vào ô "1 Nguồn" không nhận** (người dùng báo 2026-10-24, sau khi merge #106–#109; *chưa code*).
+  Kéo file hoặc thư mục vào khung "Kéo-thả nhiều file hoặc cả thư mục vào đây" không có tác dụng (dán đường dẫn + "Dùng" vẫn chạy).
+  Cần: tái hiện trên Chrome/Edge Windows (file đơn .glb/.fbx/.bobj, nhiều file, cả thư mục, thư mục lớn ~400 animation), kiểm
+  `dragover` có `preventDefault` không, vùng thả có bị lớp khác (cột Duyệt animation / thanh chia C8 / overlay) che không, luồng
+  `/api/batch-uploads` có lỗi không; có test trình duyệt kéo-thả thật (Playwright `setInputFiles`/DataTransfer).
