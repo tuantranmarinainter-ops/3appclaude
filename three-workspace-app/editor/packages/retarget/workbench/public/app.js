@@ -1,5 +1,6 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
 import { boneChooser, closeBoneChooser } from './bone-chooser.js'
+import { mappingDrag } from './mapping-drag.js'
 import { Viewer, FPS } from './viewer.js'
 import { jointSettings, JOINT_SETTINGS_KEY } from './joint-overlay.js'
 import { executeTransfer, suggestActionKey } from './transfer.js'
@@ -131,6 +132,19 @@ viewer.right.joints.onPick = (target) => {
   const input = [...document.querySelectorAll('#mapRows input')].find((item) => item.dataset.target === row.target)
   input?.focus()
 }
+let mappingDragWasPlaying = false, mappingDragTarget = null
+mappingDrag(viewer.right.joints, viewer.left.joints, {
+  start(target) {
+    if (!state.rows.some((row) => row.target === target.replace(/^mixamorig:?/i, ''))) return false
+    viewer.right.joints.onPick(target)
+    mappingDragTarget = activeMappingTarget
+    mappingDragWasPlaying = viewer.playing
+    viewer.playing = false
+    return true
+  },
+  assign(source) { assignMappingSource(mappingDragTarget, source) },
+  end() { viewer.playing = mappingDragWasPlaying; mappingDragTarget = null; syncMappingHighlights() },
+})
 let scrubbing = false, frames = 0, wasPlaying = true
 function onViewerFrame(time) {
   const frame = Math.round(time * FPS)

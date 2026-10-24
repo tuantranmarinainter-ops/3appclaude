@@ -245,3 +245,6 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .bone-options { position: fixed; z-index: 10000; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; background: #202633; color: #edf1f7; border: 1px solid #69758a; border-radius: 6px; box-shadow: 0 6px 24px #0008; }
 .bone-options [role="option"], .bone-options [role="status"] { padding: 7px 10px; overflow-wrap: anywhere; cursor: pointer; }
 .bone-options [role="option"]:hover, .bone-options [aria-selected="true"] { background: #365477; }
+
+.mapping-wire { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 10000; pointer-events: none; overflow: visible; }
+.mapping-wire line { stroke: #ffbd55; stroke-width: 2; stroke-dasharray: 5 3; }
