@@ -42,12 +42,8 @@ const api = (url, options = {}) => page.evaluate(async ({ url, options }) => {
 }, { url, options })
 
 try {
-  await page.goto(`${base}/?unified=${projectId}`)
-  const session = await page.evaluate(async (url) => {
-    const response = await fetch(url, { method: 'POST', headers: { Origin: location.origin } })
-    return { status: response.status, body: await response.json() }
-  }, `${base}/api/unified/session`)
-  assert.equal(session.status, 200, JSON.stringify(session.body))
+  const session = await context.request.post(`${base}/api/unified/session`, { headers: { Origin: base } })
+  assert.equal(session.status(), 200, await session.text())
   await page.goto(`${base}/?unified=${projectId}`)
   await page.locator('[role="dialog"][aria-label="Dự án hợp nhất"]').waitFor()
   const beforeResponse = await api(`${base}/api/unified/projects/${projectId}`)
@@ -211,6 +207,7 @@ try {
   const playbackAfter = await page.evaluate(() => { const s = window.__store.getState(); if (s.playing) s.togglePlay(); return s.frame })
   assert.ok(playbackAfter > playbackBefore, 'App2 playback frame did not advance')
   await page.screenshot({ path: `${evidence}/c1-roundtrip-app2-returned.png`, fullPage: true })
+  assert.deepEqual(errors, [], 'Browser errors during the authenticated roundtrip')
   const report = { ...runEvidence, pass: true, shot: { actorCount: sourceShot.characters.length, frameRange: sourceShot.frameRange }, durableDraft: { ...draftReload, path: draftPath }, playback: { before: playbackBefore, after: playbackAfter }, baseline, after: { revision: after.revision, motionId: afterBinding.motionId }, edit, evaluatedIssues: evaluatedResponse.body.result.issues, errors }
   writeFileSync(`${evidence}/c1-roundtrip-report.json`, JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify(report))
