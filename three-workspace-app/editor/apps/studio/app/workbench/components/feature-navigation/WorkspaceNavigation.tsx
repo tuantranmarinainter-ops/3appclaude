@@ -31,7 +31,7 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
   const unified = search.get('unified')
 
   useEffect(() => {
-    const place = () => setHost(document.getElementById('studio-workspace-navigation'))
+    const place = () => setHost(document.querySelector<HTMLElement>('.wb-unified-shell #studio-workspace-navigation') ?? document.getElementById('studio-workspace-navigation'))
     place()
     const observer = new MutationObserver(place)
     observer.observe(document.body, { childList: true, subtree: true })

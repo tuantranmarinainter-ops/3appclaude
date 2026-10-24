@@ -11,6 +11,7 @@ import { readFilmFrameAspect } from '../../../src/filmFrame'
 import { useStudioT } from '../../../src/locale'
 import { ensureUnifiedSession, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
 import { FeatureNavigation } from './feature-navigation'
+import { WorkspaceNavigationSlot } from './feature-navigation/WorkspaceNavigation'
 import { usePanelNavigation } from './feature-navigation/hooks/usePanelNavigation'
 import { RetargetWorkspace } from './RetargetWorkspace'
 import { AnimationWorkspace } from './AnimationWorkspace'
@@ -533,7 +534,7 @@ export function StudioOverlay({
             <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
-        <div id="studio-workspace-navigation" className="workspace-navigation-host" />
+        <WorkspaceNavigationSlot />
         <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}

@@ -75,6 +75,7 @@ async function main() {
       })
       if (!search.total) fail('pose search returned nothing')
       const navigation = page.locator('.workspace-navigation')
+      if (await page.locator('.wb-unified-shell .workspace-navigation').count() !== 1) fail('workspace navigation is outside the active project shell')
       if (await navigation.locator('li').count() !== 5) fail('unified workspace navigation is not a single five-item bar')
       if (await page.locator('.wb-workspace-tabs').count()) fail('duplicate App 2 workspace navigation is visible')
       await page.getByRole('button', { name: 'Dựng cảnh', exact: true }).click()
