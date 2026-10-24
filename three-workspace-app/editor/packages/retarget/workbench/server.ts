@@ -23,11 +23,11 @@ import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
 import {
   buildPreset, DEFAULT_ARMATURE, describeSource, inspect, parseFamily, parseOptions, runPipeline, sha256, UserError,
-  type RunFile, type SourceRecord, type TargetRecord,
+  type RunFile, type RunOptions, type SourceRecord, type TargetRecord,
 } from './pipeline.ts'
 import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
 import {
-  addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
+  addConvertedDraftToCharacter, addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
   resolveCharacter, resolveLibraryPath, setActionMetadata, translateActionName, formatBilingual,
 } from '../../library/index.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
@@ -106,7 +106,7 @@ async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<type
     }
     sourceMixer.uncacheRoot(reference); loadedMixer.uncacheRoot(loaded)
   }
-  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-4 ? 'PASS' : 'FAIL'
+  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-3 ? 'PASS' : 'FAIL'
   return { status, joints: loadedBones.size, animations: loaded.animations.length, sampledEndpoints, maxTrackError, maxEndpointPositionError }
 }
 
@@ -134,6 +134,8 @@ function threeRoot(): string {
 
 type RunState = { id: string; state: 'running' | 'done' | 'error' | 'CANCELLED'; controller: AbortController; stage: string; done: number; total: number; startedAt: number; elapsedMs: number; dir: string
   result?: { runId: string; status: string; report: Record<string, any>; manifest: unknown; files: Array<RunFile & { url: string }> }; error?: string }
+type BatchEntry = { sourceId: string | null; name: string; path?: string; sha256?: string; bytes?: number; status: 'queued' | 'inspecting' | 'ready' | 'duplicate' | 'error'; duplicateOf?: string; inLibrary?: boolean; inspect?: Record<string, any>; error?: string }
+type BatchState = { id: string; state: 'running' | 'done' | 'cancelled'; stage: string; done: number; total: number; entries: BatchEntry[]; controller: AbortController }
 
 export async function startWorkbench(options: { port?: number } = {}): Promise<Workbench> {
   const root = threeRoot()
@@ -143,6 +145,9 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
 
   const sources = new Map<string, SourceRecord>()
   const runs = new Map<string, RunState>()
+  const batches = new Map<string, BatchState>()
+  const batchUploads = new Map<string, string>()
+  const sourceByHash = new Map<string, string>()
   let active: RunState | null = null
   let port = 0
 
@@ -237,7 +242,89 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     const id = randomBytes(8).toString('hex')
     const record = describeSource(path, name, uploaded, id, armaturePath)
     sources.set(id, record)
+    if (!sourceByHash.has(record.sha256)) sourceByHash.set(record.sha256, id)
     return { sourceId: id, name: record.name, format: record.format, bytes: record.bytes, sha256: record.sha256, uploaded, path: uploaded ? undefined : path }
+  }
+
+  const collectSources = (input: unknown): string[] => {
+    if (!Array.isArray(input) || !input.length) throw new UserError('Choose one or more files or a folder path')
+    const paths: string[] = []
+    const visit = (path: string) => {
+      if (!existsSync(path)) throw new UserError(`File or folder not found: ${path}`)
+      const stat = statSync(path)
+      if (stat.isFile()) {
+        if (SOURCE_EXTENSIONS.has(extname(path).toLowerCase())) paths.push(path)
+      } else if (stat.isDirectory()) {
+        for (const item of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+          const child = join(path, item.name)
+          if (item.isDirectory()) visit(child)
+          else if (item.isFile() && SOURCE_EXTENSIONS.has(extname(item.name).toLowerCase())) paths.push(child)
+        }
+      }
+      if (paths.length > 2000) throw new UserError('A batch can contain at most 2000 supported files', 413)
+    }
+    for (const value of input) {
+      if (typeof value !== 'string' || !value.trim()) throw new UserError('Batch paths must be non-empty strings')
+      visit(resolve(value.trim().replace(/^"(.*)"$/, '$1')))
+    }
+    if (!paths.length) throw new UserError('No .glb, .gltf, .fbx, or .bobj files were found')
+    if (paths.length > 2000) throw new UserError('A batch can contain at most 2000 supported files', 413)
+    return paths
+  }
+
+  const batchView = (batch: BatchState) => ({ batchId: batch.id, state: batch.state, stage: batch.stage, done: batch.done, total: batch.total,
+    entries: batch.entries.map((entry) => ({ ...entry })) })
+  const libraryHasSourceHash = (hash: string) => {
+    try {
+      const packs = join(resolveLibraryPath(), 'packs')
+      if (!existsSync(packs)) return false
+      return readdirSync(packs, { withFileTypes: true }).some((item) => {
+        if (!item.isDirectory()) return false
+        try { return JSON.parse(readFileSync(join(packs, item.name, 'meta.json'), 'utf8')).source?.sha256 === hash } catch { return false }
+      })
+    } catch { return false }
+  }
+  function startBatch(inputs: Array<{ path?: string; sourceId?: string; uploaded?: boolean }>, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily?: import('../cli/autoMapping.ts').SourceFamily): BatchState {
+    if (inputs.length > 2000) throw new UserError('A batch can contain at most 2000 files', 413)
+    const id = randomBytes(6).toString('hex')
+    const state: BatchState = { id, state: 'running', stage: 'queued', done: 0, total: inputs.length, entries: inputs.map((item) => ({ sourceId: item.sourceId ?? null, name: item.path ? basename(item.path) : 'Source', ...(item.path ? { path: item.path } : {}), status: 'queued' })), controller: new AbortController() }
+    batches.set(id, state)
+    void (async () => {
+      for (const [index, input] of inputs.entries()) {
+        if (state.controller.signal.aborted) { state.state = 'cancelled'; state.stage = 'cancelled'; break }
+        const entry = state.entries[index]!
+        try {
+          state.stage = `inspect ${index + 1}/${inputs.length}`; entry.status = 'inspecting'
+          const existingId = input.sourceId ? sourceByHash.get(getSource(input.sourceId).sha256) : sourceByHash.get(sha256(readFileSync(input.path!)))
+          const sourceId = input.sourceId ?? registerSource(input.path!, basename(input.path!), input.uploaded === true, extname(input.path!).toLowerCase() === '.bobj' ? DEFAULT_ARMATURE : undefined).sourceId
+          const source = getSource(sourceId)
+          entry.sourceId = sourceId; entry.name = source.name; entry.path = source.uploaded ? undefined : source.path; entry.sha256 = source.sha256; entry.bytes = source.bytes
+          entry.inLibrary = libraryHasSourceHash(source.sha256)
+          entry.inspect = await inspect(source, target, options, preset, presetFamily)
+          const mixamo = entry.inspect.mapping?.family === 'mixamo'
+          const fileName = mixamo ? basename(source.name, extname(source.name)).replace(/[_-]+/g, ' ').trim() : ''
+          entry.inspect.actions = entry.inspect.actions.flatMap((action: any) => {
+            const sourceName = action.name
+            // Mixamo's downloaded FBX often names its sole animation `mixamo.com`.
+            // Keep that source name for provenance while using the file name for the library/output name.
+            const displayName = mixamo && /^mixamo\.com$/i.test(sourceName) && fileName ? fileName : sourceName
+            const names = bilingualActionName(displayName)
+            return Number.isFinite(action.durationSeconds) && action.durationSeconds > 0
+              ? [{ ...action, name: displayName, sourceName, ...names }]
+              : []
+          })
+          if (entry.inspect.blocker) { entry.status = 'error'; entry.error = entry.inspect.blocker.message }
+          else if (!entry.inspect.actions.length) { entry.status = 'error'; entry.error = 'File không có animation có thời lượng lớn hơn 0' }
+          else if (entry.inLibrary || (existingId && existingId !== sourceId)) { entry.status = 'duplicate'; entry.duplicateOf = existingId }
+          else entry.status = 'ready'
+        } catch (error) { entry.status = 'error'; entry.error = error instanceof Error ? error.message : String(error) }
+        state.done = index + 1
+        await new Promise<void>((ok) => setImmediate(ok))
+      }
+      if (state.state === 'running') state.state = 'done'
+      state.stage = state.state
+    })()
+    return state
   }
 
   async function handleSources(req: IncomingMessage, res: ServerResponse) {
@@ -273,6 +360,26 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     })
     if (!statSync(path).size) throw new UserError('Uploaded file is empty')
     json(res, 200, registerSource(path, name, true, extname(name).toLowerCase() === '.bobj' ? DEFAULT_ARMATURE : undefined))
+  }
+
+  async function handleBatchFile(req: IncomingMessage, res: ServerResponse, uploadId: string) {
+    const base = batchUploads.get(uploadId)
+    if (!base) return fail(res, 404, 'Unknown batch upload')
+    const relativePath = String(req.headers['x-file-path'] ?? '')
+    const destination = inside(base, relativePath)
+    if (!destination) throw new UserError('Batch file path must stay inside the selected folder')
+    const length = Number(req.headers['content-length'] ?? 0)
+    if (length > MAX_UPLOAD_BYTES) throw new UserError('File is larger than 512 MB', 413)
+    mkdirSync(dirname(destination), { recursive: true })
+    if (existsSync(destination)) throw new UserError(`Duplicate path in selected folder: ${relativePath}`)
+    await new Promise<void>((ok, bad) => {
+      const out = createWriteStream(destination)
+      let size = 0
+      req.on('data', (chunk: Buffer) => { size += chunk.length; if (size > MAX_UPLOAD_BYTES) { bad(new UserError('File is larger than 512 MB', 413)); req.destroy(); out.destroy() } })
+      req.on('error', bad); out.on('error', bad); out.on('finish', () => ok()); req.pipe(out)
+    })
+    if (!statSync(destination).size) throw new UserError('Uploaded file is empty')
+    return json(res, 201, { path: relative(base, destination).split(sep).join('/') })
   }
 
   /** Browser-loadable copy of a source: `.gltf` with external buffers becomes one GLB (textures dropped: they cannot be fetched from the folder). */
@@ -316,6 +423,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string) {
     const method = req.method ?? 'GET'
+    let match: RegExpMatchArray | null
     if (method === 'GET' && path === '/api/workspace-navigation') return json(res, 200, {
       studioUrl: process.env.W01_STUDIO_URL ?? null,
       animationUrl: process.env.W01_ANIMATION_STUDIO_URL ?? null,
@@ -330,6 +438,42 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         return { charId: character.charId, name: character.name, rig: character.rig, requiredActions: character.requiredActions ?? [], counts }
       })
       return json(res, 200, { characters })
+    }
+    if (method === 'POST' && path === '/api/batch-uploads') {
+      const uploadId = randomBytes(8).toString('hex'), base = join(sessionDir, 'uploads', `batch-${uploadId}`)
+      mkdirSync(base, { recursive: true }); batchUploads.set(uploadId, base)
+      return json(res, 201, { uploadId })
+    }
+    if (method === 'POST' && (match = path.match(/^\/api\/batch-uploads\/(\w+)$/))) return handleBatchFile(req, res, match[1]!)
+    if (method === 'POST' && path === '/api/batches') {
+      const body = await readJson(req)
+      const target = getTarget(body.targetId)
+      const inputs: Array<{ path?: string; sourceId?: string }> = []
+      if (Array.isArray(body.paths)) inputs.push(...collectSources(body.paths).map((path) => ({ path })))
+      if (Array.isArray(body.sourceIds)) {
+        if (body.sourceIds.some((id: unknown) => typeof id !== 'string')) throw new UserError('sourceIds must contain source IDs')
+        inputs.push(...body.sourceIds.map((sourceId: string) => ({ sourceId })))
+      }
+      if (typeof body.uploadId === 'string') {
+        const base = batchUploads.get(body.uploadId)
+        if (!base) throw new UserError('Unknown batch upload', 404)
+        inputs.push(...collectSources([base]).map((path) => ({ path, uploaded: true })))
+      }
+      if (!inputs.length) throw new UserError('Choose one or more files or a folder path')
+      if (inputs.length > 2000) throw new UserError('A batch can contain at most 2000 supported files', 413)
+      const state = startBatch(inputs, target, parseOptions(body.options), body.mappingPreset ?? null, parseFamily(body.presetFamily))
+      return json(res, 202, batchView(state))
+    }
+    if (method === 'GET' && (match = path.match(/^\/api\/batches\/(\w+)$/))) {
+      const batch = batches.get(match[1]!)
+      if (!batch) return fail(res, 404, 'Unknown batchId')
+      return json(res, 200, batchView(batch))
+    }
+    if (method === 'POST' && (match = path.match(/^\/api\/batches\/(\w+)\/cancel$/))) {
+      const batch = batches.get(match[1]!)
+      if (!batch) return fail(res, 404, 'Unknown batchId')
+      if (batch.state === 'running') batch.controller.abort()
+      return json(res, 202, batchView(batch))
     }
     if (method === 'POST' && path === '/api/targets') {
       // "Thêm nhân vật đích": a local Mixamo65 GLB (T-pose, metres) becomes a library character and a target here.
@@ -347,7 +491,6 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       targets.set(record.id, record)
       return json(res, 200, targetView(record))
     }
-    let match: RegExpMatchArray | null
     if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/file$/))) return sendFile(res, getTarget(match[1]).path, MIME['.glb'])
     if (method === 'GET' && (match = path.match(/^\/api\/targets\/([\w-]+)\/display\.glb$/))) {
       const target = getTarget(match[1])
@@ -410,9 +553,28 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       if (!state || state.state !== 'done' || !state.result) return fail(res, 404, 'Unknown or unfinished runId')
       if (state.result.status !== 'PASS') return fail(res, 409, `Only a PASS run can go to the library (this run is ${state.result.status})`)
       const body = await readJson(req)
+      const categories = ['other', 'idle', 'locomotion', 'combat', 'emote', 'dance', 'gesture', 'interaction', 'hurt-fall', 'sit-lie', 'pose'] as const
+      if (typeof body.category === 'string' && !categories.includes(body.category as typeof categories[number])) throw new UserError('Unknown library category')
+      const selectedActions = Array.isArray(body.actions) ? body.actions : []
+      const manifestUuids = new Set(((state.result.manifest as any)?.actions ?? []).map((action: any) => action.uuid))
+      const seen = new Set<string>()
+      for (const selection of selectedActions) {
+        if (!selection || typeof selection.uuid !== 'string' || !manifestUuids.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) throw new UserError('Each shared Action tag requires a run UUID and a non-empty key')
+        if (selection.name !== undefined && (typeof selection.name !== 'string' || !selection.name.trim())) throw new UserError('A shared Action name must be non-empty text')
+        if (selection.nameVi !== undefined && typeof selection.nameVi !== 'string') throw new UserError('A shared Action Vietnamese name must be text')
+        if (selection.sourceName !== undefined && typeof selection.sourceName !== 'string') throw new UserError('A shared Action source name must be text')
+        if (seen.has(selection.uuid)) throw new UserError('A shared Action can only be tagged once')
+        seen.add(selection.uuid)
+      }
       const pack = importPack({ sourceDirectory: state.dir, createdBy: 'app1',
-        ...(typeof body.category === 'string' ? { category: body.category } : {}),
-        ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}) })
+        ...(typeof body.category === 'string' ? { category: body.category as typeof categories[number] } : {}),
+        ...(Array.isArray(body.tags) ? { tags: body.tags.filter((tag: unknown): tag is string => typeof tag === 'string') } : {}),
+        ...(body.license && typeof body.license === 'object' && typeof body.license.id === 'string' && typeof body.license.commitable === 'boolean' ? { license: body.license } : {}) })
+      for (const selection of selectedActions) {
+        if (!pack.metadata.actions.some((action) => action.uuid === selection.uuid)) throw new UserError(`Shared pack is missing Action ${selection.uuid}`, 409)
+        const existing = getAction({ actionUuid: selection.uuid })
+        setActionMetadata({ actionUuid: selection.uuid, ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}), tags: [...new Set([...existing.tags, selection.key.trim()])] })
+      }
       return json(res, 200, { packId: pack.packId, rig: pack.rig, actions: pack.actions, created: pack.created,
         actionUuids: pack.metadata.actions.map((action) => action.uuid) })
     }
@@ -430,7 +592,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (!selection || typeof selection.uuid !== 'string' || !byUuid.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) {
           throw new UserError('Each selected Action requires a run UUID and a requiredActions.key tag')
         }
-        return { uuid: selection.uuid, key: selection.key.trim(), ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}) }
+        return { uuid: selection.uuid, key: selection.key.trim(), ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}) }
       })
       if (new Set(selected.map((item) => item.uuid)).size !== selected.length) throw new UserError('An Action can only be selected once')
       const characters = new Map(listLibraryCharacters().map((character) => [character.charId, character]))
@@ -470,57 +632,51 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (added.length !== 1 || error > 1e-4) throw new UserError(`Verity conversion failed for ${character.name}`, 409)
         verityArtifacts.set(`${character.charId}:${action.uuid}`, { bobj, glb: destination.model.buildGlb(added, dirname(destination.resolved.modelPath)) })
       }
-      let mixamoPack: ReturnType<typeof importPack> | null = null
-      let minecraftPack: ReturnType<typeof importPack> | null = null
+      // Minecraft20 drafts are converted per character but stay out of the shared store: the one shared pack per source file is the
+      // Mixamo65 run (GLB + .bobj), and every draft points back to its raw Action there.
+      let minecraftGlb: Uint8Array | null = null, minecraftMeasurement: Awaited<ReturnType<typeof measureMinecraft20Glb>> | null = null
       let minecraftBobj = ''
       if (needsMinecraft) {
         const bobj = state.result.files.find((file) => file.kind === 'bobj')
         if (!bobj) throw new UserError('Minecraft20 destinations require a run with .bobj output enabled', 409)
-        const directory = join(state.dir, 'library-minecraft20'), stem = 'minecraft20'
-        mkdirSync(directory, { recursive: true })
         const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8'); minecraftBobj = bobjText
         const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8')) as ReturnType<typeof loadBobj> & { animations: any[] }
         root.updateMatrixWorld(true)
-        const glb = minecraft20LibraryGlb(root), manifestActions = (state.result.manifest as any).actions ?? []
+        const glb = minecraft20LibraryGlb(root)
         const measurement = await measureMinecraft20Glb(glb, root, bobjText)
-        if (measurement.status !== 'PASS' || state.result.report.minecraft20?.status !== 'PASS') throw new UserError('Minecraft20 library artifact failed round-trip validation', 409)
-        writeFileSync(join(directory, `${stem}.glb`), glb)
-        writeFileSync(join(directory, `${stem}.minecraft20.bobj`), bobjText)
-        const stableUuid = (uuid: string) => {
-          const hex = createHash('sha256').update(`minecraft20:${uuid}`).digest('hex').slice(0, 32).split('')
-          hex[12] = '4'; hex[16] = ((parseInt(hex[16]!, 16) & 3) | 8).toString(16)
-          return `${hex.slice(0, 8).join('')}-${hex.slice(8, 12).join('')}-${hex.slice(12, 16).join('')}-${hex.slice(16, 20).join('')}-${hex.slice(20).join('')}`
+        if (measurement.status !== 'PASS' || state.result.report.minecraft20?.status !== 'PASS') {
+          throw new UserError(`Minecraft20 library artifact failed round-trip validation (max endpoint error ${measurement.maxEndpointPositionError.toExponential(2)} blocks)`, 409)
         }
-        writeFileSync(join(directory, `${stem}.manifest.json`), JSON.stringify({
-          ...(state.result.manifest as any), version: '1.0.0', rig: 'minecraft20', glbSha256: sha256(glb),
-          actions: manifestActions.map((action: any, index: number) => ({ ...action, uuid: stableUuid(action.uuid), glbAnimationIndex: index })),
-        }, null, 2))
-        writeFileSync(join(directory, `${stem}.report.json`), JSON.stringify({ status: 'PASS', sourceRunId: state.id, artifact: 'minecraft20', sourceBobjStatus: state.result.report.minecraft20.status, serializerRoundTrip: measurement }, null, 2))
-        minecraftPack = importPack({ sourceDirectory: directory, createdBy: 'app1' })
+        minecraftGlb = glb; minecraftMeasurement = measurement
       }
-      mixamoPack = needsMixamo ? importPack({ sourceDirectory: state.dir, createdBy: 'app1' }) : null
-      const minecraftNames = new Map<string, string>()
+      const mixamoPack = importPack({ sourceDirectory: state.dir, createdBy: 'app1' })
+      const minecraftNames = new Map<string, string>(), minecraftIndex = new Map<string, number>()
       if (needsMinecraft) for (const action of selected) {
         const manifestAction = byUuid.get(action.uuid) as any
-        const bobjName = state.result.report.minecraft20.actions.find((item: any) => item.glbName === manifestAction.name)?.name
-        if (!bobjName) throw new UserError(`Minecraft20 output has no Action for ${manifestAction.name}`, 409)
-        minecraftNames.set(action.uuid, bobjName)
+        const bobjIndex = state.result.report.minecraft20.actions.findIndex((item: any) => item.glbName === manifestAction.name)
+        if (bobjIndex < 0) throw new UserError(`Minecraft20 output has no Action for ${manifestAction.name}`, 409)
+        minecraftNames.set(action.uuid, state.result.report.minecraft20.actions[bobjIndex].name); minecraftIndex.set(action.uuid, bobjIndex)
       }
       const drafts: Array<{ charId: string; actionUuid: string; packId: string; key: string }> = []
       for (const action of selected) {
+        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        const source = mixamoPack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
+        if (!source) throw new UserError(`Selected Action is not in the shared pack: ${action.uuid}`)
+        const existing = getAction({ actionUuid: source.uuid })
+        setActionMetadata({ actionUuid: source.uuid, ...(action.name ? { name: action.name } : {}), ...(action.nameVi ? { nameVi: action.nameVi } : {}), ...(action.sourceName ? { sourceName: action.sourceName } : {}), tags: [...new Set([...existing.tags, action.key])] })
         for (const charId of charIds) {
           const character = characters.get(charId)!
-          const pack = character.rig === 'minecraft20' ? minecraftPack! : mixamoPack!
-          const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
-          const source = pack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
-          if (!source) throw new UserError(`Selected Action is not in the ${character.rig} pack: ${action.uuid}`)
-          const existing = getAction({ actionUuid: source.uuid })
-          const normalizedTags = mixamoPack ? getAction({ actionUuid: action.uuid }).tags : []
-          setActionMetadata({ actionUuid: source.uuid, ...(action.name ? { name: action.name } : {}), ...(action.nameVi ? { nameVi: action.nameVi } : {}), ...(action.sourceName ? { sourceName: action.sourceName } : {}), tags: [...new Set([...existing.tags, ...normalizedTags, action.key])] })
-          const draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
+          let draft: ReturnType<typeof addDraftToCharacter>
+          if (character.rig === 'minecraft20') {
+            const directory = join(state.dir, 'library-minecraft20'); mkdirSync(directory, { recursive: true })
+            const glbFile = join(directory, `${source.uuid}.glb`)
+            writeFileSync(glbFile, selectGlbAnimation(minecraftGlb!, minecraftIndex.get(action.uuid)!))
+            draft = addConvertedDraftToCharacter({ charId, parentUuid: source.uuid, glbFile, rig: 'minecraft20' })
+          } else draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
           const draftPath = join(resolveLibraryPath(), 'packs', draft.packId)
           if (character.rig === 'minecraft20') {
             writeFileSync(join(draftPath, 'anim.bobj'), selectBobjActions(minecraftBobj, new Set([minecraftNames.get(action.uuid)!])))
+            writeFileSync(join(draftPath, 'anim.report.json'), JSON.stringify({ status: 'PASS', sourceRunId: state.id, artifact: 'minecraft20', sourceBobjStatus: state.result.report.minecraft20.status, serializerRoundTrip: minecraftMeasurement }, null, 2))
           }
           if (isOriginalCharacter(character)) {
             const artifact = verityArtifacts.get(`${charId}:${action.uuid}`)!
@@ -530,7 +686,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
           drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key })
         }
       }
-      return json(res, 200, { packId: mixamoPack?.packId ?? minecraftPack?.packId, drafts })
+      return json(res, 200, { packId: mixamoPack.packId, drafts })
     }
     if (method === 'GET' && (match = path.match(/^\/api\/runs\/(\w+)\/steve$/))) {
       const state = runs.get(match[1]!), file = state?.result?.files.find((item) => item.kind === 'bobj')

@@ -7,7 +7,8 @@ test('offline glossary contains at least 200 curated action names from supported
   const names: Array<[string, string]> = [
     ['Idle', 'Đứng yên'], ['Walking', 'Đi bộ'], ['Running', 'Chạy'], ['Samba Dancing', 'Nhảy samba'],
     ['Jump', 'Nhảy lên'], ['Death', 'Chết'], ['Hit Reaction', 'Trúng đòn'], ['Stand', 'Đứng'],
-    ['Attack', 'Tấn công'], ['Spell', 'Niệm phép'], ['Slam', 'Đập'], ['Victory', 'Chiến thắng'],
+    ['Attack', 'Tấn công'], ['Attack 1', 'Tấn công 1'], ['Stand 2', 'Đứng 2'], ['agree', 'Đồng ý'],
+    ['Spell', 'Niệm phép'], ['Slam', 'Đập'], ['Victory', 'Chiến thắng'],
     ['Dissipate', 'Tan biến'], ['Cinematic', 'Điện ảnh'], ['crouching', 'Ngồi xổm'], ['sprinting', 'Chạy nước rút'],
     ['swipe', 'Vung tay'], ['emote_dab', 'Biểu cảm: dab'], ['emote_crying', 'Biểu cảm: khóc'],
     ['dying', 'Đang chết'], ['dead', 'Đã chết'], ['Walk Forward', 'Đi về trước'], ['Run Backward', 'Chạy lùi'],
