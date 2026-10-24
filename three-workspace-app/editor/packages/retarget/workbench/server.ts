@@ -468,7 +468,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const body = await readJson(req)
       const target = getTarget(body.targetId)
       const inputs: Array<{ path?: string; sourceId?: string }> = []
-      if (Array.isArray(body.paths)) inputs.push(...collectSources(body.paths).map((path) => ({ path })))
+      if (body.paths !== undefined && !Array.isArray(body.paths)) throw new UserError('paths must be an array')
+      if (Array.isArray(body.paths) && body.paths.length) inputs.push(...collectSources(body.paths).map((path) => ({ path })))
       if (Array.isArray(body.sourceIds)) {
         if (body.sourceIds.some((id: unknown) => typeof id !== 'string')) throw new UserError('sourceIds must contain source IDs')
         inputs.push(...body.sourceIds.map((sourceId: string) => ({ sourceId })))
@@ -619,13 +620,14 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
     if (method === 'POST' && (match = path.match(/^\/api\/runs\/(\w+)\/character-library$/))) {
       const state = runs.get(match[1]!)
       if (!state || state.state !== 'done' || !state.result) return fail(res, 404, 'Unknown or unfinished runId')
+      const result = state.result
       if (state.result.status !== 'PASS') return fail(res, 409, `Only a PASS run can go to the library (this run is ${state.result.status})`)
       const body = await readJson(req)
       const charIds = Array.isArray(body.charIds) ? [...new Set(body.charIds.filter((value: unknown): value is string => typeof value === 'string' && !!value))] : []
       const selections = Array.isArray(body.actions) ? body.actions : []
       if (!charIds.length) throw new UserError('Choose at least one destination character')
       if (!selections.length) throw new UserError('Choose at least one Action')
-      const byUuid = new Map((state.result.manifest as any)?.actions?.map((action: any) => [action.uuid, action]) ?? [])
+      const byUuid = new Map((result.manifest as any)?.actions?.map((action: any) => [action.uuid, action]) ?? [])
       const selected = selections.map((selection: any) => {
         if (!selection || typeof selection.uuid !== 'string' || !byUuid.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) {
           throw new UserError('Each selected Action requires a run UUID and a requiredActions.key tag')
@@ -663,7 +665,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       }
       const verityArtifacts = new Map<string, { bobj: string; glb: Uint8Array }>()
       for (const action of selected) for (const character of selectedCharacters) if (isOriginalCharacter(character)) {
-        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        const sourceIndex = ((result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
         const entry = byUuid.get(action.uuid) as any, selectedGlb = selectGlbAnimation(normalizedGlb, entry.glbAnimationIndex ?? sourceIndex)
         const destination = verityModels.get(character.charId)!, added = await destination.model.convertNormalized(selectedGlb)
         const bobj = destination.model.appendBobj(added), error = destination.model.roundTripError(bobj, added)
@@ -690,14 +692,14 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       }
       // Sending the same source file to another character reuses its shared Actions as draft parents instead of importing a
       // second copy of the run (each run has fresh Action uuids, so its GLB never deduplicates by hash).
-      const reusable = sharedActionsFromSource((state.result.manifest as any)?.source?.sha256)
+      const reusable = sharedActionsFromSource((result.manifest as any)?.source?.sha256)
       let importedPack: ReturnType<typeof importPack> | null = null
       const sharedSource = (action: { uuid: string }) => {
         const manifestAction = byUuid.get(action.uuid) as any, wanted = manifestAction.sourceName ?? manifestAction.name
         const reuse = reusable.find((candidate) => (candidate.sourceName ?? candidate.name) === wanted || candidate.name === manifestAction.name)
         if (reuse) return { uuid: reuse.uuid, packId: reuse.packId }
         importedPack ??= importPack({ sourceDirectory: state.dir, createdBy: 'app1' })
-        const sourceIndex = ((state.result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
+        const sourceIndex = ((result.manifest as any).actions ?? []).findIndex((candidate: any) => candidate.uuid === action.uuid)
         if (importedPack.reusedActionUuids?.includes(action.uuid)) return { uuid: action.uuid, packId: getAction({ actionUuid: action.uuid }).packId }
         const imported = importedPack.metadata.actions.find((candidate) => candidate.glbAnimationIndex === sourceIndex)
         return imported ? { uuid: imported.uuid, packId: importedPack.packId } : null

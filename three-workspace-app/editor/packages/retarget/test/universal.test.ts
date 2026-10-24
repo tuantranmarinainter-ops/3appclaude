@@ -31,6 +31,16 @@ test('rejects singular, projective, reflected, sheared matrices and animated sou
   assert.throws(() => solver.evaluate([{ id: 'source', world: new Matrix4().makeScale(2, 2, 2).toArray() }]), /animated scale/)
 })
 
+test('accepts float noise in a large uniform source basis but still rejects true shear', () => {
+  const noisy = new Matrix4().makeScale(100, 100, 100)
+  noisy.elements[4] = 0.0007
+  const source = { fingerprint: 'noisy-source', bones: [{ id: 'source', parentId: null, restWorld: noisy.toArray() }] }
+  assert.doesNotThrow(() => createUniversalRetargeter(source, target, [{ sourceBoneId: 'source', targetBoneId: 'hips', enabled: true }]))
+  const sheared = noisy.clone(); sheared.elements[4] = 0.01
+  assert.throws(() => createUniversalRetargeter({ ...source, bones: [{ ...source.bones[0]!, restWorld: sheared.toArray() }] }, target,
+    [{ sourceBoneId: 'source', targetBoneId: 'hips', enabled: true }]), /shear/)
+})
+
 test('estimates node-sample and retained-frame memory before starting a large bake', () => {
   const ordinary = estimateUniversalBakeCost(120, 65, 900)
   assert.equal(ordinary.withinBudget, true)

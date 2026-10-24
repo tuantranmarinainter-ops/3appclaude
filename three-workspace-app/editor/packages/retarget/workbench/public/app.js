@@ -47,7 +47,7 @@ const state = {
   selected: null, scale: { applied: null },
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(), transferCharacters: new Set(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
-  batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null,
+  batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchPresets: new Map(), batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null,
 }
 
 // ---------------------------------------------------------------- feedback
@@ -188,15 +188,24 @@ function selectedBatchGroups() {
   const entries = state.batch?.entries ?? []
   return entries.map((entry) => ({ entry, actions: (entry.inspect?.actions ?? []).filter((action) => state.batchSelection.has(batchKey(entry, action))) })).filter((group) => group.actions.length)
 }
-function previewBatchAction(entry, action) {
+function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
   if (!entry.sourceId) return
   state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect?.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
-  state.inspect = entry.inspect; state.inspectError = null; state.preset = null; state.presetFamily = null; state.dirty = false
-  state.selected = action.index; state.actionMap = new Map(); state.result = null; state.stale = false
+  const saved = state.batchPresets.get(entry.sourceId)
+  state.inspect = entry.inspect; state.inspectError = null; state.rows = (entry.inspect?.mapping?.joints ?? []).map((joint) => ({ ...joint, original: joint.source })); state.preset = saved?.preset ?? null; state.presetFamily = saved?.family ?? entry.inspect?.mapping?.family ?? null; state.dirty = false
+  state.selected = action?.index ?? null; state.actionMap = new Map(); state.result = null; state.stale = false
   $('armatureBox').hidden = state.source.format !== 'bobj'
   clear($('sourceInfo')).append(h('b', { text: entry.name }), h('span', { text: ` · ${entry.inspect?.actions?.length ?? 0} animation · sha256 ${(entry.sha256 ?? '').slice(0, 16)}…` }))
-  if (state.source.format === 'bobj') { viewer.clearSource(); selectAction(action.index) }
-  else viewer.loadSource(`/api/sources/${entry.sourceId}/file`, state.source.format).then(() => selectAction(action.index)).catch((error) => setOverlay('left', `Không dựng được viewer: ${error.message}`, true))
+  if (state.source.format === 'bobj') { viewer.clearSource(); if (action) selectAction(action.index) }
+  else viewer.loadSource(`/api/sources/${entry.sourceId}/file`, state.source.format).then(() => { if (action) selectAction(action.index) }).catch((error) => setOverlay('left', `Không dựng được viewer: ${error.message}`, true))
+  refreshSteps()
+}
+function openBatchMapping(entry) {
+  if (!entry.inspect?.mapping?.joints?.length) return
+  previewBatchAction(entry, null)
+  closeActionPicker()
+  activateTab('mapping')
+  renderAll()
   refreshSteps()
 }
 function renderBatchActionPicker(query) {
@@ -216,7 +225,11 @@ function renderBatchActionPicker(query) {
       h('button', { type: 'button', text: 'Chọn hết', onclick: (event) => { event.preventDefault(); event.stopPropagation(); selectGroup(true) } }),
       h('button', { type: 'button', text: 'Bỏ hết', onclick: (event) => { event.preventDefault(); event.stopPropagation(); selectGroup(false) } }))
     group.append(summary)
-    if (entry.status === 'error' || !actions.length) { if (entry.error) group.append(h('p', { class: 'note', text: entry.error })); body.append(group); continue }
+    if (entry.status === 'error' || !actions.length) {
+      if (entry.error) group.append(h('p', { class: 'note', text: entry.error }))
+      if (entry.sourceId && entry.inspect?.mapping?.joints?.length) group.append(h('button', { type: 'button', class: 'primary', text: 'Sửa mapping', onclick: (event) => { event.preventDefault(); event.stopPropagation(); openBatchMapping(entry) } }))
+      body.append(group); continue
+    }
     const tableBody = h('tbody')
     for (const action of actions.filter((item) => !query || `${entry.name} ${item.name} ${item.nameVi ?? ''}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')))) {
       const key = batchKey(entry, action), checkbox = h('input', { type: 'checkbox', 'aria-label': `Chọn ${entry.name}: ${action.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => { event.target.checked ? state.batchSelection.set(key, { sourceId: entry.sourceId, index: action.index }) : state.batchSelection.delete(key); renderActionPicker() } })
@@ -360,7 +373,7 @@ function refreshSteps() {
 
 // ---------------------------------------------------------------- step 1: source
 async function useSource(info) {
-  state.batch = null; state.batchSelection.clear(); $('batchPickerBtn').hidden = true; $('batchStatus').hidden = true
+  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); $('batchPickerBtn').hidden = true; $('batchStatus').hidden = true
   state.source = info; state.inspect = null; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
   state.result = null; state.stale = false; state.actionMap = new Map(); state.checked = new Set(); state.actionRanges = {}; state.selected = null
   viewer.clearResult(); fillActionSelect(); drawContacts(null, 0); frames = 0; $('timeline').max = '0'
@@ -395,7 +408,7 @@ async function queueBatch({ files = [], paths = [], sourceIds = [], uploadId = n
   if (!state.target) { toast('Chọn nhân vật đích trước khi kiểm tra lô.', 'err'); return }
   if (files.filter((file) => /\.(glb|gltf|fbx|bobj)$/i.test(file.name)).length + paths.length + sourceIds.length > 2000) { toast('Mỗi lô tối đa 2000 file.', 'err'); return }
   if (files.some((file) => /\.gltf$/i.test(file.name)) && files.some((file) => !file.webkitRelativePath && !file.batchPath)) { toast('Chọn thư mục chứa .gltf để giữ các file .bin/texture bên cạnh, hoặc nhập đường dẫn thư mục.', 'err'); return }
-  state.batch = null; state.batchSelection.clear(); state.batchKeys.clear(); state.batchEdits.clear(); state.result = null
+  state.batch = null; state.batchSelection.clear(); state.batchPresets.clear(); state.batchKeys.clear(); state.batchEdits.clear(); state.result = null
   $('batchPickerBtn').hidden = true; $('batchStatus').hidden = false
   if (files.length) {
     const staged = await api('/api/batch-uploads', { method: 'POST' })
@@ -902,8 +915,9 @@ async function transferBatch(groups, retryConfig = null) {
         if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
       }
       state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
-      state.inspect = entry.inspect; state.inspectError = null; state.rows = []; state.preset = null; state.presetFamily = null; state.dirty = false
-      if (entry.inspect.mapping?.needsUserConfirmation) {
+      const saved = entry.sourceId ? state.batchPresets.get(entry.sourceId) : null
+      state.inspect = entry.inspect; state.inspectError = null; state.rows = []; state.preset = saved?.preset ?? null; state.presetFamily = saved?.family ?? null; state.dirty = false
+      if (!state.preset && entry.inspect.mapping?.needsUserConfirmation) {
         const assignments = Object.fromEntries((entry.inspect.mapping.joints ?? []).map((joint) => [joint.target, joint.source]))
         const mapped = await api('/api/preset', { method: 'POST', json: { sourceId: entry.sourceId, targetId: state.target.id, assignments } })
         state.preset = mapped.preset; state.presetFamily = mapped.family
@@ -1139,6 +1153,15 @@ async function confirmMapping() {
     toast('Đã tạo preset bbs.mixamo65-mapping-preset và kiểm tra lại với preset.', 'ok')
     state.stale = state.stale || !!state.result
     await inspectNow()
+    const entry = state.batch?.entries.find((item) => item.sourceId === state.source.sourceId)
+    if (entry) {
+      state.batchPresets.set(entry.sourceId, { preset, family: state.presetFamily })
+      entry.inspect = state.inspect
+      entry.status = state.inspect?.blocker ? 'error' : state.inspect?.actions?.length ? 'ready' : 'error'
+      entry.error = state.inspect?.blocker?.message ?? (entry.status === 'error' ? 'File không có animation có thời lượng lớn hơn 0' : undefined)
+      if (entry.status === 'ready') for (const action of entry.inspect.actions) state.batchSelection.set(batchKey(entry, action), { sourceId: entry.sourceId, index: action.index })
+      renderActionPicker()
+    }
   } catch (error) { toast(`Không tạo được preset: ${error.message}`, 'err') }
 }
 async function resetMapping() {

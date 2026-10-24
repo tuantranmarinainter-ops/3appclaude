@@ -22,6 +22,8 @@ const bobjDir = resolve(here, '../../../apps/studio/public/retarget/v9.12')
 const characters = resolve(here, '../../../../builtin-assets/characters')
 const xbot = 'C:/w01-samples/Xbot.glb'
 const haveXbot = existsSync(xbot)
+const robotExpressive = 'C:/w01-samples/mvp-src/RobotExpressive.glb'
+const haveRobotExpressive = existsSync(robotExpressive)
 
 function syntheticVerity(helperCount: number, wingCount: number): string {
   const matrix = (x: number, y: number, z: number) => `1 0 0 ${x} 0 1 0 ${y} 0 0 1 ${z} 0 0 0 1`
@@ -129,6 +131,9 @@ test('serves the page, the app module and a bound loopback address only', async 
 
 test('source Action picker is pinned, persisted, and closes only through its X button', async () => {
   const html = (await call('/')).text, app = (await call('/app.js')).text, css = (await call('/styles.css')).text
+  assert.match(app, /text: 'Sửa mapping'/)
+  assert.match(app, /batchPresets/)
+  assert.match(app, /if \(!state\.preset && entry\.inspect\.mapping\?\.needsUserConfirmation\)/)
   assert.match(html, /id="actionPicker"[^>]*hidden/)
   assert.match(html, /id="actionPickerClose"/)
   assert.match(html, /id="actionPickerInvert"/)
@@ -338,9 +343,41 @@ test('batch inspection walks folders recursively and isolates a corrupt file as 
     const staged = await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('Nested/broken.glb') }, body: readFileSync(join(folder, 'broken.glb')) })
     assert.equal(staged.status, 201)
     assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('../escape.glb') }, body: readFileSync(join(folder, 'broken.glb')) })).status, 400)
-    const uploadedBatch = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: target.id, options: {} })
+    const uploadedBatch = await post('/api/batches', { paths: [], uploadId: upload.json.uploadId, targetId: target.id, options: {} })
     assert.equal(uploadedBatch.status, 202)
+    assert.equal((await post('/api/batches', { paths: 'invalid', uploadId: upload.json.uploadId, targetId: target.id, options: {} })).status, 400)
   } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('RobotExpressive batch error can be repaired with a preset and retried', { skip: haveRobotExpressive ? false : 'C:/w01-samples/mvp-src/RobotExpressive.glb not present' }, async () => {
+  const target = (await call('/api/targets')).json.targets[0]
+  const started = await post('/api/batches', { paths: [robotExpressive], targetId: target.id, options: {} })
+  assert.equal(started.status, 202, started.text)
+  let batch = started.json
+  for (let attempt = 0; attempt < 200 && batch.state === 'running'; attempt++) {
+    await new Promise((ok) => setTimeout(ok, 20))
+    batch = (await call(`/api/batches/${started.json.batchId}`)).json
+  }
+  assert.equal(batch.state, 'done')
+  const entry = batch.entries[0]
+  assert.equal(entry.status, 'error')
+  assert.equal(entry.error, 'Missing main joints: Spine, LeftArm, LeftForeArm, LeftHand, LeftUpLeg, LeftLeg, LeftFoot, RightArm, RightForeArm, RightHand, RightUpLeg, RightLeg, RightFoot')
+  assert.equal(entry.inspect.actions.length, 14)
+  assert.equal(entry.inspect.mapping.mapped, 3)
+
+  const assignments = { Hips: 'Hips', Spine: 'Abdomen', LeftUpLeg: 'UpperLegL', LeftLeg: 'LowerLegL', LeftFoot: 'FootL', RightUpLeg: 'UpperLegR', RightLeg: 'LowerLegR', RightFoot: 'FootR', Neck: 'Neck', Head: 'Head', LeftShoulder: 'ShoulderL', LeftArm: 'UpperArmL', LeftForeArm: 'LowerArmL', LeftHand: 'Palm1L', RightShoulder: 'ShoulderR', RightArm: 'UpperArmR', RightForeArm: 'LowerArmR', RightHand: 'Palm1R' }
+  const presetResponse = await post('/api/preset', { sourceId: entry.sourceId, targetId: target.id, assignments })
+  assert.equal(presetResponse.status, 200, presetResponse.text)
+  const repaired = await post('/api/inspect', { sourceId: entry.sourceId, targetId: target.id, options: {}, mappingPreset: presetResponse.json.preset, presetFamily: presetResponse.json.family })
+  assert.equal(repaired.status, 200, repaired.text)
+  assert.equal(repaired.json.blocker, null)
+  assert.equal(repaired.json.mapping.mapped, 18)
+  assert.deepEqual(repaired.json.mapping.missingRequired, [])
+  assert.equal(repaired.json.actions.length, 14)
+  const retried = await post('/api/runs', { sourceId: entry.sourceId, targetId: target.id, options: { actions: [0] }, mappingPreset: presetResponse.json.preset, presetFamily: presetResponse.json.family })
+  assert.equal(retried.status, 200, retried.text)
+  assert.equal(retried.json.status, 'PASS', JSON.stringify(retried.json.report))
+  assert.equal(retried.json.report.roundtrip.perAction[0].status, 'PASS')
 })
 
 test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-duration Take 001 clips', async () => {

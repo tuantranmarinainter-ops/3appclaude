@@ -16,7 +16,9 @@ function matrix(values: number[], label: string): Matrix4 {
   const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3()
   result.decompose(position, rotation, scale)
   const reconstructed = new Matrix4().compose(position, rotation, scale)
-  if (reconstructed.elements.some((value, index) => Math.abs(value - values[index]!) > 1e-6 * Math.max(1, Math.abs(values[index]!)))) throw new TypeError(`${label} contains unsupported shear`)
+  // Imported rigs can carry a large uniform node scale with float32-sized basis noise; keep translation checks strict.
+  const scaleMagnitude = Math.max(1, ...scale.toArray().map((value) => Math.abs(value)))
+  if (reconstructed.elements.some((value, index) => Math.abs(value - values[index]!) > (index < 12 && index % 4 < 3 ? 1e-5 * scaleMagnitude : 1e-6 * Math.max(1, Math.abs(values[index]!))))) throw new TypeError(`${label} contains unsupported shear`)
   return result
 }
 
