@@ -113,3 +113,7 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   - **Tham khảo App 3** (người dùng làm rất kỹ): chế độ "Chỉ đối chiếu" trong
     `apps/studio/public/animation-studio/v1.33.0/index.html` — dòng ~775 (tuỳ chọn Tên xương / trục XYZ / góc / phạm vi / Local-World,
     báo cáo JSON/CSV), CSS `.bone-label` (dòng 3, 195), tạo nhãn `bone-label` (~981, ~1034), `report()` so cặp xương A/B (~2108).
+- **C11 — App 1: danh sách xương nguồn trong mapping tay không cuộn được** (người dùng báo 2026-10-24). Trong "Sửa mapping", bấm nút
+  mũi tên ở một ô thì danh sách node của model nguồn hiện ra nhưng **không có thanh cuộn**, danh sách dài (vd LoL `zyra.glb` 84 xương)
+  bị cắt mất phần dưới, không chọn được. Yêu cầu: danh sách có chiều cao tối đa theo khoảng trống màn hình, cuộn bằng chuột/bánh
+  xe/bàn phím, không tràn ra ngoài cửa sổ; thêm ô gõ để lọc theo tên; phím ↑/↓/Enter/Esc. Gộp làm cùng C10 (cùng bảng mapping).
