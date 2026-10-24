@@ -1,5 +1,6 @@
 // Two synchronized three.js panes: left = source as authored, right = the normalized GLB played on the target character.
 import * as THREE from 'three'
+import { JointOverlay } from './joint-overlay.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
@@ -30,6 +31,7 @@ class Pane {
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     host.appendChild(this.renderer.domElement)
+    this.joints = new JointOverlay(host)
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000)
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 1.6))
@@ -67,6 +69,7 @@ class Pane {
   }
 
   clear() {
+    this.joints.clear()
     this.holder.clear()
     if (this.helper) { this.scene.remove(this.helper); this.helper.dispose?.(); this.helper = null }
     this.mixer?.stopAllAction()
@@ -80,6 +83,7 @@ class Pane {
     this.object = object
     this.frameLike = frameLike
     this.holder.add(object)
+    this.joints.setModel(object)
     object.traverse((node) => { if (node.isMesh) node.frustumCulled = false })
     let hasBone = false
     object.traverse((node) => { if (node.isBone) hasBone = true })
@@ -152,6 +156,7 @@ class Pane {
   render() {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
+    this.joints.render(this.camera, this.host.clientWidth, this.host.clientHeight)
   }
 }
 
@@ -191,7 +196,7 @@ function bodyHeight(object) {
 export async function buildSteve(data, textureUrl) {
   const group = new THREE.Group()
   const bones = data.bones.map((bone) => {
-    const node = new THREE.Bone(); node.name = steveNode(bone.name)
+    const node = new THREE.Bone(); node.name = steveNode(bone.name); node.userData.jointName = bone.name
     new THREE.Matrix4().fromArray(bone.restLocal).decompose(node.position, node.quaternion, node.scale)
     return node
   })
@@ -231,6 +236,7 @@ export class Viewer {
   constructor(leftHost, rightHost, onFrame) {
     this.left = new Pane(leftHost)
     this.right = new Pane(rightHost, { metricGrid: true })
+    this.right.joints.canonical = true
     this.onFrame = onFrame
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
     this.source = null // { scene, animations }

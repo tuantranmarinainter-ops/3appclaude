@@ -217,3 +217,19 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .field.adj output { font-variant-numeric: tabular-nums; }
 .step h4 { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 #adjustFieldset .row { display: flex; gap: 4px; } #adjustFieldset .row select { flex: 2; min-width: 0; } #adjustFieldset .row input { flex: 1; min-width: 0; width: 0; }
+
+/* Joint points stay in screen pixels while the same Pane camera moves or animates. */
+.joint-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+.joint-marker { position: absolute; top: 0; left: 0; width: var(--joint-size); height: var(--joint-size); min-width: 0; min-height: 0; padding: 0; border: 1px solid #111; border-radius: 50%; background: var(--joint-color); pointer-events: auto; cursor: pointer; }
+.joint-marker[hidden], .bone-label[hidden] { display: none; }
+.joint-marker.selected { background: #ff793f; outline: 2px solid white; z-index: 2; }
+.joint-marker:focus-visible { outline: 2px solid white; z-index: 3; }
+.joint-marker.label-only { background: transparent; border-color: transparent; }
+.joint-marker .bone-label { position: absolute; left: calc(100% + 3px); top: -3px; padding: 1px 3px; border-radius: 3px; background: #171c24dc; color: #e9f4ff; font-size: var(--joint-font-size); font-weight: 400; line-height: 1.3; white-space: nowrap; }
+.joint-marker.selected .bone-label { color: #ffb98d; }
+.joint-settings { position: relative; font-size: 12px; }
+.joint-settings summary { cursor: pointer; }
+.joint-settings-body { position: absolute; bottom: 100%; right: 0; width: 280px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); z-index: 6; display: grid; gap: 8px; }
+.joint-settings-body label { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.joint-settings-body input[type=range] { width: 120px; }
+#mapRows tr.active-mapping { box-shadow: inset 3px 0 #ff793f; background: #ff793f14; }
