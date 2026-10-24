@@ -45,7 +45,7 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
    shotArtifact=(await command('shot.export',{cameraNodeId:'camera_1',frameStart:0,frameEnd:clip.frameEnd,editableCharacterIds:[characterId]},projectId)).result
   }
   await page.goto(`${base}/?unified=${projectId}`);
-  await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
+  await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();
   const locator=page.locator('.wb-animation-creation-frame');await locator.waitFor();const frame=page.frame({url:/animation-studio\/v1\.33\.0\/index\.html/});assert.ok(frame);
   await frame.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
@@ -162,15 +162,15 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   await frame.locator('#undoBtn').click();
   const current=(await read('get_animation_context')).value;
   if(current.preview)await edit('cancel_patch',{patchId:current.preview.id},current.revision);
-  await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/2 Scene/}).click();
+  await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Dựng cảnh|Scene/}).click();
   await new Promise(r=>setTimeout(r,1200));
   const inactiveRevision=(await read('get_animation_context')).value.revision;
   const inactiveProject=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision;
   const inactive=await request.post(base+'/api/unified/commands',{headers,data:{requestId:randomUUID(),command:'app3.command.submit',projectId,expectedRevision:inactiveProject,args:{...identity,tool:'set_idea',parameters:{idea:'hidden'},expectedAnimationRevision:inactiveRevision}}});assert.equal((await inactive.json()).error.code,'APP3_INACTIVE');
-  await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
+  await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();
   console.log('E2 runtime: all five staged tools immutable; preview/pending/wrong cancel; duplicate apply + exactly one native Undo/Redo; stale UI revision and inactive rejection PASS');
   const second=await command('character.add',{assetId,skeletonId,name:'Shared asset second'},projectId);
-  await page.reload();await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
+  await page.reload();await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();
   await page.locator('.wb-animation-creation-frame').waitFor();
   await page.waitForFunction(()=>document.querySelector('.wb-animation-creation-frame')?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.33.0/index.html'));
   const frame2=page.frame({url:/animation-studio\/v1\.33\.0\/index\.html/});await frame2.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});

@@ -5,6 +5,20 @@ import {sha256} from './shot_package.js';
 const encode=x=>new TextEncoder().encode(JSON.stringify(x,null,2)+'\n');
 // Keep actor placement outside skeletal animation. Change placement policy here only.
 export function placementPolicy(rig,project,session){
+ if(project.lab){
+  const baked=C.clone(project);delete baked.lab;delete baked.inPlace;baked.keys={};baked.ikModes={};baked.ikOptions={};
+  const objects=[rig.root,...rig.records.map(r=>r.o),...Object.values(rig.controls).map(c=>c.object)],poses=objects.map(C.snap),chains=rig.chains.map(c=>({mode:c.mode,options:C.clone(c.options)}));
+  try{
+   for(let frame=0;frame<=Math.round(project.duration*30);frame++){
+    const t=frame/30;C.evaluate(rig,project,t);(baked.keys.root??=[]).push({...C.snap(rig.root),time:t,interp:'linear'});
+    for(const r of rig.records)(baked.keys[r.id]??=[]).push({...C.snap(r.o),time:t,interp:'linear'});
+   }
+  }finally{
+   rig.chains.forEach((c,i)=>{c.mode=chains[i].mode;C.kinematics.configure(rig,c,chains[i].options,false);});
+   objects.forEach((o,i)=>C.apply(o,poses[i]));rig.root.updateMatrixWorld(true);
+  }
+  return placementPolicy(rig,baked,session);
+ }
  const source=session.sourceProject,base=session.character.placement,keys=new Map(session.placementKeys.map(k=>[k.frame,structuredClone(k)]));
  const yaw0=T.MathUtils.degToRad(base.yawDegrees),rotation=new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),yaw0);
  let changed=false;
@@ -17,7 +31,6 @@ export function placementPolicy(rig,project,session){
  // Dense keys retain holds and the return to the original root position.
  if(changed)for(let frame=session.shot.frameRange[0];frame<=session.shot.frameRange[1];frame++)if(!keys.has(frame))keys.set(frame,{frame,...structuredClone(base)});
  const baked=structuredClone(project);baked.keys.root=structuredClone(source.keys.root||[]);
- if(project.lab)throw Error('Xuất shot từ Animation Lab chưa hỗ trợ tách root. Chuyển về Animation trước khi xuất.');
  return{project:baked,placementKeys:[...keys.values()].sort((a,b)=>a.frame-b.frame)};
 }
 export function readGLB(buffer){const b=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer),v=new DataView(b.buffer,b.byteOffset,b.byteLength);if(v.getUint32(0,true)!==0x46546c67||v.getUint32(4,true)!==2)throw Error('Invalid GLB.');const size=v.getUint32(12,true);return{json:JSON.parse(new TextDecoder().decode(b.subarray(20,20+size))),rest:b.slice(20+size)};}

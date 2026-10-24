@@ -28,7 +28,7 @@ const steps = [
   ['python-tests', [process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), '-m', 'unittest', '-v', 'agent.test_unified_cli', 'agent.test_unified_mcp', 'agent.test_shot_package'], workspace, 'python'],
   ['app3-build', [process.execPath, 'src/build.mjs'], app3Work],
   ['app3-features', [process.execPath, 'tools/check-features.mjs', '../editor/apps/studio/public/animation-studio/v1.31.8/index.html', 'outputs/Animation_Studio_v1_33_0.html'], app3],
-  ['app3-tests', [process.execPath, '--test', '--test-reporter=tap', 'src/shot_package.test.mjs', 'src/app3_workflow_steps.test.mjs'], app3Work, 'tap'],
+  ['app3-tests', [process.execPath, '--test', '--test-reporter=tap', 'src/shot_package.test.mjs', 'src/app3_workflow_steps.test.mjs', 'src/shot_lab.test.mjs'], app3Work, 'tap'],
 ]
 
 function counts(text, format) {
