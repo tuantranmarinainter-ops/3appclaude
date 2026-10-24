@@ -1,5 +1,5 @@
 (() => {
-  const CHANNEL = 'bbs-animation-studio-v1.32.0'
+  const CHANNEL = 'bbs-animation-studio-v1.33.0'
   let savedSnapshot = ''
   let lastDirty = null
   let localActive = true

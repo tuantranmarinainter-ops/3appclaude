@@ -172,12 +172,12 @@ test('Chromium: real Python MCP → authenticated broker → host bridge → Dir
   const second=await command('character.add',{assetId,skeletonId,name:'Shared asset second'},projectId);
   await page.reload();await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();
   await page.locator('.wb-animation-creation-frame').waitFor();
-  await page.waitForFunction(()=>document.querySelector('.wb-animation-creation-frame')?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.32.0/index.html'));
+  await page.waitForFunction(()=>document.querySelector('.wb-animation-creation-frame')?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.33.0/index.html'));
   const frame2=page.frame({url:/animation-studio\/v1\.32\.0\/index\.html/});await frame2.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
   await frame2.waitForFunction(()=>window.__app3LocalBridge.status().error==='APP3_BINDING_AMBIGUOUS',null,{timeout:60000});
   assert.equal(await frame2.evaluate(()=>window.__app3LocalBridge.status().bound),false);
-  await page.evaluate(({projectId,characterId})=>{document.querySelector('.wb-animation-creation-frame').contentWindow.postMessage({channel:'bbs-animation-studio-v1.32.0',requestId:crypto.randomUUID(),type:'app3-bind',value:{projectId,characterId}},location.origin)},{projectId,characterId:second.result.characterId});
+  await page.evaluate(({projectId,characterId})=>{document.querySelector('.wb-animation-creation-frame').contentWindow.postMessage({channel:'bbs-animation-studio-v1.33.0',requestId:crypto.randomUUID(),type:'app3-bind',value:{projectId,characterId}},location.origin)},{projectId,characterId:second.result.characterId});
   await frame2.waitForFunction(()=>window.__app3LocalBridge.status().bound);assert.equal(await frame2.evaluate(()=>window.__app3LocalBridge.status().characterId),second.result.characterId);
   assert.deepEqual(errors,[]);
   console.log('E1 runtime: authenticated Python stdio MCP, four fresh reads, 2 known keys, unchanged native JSON, duplicate submit same ticket, shared-asset ambiguity + explicit SHA-verified binding PASS');

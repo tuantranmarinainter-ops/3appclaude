@@ -1,9 +1,9 @@
 # Animation Studio (App 3) — mã nguồn
 
-Mã nguồn của Animation Studio 1.31.8 (App 3), chép từ bản gốc ngoài repo
+Mã nguồn Animation Studio App 3 được bắt đầu từ bản 1.31.8, chép từ bản gốc ngoài repo
 `C:\Users\Administrator\Documents\Codex\2026-10-09\animation-studio\sites\animation-studio-mdx-alpha-1318`
-(2026-10-21). Bản nhúng trong Studio (`editor/apps/studio/public/animation-studio/v1.31.8/index.html`) được build từ
-đây.
+(2026-10-21). Runtime mới nhất được build từ nguồn này là 1.33.0 tại
+`editor/apps/studio/public/animation-studio/v1.33.0/index.html`; các bản cũ được giữ nguyên.
 
 ## Cấu trúc
 | Đường dẫn | Vai trò |
@@ -15,13 +15,12 @@ Mã nguồn của Animation Studio 1.31.8 (App 3), chép từ bản gốc ngoài
 | `../builtin-assets/animation-studio/sample.fbx` | Mixamo T-pose nhúng làm mẫu (binary chỉ được nằm trong `builtin-assets/`) |
 
 ## Build
-Từ `work/material_alpha_v1_31_8`: `node src/build.mjs` → `../../outputs/Animation_Studio_v1_31_8.html` (thư mục
+Từ `work/material_alpha_v1_31_8`: `node src/build.mjs` → `../../outputs/Animation_Studio_v1_33_0.html` (thư mục
 `outputs/` không commit). Không cần cài thư viện.
 
-Kiểm khớp: SHA-256 của file build phải bằng bản nhúng hiện tại
-`8E316DC81C37E2148487…` (= 1.31.8 gốc `3CB0CC25…` + 3 bản vá host bên dưới). Sau khi sửa giao diện thì đổi số phiên
-bản, build ra thư mục phiên bản mới `editor/apps/studio/public/animation-studio/v<phiên bản>/index.html`, không ghi đè
-bản cũ, và cập nhật README trong thư mục đó.
+Runtime 1.33.0 thêm luồng Blocking → Tinh chỉnh → Xuất. `tools/check-features.mjs` xác nhận 434/434 ID nền vẫn còn,
+không có lookup chưa giải quyết, và artifact có sáu ID bổ sung. Khi sửa tiếp, tăng phiên bản và tạo thư mục runtime mới;
+không ghi đè các bản cũ.
 
 ## Bản vá host đã đưa vào `src/app.js`
 1. `exportSkeleton`: đặt tên `AuxScene` cho gốc và `Bone_n`/`Node_n` cho node không tên (Studio từ chối GLB có channel

@@ -7,7 +7,7 @@ const studioDir=path.resolve(toolsDir,'..');
 const editorDir=path.resolve(studioDir,'../editor');
 const {chromium}=await import(pathToFileURL(path.join(editorDir,'apps/studio/node_modules/playwright/index.mjs')).href);
 const base=await readFile(path.resolve(studioDir,'../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb'));
-const html=await readFile(path.join(studioDir,'outputs/Animation_Studio_v1_32_0.html'));
+const html=await readFile(path.join(studioDir,'outputs/Animation_Studio_v1_33_0.html'));
 const server=createServer((req,res)=>{if(req.url==='/base.glb'){res.writeHead(200,{'content-type':'model/gltf-binary'});res.end(base);}else{res.writeHead(200,{'content-type':'text/html'});res.end(html);}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const browser=await chromium.launch({...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE}:{}),args:process.platform==='linux'?['--no-sandbox','--disable-dev-shm-usage']:[]});

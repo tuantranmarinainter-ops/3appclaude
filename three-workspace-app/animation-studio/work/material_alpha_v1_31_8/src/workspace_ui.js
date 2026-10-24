@@ -4,7 +4,7 @@ function setupStudioWorkspace(){
  const make=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
  const group=(parent,label,nodes)=>{const e=make('div','studio-group');e.setAttribute('role','group');e.setAttribute('aria-label',label);e.append(...nodes.filter(Boolean));parent.append(e);return e;};
  const header=document.querySelector('body>header'),actions=header.querySelector('.header-actions');
- $('buildBadge').textContent='1.32.0';$('buildBadge').title='Animation Studio 1.32.0';
+ $('buildBadge').textContent='1.33.0';$('buildBadge').title='Animation Studio 1.33.0';
  const name=$('clipName').closest('label');name.classList.add('studio-project-name');name.firstChild.textContent='Dự án';
  const identity=make('div','studio-identity');identity.append(name);const state=make('span','studio-save-state');state.id='studioSaveState';identity.append(state);header.querySelector('.brand').after(identity);
  group(actions,'Lịch sử',[$('undoBtn'),$('redoBtn')]);
@@ -56,7 +56,7 @@ function setupStudioWorkspace(){
  $('clipName').addEventListener('input',syncStudioWorkspace);
  // Fail visibly if a future layout edit accidentally removes an existing control.
  const missing=original.filter(e=>!e.isConnected);if(missing.length)throw Error('UI mất điều khiển: '+missing.map(e=>e.id).join(', '));
- document.body.dataset.uiVersion='1.32.0';syncStudioWorkspace();
+ document.body.dataset.uiVersion='1.33.0';syncStudioWorkspace();
 }
 
 function syncStudioWorkspace(){
