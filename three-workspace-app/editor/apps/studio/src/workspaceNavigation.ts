@@ -29,7 +29,7 @@ export const FEATURE_PANELS: Record<string, PanelTarget> = {
   'scene-camera': { workspace: 'scene', editorPanel: 'camera', selector: '.t3d-leftrail-pane-title' },
   'scene-checks': { workspace: 'scene', selector: '#wb-scene-render-title' },
   'animation-rig': { workspace: 'animation', editorPanel: 'inspector', selector: '.t3d-inspector-title' },
-  'animation-motion': { workspace: 'animation', editorPanel: 'timeline', selector: '#wb-animation-title' },
+  'animation-motion': { workspace: 'animation', selector: '.wb-animation-creation' },
   'animation-io': { unavailable: pending },
   'local-cli': { unavailable: { vi: 'Dùng unified_cli trong terminal; chưa có panel CLI.', en: 'Use unified_cli in a terminal; no CLI panel is available.' } },
   conversion: { unavailable: pending },

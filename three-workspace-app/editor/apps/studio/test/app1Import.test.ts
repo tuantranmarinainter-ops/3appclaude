@@ -159,6 +159,24 @@ test('shot.export creates a two-character ZIP accepted by TS and Python validato
   assert.throws(()=>unzipPackage(Buffer.from('broken zip')))
 })
 
+test('shot export keeps covered characters and synthesizes a manifest for an unmanifested native GLB', async () => {
+  const { createShotPackage } = await import('../src/shotExchange')
+  const { validateShot } = await import('../src/shotPackage')
+  const fixture = await shotFixture()
+  const project = structuredClone(fixture.project)
+  const [editableCharacterId, omittedCharacterId] = fixture.characters
+  const omitted = project.characters[omittedCharacterId]!
+  const omittedClip = project.scene.content.timeline.animation.motionClips.find((clip) => clip.target.nodeId === omitted.nodeId)!
+  project.scene.content.timeline.animation.motionClips = project.scene.content.timeline.animation.motionClips.filter((clip) => clip.id !== omittedClip.id)
+  delete project.bindings[omittedClip.id]
+  project.extensions.app1Manifests = {}
+  const built = await createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [editableCharacterId] })
+  assert.deepEqual(validateShot(built.files), [])
+  assert.deepEqual(built.shot.characters.map((character) => character.characterId), [editableCharacterId])
+  assert.equal(JSON.parse(Buffer.from(built.files['characters/' + editableCharacterId + '.manifest.json']!).toString()).actions.length, 1)
+  await assert.rejects(createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [omittedCharacterId] }), /requires one MotionClip/)
+})
+
 for (const constant of [false,true]) test(`Result round trip (${constant ? 'constant' : 'dynamic'} placement) and layout preserve atomic history`, async () => {
   const {getUnifiedJob,readUnifiedJobFile}=await import('../src/unifiedJobs')
   const {unzipPackage,zipPackage,jsonBytes,sha256,validateResult}=await import('../src/shotPackage')
@@ -175,7 +193,17 @@ for (const constant of [false,true]) test(`Result round trip (${constant ? 'cons
   const result={version:'1.0.0',shotId:shot.shotId,baseShotSha256:sha256(shotFiles['shot.json']!),edits:[{characterId:character.characterId,originalActionUuid:character.actionUuid,newActionUuid:id,glb:'edited.glb',manifest:'edited.manifest.json',glbSha256:sha256(edited),placementKeys:[{frame:0,position:[3,0,0],yawDegrees:45},{frame:fixture.frameEnd,position:[constant?3:4,0,0],yawDegrees:constant?45:90}]}]}
   const files={'result.json':jsonBytes(result),'edited.glb':edited,'edited.manifest.json':jsonBytes(newManifest)}
   assert.deepEqual(validateResult(files,shotFiles),[])
-  const staged=await upload(Buffer.from(zipPackage(files)),'result.zip')
+  const resultBytes=Buffer.from(zipPackage(files))
+  const {saveShotDraft,readShotDraft}=await import('../src/shotDraft')
+  const unchanged=await readUnifiedProject(fixture.projectId)
+  const draft=await saveShotDraft(unchanged,shot.shotId,resultBytes)
+  assert.equal(draft.sha256,sha256(resultBytes))
+  assert.deepEqual(await readShotDraft(unchanged,shot.shotId),resultBytes)
+  assert.deepEqual(await readUnifiedProject(fixture.projectId),unchanged,'saving a draft must not replace timeline clips')
+  await assert.rejects(saveShotDraft(unchanged,shot.shotId,Buffer.from('broken zip')))
+  assert.deepEqual(await readShotDraft(unchanged,shot.shotId),resultBytes,'failed save must preserve previous draft')
+  await assert.rejects(readShotDraft({...unchanged,revision:unchanged.revision+1},shot.shotId),/stale/)
+  const staged=await upload(resultBytes,'result.zip')
   const before=await readUnifiedProject(fixture.projectId)
   await assert.rejects(executeUnifiedCommand({requestId:randomUUID(),projectId:fixture.projectId,command:'shot.result.import',expectedRevision:before.revision-1,args:{file:staged.id,shotId:shot.shotId}}), (e:any)=>e.code==='REVISION_CONFLICT')
   const imported=await fixture.send('shot.result.import',{file:staged.id,shotId:shot.shotId})
