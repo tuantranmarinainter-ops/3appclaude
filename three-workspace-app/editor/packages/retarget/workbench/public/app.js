@@ -815,6 +815,7 @@ async function inspectNow() {
   fillActionSelect()
   renderInspectInfo(); renderAll(); refreshSteps()
   if (state.inspect && state.selected !== null && !state.running) selectAction(state.selected)
+  if (state.batch && state.stale && state.inspect && !state.inspect.blocker && !state.dirty) schedulePreview(70)
 }
 $('inspectBtn').addEventListener('click', inspectNow)
 
