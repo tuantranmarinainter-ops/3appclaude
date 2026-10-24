@@ -42,6 +42,7 @@ async function main() {
   }
   const external = []
   const failed = []
+  const pageErrors = []
   let draftId = null
   let context = null
   const browser = await chromium.launch()
@@ -55,14 +56,39 @@ async function main() {
       return route.abort('internetdisconnected')
     })
     const page = await context.newPage()
+    page.on('pageerror', (error) => pageErrors.push(error.message))
     page.on('response', (res) => {
       if (res.status() >= 400) failed.push(`${res.status()} ${res.url()}`)
     })
 
     await page.goto(base)
-    await page.locator('.wb-other-projects > summary').click()
-    await page.getByRole('button', { name: /Start from blank/ }).click()
+    await page.locator('.wb-hero-actions .wb-cta').click()
     await page.getByRole('button', { name: /创建并打开|Create and open/ }).click()
+    await page.waitForURL(/unified=/, { timeout: 60_000 })
+    const unifiedId = new URL(page.url()).searchParams.get('unified')
+    if (unifiedId) {
+      await page.locator('.wb-unified-shell').waitFor({ timeout: 60_000 })
+      if (await page.getByText(/登录|sign in/i).count()) fail('login UI is visible')
+      const search = await page.evaluate(async () => {
+        const res = await fetch('/api/local-assets/search?kind=pose&keyword=sit&pageNo=1&pageSize=5')
+        return res.json()
+      })
+      if (!search.total) fail('pose search returned nothing')
+      const navigation = page.locator('.workspace-navigation')
+      if (await page.locator('.wb-unified-shell .workspace-navigation').count() !== 1) fail('workspace navigation is outside the active project shell')
+      if (await navigation.locator('li').count() !== 5) fail('unified workspace navigation is not a single five-item bar')
+      if (await page.locator('.wb-workspace-tabs').count()) fail('duplicate App 2 workspace navigation is visible')
+      const workflowBounds = await page.locator('.wb-workflow-bar').boundingBox()
+      if (!workflowBounds || workflowBounds.height > 64) fail('workflow hint row squeezes the editor viewport')
+      await page.getByRole('button', { name: 'Dựng cảnh', exact: true }).click()
+      await page.waitForFunction(() => window.__store?.getState?.().ready === true, null, { timeout: 60_000 })
+      if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT })
+      if (external.length) fail(`external requests: ${external.join(', ')}`)
+      if (failed.length) fail(`failed responses: ${failed.join(', ')}`)
+      if (pageErrors.length) fail(`page errors: ${pageErrors.join(', ')}`)
+      console.log(`offline smoke ok: unified project ${unifiedId}, pose search ${search.total} hits, one 5-item navigation bar, 0 external requests`)
+      return
+    }
     await page.waitForFunction(() => window.__store?.getState?.().ready === true, null, { timeout: 60_000 })
     draftId = new URL(page.url()).searchParams.get('draft')
     if (!draftId) fail('draft id missing from URL')
@@ -109,6 +135,7 @@ async function main() {
 
     if (external.length) fail(`external requests: ${external.join(', ')}`)
     if (failed.length) fail(`failed responses: ${failed.join(', ')}`)
+    if (pageErrors.length) fail(`page errors: ${pageErrors.join(', ')}`)
     console.log(`offline smoke ok: draft ${draftId}, ${characters.length} characters, pose search ${search.total} hits, 0 external requests, poses ${poses.join(',')}`)
   } finally {
     if (draftId && context) {

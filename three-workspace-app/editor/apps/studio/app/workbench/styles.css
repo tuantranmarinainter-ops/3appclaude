@@ -840,22 +840,16 @@
   color: var(--wb-text);
   font: 14px/1.45 var(--t3d-font-sans);
 }
-.wb-unified-topbar { display: grid; min-width: 0; grid-template-columns: minmax(130px, 1fr) auto minmax(0, 1fr); justify-content: initial; gap: 12px; padding: 0 14px; border-color: var(--wb-border); background: #14161a; }
+.wb-unified-topbar { display: grid; min-width: 0; grid-template-columns: minmax(130px, 1fr) minmax(0, 1fr); justify-content: initial; gap: 12px; padding: 0 14px; border-color: var(--wb-border); background: #14161a; }
 .wb-unified-brand { gap: 9px; }
 .wb-unified-brand strong { font-size: 14px; font-weight: 600; }
 .wb-save-state { flex: 0 0 auto; color: var(--wb-muted); font-size: 11px; white-space: nowrap; }
 .wb-save-state.is-saving { color: #d2c8ff; }
 .wb-save-state.is-error { color: #ffaaa7; }
-.wb-workspace-tabs { display: flex; align-self: stretch; gap: 4px; }
-.wb-workspace-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--wb-muted); font: inherit; cursor: pointer; white-space: nowrap; }
-.wb-workspace-tabs button span { color: #858c98; font-size: 11px; }
-.wb-workspace-tabs button:hover { color: var(--wb-text); }
-.wb-workspace-tabs button.is-active { border-bottom-color: var(--wb-accent); color: var(--wb-text); }
-.wb-workspace-tabs button.is-active span { color: var(--wb-accent); }
 .wb-unified-actions { justify-content: flex-end; gap: 5px; min-width: 0; }
 .wb-unified-actions button { min-height: 32px; padding: 0 9px; border-color: var(--wb-border); border-radius: 7px; background: #1b1d22; color: var(--wb-text); font-size: 12px; white-space: nowrap; }
 .wb-unified-actions button:hover:not(:disabled) { border-color: #45404f; background: #24232b; }
-.wb-unified-actions button:focus-visible,.wb-workspace-tabs button:focus-visible,.wb-workflow-bar button:focus-visible,.wb-host-more summary:focus-visible,.wb-host-more-menu button:focus-visible,.wb-drawer button:focus-visible,.wb-drawer summary:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
+.wb-unified-actions button:focus-visible,.wb-workflow-bar button:focus-visible,.wb-host-more summary:focus-visible,.wb-host-more-menu button:focus-visible,.wb-drawer button:focus-visible,.wb-drawer summary:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
 .wb-unified-actions .wb-host-primary,.wb-host-primary { border-color: transparent; background: var(--wb-accent); color: #17131f; font-weight: 600; }
 .wb-unified-actions .wb-host-primary:hover:not(:disabled),.wb-host-primary:hover:not(:disabled) { background: #c2b1ff; }
 .wb-unified-actions .wb-host-secondary { background: transparent; }
@@ -1007,7 +1001,6 @@
   .wb-unified-topbar { grid-template-columns: minmax(100px, 1fr) auto; grid-template-rows: 56px 40px; height: 96px; padding: 0 10px; }
   .wb-unified-shell { grid-template-rows: 96px 36px minmax(0, 1fr); }
   .wb-unified-brand { grid-column: 1; grid-row: 1; }
-  .wb-workspace-tabs { grid-column: 1 / -1; grid-row: 2; justify-content: center; }
   .wb-unified-actions { grid-column: 2; grid-row: 1; }
   .wb-drawer { top: 132px; height: calc(100dvh - 132px); }
   .wb-retarget-workarea { grid-template-columns: minmax(180px, var(--wb-retarget-left-width, 220px)) 6px minmax(280px, 1fr) 6px minmax(240px, var(--wb-retarget-right-width, 270px)); gap: 3px; }
@@ -1031,8 +1024,6 @@
   .wb-unified-shell { grid-template-rows: 128px 42px minmax(0, 1fr); }
   .wb-unified-brand { grid-column: 1; grid-row: 1; }
   .wb-unified-actions { grid-column: 1; grid-row: 3; justify-content: flex-start; overflow-x: auto; }
-  .wb-workspace-tabs { grid-column: 1; grid-row: 2; justify-content: flex-start; overflow-x: auto; }
-  .wb-workspace-tabs button { padding: 0 8px; font-size: 12px; }
   .wb-workflow-bar { padding: 0 10px; font-size: 11px; }
   .wb-drawer { top: 170px; width: 100vw; height: calc(100dvh - 170px); border-radius: 8px 8px 0 0; }
   .wb-retarget { overflow: auto; padding: 10px; }

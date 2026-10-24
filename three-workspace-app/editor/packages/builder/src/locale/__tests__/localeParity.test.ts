@@ -19,4 +19,11 @@ describe('locale catalog', () => {
   it('names every locale', () => {
     expect(Object.keys(LOCALE_NAMES).sort()).toEqual(listLocales())
   })
+
+  it('labels the left-drag navigation hint as orbiting in the requested locales', () => {
+    const orbitLabel = (locale: string) => (getLocaleDict(locale).topbar as { shortcutOrbitRotate: string }).shortcutOrbitRotate
+    expect(orbitLabel('en')).toBe('Orbit around view center')
+    expect(orbitLabel('vi')).toBe('Quỹ đạo xung quanh trung tâm quan sát')
+    expect(orbitLabel('zh-CN')).toBe('绕画面中心环绕')
+  })
 })

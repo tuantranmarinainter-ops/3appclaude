@@ -16,6 +16,7 @@
 }
 
 .workspace-navigation {
+  position: relative;
   z-index: 1001;
   flex: none;
   border-bottom: 1px solid #303237;
@@ -34,6 +35,7 @@
 }
 
 .workspace-navigation a,
+.workspace-navigation button,
 .workspace-navigation li > span {
   position: relative;
   display: flex;
@@ -45,6 +47,14 @@
   color: inherit;
   text-align: center;
   text-decoration: none;
+}
+
+.workspace-navigation button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .workspace-navigation a:hover,
@@ -82,10 +92,11 @@
 @media (max-width: 680px) {
   .workspace-navigation ol { padding-inline: 4px; }
   .workspace-navigation a,
+  .workspace-navigation button,
   .workspace-navigation li > span { min-height: 40px; flex-direction: column; gap: 3px; font-size: 10px; }
 }
 
-/* The overlay has an explicit navigation row between its header and workflow. */
+/* The shared workspace bar is the overlay's only workspace navigation row. */
 body .wb-unified-shell {
   grid-template-rows: auto auto auto minmax(0, 1fr);
 }

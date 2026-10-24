@@ -8,6 +8,7 @@ import { AutoPreviewVideo } from './AutoPreviewVideo'
 import { WorkspaceNavigationSlot } from '../workbench/components/feature-navigation/WorkspaceNavigation'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 import { formatBilingual } from '../../../../packages/library/actionNames'
+import { filterLibraryActions } from '../../src/libraryFilters'
 
 type Status = 'draft' | 'edited' | 'approved'
 type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
@@ -17,8 +18,6 @@ type Coverage = { charId: string; name: string; cells: Array<{ key: string; labe
 const MISSING_PREVIEW_CAP = 20
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
-
-function searchable(value: string) { return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase() }
 
 async function json(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: 'no-store', ...init })
@@ -51,11 +50,10 @@ export default function LibraryPage() {
     const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
     const body = await json(`/api/library?${params}`)
     let rows = (body.actions as Action[]).filter((action, index, all) => all.findIndex(other => other.uuid === action.uuid) === index).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
-    if (category) rows = rows.filter(action => action.category === category)
+    rows = filterLibraryActions(rows, query, category)
     if (sourceFilter) rows = rows.filter(action => sourceFilter === 'mixamo' ? /mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) : !/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`))
     if (inPlaceOnly) rows = rows.filter(action => action.inPlace)
     rows = [...rows].sort((a, b) => sortOrder === 'newest' ? b.createdAt.localeCompare(a.createdAt) : a.name.localeCompare(b.name))
-    if (!warehouse && query) rows = rows.filter(action => searchable(`${action.name} ${action.nameVi ?? ''} ${action.tags.join(' ')}`).includes(searchable(query)))
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
   }, [category, characterId, inPlaceOnly, query, sortOrder, sourceFilter, status, warehouse])
 
