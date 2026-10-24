@@ -1,5 +1,6 @@
 // App 1 Workbench UI. Every number shown comes from the server's inspect result or the run's report.json.
 import { Viewer, FPS } from './viewer.js'
+import { jointSettings, JOINT_SETTINGS_KEY } from './joint-overlay.js'
 import { executeTransfer, suggestActionKey } from './transfer.js'
 
 const $ = (id) => document.getElementById(id)
@@ -75,6 +76,60 @@ async function api(path, { method = 'GET', json, body, headers } = {}) {
 
 // ---------------------------------------------------------------- viewer + timeline
 const viewer = new Viewer($('leftHost'), $('rightHost'), onViewerFrame)
+let displaySettings = jointSettings()
+try { displaySettings = jointSettings(JSON.parse(localStorage.getItem(JOINT_SETTINGS_KEY))) } catch { /* Storage may be unavailable. */ }
+function applyJointSettings() { for (const pane of [viewer.left, viewer.right]) pane.joints.settings = displaySettings }
+applyJointSettings()
+for (const [key, title, type, min, max] of [
+  ['points', 'Điểm khớp', 'checkbox'], ['color', 'Màu điểm', 'color'], ['size', 'Cỡ điểm (px)', 'range', 3, 20],
+  ['labels', 'Tên xương', 'checkbox'], ['fontSize', 'Cỡ chữ (px)', 'range', 8, 24], ['scope', 'Phạm vi tên', 'select'],
+]) {
+  const input = h(type === 'select' ? 'select' : 'input', { type: type === 'select' ? undefined : type, min, max, step: 1, 'aria-label': title })
+  if (type === 'select') for (const [value, text] of [['selected', 'Khớp đang chọn'], ['all', 'Tất cả khớp'], ['unmapped', 'Chỉ khớp chưa map']]) input.append(h('option', { value, text }))
+  if (type === 'checkbox') input.checked = displaySettings[key]
+  else input.value = displaySettings[key]
+  input.addEventListener('input', () => {
+    displaySettings = jointSettings({ ...displaySettings, [key]: type === 'checkbox' ? input.checked : type === 'range' ? Number(input.value) : input.value })
+    applyJointSettings()
+    try { localStorage.setItem(JOINT_SETTINGS_KEY, JSON.stringify(displaySettings)) } catch { /* Display still works without persistence. */ }
+  })
+  $('jointSettings').append(h('label', {}, title, input))
+}
+let activeMappingTarget = null
+let hoveredMappingTarget = null
+function syncMappingHighlights() {
+  const selected = state.rows.find((row) => row.target === (hoveredMappingTarget ?? activeMappingTarget))
+  viewer.left.joints.selected = new Set(selected?.source ? [selected.source] : [])
+  viewer.right.joints.selected = new Set(selected ? [selected.target] : [])
+  viewer.left.joints.mapped = new Set(state.rows.filter((row) => row.source).map((row) => row.source))
+  viewer.right.joints.mapped = new Set(state.rows.filter((row) => row.source).map((row) => row.target))
+  for (const tr of document.querySelectorAll('#mapRows tr')) tr.classList.toggle('active-mapping', tr.dataset.target === activeMappingTarget)
+}
+// One assignment boundary shared by source-point picking and the mapping chooser.
+function assignMappingSource(target, source) {
+  const row = state.rows.find((item) => item.target === target)
+  if (!row || !state.inspect) return false
+  if (source && !state.inspect.sourceBones.some((bone) => bone.name === source)) { toast(`"${source}" không phải xương của nguồn này.`, 'err'); return false }
+  row.source = source || null
+  row.via = row.source === row.original ? row.via : row.source ? 'edited' : null
+  state.dirty = state.rows.some((item) => item.source !== item.original) || state.dirty
+  state.stale = state.stale || !!state.result
+  state.inspectSeq++ // an in-flight inspect would overwrite the edit
+  renderMapping(); refreshSteps()
+  return true
+}
+viewer.left.joints.onPick = (source) => {
+  if (!activeMappingTarget) { toast('Chọn ô mapping cần sửa, rồi bấm điểm xương nguồn.'); return }
+  assignMappingSource(activeMappingTarget, source)
+}
+viewer.right.joints.onPick = (target) => {
+  const row = state.rows.find((item) => item.target === target.replace(/^mixamorig:?/i, ''))
+  if (!row) return
+  activeMappingTarget = row.target
+  syncMappingHighlights()
+  const input = [...document.querySelectorAll('#mapRows input')].find((item) => item.dataset.target === row.target)
+  input?.focus()
+}
 let scrubbing = false, frames = 0, wasPlaying = true
 function onViewerFrame(time) {
   const frame = Math.round(time * FPS)
@@ -1324,6 +1379,9 @@ function rowMatches(row) {
 }
 function renderMapping() {
   const box = clear($('tab-mapping'))
+  hoveredMappingTarget = null
+  if (!state.rows.some((row) => row.target === activeMappingTarget)) activeMappingTarget = null
+  syncMappingHighlights()
   const info = state.inspect
   if (!info) { box.append(h('div', { class: 'empty', text: 'Kiểm tra nguồn để xem và sửa mapping 65 khớp.' })); return }
   const missing = new Set(info.mapping.missingRequired)
@@ -1349,24 +1407,21 @@ function renderMapping() {
     clear(body)
     for (const row of state.rows.filter(rowMatches)) {
       const input = h('input', { type: 'text', value: row.source ?? '', list: 'boneList', spellcheck: 'false', 'aria-label': `Xương nguồn cho ${row.target}`, placeholder: '— chưa map —' })
+      input.dataset.target = row.target
+      input.addEventListener('focus', () => { activeMappingTarget = row.target; syncMappingHighlights() })
       input.addEventListener('change', () => {
         const value = input.value.trim()
         if (value && !names.has(value)) { toast(`"${value}" không phải xương của nguồn này.`, 'err'); input.value = row.source ?? ''; return }
-        row.source = value || null
-        row.via = row.source === row.original ? row.via : row.source ? 'edited' : null
-        state.dirty = state.rows.some((item) => item.source !== item.original) || state.dirty
-        state.stale = state.stale || !!state.result
-        state.inspectSeq++ // an in-flight inspect would overwrite the edit
-        renderMapping(); refreshSteps()
+        assignMappingSource(row.target, value)
       })
       const dup = row.source && used.get(row.source) > 1
-      body.append(h('tr', { class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''}` },
+      body.append(h('tr', { dataset: { target: row.target }, onmouseenter: () => { hoveredMappingTarget = row.target; syncMappingHighlights() }, onmouseleave: () => { hoveredMappingTarget = null; syncMappingHighlights() }, class: `${row.source !== row.original ? 'edited' : ''} ${missing.has(row.target) && !row.source ? 'missing' : ''}` },
         h('td', { text: row.target }), h('td', {}, input, dup ? h('small', { class: 'dup', text: 'Xương này đang gán cho nhiều khớp' }) : null),
         h('td', {}, h('span', { class: `via ${row.ambiguous ? 'ambiguous' : row.via ?? ''}`, text: row.ambiguous ? 'ambiguous' : row.via ?? (missing.has(row.target) ? 'thiếu bắt buộc' : '—') }))))
     }
     if (!body.children.length) body.append(h('tr', {}, h('td', { colspan: 3, class: 'empty', text: 'Không có dòng nào khớp bộ lọc.' })))
   }
-  renderMappingRows = renderMappingRowsInner
+  renderMappingRows = () => { renderMappingRowsInner(); syncMappingHighlights() }
   renderMappingRows()
 }
 let renderMappingRows = () => {}
