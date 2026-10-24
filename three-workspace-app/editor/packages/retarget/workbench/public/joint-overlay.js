@@ -67,8 +67,8 @@ export class JointOverlay {
     this.element.style.setProperty('--joint-font-size', `${settings.fontSize}px`)
     for (const { bone, name, marker, label } of this.entries) {
       const key = this.canonical ? canonicalJoint(name) : name
-      const selected = this.selected.has(key)
-      const showLabel = showJointLabel(settings, selected, this.mapped.has(key))
+      const selected = this.selected.has(key) || this.hovered === key
+      const showLabel = this.hovered === key || showJointLabel(settings, selected, this.mapped.has(key))
       bone.getWorldPosition(this.point).project(camera)
       const visible = (settings.points || showLabel) && this.point.z >= -1 && this.point.z <= 1 && Math.abs(this.point.x) <= 1 && Math.abs(this.point.y) <= 1
       marker.classList.toggle('selected', selected)

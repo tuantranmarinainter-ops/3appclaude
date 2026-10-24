@@ -224,6 +224,8 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 #adjustFieldset .row { display: flex; gap: 4px; } #adjustFieldset .row select { flex: 2; min-width: 0; } #adjustFieldset .row input { flex: 1; min-width: 0; width: 0; }
 
 /* Joint points stay in screen pixels while the same Pane camera moves or animates. */
+.mapping-wire { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 10000; pointer-events: none; overflow: visible; }
+.mapping-wire line { stroke: #ffbd55; stroke-width: 2; stroke-dasharray: 5 3; }
 .joint-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .joint-marker { position: absolute; top: 0; left: 0; width: var(--joint-size); height: var(--joint-size); min-width: 0; min-height: 0; padding: 0; border: 1px solid #111; border-radius: 50%; background: var(--joint-color); pointer-events: auto; cursor: pointer; }
 .joint-marker[hidden], .bone-label[hidden] { display: none; }
