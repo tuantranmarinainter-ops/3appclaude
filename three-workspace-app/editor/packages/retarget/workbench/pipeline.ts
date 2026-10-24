@@ -15,6 +15,7 @@ import type { SourceFamily } from '../cli/autoMapping.ts'
 import { renderContactSheet } from '../cli/previewPng.ts'
 import { exportMinecraft20 } from '../cli/toMinecraft20.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
+import { DEFAULT_ADJUSTMENTS, resolveAdjustments, type AdjustmentSettings } from '../src/adjustments.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -34,6 +35,7 @@ export interface TargetRecord { id: string; file: string; path: string; sha256: 
 export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; actionNames?: Record<number, { name: string; nameVi?: string }>; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
+  adjustments: AdjustmentSettings
 }
 
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
@@ -89,7 +91,16 @@ export function parseOptions(value: unknown): RunOptions {
     swapSides: oneOf('swapSides', ['auto', 'on', 'off'], 'auto'),
     mode: oneOf('mode', ['animation', 'model'], 'animation'), bobj: raw.bobj === true, bobjRoot: oneOf('bobjRoot', ['inPlace', 'follow'], 'inPlace'),
     preview: raw.preview === true,
+    adjustments: parseAdjustments(raw.adjustments),
   }
+}
+
+function parseAdjustments(value: unknown): AdjustmentSettings {
+  if (value === undefined || value === null) return { ...DEFAULT_ADJUSTMENTS }
+  if (typeof value !== 'object' || Array.isArray(value)) throw new UserError('options.adjustments must be an object')
+  const unknown = Object.keys(value).find((key) => !(key in DEFAULT_ADJUSTMENTS))
+  if (unknown) throw new UserError(`options.adjustments.${unknown} is not a known adjustment`)
+  try { return resolveAdjustments(value as Partial<AdjustmentSettings>) } catch (error) { throw new UserError(`options.${(error as Error).message}`) }
 }
 
 export function parseFamily(value: unknown): SourceFamily | undefined {
@@ -121,7 +132,7 @@ function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptio
   return { source: scenes.source, sourceLabel: source.name, sourceSha256: source.sha256, target: scenes.target, targetLabel: target.file, targetSha256: target.sha256,
     actionRanges: options.actionRanges, actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
     rootScale: options.rootScale, ground: options.ground, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
-    calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides }
+    calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides, adjustments: options.adjustments }
 }
 
 /** The inspection payload the UI renders: mapping rows, bone list, Actions, proportions, facing. No bake happens. */

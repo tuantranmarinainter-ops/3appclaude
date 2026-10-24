@@ -6,6 +6,7 @@
  *        [--action all|<i>[,<i>...]] [--preview-action <i>] [--unit-meters <n>] [--up y|z] [--root preserve|in-place] [--root-scale <n>] [--ground off|lift|level|frame] [--mapping <preset.json>]
  *        [--armature <minecraft20-armature.bobj>] [--facing <deg>] [--swap-sides auto|on|off] [--calibrate limbs|none]   (limbs: swing source limbs onto the target rest directions — A/T calibration)
  *        [--bobj [--bobj-root inPlace|follow] [--bobj-armature <minecraft20-armature.bobj>]]   (also write Minecraft20 actions for BBS FS)
+ *        [--arm-space <-0.5..1>] [--leg-space <-0.5..1>] [--shoulder-width <.7..1.4>] [--upper-arm <.7..1.4>] [--forearm <.7..1.4>] [--leg-length <.8..1.25>] [--intensity <0..2>] [--stride <0..2>] [--vertical <0..2>] [--proportion-side both|left|right] [--stride-side both|left|right] [--mirror] [--trim-start <0..0.9>] [--trim-end <0..0.9>] [--speed <.25..4>] [--joint-offset <joint>=<xDeg>,<yDeg>,<zDeg>]...   (Mixamo-style adjustments; default = no change)
  *        [--mode animation|model]   (model: also embed the source meshes + textures skinned to the Mixamo65 skeleton; Mixamo-family sources only)
  * Exit codes: 0 PASS, 1 FAIL/error, 2 BLOCKED (input cannot be normalized as given).
  */
@@ -14,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { resolveAdjustments, type AdjustmentSettings } from '../src/adjustments.ts'
 import { formatFromPath, loadAsset } from './loadAsset.ts'
 import { applyModelMode, ModelBlockedError, readModelSourceFiles, type PipelineResult } from './modelExport.ts'
 import { runNormalize } from './normalizeCore.ts'
@@ -25,6 +27,7 @@ const { values } = parseArgs({ options: {
   src: { type: 'string' }, target: { type: 'string' }, out: { type: 'string' }, preview: { type: 'boolean', default: false },
   'foot-lock': { type: 'string', default: 'off' }, range: { type: 'string' }, action: { type: 'string', default: 'all' }, 'preview-action': { type: 'string' }, 'unit-meters': { type: 'string' }, up: { type: 'string', default: 'y' },
   root: { type: 'string', default: 'preserve' }, calibrate: { type: 'string', default: 'limbs' }, 'swap-sides': { type: 'string', default: 'auto' }, facing: { type: 'string' }, 'root-scale': { type: 'string' }, ground: { type: 'string', default: 'lift' }, mapping: { type: 'string' }, armature: { type: 'string' },
+  'arm-space': { type: 'string' }, 'leg-space': { type: 'string' }, 'shoulder-width': { type: 'string' }, 'upper-arm': { type: 'string' }, forearm: { type: 'string' }, 'leg-length': { type: 'string' }, intensity: { type: 'string' }, stride: { type: 'string' }, vertical: { type: 'string' }, 'proportion-side': { type: 'string' }, 'stride-side': { type: 'string' }, mirror: { type: 'boolean', default: false }, 'trim-start': { type: 'string' }, 'trim-end': { type: 'string' }, speed: { type: 'string' }, 'joint-offset': { type: 'string', multiple: true },
   mode: { type: 'string', default: 'animation' }, bobj: { type: 'boolean', default: false }, 'bobj-root': { type: 'string', default: 'inPlace' }, 'bobj-armature': { type: 'string' },
 } })
 
@@ -46,6 +49,13 @@ if (range && (range.length !== 2 || range.some((n) => !Number.isFinite(n)) || ra
 const actions = values.action === 'all' ? undefined : values.action!.split(',').map(Number)
 if (actions?.some((index) => !Number.isInteger(index) || index < 0)) fail('--action must be all or comma-separated Action indices')
 
+let adjustments: Partial<AdjustmentSettings>
+try {
+  const flag = (name: string) => values[name as 'intensity'] === undefined ? undefined : Number(values[name as 'intensity'])
+  adjustments = resolveAdjustments({ armSpace: flag('arm-space'), legSpace: flag('leg-space'), shoulderWidth: flag('shoulder-width'), upperArm: flag('upper-arm'), forearm: flag('forearm'), legLength: flag('leg-length'), intensity: flag('intensity'), stride: flag('stride'), vertical: flag('vertical'),
+    ...(values['proportion-side'] ? { proportionSide: values['proportion-side'] as 'both' } : {}), ...(values['stride-side'] ? { strideSide: values['stride-side'] as 'both' } : {}), mirror: values.mirror, trimStart: flag('trim-start'), trimEnd: flag('trim-end'), speed: flag('speed'),
+    jointOffsets: Object.fromEntries((values['joint-offset'] ?? []).map((item) => { const [joint, angles = ''] = item.split('='); return [joint!, angles.split(',').map(Number)] as const })) as Record<string, [number, number, number]> })
+} catch (error) { fail(`${error instanceof Error ? error.message : error} (flags are --arm-space, --leg-space, --shoulder-width, --upper-arm, --forearm, --leg-length, --intensity, --stride, --vertical)`) }
 const srcPath = resolve(values.src), targetPath = resolve(values.target), outDir = resolve(values.out)
 const stem = basename(srcPath, extname(srcPath))
 const write = (suffix: string, data: string | Uint8Array) => { const path = join(outDir, `${stem}${suffix}`); writeFileSync(path, data); return path }
@@ -83,7 +93,7 @@ try {
     ...(sourceExtraManifest ? { sourceExtraManifest, sourceExtraGlb: srcBytes } : {}),
     target: await loadAsset(targetBytes, formatFromPath(targetPath), { skeletonOnly: true, resourceDir: dirname(targetPath) }), targetLabel: basename(targetPath), targetSha256: sha(targetBytes),
     footLock: values['foot-lock'] as 'on' | 'off', range: range as [number, number] | undefined, actions, previewAction: values['preview-action'] === undefined ? undefined : Number(values['preview-action']), unitMeters,
-    upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame',
+    upAxis: values.up as 'y' | 'z', rootPolicy: values.root as 'preserve' | 'in-place', rootScale: values['root-scale'] === undefined ? undefined : Number(values['root-scale']), ground: values.ground as 'off' | 'lift' | 'level' | 'frame', adjustments,
     mappingPreset: values.mapping ? JSON.parse(readFileSync(resolve(values.mapping), 'utf8')) : undefined, preview: values.preview,
     calibrate: values.calibrate as 'limbs' | 'none', swapSides: values['swap-sides'] as 'auto' | 'on' | 'off', facingDegrees: values.facing === undefined ? undefined : Number(values.facing),
   })
