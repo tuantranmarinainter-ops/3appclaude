@@ -167,13 +167,16 @@ try {
   const saveError = panel.getByRole('alert').waitFor({ state: 'visible', timeout: 35000 }).then(async () => { throw new Error(await panel.getByRole('alert').innerText()) })
   await saveButton.click()
   const draftSaveResponse = await Promise.race([savedResponse, saveError])
+  console.log('DRAFT_RESPONSE', draftSaveResponse.status())
   assert.equal(draftSaveResponse.status(), 200, await draftSaveResponse.text())
   const draftSaveBody = await draftSaveResponse.json()
   assert.equal(draftSaveBody.shotId, shotId)
+  console.log('DRAFT_BODY', JSON.stringify(draftSaveBody))
   const draftReload = await page.evaluate(async (url) => {
-    const response = await fetch(url)
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
     const bytes = new Uint8Array(await response.arrayBuffer()); return { status: response.status, byteLength: bytes.length, sha256: Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('') }
   }, `${base}/api/unified/projects/${projectId}/shots/${shotId}/draft`)
+  console.log('DRAFT_READBACK', JSON.stringify(draftReload))
   assert.equal(draftReload.status, 200, JSON.stringify(draftReload))
   assert.ok(draftReload.byteLength > 0, 'Persisted shot draft ZIP is empty')
   const draftPath = path.join(projectsDir, projectId, '.shots', `${shotId}.draft.zip`)
@@ -185,6 +188,7 @@ try {
     page.waitForResponse((response) => response.url().endsWith('/api/unified/commands') && response.request().postDataJSON()?.command === 'shot.result.import'),
     shotToolbar.getByRole('button', { name: 'Trả kết quả về cảnh' }).click(),
   ])
+  console.log('RETURN_RESPONSE')
   const afterResponse = await api(`${base}/api/unified/projects/${projectId}`)
   assert.equal(afterResponse.status, 200, JSON.stringify(afterResponse.body))
   const after = afterResponse.body.project
