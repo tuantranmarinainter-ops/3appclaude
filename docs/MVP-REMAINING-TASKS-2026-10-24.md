@@ -103,3 +103,13 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   (`runNow` dùng `wait:false`), không lưu kết quả đã xem, và `pipeline.ts` đọc + parse lại **toàn bộ** file nguồn mỗi lượt (nghi là
   nguyên nhân App 1 hết bộ nhớ 4 GB với nguồn ~400 animation). Hướng sửa: cache asset đã parse (LRU), `wait:true` cho xem thử,
   debounce ~70 ms khi đổi dòng, cache kết quả theo (dòng + tuỳ chọn), tải trước dòng kế. Mục tiêu < 0,3 s; giữ SHA Samba.
+- **C10 — App 1: điểm khớp hình tròn + tên xương để so và mapping tay** (ghi 2026-10-24). Trong cả hai khung xem của Workbench
+  (Nguồn gốc / Kết quả trên nhân vật đích) và trong bảng "Sửa mapping":
+  - mỗi khớp hiện một **điểm tròn**; tuỳ chọn **màu** và **kích thước** (thanh trượt), bật/tắt; khớp đang chọn/đang map đổi màu nổi bật;
+  - **ghi tên xương** cạnh điểm (bật/tắt, cỡ chữ, phạm vi: khớp đang chọn / tất cả khớp / chỉ khớp chưa map), để nhìn tên hai bên
+    mà ghép đúng vị trí; bấm vào điểm trong khung nguồn = chọn xương nguồn cho ô mapping đang sửa; rê chuột vào ô mapping thì
+    sáng điểm tương ứng ở cả hai khung;
+  - nhớ tuỳ chọn hiển thị (localStorage).
+  - **Tham khảo App 3** (người dùng làm rất kỹ): chế độ "Chỉ đối chiếu" trong
+    `apps/studio/public/animation-studio/v1.33.0/index.html` — dòng ~775 (tuỳ chọn Tên xương / trục XYZ / góc / phạm vi / Local-World,
+    báo cáo JSON/CSV), CSS `.bone-label` (dòng 3, 195), tạo nhãn `bone-label` (~981, ~1034), `report()` so cặp xương A/B (~2108).
