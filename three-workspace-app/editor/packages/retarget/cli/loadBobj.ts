@@ -22,7 +22,7 @@ export const bobjNodeName = (name: string) => name.replace(/\./g, '_')
  * translation-only rest frame C and each pose W is re-expressed as W·R⁻¹·C (R = original rest). World deltas
  * (W·R⁻¹) and joint positions are unchanged; only the arbitrary — here mirrored — axis convention is dropped.
  */
-export function loadBobj(actionsText: string, armatureText: string, options: { resourceDir?: string; skeletonOnly?: boolean; unitMeters?: number } = {}): Group {
+export function loadBobj(actionsText: string, armatureText: string, options: { resourceDir?: string; skeletonOnly?: boolean; unitMeters?: number; bakeFps?: number } = {}): Group {
   if (/^o\s+/m.test(actionsText) && /^v\s+/m.test(actionsText)) {
     const readTexture: BobjModelOptions['readTexture'] = options.resourceDir ? (path) => {
       const base = resolve(options.resourceDir!), target = resolve(base, path), inside = relative(base, target)
@@ -57,7 +57,9 @@ export function loadBobj(actionsText: string, armatureText: string, options: { r
 
   root.animations = [...actions.values()].map((action) => {
     const duration = action.durationTicks / BOBJ_TICKS_PER_SECOND
-    const times = Array.from({ length: Math.ceil(duration * BAKE_FPS - 1e-9) + 1 }, (_, index) => Math.min(index / BAKE_FPS, duration))
+    // 30 fps misses every odd 20 Hz tick; callers that must match BBS tick for tick pass 60 (a multiple of both).
+    const fps = options.bakeFps ?? BAKE_FPS
+    const times = Array.from({ length: Math.ceil(duration * fps - 1e-9) + 1 }, (_, index) => Math.min(index / fps, duration))
     const values = new Map(armature.bones.map((bone) => [bone.name, { position: [] as number[], quaternion: [] as number[], scale: [] as number[] }]))
     for (const time of times) {
       const worlds = new Map(evaluateBobjAction(armature, action, time * BOBJ_TICKS_PER_SECOND)

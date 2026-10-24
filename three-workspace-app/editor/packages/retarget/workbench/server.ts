@@ -94,7 +94,9 @@ async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<type
     const sourceAction = sourceMixer.clipAction(expected), loadedAction = loadedMixer.clipAction(actual)
     sourceAction.clampWhenFinished = true; loadedAction.clampWhenFinished = true
     sourceAction.setLoop(LoopOnce, 1).play(); loadedAction.setLoop(LoopOnce, 1).play()
-    for (const time of [0, expected.duration / 2, expected.duration]) {
+    // BBS plays whole 20 Hz ticks: compare first, middle and last tick.
+    const lastTick = Math.floor(expected.duration * 20 + 1e-6)
+    for (const time of [0, Math.round(lastTick / 2) / 20, lastTick / 20]) {
       sourceMixer.setTime(time); loadedMixer.setTime(time); reference.updateMatrixWorld(true); loaded.updateMatrixWorld(true); sampledEndpoints++
       const evaluated = new Map(evaluateBobjAction(armature, actions.get(expected.name)!, time * 20).map((bone) => [bone.name.replace(/\./g, '_'), bone.worldMatrix]))
       for (const [name] of sourceBones) {
@@ -106,7 +108,7 @@ async function measureMinecraft20Glb(glb: Uint8Array, reference: ReturnType<type
     }
     sourceMixer.uncacheRoot(reference); loadedMixer.uncacheRoot(loaded)
   }
-  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-3 ? 'PASS' : 'FAIL'
+  const status = maxTrackError <= 1e-6 && maxEndpointPositionError <= 1e-4 ? 'PASS' : 'FAIL'
   return { status, joints: loadedBones.size, animations: loaded.animations.length, sampledEndpoints, maxTrackError, maxEndpointPositionError }
 }
 
@@ -640,7 +642,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         const bobj = state.result.files.find((file) => file.kind === 'bobj')
         if (!bobj) throw new UserError('Minecraft20 destinations require a run with .bobj output enabled', 409)
         const bobjText = readFileSync(join(state.dir, bobj.name), 'utf8'); minecraftBobj = bobjText
-        const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8')) as ReturnType<typeof loadBobj> & { animations: any[] }
+        // Library GLBs are sampled on every BBS tick so App 2 playback matches the .bobj between sparse keys (Soldier Run was 1.9 cm off at 30 fps).
+        const root = loadBobj(bobjText, readFileSync(DEFAULT_ARMATURE, 'utf8'), { bakeFps: 60 }) as ReturnType<typeof loadBobj> & { animations: any[] }
         root.updateMatrixWorld(true)
         const glb = minecraft20LibraryGlb(root)
         const measurement = await measureMinecraft20Glb(glb, root, bobjText)
