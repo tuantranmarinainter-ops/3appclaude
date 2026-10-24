@@ -340,14 +340,28 @@ export async function inspectNormalize(request: NormalizeRequest) {
   return { ...base, blocker: null, ready: { prune, prunedActions, actionsReport, sourceOptions, targetOptions, calibration } }
 }
 
-export async function runNormalize(request: NormalizeRequest) {
+/** Reuse mapping/calibration for the same immutable asset/options, but validate and prune this clip afresh. */
+export function reuseInspection(request: NormalizeRequest, inspected: Awaited<ReturnType<typeof inspectNormalize>>) {
+  if (!inspected.ready) return inspected
+  const bones = new Map(inspected.rigs.source.bones.map((bone) => [bone.id, bone]))
+  pruneToMappedRig(request.source, mappingSourceNames(inspected.mapping, bones))
+  const ranked = createThreeRigAdapter(request.source, { ...inspected.ready.sourceOptions, collectUnsupportedTracks: true })
+  try {
+    const prunedActions = inspected.ready.prunedActions.map((action, index) => request.actions?.includes(index) ? ranked.actions[index]! : { ...action, channels: [] })
+    return { ...inspected, input: { ...inspected.input, actions: request.actions ? [...request.actions] : 'all' as const },
+      ready: { ...inspected.ready, prunedActions,
+        actionsReport: prunedActions.map(({ issues, ...rest }) => ({ ...rest, issueCount: issues.length, issues: issues.slice(0, 5) })) } }
+  } finally { ranked.dispose() }
+}
+
+export async function runNormalize(request: NormalizeRequest, prepared?: Awaited<ReturnType<typeof inspectNormalize>>) {
   request.signal?.throwIfAborted()
   const inferredVerity = request.sourceExtraManifest ? null : veritySceneExtras(request.source, request.unitMeters ?? 1)
   const existingVerity = existingVeritySceneExtras(request.source, request.sourceExtraManifest)
   const started = Date.now()
   const rootPolicy = request.rootPolicy ?? 'preserve'
   await request.onProgress?.('inspect', 0, 1)
-  const inspected = await inspectNormalize(request)
+  const inspected = prepared ?? await inspectNormalize(request)
   if (inspected.blocker) return blocked(inspected.blocker.code, inspected.blocker.message, inspected.blocker.extra)
   const rootScale = inspected.effectiveRootScale, rootScaleSource = inspected.rootScaleSource
   const { input, actions, mapping, mappingReport, sourceHipsHeight, targetRest, suggestedRootScale } = inspected

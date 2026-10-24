@@ -6,7 +6,7 @@ const stamp = (path: string) => {
   const stat = statSync(path, { bigint: true })
   return [path, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':')
 }
-type Asset = { bytes: Buffer; scene: Awaited<ReturnType<typeof loadAsset>> }
+type Asset = { version: string; bytes: Buffer; scene: Awaited<ReturnType<typeof loadAsset>> }
 
 /** Server-only skeleton templates; pending parses are shared, request hierarchies are private. */
 export class ParsedAssetCache {
@@ -46,7 +46,7 @@ export class ParsedAssetCache {
         const input = bytes ?? readFileSync(path)
         const scene = await this.parse(input, format, { skeletonOnly: true, resourceDir: dirname(path),
           ...(armaturePath ? { bobjArmature: readFileSync(armaturePath) } : {}) })
-        const asset = { bytes: input, scene }
+        const asset = { version: key, bytes: input, scene }
         let size = input.byteLength
         scene.traverse((node) => {
           size += 1024 + node.name.length * 2 + JSON.stringify(node.userData).length * 2
@@ -80,6 +80,6 @@ export class ParsedAssetCache {
     // pruneToMappedRig replaces this array and clones quaternion tracks before editing; adapters clone their own tracks.
     const scene = asset.scene.clone(true)
     scene.animations = [...asset.scene.animations]
-    return { bytes: asset.bytes, scene }
+    return { version: asset.version, bytes: asset.bytes, scene }
   }
 }
