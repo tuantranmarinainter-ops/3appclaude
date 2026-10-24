@@ -245,7 +245,8 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
       await onProgress('bobj', 0, 1)
       const armatureText = readFileSync(DEFAULT_ARMATURE, 'utf8')
       const previewAnimation = result.manifest.actions.find((action) => action.sourceActionIndex === report.roundtrip.primaryAction)?.glbAnimationIndex ?? 0
-      const minecraft = await exportMinecraft20(result.glb, armatureText, { rootTravelMode: options.bobjRoot }, previewAnimation)
+      const minecraft = await exportMinecraft20(result.glb, armatureText, { rootTravelMode: options.bobjRoot, proportionSide: options.adjustments.proportionSide,
+        shoulderWidth: options.adjustments.shoulderWidth, upperArm: options.adjustments.upperArm, forearm: options.adjustments.forearm, legLength: options.adjustments.legLength }, previewAnimation)
       report.minecraft20 = { ...minecraft.report, armature: basename(DEFAULT_ARMATURE) }
       write('.minecraft20.bobj', 'bobj', minecraft.bobj)
       if (options.preview) write('.minecraft20.preview.png', 'bobjPreview', renderContactSheet(minecraft.previewFrames, minecraft.previewParents))

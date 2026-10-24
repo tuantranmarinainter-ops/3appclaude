@@ -164,7 +164,12 @@
               <label class="field adj">Tốc độ <output data-adj-out="speed" data-unit="x"></output>
                 <input type="range" name="adj_speed" min="0.25" max="4" step="0.05" value="1" data-default="1">
               </label>
-              <h4>Xoay khớp (trục local)</h4>
+              <h4>Bàn tay</h4>
+              <label class="field">Mẫu tay <select name="adj_handPose"><option value="original">Gốc</option><option value="open">Duỗi</option><option value="natural">Tự nhiên</option><option value="fist">Nắm đấm</option></select></label>
+              <label class="field">Áp dụng tay <select name="adj_handSide"><option value="both">Cả hai</option><option value="left">Trái</option><option value="right">Phải</option></select></label>
+              <label class="field adj">Độ áp dụng <output data-adj-out="handStrength" data-unit="%"></output><input type="range" name="adj_handStrength" min="0" max="1" step="0.01" value="1" data-default="1"></label>
+              <h4>Xoay khớp</h4>
+              <label class="field">Trục <select id="adjJointAxes"><option value="local">Local</option><option value="world">World</option></select></label>
               <div class="row">
                 <select id="adjJoint" aria-label="Khớp"></select>
                 <input type="number" id="adjJointX" step="1" value="0" aria-label="X°" title="X°">
@@ -172,6 +177,8 @@
                 <input type="number" id="adjJointZ" step="1" value="0" aria-label="Z°" title="Z°">
               </div>
               <small id="adjJointList"></small>
+              <button type="button" id="adjustPreview">Xem thử</button>
+              <label class="inline"><input type="checkbox" id="adjustLive">Tự xem thử khi đổi hiệu chỉnh</label>
               <button type="button" id="adjustReset">Đặt lại hiệu chỉnh</button>
             </fieldset>
             <fieldset>

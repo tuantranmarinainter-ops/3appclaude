@@ -109,7 +109,8 @@ try {
       // BBS FS actions come from the GLB just written, so they carry exactly what App 2 receives.
       const armatureText = readFileSync(minecraftArmature, 'utf8')
       const previewAnimation = result.manifest.actions.find((action) => action.sourceActionIndex === report.roundtrip.primaryAction)?.glbAnimationIndex ?? 0
-      const minecraft = await exportMinecraft20(result.glb, armatureText, { rootTravelMode: values['bobj-root'] as 'inPlace' | 'follow' }, previewAnimation)
+      const minecraft = await exportMinecraft20(result.glb, armatureText, { rootTravelMode: values['bobj-root'] as 'inPlace' | 'follow', proportionSide: adjustments.proportionSide,
+        shoulderWidth: adjustments.shoulderWidth, upperArm: adjustments.upperArm, forearm: adjustments.forearm, legLength: adjustments.legLength }, previewAnimation)
       report.minecraft20 = { ...minecraft.report, armature: basename(minecraftArmature) }
       written.push(write('.minecraft20.bobj', minecraft.bobj))
       if (values.preview) written.push(write('.minecraft20.preview.png', renderContactSheet(minecraft.previewFrames, minecraft.previewParents)))

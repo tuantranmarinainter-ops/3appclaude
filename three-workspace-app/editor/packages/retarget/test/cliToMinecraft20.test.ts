@@ -154,6 +154,16 @@ test('hands (`low_*_arm.end`) are locked to the forearm like the original emotes
   assert.ok(hand.elements.every((value, index) => Math.abs(value - restHand.elements[index]!) < 1e-6), 'hand back to its rest relation with the forearm')
 })
 
+test('locking Minecraft wrists retains adjusted forearm lengths', () => {
+  const rest = new Map(armature.bones.map((bone) => [bone.name, new Matrix4().fromArray([...bone.restWorld])]))
+  const parent = rest.get('low_left_arm')!, hand = rest.get('low_left_arm.end')!
+  const local = parent.clone().invert().multiply(hand), original = new Vector3().setFromMatrixPosition(local)
+  local.setPosition(original.clone().multiplyScalar(1.2)); rest.set('low_left_arm.end', parent.clone().multiply(local))
+  const fixed = untwistLimbs(armature, rest)
+  const actual = new Vector3().setFromMatrixPosition(fixed.worlds.get('low_left_arm.end')!).distanceTo(new Vector3().setFromMatrixPosition(fixed.worlds.get('low_left_arm')!))
+  assert.ok(Math.abs(actual - original.length() * 1.2) < 1e-9)
+})
+
 test('exported .bobj keeps forearm/shin twist low (no wedge-shaped Steve arms) and reports before/after', async () => {
   const exported = await exportMinecraft20(await mixamoFromMinecraft(['emote_floss', 'running', 'emote_dab']), armatureText)
   assert.equal(exported.report.status, 'PASS')
