@@ -6,7 +6,7 @@ import {
   type MotionPackMetadata, type NormalizedManifest,
 } from './types'
 import { translateActionName } from './actionNames'
-import { ensureRegularFile, initializeLibrary, readJsonFile, safeChild, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
+import { ensureRegularFile, initializeLibrary, readJsonFile, readPackMetadata, safeChild, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[a-f0-9]{64}$/i
@@ -201,6 +201,8 @@ export interface ImportPackResult {
   actions: number
   created: boolean
   metadata: MotionPackMetadata
+  /** Run Action uuids dropped because another pack already holds them (an Action uuid lives in one pack only). */
+  reusedActionUuids?: string[]
 }
 
 function readNormalizedInput(directory: string) {
@@ -299,6 +301,14 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
       if (existing.glbSha256 !== input.glbSha256) throw new Error(`Pack id collision at ${packId}`)
       return { packId, rig: existing.rig, actions: existing.actions.length, created: false, metadata: existing }
     }
+    const held = new Map<string, MotionPackMetadata>()
+    for (const pack of readPackMetadata(options.libraryRoot).packs) for (const action of pack.actions) held.set(action.uuid.toLowerCase(), pack)
+    const reusedActionUuids = actions.filter((action) => held.has(action.uuid.toLowerCase())).map((action) => action.uuid)
+    if (reusedActionUuids.length) {
+      const kept = actions.filter((action) => !held.has(action.uuid.toLowerCase()))
+      if (!kept.length) { const owner = held.get(actions[0]!.uuid.toLowerCase())!; return { packId: owner.packId, rig: owner.rig, actions: 0, created: false, metadata: owner, reusedActionUuids } }
+      actions.splice(0, actions.length, ...kept); metadata.actions = actions
+    }
     const staging = safeChild(options.libraryRoot, 'packs', `.${packId}.${process.pid}.${Date.now()}.tmp`)
     mkdirSync(staging)
     try {
@@ -316,7 +326,7 @@ export function importNormalizedPack(options: ImportPackOptions): ImportPackResu
       registerRigUnlocked(options.libraryRoot, rig, inspection.bones)
       renameSync(staging, destination)
       writeIndex(options.libraryRoot)
-      return { packId, rig, actions: actions.length, created: true, metadata }
+      return { packId, rig, actions: actions.length, created: true, metadata, ...(reusedActionUuids.length ? { reusedActionUuids } : {}) }
     } catch (error) { rmSync(staging, { recursive: true, force: true }); throw error }
   })
 }

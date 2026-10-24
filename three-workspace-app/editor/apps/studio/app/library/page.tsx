@@ -50,7 +50,7 @@ export default function LibraryPage() {
     if (!warehouse && !characterId) { setActions([]); return }
     const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
     const body = await json(`/api/library?${params}`)
-    let rows = (body.actions as Action[]).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
+    let rows = (body.actions as Action[]).filter((action, index, all) => all.findIndex(other => other.uuid === action.uuid) === index).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
     if (category) rows = rows.filter(action => action.category === category)
     if (sourceFilter) rows = rows.filter(action => sourceFilter === 'mixamo' ? /mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) : !/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`))
     if (inPlaceOnly) rows = rows.filter(action => action.inPlace)

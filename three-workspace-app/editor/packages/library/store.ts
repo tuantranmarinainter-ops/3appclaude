@@ -127,16 +127,30 @@ export function initializeLibrary(root: string): LibraryConfig {
   return config
 }
 
-export function writeIndex(root: string): LibraryIndex {
+/** Pack metadata on disk, oldest first. A uuid carried by several packs (old data) is kept only in the earliest pack; the rest are reported in `warnings`. */
+export function readPackMetadata(root: string): { packs: MotionPackMetadata[]; warnings: string[] } {
   const packsRoot = safeChild(root, 'packs')
-  const packs: MotionPackMetadata[] = []
+  const found: MotionPackMetadata[] = []
   for (const entry of readdirSync(packsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^[a-f0-9]{16}$/.test(entry.name)) continue
     const metaPath = safeChild(packsRoot, entry.name, 'meta.json')
     if (!existsSync(metaPath)) continue
     const meta = readJsonFile<MotionPackMetadata>(metaPath)
-    if (meta.kind === 'motion-pack' && meta.packId === entry.name) packs.push(meta)
+    if (meta.kind === 'motion-pack' && meta.packId === entry.name) found.push(meta)
   }
+  found.sort((a, b) => a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.packId < b.packId ? -1 : a.packId > b.packId ? 1 : 0)
+  const owner = new Map<string, string>(), warnings: string[] = []
+  const packs = found.map((pack) => ({ ...pack, actions: pack.actions.filter((action) => {
+    const key = action.uuid.toLowerCase(), kept = owner.get(key)
+    if (kept === undefined) { owner.set(key, pack.packId); return true }
+    warnings.push(`Duplicate Action uuid ${action.uuid} in pack ${pack.packId} ignored; kept pack ${kept}`)
+    return false
+  }) }))
+  return { packs, warnings }
+}
+
+export function writeIndex(root: string): LibraryIndex {
+  const { packs, warnings } = readPackMetadata(root)
   const characters = readCharacters(root)
   const index: LibraryIndex = {
     version: 1,
@@ -145,6 +159,7 @@ export function writeIndex(root: string): LibraryIndex {
     actions: packs.flatMap((pack) => pack.actions.map((action) => ({ ...action, packId: pack.packId, rig: pack.rig,
       createdAt: pack.createdAt, licenseId: pack.license.id, licenseSource: pack.license.source, boundCharacter: pack.boundCharacter }))),
     characters: characters.map((character) => ({ ...character, actionCount: character.actions?.length ?? packs.reduce((count, pack) => count + (pack.boundCharacter === character.charId ? pack.actions.length : 0), 0) })),
+    ...(warnings.length ? { warnings } : {}),
   }
   writeJsonAtomic(safeChild(root, 'index.json'), index)
   return index

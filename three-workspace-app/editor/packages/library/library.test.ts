@@ -6,17 +6,18 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MIXAMO65_BONE_PARENTS } from '../retarget/src/mixamo65'
 import { callLibraryTool } from './mcp'
-import { getAction, importPack, listLibraryCharacters, registerLibraryCharacter, searchLibrary, setActionMetadata, setActionPreview } from './library'
+import { getAction, importPack, listLibraryCharacters, rebuildLibraryIndex, registerLibraryCharacter, searchLibrary, setActionMetadata, setActionPreview } from './library'
+import { readdirSync } from 'node:fs'
 import { defaultLibraryPath, resolveLibraryPath, safeChild, validateRelativeAssetPath } from './store'
 
 const firstUuid = 'df7ac5ff-0000-4000-8000-000000000001'
 const secondUuid = 'df7ac5ff-0000-4000-8000-000000000002'
 
-function makeGlb(): Buffer {
+function makeGlb(nonce = ''): Buffer {
   const byName = new Map(MIXAMO65_BONE_PARENTS.map(([name], index) => [name, index]))
   const nodes = MIXAMO65_BONE_PARENTS.map(([name, parent]) => ({ name, ...(parent ? {} : { translation: [0, 1, 0] }), children: [] as number[] }))
   for (const [name, parent] of MIXAMO65_BONE_PARENTS) if (parent) nodes[byName.get(parent)!]!.children.push(byName.get(name)!)
-  const json = Buffer.from(JSON.stringify({ asset: { version: '2.0' }, nodes, skins: [{ joints: nodes.map((_, index) => index) }] }))
+  const json = Buffer.from(JSON.stringify({ asset: { version: '2.0', ...(nonce ? { extras: { nonce } } : {}) }, nodes, skins: [{ joints: nodes.map((_, index) => index) }] }))
   const padded = Buffer.concat([json, Buffer.alloc((4 - json.length % 4) % 4, 0x20)])
   const header = Buffer.alloc(20)
   header.write('glTF', 0, 'ascii'); header.writeUInt32LE(2, 4); header.writeUInt32LE(20 + padded.length, 8)
@@ -125,4 +126,53 @@ test('rig topology comparison ignores joint order but not parents', async () => 
   assert.equal(sameRigTopology(a, [a[2]!, a[0]!, a[1]!]), true)
   assert.equal(sameRigTopology(a, [a[0]!, a[1]!, { name: 'LeftUpLeg', parent: 'Spine' }]), false)
   assert.equal(sameRigTopology(a, a.slice(0, 2)), false)
+})
+
+function makeRun(root: string, name: string, uuids: string[], nonce: string): string {
+  const directory = join(root, name), glb = makeGlb(nonce)
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(join(directory, 'run.glb'), glb)
+  writeFileSync(join(directory, 'run.manifest.json'), JSON.stringify({
+    version: '1.0.0', glbSha256: createHash('sha256').update(glb).digest('hex'),
+    actions: uuids.map((uuid, index) => ({ uuid, name: `Action ${uuid.slice(-1)}`, durationSeconds: 1, fps: 30, glbAnimationIndex: index })),
+    source: { file: 'soldier.glb', sha256: 'c'.repeat(64) }, target: { file: 'mixamo65.glb', sha256: 'b'.repeat(64) }, rootPolicy: { mode: 'preserve' },
+  }))
+  writeFileSync(join(directory, 'run.report.json'), JSON.stringify({ status: 'PASS' }))
+  return directory
+}
+
+test('an Action uuid lives in one pack: a second run of the same source keeps only new Actions', (t) => {
+  const temporary = mkdtempSync(join(tmpdir(), 'library-dup-'))
+  t.after(() => rmSync(temporary, { recursive: true, force: true }))
+  const root = join(temporary, 'library')
+  const [a, b] = [firstUuid, secondUuid]
+  const first = importPack({ root, sourceDirectory: makeRun(temporary, 'r1', [a], 'one') })
+  assert.equal(first.created, true)
+  const again = importPack({ root, sourceDirectory: makeRun(temporary, 'r2', [a], 'two') })
+  assert.deepEqual([again.created, again.packId, again.actions, again.reusedActionUuids], [false, first.packId, 0, [a]])
+  assert.equal(again.metadata.actions[0]!.uuid, a)
+  const partial = importPack({ root, sourceDirectory: makeRun(temporary, 'r3', [a, b], 'three') })
+  assert.equal(partial.created, true)
+  assert.deepEqual(partial.metadata.actions.map((x) => [x.uuid, x.glbAnimationIndex]), [[b, 1]])
+  assert.deepEqual(partial.reusedActionUuids, [a])
+  assert.equal(getAction({ root, actionUuid: a }).packId, first.packId)
+  const uuids = searchLibrary({ root, limit: 100 }).items.map((x) => x.uuid)
+  assert.deepEqual([...uuids].sort(), [a, b])
+  assert.equal(readdirSync(join(root, 'packs')).filter((n) => /^[a-f0-9]{16}$/.test(n)).length, 2)
+})
+
+test('old data with one uuid in two packs rebuilds an index with unique uuids and a warning', (t) => {
+  const temporary = mkdtempSync(join(tmpdir(), 'library-old-'))
+  t.after(() => rmSync(temporary, { recursive: true, force: true }))
+  const root = join(temporary, 'library')
+  const first = importPack({ root, sourceDirectory: makeRun(temporary, 'r1', [firstUuid], 'one') })
+  const second = importPack({ root, sourceDirectory: makeRun(temporary, 'r2', [secondUuid], 'two') })
+  // Recreate old duplicated data: the later pack also claims the first pack's uuid.
+  const metaPath = join(root, 'packs', second.packId, 'meta.json'), meta = JSON.parse(readFileSync(metaPath, 'utf8'))
+  meta.actions.push({ ...meta.actions[0], uuid: firstUuid, glbAnimationIndex: 5 }); meta.createdAt = '2999-01-01T00:00:00.000Z'
+  writeFileSync(metaPath, JSON.stringify(meta))
+  const index = rebuildLibraryIndex({ root })
+  assert.deepEqual(index.actions.map((x) => x.uuid).sort(), [firstUuid, secondUuid])
+  assert.equal(index.actions.find((x) => x.uuid === firstUuid)!.packId, first.packId)
+  assert.equal(index.warnings?.length, 1)
 })

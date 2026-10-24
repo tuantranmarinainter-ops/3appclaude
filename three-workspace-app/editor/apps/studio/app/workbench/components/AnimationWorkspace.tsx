@@ -152,7 +152,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
       const needle = libraryQuery.trim().toLowerCase()
       const owned = (ownBody.actions ?? []).filter((action) => !needle || `${action.name} ${action.nameVi ?? ''}`.toLowerCase().includes(needle)).map((action) => ({ ...action, tags: action.tags ?? [], own: true }))
       const seen = new Set(owned.map((action) => action.uuid))
-      setLibraryActions([...owned, ...(body.actions ?? []).filter((action) => !seen.has(action.uuid))]); setLibrarySelected([]); setLibraryOpen(true)
+      setLibraryActions([...owned, ...(body.actions ?? [])].filter((action, index, all) => all.findIndex((other) => other.uuid === action.uuid) === index && (index < owned.length || !seen.has(action.uuid)))); setLibrarySelected([]); setLibraryOpen(true)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
