@@ -21,11 +21,18 @@ export function usePanelNavigation(workspace: Workspace, setWorkspace: (workspac
           const state = api.useStore.getState()
           if (state.pendingKeyframe) throw new Error('Hãy xác nhận hoặc hủy keyframe đang chỉnh trước khi chuyển workspace.')
           if (state.playing) state.togglePlay()
-          await api.session.flushPendingUserWrites()
           if (state.ready) {
-            const error = await api.session.save({ captureCover: false })
-            if (error) throw new Error(error)
-            resume.current = { frame: state.frame, nodeId: state.selection?.kind === 'node' ? state.selection.nodeId : null }
+            await api.session.flushPendingUserWrites()
+            const current = api.useStore.getState()
+            if (current.ready) {
+              if (current.dirty) {
+                const error = await api.session.save({ captureCover: false })
+                if (error) throw new Error(error)
+              }
+              resume.current = { frame: current.frame, nodeId: current.selection?.kind === 'node' ? current.selection.nodeId : null }
+            }
+          } else {
+            resume.current = null
           }
         }
         setApi(null)

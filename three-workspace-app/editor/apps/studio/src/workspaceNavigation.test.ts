@@ -50,6 +50,11 @@ test('unavailable features explain what input is missing and never disappear', (
   assert.equal(featureUnavailable(feature('1.5.1'), project, 'rig', 'vi'), null)
   assert.equal(featureUnavailable(feature('1.2.2'), project, 'prop', 'en'), null)
   assert.match(featureUnavailable(feature('1.2.2'), project, 'deleted', 'en')!, /Select an object/)
-  assert.match(featureUnavailable(feature('1.7.1'), project, null, 'en')!, /not implemented/)
+  assert.equal(featureUnavailable(feature('1.7.1'), project, null, 'en'), null)
   assert.match(featureUnavailable(feature('2.1'), project, null, 'en')!, /Documentation/)
+})
+
+test('animation navigation focuses the iframe host without waiting for the unmounted scene editor', () => {
+  assert.equal(FEATURE_PANELS['animation-motion'].editorPanel, undefined)
+  assert.equal(FEATURE_PANELS['animation-motion'].selector, '.wb-animation-creation')
 })

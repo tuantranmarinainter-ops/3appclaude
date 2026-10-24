@@ -20,6 +20,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   const [motionId, setMotionId] = useState('')
   const [clipId, setClipId] = useState('')
   const [opened, setOpened] = useState(false)
+  const [bridgeReady, setBridgeReady] = useState(false)
   const [editorDirty, setEditorDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('Chọn nhân vật rồi tạo hoặc mở animation.')
@@ -40,7 +41,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
-    if (event.data.type === 'bridge-ready') { setStatus('Animation Studio 1.32.0 đang khởi động…'); return }
+    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.32.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
     if (event.data.type === 'dirty') { const dirty = event.data.dirty === true; setEditorDirty(dirty); onEditorDirty(dirty); return }
     const item = pending.current.get(event.data.requestId)
     if (!item) return
@@ -59,7 +60,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
 
-  function request(type: 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport', value?: unknown): Promise<BridgeReply['value']> {
+  function request(type: 'ping' | 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport', value?: unknown): Promise<BridgeReply['value']> {
     const target = frame.current?.contentWindow
     if (!target) return Promise.reject(new Error('Editor chưa mở.'))
     const requestId = crypto.randomUUID()
@@ -207,10 +208,10 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         <option value="">Tạo animation mới</option>
         {nativeMotions.map((motion) => <option key={motion.id} value={motion.id}>{project.assets[motion.assetId]?.displayName ?? motion.id}</option>)}
       </select></label>
-      <button type="button" disabled={!characterId || busy || editorDirty} onClick={() => void openEditor(motionId || undefined)}>{motionId ? 'Chỉnh animation' : 'Tạo animation'}</button>
+      <button type="button" disabled={!bridgeReady || !characterId || busy || editorDirty} onClick={() => void openEditor(motionId || undefined)}>{motionId ? 'Chỉnh animation' : 'Tạo animation'}</button>
       <button type="button" className="wb-host-primary" disabled={busy || !characterId || !opened} onClick={() => void saveMotion()}>Lưu vào project</button>
       {revisionConflict && editorDirty && <button type="button" disabled={busy} onClick={() => void saveMotion(true)}>Lưu thành animation mới</button>}
-      {editorDirty && <button type="button" disabled={busy} onClick={() => { frame.current?.contentWindow?.location.reload(); setOpened(false); setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
+      {editorDirty && <button type="button" disabled={busy} onClick={() => { setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
     </header>
     <header className="wb-animation-creation-toolbar" aria-label="Shot từ cảnh">
       <label>Camera<select value={cameraId} onChange={(event) => setCameraId(event.target.value)} disabled={busy || !!shotId || !cameras.length}>
@@ -218,7 +219,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       </select></label>
       <label>Từ frame<input type="number" value={shotRange[0]} min={timeline.frameStart} max={shotRange[1]} disabled={busy || !!shotId} onChange={(event) => setShotRange([Number(event.target.value), shotRange[1]])} /></label>
       <label>Đến frame<input type="number" value={shotRange[1]} min={shotRange[0]} max={timeline.frameEnd} disabled={busy || !!shotId} onChange={(event) => setShotRange([shotRange[0], Number(event.target.value)])} /></label>
-      <button type="button" disabled={busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
+      <button type="button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
       <label><input type="checkbox" checked={withBobj} disabled={busy} onChange={(event) => setWithBobj(event.target.checked)} />Kèm .bobj</label>
       <button type="button" className="wb-host-primary" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
     </header>
@@ -226,8 +227,10 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     <p className="wb-animation-creation-status" role="status">{status}</p>
     <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.32.0" src={FRAME_URL} onLoad={() => {
       const doc = frame.current?.contentDocument
-      if (!doc || doc.querySelector('[data-bbs-host-bridge]')) return
-      const script = doc.createElement('script'); script.src = BRIDGE_URL; script.dataset.bbsHostBridge = 'true'; doc.body.append(script)
+      if (!doc) return
+      const hello = () => { void request('ping').then(() => setBridgeReady(true)).catch((cause: Error) => setError(cause.message)) }
+      if (doc.querySelector('[data-bbs-host-bridge]')) { hello(); return }
+      const script = doc.createElement('script'); script.src = BRIDGE_URL; script.dataset.bbsHostBridge = 'true'; script.onload = hello; doc.body.append(script)
     }} />
   </section>
 }
