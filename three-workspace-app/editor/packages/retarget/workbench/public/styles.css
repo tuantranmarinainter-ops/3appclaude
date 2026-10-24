@@ -238,3 +238,10 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .joint-settings-body label { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .joint-settings-body input[type=range] { width: 120px; }
 #mapRows tr.active-mapping { box-shadow: inset 3px 0 #ff793f; background: #ff793f14; }
+
+.bone-chooser { display: flex; align-items: stretch; gap: 0; }
+.bone-chooser input { min-width: 0; flex: 1; }
+.bone-chooser button { flex: 0 0 32px; width: 32px; padding: 4px; }
+.bone-options { position: fixed; z-index: 10000; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; background: #202633; color: #edf1f7; border: 1px solid #69758a; border-radius: 6px; box-shadow: 0 6px 24px #0008; }
+.bone-options [role="option"], .bone-options [role="status"] { padding: 7px 10px; overflow-wrap: anywhere; cursor: pointer; }
+.bone-options [role="option"]:hover, .bone-options [aria-selected="true"] { background: #365477; }
