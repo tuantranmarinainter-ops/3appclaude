@@ -34,17 +34,23 @@ test('migration gives old-schema characters a base model without touching their 
     writeFileSync(join(orig, 'model.glb'), 'mixamo65 view')
     writeFileSync(join(orig, 'original', 'model.bbs.bobj'), armature.replace(/^arm_name.*$/m, '') + '\no verity_body\n')
     writeFileSync(join(orig, 'original', 'textures', 'verity_body', 'default.png'), PNG)
+    // Same original model as verity-go, different body texture (Gỗ Xưa / Tiểu Nhị).
+    const twin = character(root, 'verity-tieu', 'mixamo65')
+    mkdirSync(join(twin, 'original', 'textures', 'verity_body'), { recursive: true })
+    writeFileSync(join(twin, 'model.glb'), 'mixamo65 view')
+    writeFileSync(join(twin, 'original', 'model.bbs.bobj'), readFileSync(join(orig, 'original', 'model.bbs.bobj')))
+    writeFileSync(join(twin, 'original', 'textures', 'verity_body', 'default.png'), Buffer.concat([PNG, Buffer.from('tieu')]))
     const bare = character(root, 'bare', 'mixamo65'); writeFileSync(join(bare, 'model.glb'), 'x')
 
     const before = Object.fromEntries(['characters/mc-hero', 'characters/mc-den', 'characters/verity-go'].flatMap((dir) => files(join(root, dir)).filter((f) => f !== 'meta.json').map((f) => [`${dir}/${f}`, sha(join(root, dir, f))])))
     const originalSha = sha(join(orig, 'original', 'model.bbs.bobj'))
 
     const dry = await migrateLibraryBaseModels({ root, dryRun: true })
-    assert.deepEqual(dry.map((item) => [item.charId, item.status]).sort(), [['bare', 'unsupported'], ['mc-den', 'would-migrate'], ['mc-hero', 'would-migrate'], ['verity-go', 'would-migrate']])
+    assert.deepEqual(dry.map((item) => [item.charId, item.status]).sort(), [['bare', 'unsupported'], ['mc-den', 'would-migrate'], ['mc-hero', 'would-migrate'], ['verity-go', 'would-migrate'], ['verity-tieu', 'would-migrate']])
     assert.deepEqual(readdirSync(join(root, 'models')), [])
 
     const results = await migrateLibraryBaseModels({ root })
-    assert.deepEqual(results.map((item) => item.status).sort(), ['migrated', 'migrated', 'migrated', 'unsupported'])
+    assert.deepEqual(results.map((item) => item.status).sort(), ['migrated', 'migrated', 'migrated', 'migrated', 'unsupported'])
 
     const hero = resolveCharacter({ root, charId: 'mc-hero' }), den = resolveCharacter({ root, charId: 'mc-den' })
     assert.equal(hero.baseModel?.format, 'bobj'); assert.equal(hero.baseModel?.rig, 'minecraft20')
@@ -61,6 +67,10 @@ test('migration gives old-schema characters a base model without touching their 
     assert.equal(sha(go.modelPath), originalSha)
     assert.equal(sha(join(orig, 'original', 'model.bbs.bobj')), originalSha)
     assert.ok(go.textures.verity_body)
+    const tieu = resolveCharacter({ root, charId: 'verity-tieu' })
+    assert.equal(tieu.baseModel?.modelId, go.baseModel?.modelId, 'identical original models share one base model')
+    assert.equal(readFileSync(go.textures.verity_body!).toString('latin1'), PNG.toString('latin1'))
+    assert.equal(readFileSync(tieu.textures.verity_body!).toString('latin1'), Buffer.concat([PNG, Buffer.from('tieu')]).toString('latin1'), 'each wears its own body texture')
 
     const after = Object.fromEntries(Object.keys(before).map((key) => [key, sha(join(root, key))]))
     for (const [key, value] of Object.entries(before)) assert.equal(after[key], value, key)
@@ -68,7 +78,7 @@ test('migration gives old-schema characters a base model without touching their 
 
     const snapshot = JSON.stringify(files(root).sort()) + ['mc-hero', 'mc-den', 'verity-go'].map((id) => readFileSync(join(root, 'characters', id, 'meta.json'), 'utf8')).join()
     const again = await migrateLibraryBaseModels({ root })
-    assert.deepEqual(again.map((item) => item.status).sort(), ['already', 'already', 'already', 'unsupported'])
+    assert.deepEqual(again.map((item) => item.status).sort(), ['already', 'already', 'already', 'already', 'unsupported'])
     assert.equal(JSON.stringify(files(root).sort()) + ['mc-hero', 'mc-den', 'verity-go'].map((id) => readFileSync(join(root, 'characters', id, 'meta.json'), 'utf8')).join(), snapshot)
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
