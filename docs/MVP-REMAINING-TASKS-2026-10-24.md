@@ -143,3 +143,9 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   khung **nhân vật đích** sáng điểm khớp đó; người dùng nhấn giữ chuột trên điểm của nhân vật đích, kéo sang điểm khớp ở khung
   **nhân vật nguồn**: hiện **sợi dây nối** theo con trỏ; thả chuột trên điểm nguồn = gán mapping (theo luật C13 không trùng),
   sợi dây biến mất; thả ra ngoài = huỷ. Điểm nguồn dưới con trỏ sáng lên kèm tên xương (C10).
+- **C18 — App 1: dấu sao ghim animation dành riêng cho nhân vật đích** (người dùng 2026-10-24). Trong cột "Duyệt animation" (và bảng
+  lô bước 1), cạnh ô tích Giữ/Bỏ thêm **nút sao ☆/★** cho từng animation: đánh dấu những animation người dùng ghim riêng, sẽ dùng cho
+  nhân vật đích. Sao độc lập với Giữ/Bỏ (bấm sao thì tự Giữ); có bộ lọc "Chỉ ★" và đếm "★ N"; phím tắt (vd S).
+  Khi Chuyển: Nháp tạo cho nhân vật đích từ animation có sao được đánh **yêu thích** (`favorite: true`, trường F1 của thư viện) và
+  hiện ★ trong bộ của nhân vật ở App 5 / "Lấy từ kho…" App 2 (lên đầu danh sách). Sao gắn với từng nhân vật đích (cùng animation có
+  thể ★ cho Gỗ Xưa nhưng không ★ cho Đen) — chuyển cho nhiều nhân vật một lượt thì áp sao cho tất cả nhân vật được chọn.
