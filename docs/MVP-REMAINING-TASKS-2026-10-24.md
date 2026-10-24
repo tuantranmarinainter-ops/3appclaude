@@ -149,3 +149,8 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   Khi Chuyển: Nháp tạo cho nhân vật đích từ animation có sao được đánh **yêu thích** (`favorite: true`, trường F1 của thư viện) và
   hiện ★ trong bộ của nhân vật ở App 5 / "Lấy từ kho…" App 2 (lên đầu danh sách). Sao gắn với từng nhân vật đích (cùng animation có
   thể ★ cho Gỗ Xưa nhưng không ★ cho Đen) — chuyển cho nhiều nhân vật một lượt thì áp sao cho tất cả nhân vật được chọn.
+- **C19 — App 1 tự dọn dữ liệu tạm** (2026-10-24, ổ C đầy). Mỗi lần khởi động Workbench tạo một thư mục phiên mới trong
+  `%TEMP%\w01-workbench` (file tải lên + kết quả chạy) và không bao giờ xoá: đã dồn 66 phiên cũ, phiên đang dùng một mình 11,4 GB.
+  Yêu cầu: khi khởi động, xoá phiên cũ hơn N ngày/không còn server nào dùng (khoá theo PID); cho đặt thư mục tạm bằng biến môi trường
+  (vd `W01_WORKBENCH_TMP=S:\Claude\tmp`) để không ghi lên ổ C; trong phiên, xoá lượt chạy xem thử cũ khi có lượt mới cùng dòng; hiện
+  dung lượng phiên + nút "Dọn dữ liệu tạm" trong giao diện. Nhắc Codex đặt thư mục kết quả chạy thử (outputs/QA) trên ổ S.
