@@ -21,6 +21,9 @@ mkdirSync(targetDir, { recursive: false })
 for (const name of ['assets', 'originals']) cpSync(path.join(seedDir, name), path.join(targetDir, name), { recursive: true })
 const cloned = JSON.parse(JSON.stringify(seed).replaceAll(seed.projectId, projectId))
 cloned.revision = 0
+cloned.motions = {}
+cloned.bindings = {}
+cloned.scene.content.timeline.animation.motionClips = []
 writeFileSync(path.join(targetDir, 'project.json'), JSON.stringify(cloned, null, 2) + '\n')
 const evidence = process.env.C1_EVIDENCE_DIR ?? fileURLToPath(new URL('../../../../../qa-c1/evidence', import.meta.url))
 mkdirSync(evidence, { recursive: true })
