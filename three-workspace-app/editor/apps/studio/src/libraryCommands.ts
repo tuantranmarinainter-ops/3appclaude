@@ -16,9 +16,10 @@ import {
   type CharacterMetadata,
   type RequiredAction,
 } from '../../../packages/library/index'
-import { executeUnifiedCommand } from './unifiedProjectStore'
+import { executeUnifiedCommand, readUnifiedProject } from './unifiedProjectStore'
 import { stageAssetUpload } from './unifiedAssetFiles'
 import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction } from './libraryModels'
+import { libraryCharacterBoundingBoxWidth, nextLibraryCharacterX } from './libraryCharacterSpacing'
 
 export type LibraryTextureRef = {
   object: string
@@ -104,6 +105,7 @@ export function libraryCoverage() { return coverageMatrix() }
 export async function addLibraryCharacterToProject(input: { projectId: string; expectedRevision: number; charId: string }) {
   const character = listLibraryCharacters().find((item) => item.charId === input.charId)
   if (!character) throw new Error('Library character was not found')
+  const project = await readUnifiedProject(input.projectId)
   const resolved = resolveCharacter(character.charId)
   if (!resolved.baseModel) throw new Error('Library character has no base model')
   if (character.defaultAction && resolved.baseModel.format === 'bobj' && ['verity', 'minecraft20'].includes(resolved.baseModel.rig)) {
@@ -112,6 +114,10 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
     await libraryNativeAction(character.charId, path.join(path.dirname(action.glbPath), resolved.baseModel.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj'))
   }
   const bytes = await libraryBaseGlb(character.charId)
+  const positionX = nextLibraryCharacterX(
+    project.scene.content.nodes.filter((node) => node.type === 'character').map((node) => node.transform.position.x),
+    libraryCharacterBoundingBoxWidth(bytes),
+  )
   const preview = await libraryCharacterModel(character.charId)
   const staged = await stageAssetUpload(`${resolved.baseModel.modelId}.glb`, new ReadableStream<Uint8Array>({
     start(controller) { controller.enqueue(bytes); controller.close() },
@@ -130,7 +136,7 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
     ...(character.defaultAction ? { libraryDefaultAction: character.defaultAction } : {}),
   }
   const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: imported.revision,
-    command: 'character.add', args: { assetId, skeletonId, name: character.name, library } })
+    command: 'character.add', args: { assetId, skeletonId, name: character.name, transform: { position: { x: positionX, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, library } })
   const nodeId = String(added.result.nodeId)
   let revision = added.revision
   if (character.defaultAction) {

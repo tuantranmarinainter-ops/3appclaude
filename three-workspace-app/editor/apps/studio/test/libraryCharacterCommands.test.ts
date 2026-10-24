@@ -12,6 +12,7 @@ import { libraryCharacterModel, libraryBaseGlb, unpackLibraryGlb } from '../src/
 import { LocalHostAdapter } from '../src/LocalHostAdapter'
 import { GET } from '../app/api/library/route'
 import { addLibraryCharacterToProject, listLibraryCharacterDetails } from '../src/libraryCommands'
+import { libraryCharacterBoundingBoxWidth, nextLibraryCharacterX } from '../src/libraryCharacterSpacing'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 
 function png(red: number) {
@@ -36,6 +37,12 @@ test.after(() => {
   if (previousLibrary === undefined) delete process.env.W01_LIBRARY; else process.env.W01_LIBRARY = previousLibrary
 })
 
+test('library character spacing uses a 1.2m floor and bbox multiplier', () => {
+  assert.equal(nextLibraryCharacterX([], 0.5), 0)
+  assert.equal(nextLibraryCharacterX([0], 0.5), 1.2)
+  assert.equal(nextLibraryCharacterX([0], 2), 2.5)
+})
+
 test('two library characters reuse one base asset and retain distinct per-node skins', { concurrency: false }, async () => {
   const modelFile = path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
   const registered = registerBaseModel({ name: 'Shared synthetic model', rig: 'mixamo65', modelFile })
@@ -49,8 +56,15 @@ test('two library characters reuse one base asset and retain distinct per-node s
   const second = createCharacter({ charId: 'shared-blue', name: 'Shared Blue', baseModelId: registered.modelId, skinDir: skins[1] })
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Character library scene', scene: makeEmptyDraft('Character library scene', 30, 180) } })
   const a = await addLibraryCharacterToProject({ projectId: created.projectId, expectedRevision: created.revision, charId: first.charId })
+  const afterFirst = await readUnifiedProject(created.projectId)
+  const firstNodeBeforeSecond = structuredClone(afterFirst.scene.content.nodes.find((node) => node.id === a.nodeId)!.transform)
   const b = await addLibraryCharacterToProject({ projectId: created.projectId, expectedRevision: a.revision, charId: second.charId })
   const project = await readUnifiedProject(created.projectId)
+  const firstNode = project.scene.content.nodes.find((node) => node.id === a.nodeId)!
+  const secondNode = project.scene.content.nodes.find((node) => node.id === b.nodeId)!
+  const width = libraryCharacterBoundingBoxWidth(readFileSync(modelFile))
+  assert.deepEqual(firstNode.transform, firstNodeBeforeSecond, 'adding a character does not move existing characters')
+  assert.equal(secondNode.transform.position.x - firstNode.transform.position.x, Math.max(1.2, 1.25 * width))
   assert.equal(Object.values(project.assets).filter(asset => asset.kind === 'model').length, 1)
   assert.equal(a.assetId, b.assetId)
   const nodes = project.scene.content.nodes.filter(node => node.metadata?.libraryCharacterId)
