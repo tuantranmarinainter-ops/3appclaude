@@ -6,6 +6,7 @@ import { universalFramesToGlb } from './universalGlb'
 import { estimateUniversalBakeCost } from './universalBake'
 import type { UniversalBakeFrame } from './universalBake'
 import { adjustGround, type GroundMode } from './groundAdjust'
+import { adjustFrames, type AdjustmentSettings } from './adjustments'
 import { applyFootDirection, planFootDirection } from './footDirection'
 import { createNormalizationMetrics } from './normalizationMetrics'
 import type { UniversalCalibrationRuntime } from './universalCalibration'
@@ -24,6 +25,8 @@ export interface NormalizeAnimationInput {
   /** Vertical foot-floor fix (default 'off' here; the CLI/Workbench pass their own default). */
   footLock?: FootLockMode
   groundMode?: GroundMode
+  /** Mixamo-style body adjustments applied to the solved frames before the ground fix (default: none). */
+  adjustments?: AdjustmentSettings
   /** Feet follow the source ankle→ball direction instead of its rotation delta (see footDirection.ts). */
   footDirection?: boolean
   rootTranslationPolicy?: 'preserve' | 'in-place'
@@ -63,14 +66,15 @@ export async function normalizeAnimation(input: NormalizeAnimationInput, signal?
       frames.push({ frame: index, timeSeconds, bones })
       if (index % 32 === 31) await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }
+    const adjustments = input.adjustments ? adjustFrames(target.rig, frames, input.adjustments) : undefined
     const ground = adjustGround(target.rig, frames, input.groundMode ?? 'off')
     const footLock = input.footLock === 'on' ? lockFeet(target.rig, frames) : undefined
     signal?.throwIfAborted()
     const bytes = universalFramesToGlb(target.rig, target.joints, frames, action.name)
     return { bytes, report: { ...report, sourceFingerprint: source.rig.fingerprint, targetFingerprint: target.rig.fingerprint,
-      actionIndex: action.index, actionName: action.name, durationSeconds: duration, sampleFps: input.fps,
+      actionIndex: action.index, actionName: action.name, durationSeconds: adjustments?.applied ? frames[frames.length - 1]!.timeSeconds - frames[0]!.timeSeconds : duration, sampleFps: input.fps,
       sampleCount: frames.length, sourceJointCount: source.joints.length, targetJointCount: target.joints.length,
-      resourceCost, ground, ...(footLock ? { footLock } : {}),
+      resourceCost, ground, ...(adjustments ? { adjustments } : {}), ...(footLock ? { footLock } : {}),
       excludedSourceBones: input.excludedSourceBones ?? [], metrics: metrics.report(),
       rootTranslationScale: input.rootTranslationScale ?? 1, rootTranslationPolicy: input.rootTranslationPolicy ?? 'preserve', outputMode: 'animation-only' as const } }
   } finally { source.dispose(); target?.dispose() }

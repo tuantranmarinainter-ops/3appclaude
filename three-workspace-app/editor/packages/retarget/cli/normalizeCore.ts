@@ -3,6 +3,7 @@ import { AnimationClip, AnimationMixer, Euler, LoopOnce, Matrix4, PropertyBindin
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { normalizeAnimation } from '../src/normalizeAnimation.ts'
 import type { GroundMode } from '../src/groundAdjust.ts'
+import { DEFAULT_ADJUSTMENTS, resolveAdjustments, type AdjustmentSettings } from '../src/adjustments.ts'
 import { createThreeRigAdapter } from '../src/threeRigAdapter.ts'
 import { buildAutoMapping, buildPresetMapping, canonical, type AutoMapping, type SourceFamily } from './autoMapping.ts'
 import { buildCalibration, type CalibrationMode } from './calibration.ts'
@@ -42,6 +43,8 @@ export interface NormalizeRequest {
   /** Foot-floor fix: off | lift (default) | level | frame. */
   footLock?: 'on' | 'off'
   ground?: GroundMode
+  /** Mixamo-style adjustments (arm/leg spacing, proportions…) on the normalized Mixamo65 animation; absent = identity. */
+  adjustments?: Partial<AdjustmentSettings>
   mappingPreset?: unknown
   /** A/T calibration of limb directions against the target rest (default 'limbs'). */
   calibrate?: CalibrationMode
@@ -353,6 +356,7 @@ export async function runNormalize(request: NormalizeRequest) {
   // One bake per Action; an Action that cannot be baked is skipped and reported (DECISIONS: export with loss, never silent).
   const exported: Array<{ action: (typeof prunedActions)[number]; bytes: Uint8Array; report: Awaited<ReturnType<typeof normalizeAnimation>>['report'] }> = []
   const skippedActions: Array<{ index: number; name: string; code: string; message: string }> = []
+  const adjustments = resolveAdjustments(request.adjustments)
   const bakeList = request.actions ?? prunedActions.map((action) => action.index)
   for (const [position, index] of bakeList.entries()) {
     request.signal?.throwIfAborted()
@@ -364,7 +368,7 @@ export async function runNormalize(request: NormalizeRequest) {
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        range, footLock: request.footLock, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
+        range, footLock: request.footLock, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', adjustments, footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
         calibration: calibration.runtime }, request.signal)
       exported.push({ action: { ...action, durationSeconds: normalized.report.durationSeconds }, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
@@ -495,6 +499,7 @@ export async function runNormalize(request: NormalizeRequest) {
     // Measured on the written GLB; warnings never change status (no foot lock/IK yet).
     quality: summarizeQuality(perAction),
     ...(request.footLock === 'on' ? { footLock: { mode: 'on', perAction: exported.map(item => ({ name: item.action.name, ...item.report.footLock })) } } : {}),
+    adjustments: { ...adjustments, defaults: DEFAULT_ADJUSTMENTS },
     ground: { mode: request.ground ?? 'lift', perAction: exported.map((item) => ({ name: item.action.name, ...item.report.ground })) },
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
     roundtrip, glbSha256, elapsedMs: 0 }

@@ -540,6 +540,11 @@ async function chooseTarget(target) {
 }
 
 // ---------------------------------------------------------------- step 3: inspect
+function adjustmentSummary(adjustments) {
+  const changed = [...ADJUST_KEYS, 'proportionSide', 'strideSide', 'mirror'].filter((key) => adjustments[key] !== adjustments.defaults?.[key])
+  const offsets = Object.keys(adjustments.jointOffsets ?? {})
+  return changed.length || offsets.length ? [...changed.map((key) => `${key} ${adjustments[key]}`), ...offsets.map((joint) => `${joint} ${adjustments.jointOffsets[joint].join('/')}°`)].join(', ') : 'không đổi'
+}
 function groundSummary(ground) {
   const rows = (ground.perAction ?? []).filter((item) => item.applied)
   const skipped = (ground.perAction ?? []).filter((item) => item.skipped).length
@@ -549,6 +554,31 @@ function groundSummary(ground) {
   return `${ground.mode}: nâng tối đa ${(max * 100).toFixed(1)} cm ở ${rows.length}/${ground.perAction.length} Action${tail}`
 }
 
+const ADJUST_KEYS = ['armSpace', 'legSpace', 'shoulderWidth', 'upperArm', 'forearm', 'legLength', 'intensity', 'stride', 'vertical', 'trimStart', 'trimEnd', 'speed']
+const ADJUST_JOINTS = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']
+const adjustJointOffsets = {}
+function readAdjustments() {
+  const form = $('optionsForm')
+  return { ...Object.fromEntries(ADJUST_KEYS.map((key) => [key, Number(form.elements[`adj_${key}`].value)])), proportionSide: form.elements.adj_proportionSide.value, strideSide: form.elements.adj_strideSide.value,
+    mirror: form.elements.adj_mirror.checked, jointOffsets: Object.fromEntries(Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0))) }
+}
+function renderAdjustOutputs() {
+  const form = $('optionsForm')
+  for (const out of form.querySelectorAll('[data-adj-out]')) {
+    const value = Number(form.elements[`adj_${out.dataset.adjOut}`].value)
+    out.textContent = out.dataset.unit === '%' ? `${Math.round(value * 100)}%` : out.dataset.unit === 'x' ? `${value.toFixed(2)}×` : (value > 0 ? '+' : '') + Math.round(value * 100)
+  }
+  const list = Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0)).map(([joint, angles]) => `${joint} ${angles.join('°, ')}°`)
+  $('adjJointList').textContent = list.length ? `Đang xoay: ${list.join(' · ')}` : ''
+}
+function loadAdjustJoint() { const angles = adjustJointOffsets[$('adjJoint').value] ?? [0, 0, 0]; $('adjJointX').value = angles[0]; $('adjJointY').value = angles[1]; $('adjJointZ').value = angles[2] }
+for (const name of ADJUST_JOINTS) $('adjJoint').append(h('option', { value: name, text: name }))
+$('adjJoint').addEventListener('change', (event) => { event.stopPropagation(); loadAdjustJoint() })
+for (const id of ['adjJointX', 'adjJointY', 'adjJointZ']) $(id).addEventListener('input', (event) => {
+  event.stopPropagation()
+  adjustJointOffsets[$('adjJoint').value] = [Number($('adjJointX').value) || 0, Number($('adjJointY').value) || 0, Number($('adjJointZ').value) || 0]
+  markOptionsChanged({ target: optionsForm.elements.adj_armSpace })
+})
 function readOptions() {
   const form = $('optionsForm')
   const get = (name) => form.elements[name]
@@ -556,6 +586,7 @@ function readOptions() {
   return {
     mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale'), ground: get('ground').value, calibrate: get('calibrate').value,
     facingDegrees: number('facingDegrees'), swapSides: get('swapSides').value, unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
+    adjustments: readAdjustments(),
   }
 }
 let inspectTimer = 0
@@ -608,9 +639,18 @@ const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
   state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
-  if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale]')) inspectSoon()
+  if (!event?.target?.matches('[name=mode], [name=bobj], [name=bobjRoot], [name=rootScale], [name^=adj_]')) inspectSoon()
+  renderAdjustOutputs()
   renderOptionHints()
 }
+$('adjustReset').addEventListener('click', () => {
+  for (const key of ADJUST_KEYS) optionsForm.elements[`adj_${key}`].value = optionsForm.elements[`adj_${key}`].dataset.default
+  optionsForm.elements.adj_proportionSide.value = 'both'; optionsForm.elements.adj_strideSide.value = 'both'; optionsForm.elements.adj_mirror.checked = false
+  for (const key of Object.keys(adjustJointOffsets)) delete adjustJointOffsets[key]
+  loadAdjustJoint()
+  markOptionsChanged({ target: optionsForm.elements.adj_armSpace })
+})
+renderAdjustOutputs()
 optionsForm.addEventListener('input', markOptionsChanged)
 optionsForm.addEventListener('change', markOptionsChanged)
 /** Rotation buttons: turn the result by a quarter/half turn relative to the facing in use (or back to the measured one). */
@@ -959,6 +999,7 @@ function renderOverview() {
     report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
     report.input ? ['Root', `${report.input.rootPolicy} × ${fmt(report.proportions?.rootScale ?? report.input.rootScale, 4)}${report.proportions?.rootScaleSource === 'auto-units' ? ' (TỰ ĐỘNG: đơn vị file nguồn sai, hông nguồn không cỡ người)' : ''}`] : null,
     report.ground ? ['Chạm sàn', groundSummary(report.ground)] : null,
+    report.adjustments ? ['Hiệu chỉnh', adjustmentSummary(report.adjustments)] : null,
     report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
     report.sides ? ['Trái / phải', `${report.sides.mode}${report.sides.swapped ? ', đã đảo' : ''}${report.sides.restTurnDegrees ? `, xoay rest ${report.sides.restTurnDegrees}°` : ''} · bằng chứng ${report.sides.evidence}${report.sides.agreement === null ? '' : ` (${fmt(report.sides.agreement)})`}`] : null,
     report.calibration ? ['Calibration', `${report.calibration.mode}, lệch lớn nhất ${fmt(report.calibration.maxDegrees, 1)}° / ${report.calibration.corrections.length} khớp`] : null,

@@ -198,3 +198,8 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
 .action-picker tr:hover td.name .rename-btn { opacity: 1; }
 .action-picker td.renaming input.rename { width: 42%; min-width: 80px; }
 .action-picker td.renaming button.icon { padding: 0 6px; margin-left: 4px; }
+.field.adj { grid-template-columns: 1fr auto; align-items: center; }
+.field.adj input { grid-column: 1 / -1; }
+.field.adj output { font-variant-numeric: tabular-nums; }
+.step h4 { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+#adjustFieldset .row { display: flex; gap: 4px; } #adjustFieldset .row select { flex: 2; min-width: 0; } #adjustFieldset .row input { flex: 1; min-width: 0; width: 0; }

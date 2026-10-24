@@ -119,6 +119,61 @@
                 <select name="upAxis"><option value="y">Y</option><option value="z">Z</option></select>
               </label>
             </div>
+            <fieldset id="adjustFieldset">
+              <legend>Hiệu chỉnh (kiểu Mixamo)</legend>
+              <small>Áp lên kết quả Mixamo65 sau khi chuẩn hoá, nguồn giữ nguyên. Mặc định = không đổi. Tay chạm/chéo nhau? Tăng "Khoảng cách tay".</small>
+              <h4>Tỉ lệ xương / cơ thể</h4>
+              <label class="field">Áp dụng <select name="adj_proportionSide"><option value="both">Cả hai</option><option value="left">Trái</option><option value="right">Phải</option></select></label>
+              <label class="field adj">Khoảng cách tay (Arm-Space) <output data-adj-out="armSpace" data-unit="x100"></output>
+                <input type="range" name="adj_armSpace" min="-0.5" max="1" step="0.05" value="0" data-default="0">
+              </label>
+              <label class="field adj">Khoảng cách chân <output data-adj-out="legSpace" data-unit="x100"></output>
+                <input type="range" name="adj_legSpace" min="-0.5" max="1" step="0.05" value="0" data-default="0">
+              </label>
+              <label class="field adj">Độ rộng / vị trí vai <output data-adj-out="shoulderWidth" data-unit="%"></output>
+                <input type="range" name="adj_shoulderWidth" min="0.7" max="1.4" step="0.01" value="1" data-default="1">
+              </label>
+              <label class="field adj">Tỉ lệ bắp tay <output data-adj-out="upperArm" data-unit="%"></output>
+                <input type="range" name="adj_upperArm" min="0.7" max="1.4" step="0.01" value="1" data-default="1">
+              </label>
+              <label class="field adj">Tỉ lệ cẳng tay <output data-adj-out="forearm" data-unit="%"></output>
+                <input type="range" name="adj_forearm" min="0.7" max="1.4" step="0.01" value="1" data-default="1">
+              </label>
+              <label class="field adj">Tỉ lệ chân <output data-adj-out="legLength" data-unit="%"></output>
+                <input type="range" name="adj_legLength" min="0.8" max="1.25" step="0.01" value="1" data-default="1">
+              </label>
+              <h4>Di chuyển</h4>
+              <label class="field">Sải chân: bên <select name="adj_strideSide"><option value="both">Cả hai</option><option value="left">Trái</option><option value="right">Phải</option></select></label>
+              <label class="field adj">Sải chân <output data-adj-out="stride" data-unit="%"></output>
+                <input type="range" name="adj_stride" min="0" max="2" step="0.05" value="1" data-default="1">
+              </label>
+              <label class="field adj">Chuyển động dọc (hông) <output data-adj-out="vertical" data-unit="%"></output>
+                <input type="range" name="adj_vertical" min="0" max="2" step="0.05" value="1" data-default="1">
+              </label>
+              <h4>Animation</h4>
+              <label class="inline"><input type="checkbox" name="adj_mirror"> Mirror (đổi trái ↔ phải)</label>
+              <label class="field adj">Trim đầu <output data-adj-out="trimStart" data-unit="%"></output>
+                <input type="range" name="adj_trimStart" min="0" max="0.9" step="0.01" value="0" data-default="0">
+              </label>
+              <label class="field adj">Trim cuối <output data-adj-out="trimEnd" data-unit="%"></output>
+                <input type="range" name="adj_trimEnd" min="0" max="0.9" step="0.01" value="0" data-default="0">
+              </label>
+              <label class="field adj">Cường độ động tác <output data-adj-out="intensity" data-unit="%"></output>
+                <input type="range" name="adj_intensity" min="0" max="2" step="0.05" value="1" data-default="1">
+              </label>
+              <label class="field adj">Tốc độ <output data-adj-out="speed" data-unit="x"></output>
+                <input type="range" name="adj_speed" min="0.25" max="4" step="0.05" value="1" data-default="1">
+              </label>
+              <h4>Xoay khớp (trục local)</h4>
+              <div class="row">
+                <select id="adjJoint" aria-label="Khớp"></select>
+                <input type="number" id="adjJointX" step="1" value="0" aria-label="X°" title="X°">
+                <input type="number" id="adjJointY" step="1" value="0" aria-label="Y°" title="Y°">
+                <input type="number" id="adjJointZ" step="1" value="0" aria-label="Z°" title="Z°">
+              </div>
+              <small id="adjJointList"></small>
+              <button type="button" id="adjustReset">Đặt lại hiệu chỉnh</button>
+            </fieldset>
             <fieldset>
               <legend>Minecraft20 (.bobj cho BBS FS)</legend>
               <label class="inline"><input type="checkbox" name="bobj"> Xuất thêm .bobj</label>
