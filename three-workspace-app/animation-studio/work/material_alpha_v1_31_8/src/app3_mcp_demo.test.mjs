@@ -100,8 +100,8 @@ test('E5 fixed Vietnamese prompt executes real stdio MCP animation and observed 
   const imported=await command('asset.import',{files:[(await uploaded.json()).uploadId],format:'fbx',unitMeters:.01},projectId);
   const loaded=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project;
   const assetId=imported.result.assetIds.find(id=>loaded.assets[id].kind==='model');await command('character.add',{assetId,skeletonId:Object.keys(loaded.skeletons)[0],name:'E5 sample actor'},projectId);
-  await page.goto(`${base}/?unified=${projectId}`);await page.getByRole('navigation',{name:'Workspaces'}).getByRole('button',{name:/3 Animation/}).click();await page.locator('.wb-animation-creation-frame').waitFor();
-  const frame=page.frame({url:/animation-studio\/v1\.32\.0\/index\.html/});assert.ok(frame);await frame.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
+  await page.goto(`${base}/?unified=${projectId}`);await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();await page.locator('.wb-animation-creation-frame').waitFor();
+  const frame=page.frame({url:/animation-studio\/v1\.33\.0\/index\.html/});assert.ok(frame);await frame.waitForFunction(()=>window.__studio?.ready&&window.__app3LocalBridge,null,{timeout:60000});
   await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();await frame.waitForFunction(()=>window.__app3LocalBridge.status().bound,null,{timeout:60000});
   await frame.evaluate(async()=>{const s=window.__studio,p=s.serialized(false);p.duration=4;p.fps=30;p.keys={};delete p.lab;p.director={version:1,idea:'',markers:[]};await s.loadProject(p);s.seek(0);});
   const plan=await frame.evaluate(planInBrowser,description);writeFileSync(path.join(artifact,'plan.json'),JSON.stringify(plan,null,2));

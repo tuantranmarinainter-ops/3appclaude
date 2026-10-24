@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadShotExport } from './shotExchange'
 import { sha256, unzipPackage, validateResult } from './shotPackage'
+import { prepareShotResult, saveNativeShotVersions } from './shotResult'
 
 function draftPath(projectId: string, shotId: string) {
   return path.join(path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects')), projectId, '.shots', `${shotId}.draft.zip`)
@@ -20,6 +21,7 @@ async function checkDraft(project: UnifiedProject, shotId: string, bytes: Uint8A
 /** Persist an editor draft without replacing any scene clip; return/import remains its own transaction. */
 export async function saveShotDraft(project: UnifiedProject, shotId: string, bytes: Uint8Array) {
   await checkDraft(project, shotId, bytes)
+  await saveNativeShotVersions(await prepareShotResult(project, { file: 'draft', shotId }, bytes))
   const file = draftPath(project.projectId, shotId), temporary = `${file}.${randomUUID()}.tmp`
   try { await writeFile(temporary, bytes, { flag: 'wx' }); await rename(temporary, file) }
   finally { await rm(temporary, { force: true }) }

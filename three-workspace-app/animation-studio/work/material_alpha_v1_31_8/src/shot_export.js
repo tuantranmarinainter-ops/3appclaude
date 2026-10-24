@@ -5,6 +5,20 @@ import {sha256} from './shot_package.js';
 const encode=x=>new TextEncoder().encode(JSON.stringify(x,null,2)+'\n');
 // Keep actor placement outside skeletal animation. Change placement policy here only.
 export function placementPolicy(rig,project,session){
+ if(project.lab){
+  const baked=C.clone(project);delete baked.lab;delete baked.inPlace;baked.keys={};baked.ikModes={};baked.ikOptions={};
+  const objects=[rig.root,...rig.records.map(r=>r.o),...Object.values(rig.controls).map(c=>c.object)],poses=objects.map(C.snap),chains=rig.chains.map(c=>({mode:c.mode,options:C.clone(c.options)}));
+  try{
+   for(let frame=0;frame<=Math.round(project.duration*30);frame++){
+    const t=frame/30;C.evaluate(rig,project,t);(baked.keys.root??=[]).push({...C.snap(rig.root),time:t,interp:'linear'});
+    for(const r of rig.records)(baked.keys[r.id]??=[]).push({...C.snap(r.o),time:t,interp:'linear'});
+   }
+  }finally{
+   rig.chains.forEach((c,i)=>{c.mode=chains[i].mode;C.kinematics.configure(rig,c,chains[i].options,false);});
+   objects.forEach((o,i)=>C.apply(o,poses[i]));rig.root.updateMatrixWorld(true);
+  }
+  return placementPolicy(rig,baked,session);
+ }
  const source=session.sourceProject,base=session.character.placement,keys=new Map(session.placementKeys.map(k=>[k.frame,structuredClone(k)]));
  const yaw0=T.MathUtils.degToRad(base.yawDegrees),rotation=new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),yaw0);
  let changed=false;
@@ -17,21 +31,20 @@ export function placementPolicy(rig,project,session){
  // Dense keys retain holds and the return to the original root position.
  if(changed)for(let frame=session.shot.frameRange[0];frame<=session.shot.frameRange[1];frame++)if(!keys.has(frame))keys.set(frame,{frame,...structuredClone(base)});
  const baked=structuredClone(project);baked.keys.root=structuredClone(source.keys.root||[]);
- if(project.lab)throw Error('Xuất shot từ Animation Lab chưa hỗ trợ tách root. Chuyển về Animation trước khi xuất.');
  return{project:baked,placementKeys:[...keys.values()].sort((a,b)=>a.frame-b.frame)};
 }
 export function readGLB(buffer){const b=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer),v=new DataView(b.buffer,b.byteOffset,b.byteLength);if(v.getUint32(0,true)!==0x46546c67||v.getUint32(4,true)!==2)throw Error('Invalid GLB.');const size=v.getUint32(12,true);return{json:JSON.parse(new TextDecoder().decode(b.subarray(20,20+size))),rest:b.slice(20+size)};}
 export function writeGLB(json,rest){const text=new TextEncoder().encode(JSON.stringify(json)),size=Math.ceil(text.length/4)*4,out=new Uint8Array(20+size+rest.length),v=new DataView(out.buffer);v.setUint32(0,0x46546c67,true);v.setUint32(4,2,true);v.setUint32(8,out.length,true);v.setUint32(12,size,true);v.setUint32(16,0x4e4f534a,true);out.fill(32,20,20+size);out.set(text,20);out.set(rest,20+size);return out;}
 export async function bakeEditedGLB(rig,project,name){
- if(rig.profile!=='Mixamo'||rig.records.length!==65)throw Error('Gói kết quả cần rig Mixamo65.');
+ if(!rig||!Array.isArray(rig.records)||!rig.records.length)throw Error('Gói kết quả cần một skeleton native hợp lệ.');
  const saved=C.capture(rig),copies=new Map(),clone=o=>{const n=o.isBone?new T.Bone():new T.Group();n.name=o.isBone?C.short(o.name):o.name||'AuxScene';n.position.copy(o.position);n.quaternion.copy(o.quaternion);n.scale.copy(o.scale);copies.set(o,n);for(const c of o.children)if(!c.isMesh&&!c.isLine&&!c.isSprite) n.add(clone(c));return n;};
- C.resetRig(rig);const root=clone(rig.root),objects=[rig.root,...rig.records.map(r=>r.o)],arrays=objects.map(()=>({p:[],q:[],s:[]})),times=Array.from({length:Math.round(project.duration*30)+1},(_,i)=>i/30);
+ C.resetRig(rig);const root=clone(rig.root),objects=rig.records.map(r=>r.o),arrays=objects.map(()=>({p:[],q:[],s:[]})),times=Array.from({length:Math.round(project.duration*30)+1},(_,i)=>i/30);
  try{
   for(const t of times){C.evaluate(rig,project,t);for(let i=0;i<objects.length;i++){const pose=C.snap(objects[i]);for(const k of ['p','q','s']){if(pose[k].some(v=>!Number.isFinite(v)))throw Error('Transform không hữu hạn.');arrays[i][k].push(...pose[k]);}}}
   const tracks=[];for(let i=0;i<objects.length;i++){const n=copies.get(objects[i]),a=arrays[i];tracks.push(new T.VectorKeyframeTrack(n.uuid+'.position',times,a.p),new T.QuaternionKeyframeTrack(n.uuid+'.quaternion',times,a.q),new T.VectorKeyframeTrack(n.uuid+'.scale',times,a.s));}
   const clip=new T.AnimationClip(name,project.duration,tracks),buffer=await new GLTFExporter().parseAsync(root,{binary:true,onlyVisible:false,animations:[clip],trs:true}),{json,rest}=readGLB(buffer);
-  const joints=rig.records.map(r=>json.nodes.findIndex(n=>n.name===C.short(r.name)));if(joints.some(i=>i<0)||new Set(joints).size!==65)throw Error('Không xuất được duy nhất 65 joint.');
-  json.skins=[{name:'Mixamo65',joints,skeleton:joints[0]}];json.extras={app:'Animation Studio',contractVersion:'1.0.0',bakeFps:30,units:'meters'};
+  const joints=rig.records.map(r=>json.nodes.findIndex(n=>n.name===C.short(r.name)));if(joints.some(i=>i<0)||new Set(joints).size!==rig.records.length)throw Error('Không xuất được đầy đủ joint native.');
+  json.skins=[{name:rig.profile||'native',joints,skeleton:joints[0]}];json.extras={app:'Animation Studio',contractVersion:'1.0.0',bakeFps:30,units:'meters',nativeRig:rig.profile||'native'};
   return writeGLB(json,rest);
  }finally{for(const[id,pose]of Object.entries(saved))C.apply(id==='root'?rig.root:rig.records.find(r=>r.id===id).o,pose);rig.root.updateMatrixWorld(true);root.clear();}
 }
