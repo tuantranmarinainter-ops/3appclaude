@@ -147,6 +147,7 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(app, /state\.batch && character\.rig === 'minecraft20'/)
   assert.match(app, /text: 'Sửa mapping'/)
   assert.match(app, /batchPresets/)
+  assert.match(app, /if \(!state\.preset && entry\.inspect\.mapping\?\.needsUserConfirmation\)/)
   assert.match(app, /function syncBatchDestinationOptions\(\)[\s\S]*?elements\.bobj\.checked = true/)
   assert.match(app, /character\?\.rig === 'minecraft20' \|\| \$\('transferShared'\)\.checked/)
   assert.match(app, /durationSeconds > 0/)
@@ -337,8 +338,9 @@ test('batch inspection walks folders recursively and isolates a corrupt file as 
     const staged = await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('Nested/broken.glb') }, body: readFileSync(join(folder, 'broken.glb')) })
     assert.equal(staged.status, 201)
     assert.equal((await call(`/api/batch-uploads/${upload.json.uploadId}`, { method: 'POST', headers: { 'x-file-path': encodeURIComponent('../escape.glb') }, body: readFileSync(join(folder, 'broken.glb')) })).status, 400)
-    const uploadedBatch = await post('/api/batches', { uploadId: upload.json.uploadId, targetId: target.id, options: {} })
+    const uploadedBatch = await post('/api/batches', { paths: [], uploadId: upload.json.uploadId, targetId: target.id, options: {} })
     assert.equal(uploadedBatch.status, 202)
+    assert.equal((await post('/api/batches', { paths: 'invalid', uploadId: upload.json.uploadId, targetId: target.id, options: {} })).status, 400)
   } finally { rmSync(folder, { recursive: true, force: true }) }
 })
 
@@ -367,6 +369,10 @@ test('RobotExpressive batch error can be repaired with a preset and retried', { 
   assert.equal(repaired.json.mapping.mapped, 18)
   assert.deepEqual(repaired.json.mapping.missingRequired, [])
   assert.equal(repaired.json.actions.length, 14)
+  const retried = await post('/api/runs', { sourceId: entry.sourceId, targetId: target.id, options: { actions: [0] }, mappingPreset: presetResponse.json.preset, presetFamily: presetResponse.json.family })
+  assert.equal(retried.status, 200, retried.text)
+  assert.equal(retried.json.status, 'PASS', JSON.stringify(retried.json.report))
+  assert.equal(retried.json.report.roundtrip.perAction[0].status, 'PASS')
 })
 
 test('batch picker names Mixamo mixamo.com Actions from the file and hides zero-duration Take 001 clips', async () => {

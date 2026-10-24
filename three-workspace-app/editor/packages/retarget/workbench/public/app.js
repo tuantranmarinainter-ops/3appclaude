@@ -889,7 +889,7 @@ async function transferBatch(groups, retryConfig = null) {
       state.source = { sourceId: entry.sourceId, name: entry.name, format: entry.inspect.format, bytes: entry.bytes ?? 0, sha256: entry.sha256, uploaded: !entry.path, path: entry.path }
       const saved = entry.sourceId ? state.batchPresets.get(entry.sourceId) : null
       state.inspect = entry.inspect; state.inspectError = null; state.rows = []; state.preset = saved?.preset ?? null; state.presetFamily = saved?.family ?? null; state.dirty = false
-      if (entry.inspect.mapping?.needsUserConfirmation) {
+      if (!state.preset && entry.inspect.mapping?.needsUserConfirmation) {
         const assignments = Object.fromEntries((entry.inspect.mapping.joints ?? []).map((joint) => [joint.target, joint.source]))
         const mapped = await api('/api/preset', { method: 'POST', json: { sourceId: entry.sourceId, targetId: state.target.id, assignments } })
         state.preset = mapped.preset; state.presetFamily = mapped.family
