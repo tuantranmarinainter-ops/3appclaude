@@ -1,14 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { loadUnifiedProject } from '../../src/unifiedApi'
 import { ActionPreview } from './ActionPreview'
+import { AutoPreviewVideo } from './AutoPreviewVideo'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 import { formatBilingual } from '../../../../packages/library/actionNames'
 
 type Status = 'draft' | 'edited' | 'approved'
-type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number }
+type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
 type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
@@ -29,9 +30,10 @@ export default function LibraryPage() {
   const [actions, setActions] = useState<Action[]>([]), [characters, setCharacters] = useState<Character[]>([])
   const [coverage, setCoverage] = useState<Coverage[]>([]), [characterId, setCharacterId] = useState('')
   const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(false)
-  const [query, setQuery] = useState(''), [category, setCategory] = useState('')
+  const [query, setQuery] = useState(''), [category, setCategory] = useState(''), [sourceFilter, setSourceFilter] = useState(''), [inPlaceOnly, setInPlaceOnly] = useState(false), [sortOrder, setSortOrder] = useState<'name' | 'newest'>('name')
   const [selected, setSelected] = useState<Action | null>(null), [copyTarget, setCopyTarget] = useState('')
-  const [message, setMessage] = useState('')
+  const previousPreviewJobs = useRef<Record<string, { state: string; message?: string }>>({})
+  const [message, setMessage] = useState(''), [previewJobs, setPreviewJobs] = useState<Record<string, { state: string; message?: string }>>({}), [assignTarget, setAssignTarget] = useState('')
   const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
 
   const loadCharacters = useCallback(async () => {
@@ -46,11 +48,14 @@ export default function LibraryPage() {
     if (!warehouse && !characterId) { setActions([]); return }
     const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
     const body = await json(`/api/library?${params}`)
-    let rows = body.actions as Action[]
+    let rows = (body.actions as Action[]).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
     if (category) rows = rows.filter(action => action.category === category)
+    if (sourceFilter) rows = rows.filter(action => sourceFilter === 'mixamo' ? /mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) : !/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`))
+    if (inPlaceOnly) rows = rows.filter(action => action.inPlace)
+    rows = [...rows].sort((a, b) => sortOrder === 'newest' ? b.createdAt.localeCompare(a.createdAt) : a.name.localeCompare(b.name))
     if (!warehouse && query) rows = rows.filter(action => searchable(`${action.name} ${action.nameVi ?? ''} ${action.tags.join(' ')}`).includes(searchable(query)))
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
-  }, [category, characterId, query, status, warehouse])
+  }, [category, characterId, inPlaceOnly, query, sortOrder, sourceFilter, status, warehouse])
 
   useEffect(() => {
     setHasOpener(!!window.opener)
@@ -58,6 +63,8 @@ export default function LibraryPage() {
     if (requested) void loadUnifiedProject(requested).then(({ project }) => setProjectId(project.projectId)).catch(error => setMessage(String(error)))
   }, [])
   useEffect(() => { void loadCharacters().catch(error => setMessage(String(error))) }, [loadCharacters])
+  useEffect(() => { void json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).then(body => { const jobs = body.jobs as Array<{ uuid: string; state: string; message?: string }>; setPreviewJobs(Object.fromEntries(jobs.map(job => [job.uuid, job]))) }).catch(error => setMessage(`Không tạo được hàng đợi video: ${String(error)}`)) }, [])
+  useEffect(() => { const timer = window.setInterval(() => { void json('/api/library/previews').then(body => { const jobs = Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job])); const completed = Object.entries(jobs).some(([uuid, job]) => job.state === 'complete' && previousPreviewJobs.current[uuid]?.state !== 'complete'); previousPreviewJobs.current = jobs; setPreviewJobs(jobs); if (completed) void loadActions().catch(error => setMessage(String(error))) }).catch(() => undefined) }, 2500); return () => window.clearInterval(timer) }, [loadActions])
   useEffect(() => { void loadActions().catch(error => setMessage(String(error))) }, [loadActions])
   useEffect(() => { if (tab === 'coverage') void json('/api/library?coverage=1').then(body => setCoverage(body.coverage)).catch(error => setMessage(String(error))) }, [tab])
 
@@ -102,19 +109,19 @@ export default function LibraryPage() {
       <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
       <button onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
       <input aria-label="Tìm động tác" placeholder="Tìm" value={query} onChange={event => setQuery(event.target.value)} />
-      <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select>
+      <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select><select aria-label="Nguồn" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="">Mọi nguồn</option><option value="mixamo">Mixamo</option><option value="other">Khác</option></select><label><input type="checkbox" checked={inPlaceOnly} onChange={event => setInPlaceOnly(event.target.checked)} /> In Place</label><select aria-label="Sắp xếp" value={sortOrder} onChange={event => setSortOrder(event.target.value as 'name' | 'newest')}><option value="name">Theo tên</option><option value="newest">Mới nhập</option></select>
     </div><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(280px,1fr)', gap: 20 }}>
       <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start' }}>
-        {actions.map(action => <button key={action.uuid} onClick={() => setSelected(action)} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
-          <div style={{ height: 90, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="" width={220} height={90} unoptimized /> : 'Không có ảnh'}</div>
-          <strong>{formatBilingual(action.name, action.nameVi)}</strong><div>{action.tags.join(', ') || action.category}</div>{action.status && <small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small>}
-        </button>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
+        {actions.map(action => <article key={action.uuid} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
+          {action.preview ? <AutoPreviewVideo uuid={action.uuid} onClick={() => setSelected(action)} /> : <div style={{ height: 120, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="Ảnh bìa dự phòng" width={220} height={90} unoptimized /> : 'Đang tạo video…'}</div>}
+          <button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}><strong>{formatBilingual(action.name, action.nameVi)}</strong></button><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
+        </article>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
       <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
-        <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig}</p>
+        <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig} · {/mixamo/i.test(`${selected.licenseId} ${selected.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}</p>{selected.preview && <video controls muted loop playsInline src={`/api/library/video/${encodeURIComponent(selected.uuid)}`} style={{ width: '100%' }} />}<button onClick={() => void json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: [selected.uuid], regenerate: true }) }).then(body => { setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job]))) }).catch(error => setMessage(String(error)))}>Tạo lại video</button>
         <form key={selected.uuid} onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); void saveActionName(String(data.get('name') ?? ''), String(data.get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Anh <input name="name" required defaultValue={selected.name} /></label><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
-        <button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
+        <p><select aria-label="Nhân vật để gán" value={assignTarget || characterId} onChange={event => setAssignTarget(event.target.value)}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button onClick={() => void json('/api/library/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: [selected.uuid], charId: assignTarget || characterId }) }).then(() => setMessage('Đã gửi yêu cầu gán animation cho nhân vật.')).catch(error => setMessage(`Không thể gán animation: ${String(error)}`))}>Gán cho nhân vật…</button></p><button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
         <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
       </> : <p>Chọn một động tác.</p>}</aside>
     </div></>}

@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MIXAMO65_BONE_PARENTS } from '../retarget/src/mixamo65'
 import { callLibraryTool } from './mcp'
-import { getAction, importPack, listLibraryCharacters, registerLibraryCharacter, searchLibrary, setActionMetadata } from './library'
+import { getAction, importPack, listLibraryCharacters, registerLibraryCharacter, searchLibrary, setActionMetadata, setActionPreview } from './library'
 import { defaultLibraryPath, resolveLibraryPath, safeChild, validateRelativeAssetPath } from './store'
 
 const firstUuid = 'df7ac5ff-0000-4000-8000-000000000001'
@@ -86,6 +86,14 @@ test('metadata updates reindex actions without changing the immutable GLB', (t) 
   assert.deepEqual(readFileSync(join(root, 'packs', pack.packId, 'anim.glb')), before)
   assert.equal(callLibraryTool('library.search', { category: 'dance', tags: ['samba'] }, { root }).total, 1)
   assert.equal(callLibraryTool('library.get', { actionUuid: firstUuid }, { root }).packId, pack.packId)
+  const video = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3])
+  mkdirSync(join(root, 'packs', pack.packId, 'previews'), { recursive: true })
+  writeFileSync(join(root, 'packs', pack.packId, 'previews', `${firstUuid}.webm`), video)
+  const preview = { file: `previews/${firstUuid}.webm`, sha256: createHash('sha256').update(video).digest('hex'), width: 320, height: 320, fps: 15, seconds: 2.5 }
+  setActionPreview({ root, actionUuid: firstUuid, preview })
+  assert.deepEqual(getAction({ root, actionUuid: firstUuid }).preview, preview)
+  assert.equal(readFileSync(getAction({ root, actionUuid: firstUuid }).previewPath!).length, video.length)
+  assert.throws(() => setActionPreview({ root, actionUuid: firstUuid, preview: { ...preview, file: '../outside.webm' } }), /unsafe|relative/i)
   assert.equal(callLibraryTool('library.action.metadata.set', { actionUuid: firstUuid, nameVi: 'Bước tới' }, { root }).nameVi, 'Bước tới')
   assert.equal((callLibraryTool('library.characters', {}, { root }) as unknown[]).length, 0)
 })

@@ -143,7 +143,7 @@ export function writeIndex(root: string): LibraryIndex {
     generatedAt: new Date().toISOString(),
     packs: packs.map(({ packId, rig, createdAt, license, boundCharacter }) => ({ packId, rig, createdAt, license, boundCharacter })),
     actions: packs.flatMap((pack) => pack.actions.map((action) => ({ ...action, packId: pack.packId, rig: pack.rig,
-      createdAt: pack.createdAt, licenseId: pack.license.id, boundCharacter: pack.boundCharacter }))),
+      createdAt: pack.createdAt, licenseId: pack.license.id, licenseSource: pack.license.source, boundCharacter: pack.boundCharacter }))),
     characters: characters.map((character) => ({ ...character, actionCount: character.actions?.length ?? packs.reduce((count, pack) => count + (pack.boundCharacter === character.charId ? pack.actions.length : 0), 0) })),
   }
   writeJsonAtomic(safeChild(root, 'index.json'), index)

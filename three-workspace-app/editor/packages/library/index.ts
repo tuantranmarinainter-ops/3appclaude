@@ -9,7 +9,7 @@ export type {
 export { defaultLibraryPath, resolveLibraryPath } from './store'
 export { importNormalizedPack, updateActionMetadata, validatePackAssetPath } from './importPack'
 export type { ImportPackOptions, ImportPackResult } from './importPack'
-export { getAction, importPack, listLibraryCharacters, rebuildLibraryIndex, registerLibraryCharacter, searchLibrary, setActionMetadata } from './library'
+export { getAction, importPack, listLibraryCharacters, rebuildLibraryIndex, registerLibraryCharacter, searchLibrary, setActionMetadata, setActionPreview } from './library'
 export type { SearchResult } from './library'
 export { callLibraryTool, LIBRARY_MCP_TOOLS } from './mcp'
 
