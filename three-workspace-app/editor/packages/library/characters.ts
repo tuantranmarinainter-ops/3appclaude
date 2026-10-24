@@ -123,6 +123,8 @@ export interface RegisterBaseModelOptions extends LibraryOptions {
   /** Directory containing <object>/default.png. Defaults to textures/ beside the model. */
   texturesDir?: string
   license?: LibraryLicense
+  /** Owning character: the modelId becomes unique per owner (sha + charId), so identical files are never shared between characters. */
+  ownerCharId?: string
 }
 export function registerBaseModel(options: RegisterBaseModelOptions): { modelId: string; created: boolean; metadata: BaseModelMetadata; warnings: CharacterWarning[] } {
   const root = resolveLibraryPath(options)
@@ -131,18 +133,20 @@ export function registerBaseModel(options: RegisterBaseModelOptions): { modelId:
   if (extension !== '.glb' && extension !== '.bobj') throw new Error('Base model must be .glb or .bobj')
   ensureRegularFile(options.modelFile)
   const bytes = readFileSync(options.modelFile), format = extension === '.glb' ? 'glb' : 'bobj'
-  const sha256 = createHash('sha256').update(bytes).digest('hex'), modelId = sha256.slice(0, 16)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  const owner = options.ownerCharId === undefined ? undefined : safeId(options.ownerCharId, 'character id')
+  const modelId = (owner ? createHash('sha256').update(`${sha256}:${owner}`).digest('hex') : sha256).slice(0, 16)
   const license = options.license ?? { id: 'internal-only', commitable: false, source: basename(options.modelFile) }
   if (!license.id.trim() || typeof license.commitable !== 'boolean') throw new Error('Invalid license')
   const metadata: BaseModelMetadata = { kind: 'base-model', libraryVersion: LIBRARY_VERSION, modelId, name: modelName, rig, format,
-    model: format === 'glb' ? 'model.glb' : 'model.bbs.bobj', ...inspectModel(bytes, format), sha256, license: { ...license } }
+    model: format === 'glb' ? 'model.glb' : 'model.bbs.bobj', ...inspectModel(bytes, format), sha256, ...(owner ? { ownerCharId: owner } : {}), license: { ...license } }
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const destination = safeChild(root, 'models', modelId)
     let record = metadata, created = false
     if (existsSync(destination)) {
       record = readJsonFile<BaseModelMetadata>(safeChild(destination, 'meta.json'))
-      if (record.sha256 !== sha256 || record.rig !== rig) throw new Error('Existing model SHA or rig does not match')
+      if (record.sha256 !== sha256 || record.rig !== rig || record.ownerCharId !== owner) throw new Error('Existing model SHA or rig does not match')
     } else {
       const staging = safeChild(root, 'models', `.${randomUUID()}.tmp`)
       mkdirSync(staging)
@@ -168,6 +172,9 @@ function baseRecord(root: string, id: string): BaseModelMetadata {
   if (record.kind !== 'base-model' || record.modelId !== id) throw new Error('Invalid base model metadata')
   return record
 }
+function assertOwner(base: BaseModelMetadata, charId: string): void {
+  if (base.ownerCharId && base.ownerCharId !== charId) throw new Error(`Base model ${base.modelId} belongs to character ${base.ownerCharId}`)
+}
 export interface CreateCharacterOptions extends LibraryOptions {
   charId?: string
   name: string
@@ -183,6 +190,7 @@ export function createCharacter(options: CreateCharacterOptions): CharacterMetad
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const base = baseRecord(root, options.baseModelId)
+    assertOwner(base, charId)
     const actions = validateActions(root, options.actions ?? [])
     const defaultAction = options.defaultAction ? actions.find((uuid) => uuid.toLowerCase() === options.defaultAction!.toLowerCase()) : undefined
     if (options.defaultAction && !defaultAction) throw new Error('defaultAction must belong to character actions')
@@ -205,6 +213,13 @@ export function createCharacter(options: CreateCharacterOptions): CharacterMetad
       return metadata
     } catch (error) { rmSync(staging, { recursive: true, force: true }); throw error }
   })
+}
+/** New character that owns its base model (mesh + skeleton + textures) from the start; the model is never shared with another character. */
+export function createCharacterWithOwnBase(options: Omit<CreateCharacterOptions, 'baseModelId'> & { rig: string; modelFile: string; texturesDir?: string }): CharacterMetadata {
+  const charId = safeId(options.charId ?? randomUUID(), 'character id'), root = resolveLibraryPath(options)
+  if (existsSync(safeChild(root, 'characters', charId))) throw new Error(`Character already exists: ${charId}`)
+  const { modelId } = registerBaseModel({ root, name: options.name, rig: options.rig, modelFile: options.modelFile, texturesDir: options.texturesDir, license: options.license, ownerCharId: charId })
+  try { return createCharacter({ ...options, root, charId, baseModelId: modelId }) } catch (error) { rmSync(safeChild(root, 'models', modelId), { recursive: true, force: true }); throw error }
 }
 function validateActions(root: string, uuids: string[]): string[] {
   const actions = writeIndex(root).actions
@@ -245,7 +260,7 @@ export function setCharacterBaseModel(options: LibraryOptions & { charId: string
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const character = characterRecord(root, options.charId)
-    baseRecord(root, options.baseModelId)
+    assertOwner(baseRecord(root, options.baseModelId), character.charId)
     if (character.baseModelId === options.baseModelId) return character
     character.baseModelId = options.baseModelId
     writeJsonAtomic(safeChild(root, 'characters', character.charId, 'meta.json'), character)

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { loadAsset } from '../cli/loadAsset.ts'
 import { loadBobj } from '../cli/loadBobj.ts'
 import { startWorkbench, type Workbench } from '../workbench/server.ts'
-import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter, resolveLibraryPath, translateActionName } from '../../library/index.ts'
+import { createCharacter, getAction, listCharacterActions, registerBaseModel, registerLibraryCharacter, resolveCharacter, resolveLibraryPath, translateActionName } from '../../library/index.ts'
 import { evaluateBobjAction, parseBobjActions } from '../src/index.ts'
 import { parseBobjArmature } from '../src/reverse.ts'
 import { VERITY_TO_MIXAMO } from '../src/verityRig.ts'
@@ -253,6 +253,8 @@ test('adds a Mixamo65 character from a local path as a library target and refuse
     assert.ok(added.json.hipsHeightMeters > 0.5)
     const listed = (await call('/api/targets')).json.targets
     assert.ok(listed.some((target: { id: string }) => target.id === added.json.id))
+    const charId = added.json.id.replace(/^lib-/, ''), resolved = resolveCharacter({ root: library, charId })
+    assert.equal(resolved.baseModel?.ownerCharId, charId, 'new target owns its base model (placeable in App 2)')
     assert.ok(existsSync(join(library, 'characters')))
     assert.equal((await post('/api/targets', { path: join(characters, 'missing.glb') })).status, 400)
     assert.equal((await post('/api/targets', { path: join(bobjDir, 'minecraft20-armature.bobj') })).status, 400)

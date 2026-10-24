@@ -27,7 +27,7 @@ import {
 } from './pipeline.ts'
 import { previewClips, previewModel, skinnedPreviewModel, steveFiles } from './steve.ts'
 import {
-  addConvertedDraftToCharacter, addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, registerLibraryCharacter,
+  addConvertedDraftToCharacter, addDraftToCharacter, getAction, importPack, listCharacterActions, listLibraryCharacters, createCharacterWithOwnBase,
   resolveCharacter, resolveLibraryPath, setActionMetadata, translateActionName, formatBilingual,
 } from '../../library/index.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
@@ -504,8 +504,10 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
       const measured = await measureTarget(file)
       if (measured.missing.length) throw new UserError(`Not a Mixamo65 character: missing ${measured.missing.join(', ')}. Normalize it in App 1 with --mode model first.`)
       if (!(measured.hipsHeightMeters > 0.2 && measured.hipsHeightMeters < 5)) throw new UserError(`Hips height ${measured.hipsHeightMeters.toFixed(3)} m is not a metre-scale character`)
-      const character = registerLibraryCharacter({ name, rig: 'mixamo65', modelFile: file })
+      // The character owns its base model (never shared); a model.glb view copy stays beside meta.json for the target list and the viewer route.
+      const character = createCharacterWithOwnBase({ name, rig: 'mixamo65', modelFile: file })
       const stored = join(resolveLibraryPath(), 'characters', character.charId, character.model)
+      copyFileSync(file, stored)
       const record: TargetRecord = { id: `lib-${character.charId}`, file: basename(file), path: stored, sha256: sha256(measured.bytes), hipsHeightMeters: measured.hipsHeightMeters, name, library: true }
       targets.set(record.id, record)
       return json(res, 200, targetView(record))

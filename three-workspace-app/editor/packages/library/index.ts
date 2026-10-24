@@ -13,7 +13,7 @@ export { getAction, importPack, listLibraryCharacters, rebuildLibraryIndex, regi
 export type { SearchResult } from './library'
 export { callLibraryTool, LIBRARY_MCP_TOOLS } from './mcp'
 
-export { registerBaseModel, createCharacter, setCharacterSkin, setCharacterBaseModel, addCharacterActions, removeCharacterActions, resolveCharacter } from './characters'
+export { registerBaseModel, createCharacter, createCharacterWithOwnBase, setCharacterSkin, setCharacterBaseModel, addCharacterActions, removeCharacterActions, resolveCharacter } from './characters'
 export type { RegisterBaseModelOptions, CreateCharacterOptions } from './characters'
 export type { BaseModelMetadata, CharacterWarning, ResolvedCharacter } from './types'
 export {

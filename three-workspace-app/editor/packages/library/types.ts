@@ -174,6 +174,8 @@ export interface BaseModelMetadata {
   extraBones: string[]
   heightMeters: number
   sha256: string
+  /** Character that owns this base model exclusively (never shared); absent on legacy content-addressed models. */
+  ownerCharId?: string
   license: LibraryLicense
 }
 
