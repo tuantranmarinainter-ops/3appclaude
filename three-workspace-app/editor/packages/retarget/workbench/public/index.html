@@ -243,7 +243,7 @@
       <footer class="action-transfer">
         <button type="button" class="primary" id="transferOpen">Chuyển sang nhân vật đích</button>
         <div class="transfer-confirm" id="transferConfirm" hidden>
-          <label>Nhân vật đích <select id="transferCharacter"></select></label>
+          <fieldset class="transfer-destinations"><legend>Nhân vật đích (chọn một hoặc nhiều)</legend><div id="transferCharacter" class="destination-grid" role="group" aria-label="Nhân vật đích"></div></fieldset>
           <label class="inline"><input type="checkbox" id="transferCharacterPack" checked> Bộ của nhân vật (Nháp)</label>
           <label class="inline"><input type="checkbox" id="transferShared"> Kho dùng chung</label>
           <label>Nguồn / giấy phép <input id="transferLicenseSource" type="text" placeholder="Chọn nguồn cho cả lô (tuỳ chọn)"></label>

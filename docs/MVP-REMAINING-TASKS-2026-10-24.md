@@ -54,6 +54,8 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
 ### C4 — Workbench chọn nhiều nhân vật đích một lượt
 - Ô "Nhân vật đích" chỉ chọn được 1, nên 3 nhân vật phải chuyển 3 lần.
 - Server `/api/runs/:id/character-library` đã nhận `charIds[]`; chỉ cần giao diện chọn nhiều (checkbox) và chạy một lượt.
+- **Đã làm:** Workbench dùng checkbox cho các nhân vật Mixamo65 tương thích, lấy giao của các thẻ Action, rồi gửi một run với toàn bộ `charIds[]`; tóm tắt kết quả liệt kê đủ tên đích và tổng số Nháp.
+- **Kiểm chứng:** test Workbench 25 pass; browser E2E trên bản sao thư viện dùng `Samba Dancing.glb`, chọn Tiểu Nhị + Chirity, chuyển 1 Action trong một lượt, nhận `2 Nháp`; mỗi nhân vật tăng Action `0 → 1` và Draft `0 → 1`, `libraryVersion` giữ `1.0.0`. Ảnh và JSON chứng cứ nằm ngoài repo trong `outputs/c4-live-multi-target-transfer.png` và `outputs/c4-live-multi-target-transfer.json`.
 
 ### C5 — Nhập lô cho nguồn không tự map được
 - `RobotExpressive.glb` (14 animation) bị loại vì `Missing main joints`. Nhập lô không có chỗ sửa mapping tay.

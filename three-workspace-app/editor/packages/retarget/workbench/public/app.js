@@ -45,7 +45,7 @@ const state = {
   actionRanges: {}, checked: new Set(), actionFilter: '', actionEdits: new Map(), actionKeys: new Map(),
   run: null, running: false, result: null, stale: false, resultOptions: null, actionMap: new Map(),
   selected: null, scale: { applied: null },
-  libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(),
+  libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(), transferCharacters: new Set(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
   batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null,
 }
@@ -159,7 +159,7 @@ function openActionPicker() {
 /** Library defaults (`requiredActions`) used before a character is chosen. */
 const DEFAULT_REQUIRED_ACTIONS = ['idle', 'walk', 'run', 'talk', 'happy', 'sad', 'surprised', 'angry', 'attack', 'hit', 'fall', 'jump'].map((key) => ({ key, label: key[0].toUpperCase() + key.slice(1) }))
 function pickerRequiredActions() {
-  const charId = $('transferCharacter')?.value || (state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : '')
+  const charId = [...state.transferCharacters][0] || (state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : '')
   const required = state.libraryCharacters?.find((item) => item.charId === charId)?.requiredActions
   return required?.length ? required : DEFAULT_REQUIRED_ACTIONS
 }
@@ -781,48 +781,75 @@ $('cancelBtn').addEventListener('click', async () => {
 
 async function prepareTransfer() {
   if (!state.libraryCharacters) state.libraryCharacters = (await api('/api/library/characters')).characters
-  const select = clear($('transferCharacter'))
+  const destinations = clear($('transferCharacter'))
   const compatible = state.libraryCharacters.filter((character) => (state.batch && character.rig === 'minecraft20') || compatibleLibraryCharacter(character).enabled)
-  for (const character of compatible) select.append(h('option', { value: character.charId, text: `${character.name} · ${character.rig}` }))
+  state.transferCharacters = new Set([...state.transferCharacters].filter((charId) => compatible.some((character) => character.charId === charId)))
   const targetCharacter = state.target?.id?.startsWith('lib-') ? state.target.id.slice(4) : ''
-  if (compatible.some((character) => character.charId === targetCharacter)) select.value = targetCharacter
-  const character = compatible.find((item) => item.charId === select.value)
+  if (!state.transferCharacters.size && compatible.some((character) => character.charId === targetCharacter)) state.transferCharacters.add(targetCharacter)
+  if (!state.transferCharacters.size && compatible[0]) state.transferCharacters.add(compatible[0].charId)
+  for (const character of compatible) {
+    const checked = state.transferCharacters.has(character.charId)
+    const input = h('input', { type: 'checkbox', value: character.charId, 'aria-label': `Chọn ${character.name}`, onchange: (event) => {
+      event.target.checked ? state.transferCharacters.add(character.charId) : state.transferCharacters.delete(character.charId)
+      renderTransferDestinations(); renderTransferKeys(); renderActionPicker()
+    } })
+    input.checked = checked
+    destinations.append(h('label', { class: `destination-card${checked ? ' selected' : ''}` }, input,
+      h('span', {}, h('b', { text: character.name }), h('small', { text: character.rig }))))
+  }
+  const character = state.libraryCharacters.find((item) => item.charId === [...state.transferCharacters][0])
   $('transferCharacterPack').checked = !!character
   $('transferCharacterPack').disabled = !character
   renderTransferKeys()
   $('transferConfirm').hidden = false
   renderActionPicker()
 }
+function renderTransferDestinations() {
+  const destinations = $('transferCharacter')
+  if (!destinations?.children.length) return
+  for (const input of destinations.querySelectorAll('input[type=checkbox]')) {
+    const checked = state.transferCharacters.has(input.value)
+    input.checked = checked
+    input.closest('label')?.classList.toggle('selected', checked)
+  }
+}
+function selectedTransferCharacters() {
+  return (state.libraryCharacters ?? []).filter((character) => state.transferCharacters.has(character.charId))
+}
 function renderTransferKeys() {
-  const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
+  const characters = selectedTransferCharacters()
   const select = clear($('transferActionKey'))
-  for (const required of character?.requiredActions ?? []) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
+  const requiredActions = characters.length
+    ? (characters[0].requiredActions ?? []).filter((item) => characters.every((character) => (character.requiredActions ?? []).some((required) => required.key === item.key)))
+    : []
+  for (const required of requiredActions) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
   if (!select.options.length) select.append(h('option', { value: 'idle', text: 'Đứng yên (idle)' }))
   const selectedNames = selectedActionIndices().map((index) => {
     const action = state.inspect?.actions?.find((item) => item.index === index)
     return action?.displayName ?? action?.name
   }).filter(Boolean)
-  const suggestion = suggestActionKey(character?.requiredActions ?? [], selectedNames)
+  const suggestion = suggestActionKey(requiredActions, selectedNames)
   if (suggestion) select.value = suggestion
-  $('transferCharacterPack').disabled = !character
+  if (!characters.length) $('transferCharacterPack').checked = false
+  $('transferCharacterPack').disabled = !characters.length
 }
 $('transferOpen').addEventListener('click', async () => { try { await prepareTransfer() } catch (error) { toast(`Không đọc được thư viện: ${error.message}`, 'err') } })
 function syncBatchDestinationOptions() {
-  const character = state.libraryCharacters?.find((item) => item.charId === $('transferCharacter').value)
-  if (state.batch && (character?.rig === 'minecraft20' || $('transferShared').checked || state.transferConfig?.toShared)) $('optionsForm').elements.bobj.checked = true
+  const hasMinecraft20 = selectedTransferCharacters().some((character) => character.rig === 'minecraft20')
+  if (state.batch && (hasMinecraft20 || $('transferShared').checked || state.transferConfig?.toShared)) $('optionsForm').elements.bobj.checked = true
   state.requestBobj = !!$('optionsForm').elements.bobj.checked
 }
-$('transferCharacter').addEventListener('change', () => { syncBatchDestinationOptions(); renderTransferKeys(); renderActionPicker() })
 async function transferSelected(indices, retryConfig = null) {
-  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value }
+  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charIds: [...state.transferCharacters], key: $('transferActionKey').value }
   state.transferConfig = Object.freeze({ ...config })
   const toCharacter = config.toCharacter, toShared = config.toShared
   if (!toCharacter && !toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
+  if (toCharacter && !config.charIds.length) throw new Error('Chọn ít nhất một nhân vật đích.')
   if (!indices.length) throw new Error('Chưa chọn animation.')
   state.transferRunning = true
   for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = true
-  const selectedCharacter = state.libraryCharacters?.find((item) => item.charId === config.charId)
-  const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
+  const selectedCharacter = state.libraryCharacters?.find((item) => item.charId === config.charIds[0])
+  const characterTarget = state.targets.find((item) => item.id === `lib-${config.charIds[0]}`)
   if (selectedCharacter?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${selectedCharacter.name} chưa có model đích trong Workbench. Tải lại Workbench sau khi thêm nhân vật.`)
   if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
   renderActionPicker(); $('transferStatus').textContent = `Đang chuẩn hoá ${indices.length} animation…`
@@ -831,7 +858,7 @@ async function transferSelected(indices, retryConfig = null) {
   for (const index of indices) { const edit = state.actionEdits.get(index); if (!edit) continue; const base = edit.name.trim(); const count = nameCounts.get(base.toLocaleLowerCase()) ?? 0; nameCounts.set(base.toLocaleLowerCase(), count + 1); transferNames[index] = { ...edit, name: count ? `${base}_${count + 1}` : base } }
   const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact, transferNames),
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
-      charIds: [config.charId], actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
+      charIds: config.charIds, actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
     } }),
     importShared: (result, succeeded) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => ({ uuid: action.uuid, key: state.actionKeys.get(action.sourceActionIndex) || config.key || 'idle' })) } }),
   })
@@ -839,8 +866,8 @@ async function transferSelected(indices, retryConfig = null) {
   state.transferFailed = transferred.failed
   $('transferRetry').hidden = !state.transferFailed.length
   if (!succeeded.length) throw new Error(`Không animation nào chuẩn hoá thành công. Có thể thử lại ${state.transferFailed.length} action lỗi.`)
-  const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
-  const summary = [`Đã chuyển ${succeeded.length} animation`, ...(toCharacter ? [`→ ${character?.name ?? 'nhân vật'} (${drafts.length} Nháp)`] : []), ...(toShared ? [`+ kho dùng chung (${shared?.created === false ? 'đã có' : '1 gói'})`] : [])].join(' ')
+  const targetNames = (state.libraryCharacters ?? []).filter((item) => config.charIds.includes(item.charId)).map((item) => item.name)
+  const summary = [`Đã chuyển ${succeeded.length} animation`, ...(toCharacter ? [`→ ${targetNames.join(', ') || 'nhân vật'} (${drafts.length} Nháp)`] : []), ...(toShared ? [`+ kho dùng chung (${shared?.created === false ? 'đã có' : '1 gói'})`] : [])].join(' ')
   $('transferStatus').textContent = state.transferFailed.length ? `${summary}. Lỗi ${state.transferFailed.length}: ${state.transferFailed.map((index) => state.inspect.actions[index]?.displayName ?? index).join(', ')}` : summary
   if (!state.transferFailed.length) { state.libraryCharacters = null; state.transferConfig = null }
   return { normalized: succeeded.length, drafts: drafts.length, sharedPacks: toShared ? 1 : 0, failed: state.transferFailed }
@@ -852,8 +879,9 @@ $('transferStart').addEventListener('click', async () => {
   finally { state.transferRunning = false; for (const control of $('transferConfirm').querySelectorAll('input,select,button')) control.disabled = false; renderActionPicker() }
 })
 async function transferBatch(groups, retryConfig = null) {
-  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charId: $('transferCharacter').value, key: $('transferActionKey').value, licenseSource: $('transferLicenseSource').value.trim() }
+  const config = retryConfig ?? { toCharacter: $('transferCharacterPack').checked, toShared: $('transferShared').checked, charIds: [...state.transferCharacters], key: $('transferActionKey').value, licenseSource: $('transferLicenseSource').value.trim() }
   if (!config.toCharacter && !config.toShared) throw new Error('Chọn Bộ của nhân vật và/hoặc Kho dùng chung.')
+  if (config.toCharacter && !config.charIds.length) throw new Error('Chọn ít nhất một nhân vật đích.')
   state.transferConfig = Object.freeze({ ...config }); state.transferRunning = true; state.batchFailedEntries = []; state.batchCancelRequested = false
   syncBatchDestinationOptions()
   $('batchRetry').hidden = true
@@ -868,8 +896,8 @@ async function transferBatch(groups, retryConfig = null) {
     try {
       if (!entry.sourceId || !entry.inspect || entry.inspect.blocker) throw new Error(entry.error ?? 'File thiếu xương chính hoặc không có Action')
       if (config.toCharacter) {
-        const characterTarget = state.targets.find((item) => item.id === `lib-${config.charId}`)
-        const character = state.libraryCharacters?.find((item) => item.charId === config.charId)
+        const characterTarget = state.targets.find((item) => item.id === `lib-${config.charIds[0]}`)
+        const character = state.libraryCharacters?.find((item) => item.charId === config.charIds[0])
         if (character?.rig === 'mixamo65' && !characterTarget) throw new Error(`Nhân vật ${character.name} chưa có model đích trong Workbench`)
         if (characterTarget && state.target?.id !== characterTarget.id) await chooseTarget(characterTarget)
       }
@@ -893,7 +921,7 @@ async function transferBatch(groups, retryConfig = null) {
       const succeeded = actions.map((action) => byIndex.get(action.index)).filter(Boolean)
       const failedActions = actions.filter((action) => !byIndex.has(action.index))
       if (config.toCharacter && succeeded.length) {
-        const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: [config.charId], actions: succeeded.map((action) => {
+        const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: config.charIds, actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
           return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
@@ -915,8 +943,8 @@ async function transferBatch(groups, retryConfig = null) {
     } catch (error) { state.batchFailedEntries.push(group); entry.error = error.message }
   }
   $('batchRetry').hidden = state.batchFailedEntries.length === 0
-  const targetName = state.libraryCharacters?.find((item) => item.charId === config.charId)?.name ?? 'nhân vật'
-  $('transferStatus').textContent = `${state.batchCancelRequested ? 'Đã huỷ' : 'Đã chuyển'} ${completed} animation${config.toCharacter ? ` → ${targetName} (${drafts} Nháp)` : ''}${config.toShared ? ` + kho dùng chung (${sharedPacks} gói)` : ''}${state.batchFailedEntries.length ? ` · ${state.batchFailedEntries.length} file lỗi, có thể thử lại` : ''}`
+  const targetNames = (state.libraryCharacters ?? []).filter((item) => config.charIds.includes(item.charId)).map((item) => item.name)
+  $('transferStatus').textContent = `${state.batchCancelRequested ? 'Đã huỷ' : 'Đã chuyển'} ${completed} animation${config.toCharacter ? ` → ${targetNames.join(', ') || 'nhân vật'} (${drafts} Nháp)` : ''}${config.toShared ? ` + kho dùng chung (${sharedPacks} gói)` : ''}${state.batchFailedEntries.length ? ` · ${state.batchFailedEntries.length} file lỗi, có thể thử lại` : ''}`
   state.batchProgress = null
   $('batchCancel').hidden = true; $('batchCancel').textContent = 'Huỷ kiểm tra lô'
   return { completed, failed: state.batchFailedEntries.length }
