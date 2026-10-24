@@ -63,7 +63,7 @@ async function main() {
 
     await page.goto(base)
     await page.locator('.wb-hero-actions .wb-cta').click()
-    await page.getByRole('button', { name: /创建并打开|Create and open/ }).click()
+    await page.getByRole('button', { name: /创建并打开|Create and open|Tạo và mở/ }).click()
     await page.waitForURL(/unified=/, { timeout: 60_000 })
     const unifiedId = new URL(page.url()).searchParams.get('unified')
     if (unifiedId) {

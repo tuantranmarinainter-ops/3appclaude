@@ -3,6 +3,7 @@
  * non-baking `inspectNormalize` view the UI needs. Same cores as the CLI; no retarget logic lives here.
  */
 import { createHash } from 'node:crypto'
+import { AnimationClip } from 'three'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,13 +11,14 @@ import { createMixamo65MappingPreset } from '../src/mappingPreset.ts'
 import type { MappingSkeleton } from '../src/mapping.ts'
 import { formatFromPath, loadAsset, type AssetFormat } from '../cli/loadAsset.ts'
 import { applyModelMode, ModelBlockedError, readModelSourceFiles, type PipelineResult } from '../cli/modelExport.ts'
-import { inspectNormalize, runNormalize, type NormalizeProgress, type NormalizeRequest } from '../cli/normalizeCore.ts'
+import { inspectNormalize, reuseInspection, runNormalize, type NormalizeProgress, type NormalizeRequest } from '../cli/normalizeCore.ts'
 import type { SourceFamily } from '../cli/autoMapping.ts'
 import { renderContactSheet } from '../cli/previewPng.ts'
 import { exportMinecraft20 } from '../cli/toMinecraft20.ts'
 import { MIXAMO65_BONE_PARENTS } from '../src/mixamo65.ts'
 import { DEFAULT_ADJUSTMENTS, resolveAdjustments, type AdjustmentSettings } from '../src/adjustments.ts'
 import { loadVerityModel, type VerityModel } from './verity.ts'
+import { ParsedAssetCache } from './parsedAssetCache.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 /** The V9.12 Minecraft20 armature shipped with Studio is the default rig for `.bobj` sources and `.bobj` output. */
@@ -36,6 +38,7 @@ export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; actionNames?: Record<number, { name: string; nameVi?: string }>; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
   adjustments: AdjustmentSettings
+  review: boolean
 }
 
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
@@ -92,6 +95,7 @@ export function parseOptions(value: unknown): RunOptions {
     mode: oneOf('mode', ['animation', 'model'], 'animation'), bobj: raw.bobj === true, bobjRoot: oneOf('bobjRoot', ['inPlace', 'follow'], 'inPlace'),
     preview: raw.preview === true,
     adjustments: parseAdjustments(raw.adjustments),
+    review: raw.review === true,
   }
 }
 
@@ -118,14 +122,23 @@ export function describeSource(path: string, name: string, uploaded: boolean, id
 const resourceDir = (record: { path: string }) => dirname(record.path)
 const unitMetersFor = (record: SourceRecord, options: RunOptions) => options.unitMeters ?? (record.format === 'fbx' ? 0.01 : 1)
 
+const reviewInspections = new Map<string, Awaited<ReturnType<typeof inspectNormalize>>>()
+const parsedAssets = new ParsedAssetCache(8, 256 * 1024 * 1024)
+function inspectionKey(cacheKey: string[], options: RunOptions, preset: unknown, family?: SourceFamily) {
+  return JSON.stringify([cacheKey, options.unitMeters, options.upAxis, options.rootPolicy, options.rootScale, options.ground,
+    options.calibrate, options.facingDegrees, options.swapSides, preset, family])
+}
+function rememberInspection(key: string, value: Awaited<ReturnType<typeof inspectNormalize>>) {
+  reviewInspections.delete(key); reviewInspections.set(key, value)
+  while (reviewInspections.size > 8) reviewInspections.delete(reviewInspections.keys().next().value!)
+}
+
 async function loadScenes(source: SourceRecord, target: TargetRecord) {
-  const armature = source.format === 'bobj' ? readFileSync(source.armaturePath ?? DEFAULT_ARMATURE) : undefined
-  const srcBytes = readFileSync(source.path), targetBytes = readFileSync(target.path)
-  return {
-    srcBytes,
-    source: await loadAsset(srcBytes, source.format, { skeletonOnly: true, resourceDir: resourceDir(source), ...(armature ? { bobjArmature: armature } : {}) }),
-    target: await loadAsset(targetBytes, 'glb', { skeletonOnly: true, resourceDir: resourceDir(target) }),
-  }
+  const [src, dst] = await Promise.all([
+    parsedAssets.load(source.path, source.format, source.format === 'bobj' ? source.armaturePath ?? DEFAULT_ARMATURE : undefined),
+    parsedAssets.load(target.path, 'glb'),
+  ])
+  return { cacheKey: [src.version, dst.version], srcBytes: src.bytes, source: src.scene, target: dst.scene }
 }
 
 function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptions, scenes: Awaited<ReturnType<typeof loadScenes>>, preset: unknown, presetFamily: SourceFamily | undefined): NormalizeRequest {
@@ -139,6 +152,7 @@ function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptio
 export async function inspect(source: SourceRecord, target: TargetRecord, options: RunOptions, preset: unknown, presetFamily?: SourceFamily) {
   const scenes = await loadScenes(source, target)
   const result = await inspectNormalize(toRequest(source, target, options, scenes, preset, presetFamily))
+  rememberInspection(inspectionKey(scenes.cacheKey, options, preset, presetFamily), result)
   const calibration = result.ready?.calibration
   const children = new Map<string, number>()
   for (const bone of result.rigs.source.bones) if (bone.parentId) children.set(bone.parentId, (children.get(bone.parentId) ?? 0) + 1)
@@ -199,6 +213,17 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
   }
   const unitMeters = unitMetersFor(source, options)
   const scenes = await loadScenes(source, target)
+  let prepared: Awaited<ReturnType<typeof inspectNormalize>> | undefined
+  if (options.review) {
+    if (options.actions?.length !== 1) throw new UserError('Review requires exactly one Action')
+    if (!scenes.source.animations[options.actions[0]!]) throw new UserError('Review Action does not exist')
+    const key = inspectionKey(scenes.cacheKey, options, preset, presetFamily)
+    // Facing/mapping use the full asset, exactly as export; only clip validation/bake is per-row.
+    const previous = reviewInspections.get(key) ?? await inspectNormalize(toRequest(source, target, options, scenes, preset, presetFamily))
+    rememberInspection(key, previous)
+    scenes.source.animations = scenes.source.animations.map((clip, index) => options.actions!.includes(index) ? clip : new AnimationClip(clip.name, clip.duration, []))
+    prepared = reuseInspection(toRequest(source, target, options, scenes, preset, presetFamily), previous)
+  }
   let modelFiles: ReturnType<typeof readModelSourceFiles> | undefined
   let early: PipelineResult | undefined
   if (options.mode === 'model') {
@@ -207,7 +232,8 @@ export async function runPipeline(source: SourceRecord, target: TargetRecord, op
       early = { status: 'BLOCKED', report: { status: 'BLOCKED', blocker: { code: error.code, message: error.message } } }
     }
   }
-  let result: PipelineResult = early ?? await runNormalize({ ...toRequest(source, target, options, scenes, preset, presetFamily), onProgress, signal })
+  const request = { ...toRequest(source, target, options, scenes, preset, presetFamily), onProgress, signal }
+  let result: PipelineResult = early ?? await runNormalize(request, prepared)
   if (options.mode === 'model') {
     await onProgress('model', 0, 1)
     result = await applyModelMode(result, { loadSource: () => loadAsset(scenes.srcBytes, source.format, { keepMeshes: true, resourceDir: resourceDir(source) }), files: modelFiles ?? null, unitMeters, upAxis: options.upAxis })

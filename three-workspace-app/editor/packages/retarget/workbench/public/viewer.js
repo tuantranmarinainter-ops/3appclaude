@@ -243,6 +243,8 @@ export class Viewer {
     const tick = (now) => {
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
+      // Keep the last frame while a foreground bake needs the CPU; playback resumes on completion/error.
+      if (this.suspended) { requestAnimationFrame(tick); return }
       if (this.playing && this.duration > 0) this.time = (this.time + dt * this.speed) % this.duration
       this.apply()
       this.left.render(); this.right.render()
@@ -278,9 +280,26 @@ export class Viewer {
     else { this.fitSteveToTarget(); this.right.setModel(this.steve.scene) }
   }
 
+  /** Animation-only previews keep clips, never another copy of the character mesh. */
+  preloadResult(url) {
+    this.resultClips ??= new Map()
+    if (this.resultClips.has(url)) {
+      const clips = this.resultClips.get(url)
+      this.resultClips.delete(url); this.resultClips.set(url, clips)
+      return clips
+    }
+    const clips = loadModel(url, 'glb').then((loaded) => loaded.animations).catch((error) => {
+      if (this.resultClips.get(url) === clips) this.resultClips.delete(url)
+      throw error
+    })
+    this.resultClips.set(url, clips)
+    while (this.resultClips.size > 12) this.resultClips.delete(this.resultClips.keys().next().value)
+    return clips
+  }
+
   /** `offset`: animations before the normalized ones (an original-skeleton result keeps the character's built-in Actions first). */
   async loadResult(url, mode, offset = 0) {
-    const loaded = await loadModel(url, 'glb')
+    const loaded = mode === 'animation' ? { animations: await this.preloadResult(url), scene: null } : await loadModel(url, 'glb')
     this.result = { mode, animations: loaded.animations, scene: loaded.scene, offset }
     this.renamed.clear()
     if (this.steveMode) return
@@ -359,9 +378,8 @@ export class Viewer {
     } else this.right.setClip(null)
     this.duration = duration ?? this.right.clip?.duration ?? sourceClip?.duration ?? 1
     this.time = 0
-    // Re-frame on the first pose so cameras fit the character as animated (root offsets included at t=0).
+    // Switching clips keeps the cameras fixed; Frame All measures the current posed bounds on demand.
     this.apply()
-    this.left.updateBounds(); this.right.updateBounds()
     return { source: sourceClip ? { duration: sourceClip.duration, tracks: sourceClip.tracks.length } : null, right: rightInfo }
   }
 
