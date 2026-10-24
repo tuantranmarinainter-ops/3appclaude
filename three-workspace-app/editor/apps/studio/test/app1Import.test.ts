@@ -193,7 +193,17 @@ for (const constant of [false,true]) test(`Result round trip (${constant ? 'cons
   const result={version:'1.0.0',shotId:shot.shotId,baseShotSha256:sha256(shotFiles['shot.json']!),edits:[{characterId:character.characterId,originalActionUuid:character.actionUuid,newActionUuid:id,glb:'edited.glb',manifest:'edited.manifest.json',glbSha256:sha256(edited),placementKeys:[{frame:0,position:[3,0,0],yawDegrees:45},{frame:fixture.frameEnd,position:[constant?3:4,0,0],yawDegrees:constant?45:90}]}]}
   const files={'result.json':jsonBytes(result),'edited.glb':edited,'edited.manifest.json':jsonBytes(newManifest)}
   assert.deepEqual(validateResult(files,shotFiles),[])
-  const staged=await upload(Buffer.from(zipPackage(files)),'result.zip')
+  const resultBytes=Buffer.from(zipPackage(files))
+  const {saveShotDraft,readShotDraft}=await import('../src/shotDraft')
+  const unchanged=await readUnifiedProject(fixture.projectId)
+  const draft=await saveShotDraft(unchanged,shot.shotId,resultBytes)
+  assert.equal(draft.sha256,sha256(resultBytes))
+  assert.deepEqual(await readShotDraft(unchanged,shot.shotId),resultBytes)
+  assert.deepEqual(await readUnifiedProject(fixture.projectId),unchanged,'saving a draft must not replace timeline clips')
+  await assert.rejects(saveShotDraft(unchanged,shot.shotId,Buffer.from('broken zip')))
+  assert.deepEqual(await readShotDraft(unchanged,shot.shotId),resultBytes,'failed save must preserve previous draft')
+  await assert.rejects(readShotDraft({...unchanged,revision:unchanged.revision+1},shot.shotId),/stale/)
+  const staged=await upload(resultBytes,'result.zip')
   const before=await readUnifiedProject(fixture.projectId)
   await assert.rejects(executeUnifiedCommand({requestId:randomUUID(),projectId:fixture.projectId,command:'shot.result.import',expectedRevision:before.revision-1,args:{file:staged.id,shotId:shot.shotId}}), (e:any)=>e.code==='REVISION_CONFLICT')
   const imported=await fixture.send('shot.result.import',{file:staged.id,shotId:shot.shotId})

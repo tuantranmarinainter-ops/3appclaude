@@ -160,11 +160,18 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     setBusy(true); setError(''); setStatus('Đang tạo và kiểm tra animation…')
     try {
       if (shotId) {
+        const exported = await request('shotExport', { includeMinecraft20: withBobj })
+        if (!exported?.zip) throw new Error('Editor không trả gói kết quả để lưu.')
+        const upload = await uploadUnifiedAsset(new File([exported.zip], `${shotId}.draft.zip`, { type: 'application/zip' }))
+        const saved = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/shots/${encodeURIComponent(shotId)}/draft`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file: upload.uploadId }),
+        })
+        if (!saved.ok) { const body = await saved.json(); throw new Error(body.error?.message ?? 'Không lưu được bản chỉnh của shot.') }
         await request('saved')
         setOpened(false)
         setEditorDirty(false)
         onEditorDirty(false)
-        setStatus('Đã lưu bản chỉnh của shot trong editor · hãy bấm "Trả kết quả về cảnh" để cập nhật timeline.')
+        setStatus('Đã lưu bản chỉnh của shot vào project · hãy bấm "Trả kết quả về cảnh" để cập nhật timeline.')
         return
       }
       const result = await request('save')
