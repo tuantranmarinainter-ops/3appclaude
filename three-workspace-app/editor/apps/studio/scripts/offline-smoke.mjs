@@ -78,6 +78,8 @@ async function main() {
       if (await page.locator('.wb-unified-shell .workspace-navigation').count() !== 1) fail('workspace navigation is outside the active project shell')
       if (await navigation.locator('li').count() !== 5) fail('unified workspace navigation is not a single five-item bar')
       if (await page.locator('.wb-workspace-tabs').count()) fail('duplicate App 2 workspace navigation is visible')
+      const workflowBounds = await page.locator('.wb-workflow-bar').boundingBox()
+      if (!workflowBounds || workflowBounds.height > 64) fail('workflow hint row squeezes the editor viewport')
       await page.getByRole('button', { name: 'Dựng cảnh', exact: true }).click()
       await page.waitForFunction(() => window.__store?.getState?.().ready === true, null, { timeout: 60_000 })
       if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT })

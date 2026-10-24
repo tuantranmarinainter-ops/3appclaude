@@ -98,7 +98,7 @@
 
 /* The shared workspace bar is the overlay's only workspace navigation row. */
 body .wb-unified-shell {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 body .wb-unified-topbar { min-height: 56px; }
 .workspace-navigation-host { min-width: 0; }
