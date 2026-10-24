@@ -168,7 +168,6 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         })
         if (!saved.ok) { const body = await saved.json(); throw new Error(body.error?.message ?? 'Không lưu được bản chỉnh của shot.') }
         await request('saved')
-        setOpened(false)
         setEditorDirty(false)
         onEditorDirty(false)
         setStatus('Đã lưu bản chỉnh của shot vào project · hãy bấm "Trả kết quả về cảnh" để cập nhật timeline.')
