@@ -9,6 +9,7 @@ import { getPreviewQueueState, type PreviewQueueJob } from './libraryPreviewQueu
 
 export type LibraryPreviewJob = PreviewQueueJob
 const builtinCharacter = 'a3d_char_de37873a79244fbe8a0660ea08d1b4ab'
+const PREVIEW_SECONDS = 2.5
 const queueState = getPreviewQueueState()
 
 function runFfmpeg(input: string, output: string, seconds: number): Promise<void> {
@@ -33,12 +34,12 @@ async function createPreview(uuid: string): Promise<void> {
     const charId = useCharacter ? character!.charId : builtinCharacter
     const mannequin = action.rig === 'minecraft20' && !useCharacter
     const skin = mannequin && character?.rig === 'minecraft20' ? `/api/library/character/${encodeURIComponent(character.charId)}/skin` : ''
-    const seconds = Math.min(2.5, Math.max(0.1, action.durationSeconds))
+    const seconds = PREVIEW_SECONDS
     type RenderPage = { setViewportSize(size: { width: number; height: number }): Promise<void>; goto(url: string, options: { waitUntil: 'load'; timeout: number }): Promise<unknown>; waitForFunction<T>(callback: () => T, argument?: unknown, options?: { timeout: number }): Promise<unknown>; evaluate<T>(callback: () => T): Promise<T> }
     type RendererInfo = { kind: 'gpu' | 'cpu'; name: string; raw: string }
     type WithPage = <T>(work: (page: RenderPage, origin: string, warnings: string[], network: { blocked: string[] }, localAssetUrls: Record<string, string>, renderer: RendererInfo) => Promise<T>, options?: { allowedOrigins?: string[] }) => Promise<T>
     const withPage = (directorRenderer as unknown as { withPage: WithPage }).withPage
-    const result = await withPage(async (page, _origin, _warnings, _network, _localAssets, renderer) => {
+    const render = () => withPage(async (page, _origin, _warnings, _network, _localAssets, renderer) => {
       job.renderer = renderer.kind === 'gpu' ? `GPU: ${renderer.name}` : `CPU: ${renderer.name}`
       if (renderer.kind !== 'gpu') throw new Error(`GPU rendering unavailable (${renderer.name}); showing the PNG cover instead. Set W01_RENDER_GPU=1 to request hardware rendering.`)
       await page.setViewportSize({ width: 320, height: 320 })
@@ -46,6 +47,9 @@ async function createPreview(uuid: string): Promise<void> {
       await page.waitForFunction(() => Boolean((window as Window & { __libraryPreviewResult?: unknown }).__libraryPreviewResult), undefined, { timeout: 60_000 })
       return page.evaluate(() => (window as Window & { __libraryPreviewResult?: { data: string; mime: string; error?: string } }).__libraryPreviewResult!)
     }, { allowedOrigins: [queueState.appOrigin] })
+    // MediaRecorder occasionally yields no chunks on a cold page; one fresh page almost always fixes it.
+    let result = await render()
+    if (!result.error && !result.data) result = await render()
     if (result.error || !result.data) throw new Error(result.error || 'Browser produced an empty WebM preview')
     const raw = Buffer.from(result.data, 'base64')
     if (raw.length < 128 || !raw.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) throw new Error('Browser output is not a valid WebM file')

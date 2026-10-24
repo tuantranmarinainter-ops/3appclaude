@@ -71,7 +71,13 @@ export function characterActions(charId: string, status?: CharacterActionStatus)
 }
 
 export function rawActions(text?: string) {
-  return searchLibrary({ text, limit: 100 }).items.filter((action) => !action.ownerCharId)
+  const items: ReturnType<typeof searchLibrary>['items'] = []
+  for (let offset = 0; ; offset += 100) {
+    const page = searchLibrary({ text, limit: 100, offset })
+    items.push(...page.items)
+    if (offset + page.items.length >= page.total || !page.items.length) break
+  }
+  return items.filter((action) => !action.ownerCharId)
 }
 
 export function approveCharacterAction(charId: string, actionUuid: string) {
