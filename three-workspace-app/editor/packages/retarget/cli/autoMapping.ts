@@ -25,6 +25,12 @@ const LIMBS = { Shoulder: ['clavicle', 'clavicle', 'clavicle'], Arm: ['upperarm'
   Hand: ['hand', 'hand', 'hand'], UpLeg: ['thigh', 'thigh', 'hip'], Leg: ['calf', 'calf', 'kneelower'], Foot: ['foot', 'foot', 'foot'],
   ToeBase: ['ball', 'toebase', 'toe'] } as const
 
+/** LoL variant without KneeUpper/KneeLower: `L_Hip`/`L_Knee` legs, `L_Shoulder`(clavicle)/`L_UpArm`/`L_ForeArm` arms. */
+const LOL_UPARM_LIMBS = { Shoulder: 'shoulder', Arm: 'uparm', ForeArm: 'forearm', Hand: 'hand', UpLeg: 'hip', Leg: 'knee', Foot: 'foot', ToeBase: 'toe' } as const
+function isLolUpArmVariant(names: ReadonlySet<string>): boolean {
+  return ['pelvis', 'lhip', 'lknee', 'lfoot', 'luparm', 'lforearm', 'rhip', 'rknee', 'ruparm', 'rforearm'].every((name) => names.has(name))
+}
+
 /**
  * Canonical alias per Mixamo joint; UE uses `name_l` suffixes, CC `CC_Base_L_Name`, LoL (lol2gltf) `L_Name` prefixes.
  * LoL `Root` is the hip-level parent of both `Spine1` and `Pelvis`, so it plays Mixamo `Hips`.
@@ -35,6 +41,14 @@ function familyAliases(family: 'ue' | 'cc' | 'lol', names: ReadonlySet<string>):
     const ue5 = names.has('spine05')
     result.set('Hips', 'pelvis').set('Spine', 'spine01').set('Spine1', ue5 ? 'spine03' : 'spine02').set('Spine2', ue5 ? 'spine05' : 'spine03')
       .set('Neck', 'neck01').set('Head', 'head')
+  } else if (family === 'lol' && isLolUpArmVariant(names)) {
+    // Newer LoL exports (e.g. Zyra): Root > {Pelvis > L_Hip > L_Knee > L_Foot > L_Toe, Spine > Chest > L_Shoulder > L_UpArm > L_ForeArm > L_Hand}.
+    result.set('Hips', 'root').set('Spine', 'spine').set('Spine2', 'chest').set('Neck', 'neck').set('Head', 'head')
+    for (const [side, s] of [['Left', 'l'], ['Right', 'r']] as const) {
+      for (const [part, alias] of Object.entries(LOL_UPARM_LIMBS)) result.set(`${side}${part}`, `${s}${alias}`)
+      for (const finger of FINGERS) for (const index of [1, 2, 3]) result.set(`${side}Hand${finger}${index}`, `${s}${finger.toLowerCase()}${index}`)
+    }
+    return result
   } else if (family === 'lol') {
     result.set('Hips', 'root').set('Spine', 'spine1').set('Spine1', 'spine2').set('Spine2', 'spine3').set('Neck', 'neck').set('Head', 'head')
   } else {
@@ -131,6 +145,7 @@ function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): Sourc
   if (raw.some((name) => /^cc_?base_/i.test(name.split(':').pop()!))) return 'cc'
   if (names.has('pelvis') && names.has('thighl')) return 'ue'
   if (names.has('pelvis') && names.has('lkneeupper') && names.has('lkneelower')) return 'lol'
+  if (isLolUpArmVariant(names)) return 'lol'
   if (names.has('spinec00jnt') && names.has('bonechest') && names.has('arml00jnt')) return 'wc3r'
   if (names.has('anchor') && names.has('lowbody') && names.has('lowleftarm')) return 'minecraft20'
   if (names.has('boneroot') && names.has('bonefootl') && (names.has('bonelegl') || names.has('boneexpl1leg1twist1'))) return 'wow'
