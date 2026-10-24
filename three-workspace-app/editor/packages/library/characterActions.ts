@@ -77,6 +77,7 @@ interface NewVersion {
   license: LibraryLicense
   manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
   nativeBobj?: string
+  favorite?: boolean
 }
 
 function createVersionPack(root: string, input: NewVersion): IndexedAction {
@@ -101,6 +102,7 @@ function createVersionPack(root: string, input: NewVersion): IndexedAction {
       parentUuid: input.parentUuid, cover: null,
       glbAnimationIndex: input.preserveAnimationIndex ? input.source.glbAnimationIndex : 0,
       ownerCharId: input.ownerCharId, status: input.status, version: input.version, variantOf: input.variantOf,
+      ...((input.favorite ?? input.source.favorite) ? { favorite: true } : {}),
       ...(input.notes === undefined ? {} : { notes: input.notes }),
     }],
   }
@@ -166,7 +168,7 @@ function inspectEditedGlb(root: string, path: string, rig: string, manifestContr
   return { durationSeconds }
 }
 
-export function addDraftToCharacter(options: LibraryOptions & { charId: string; actionUuid: string }): IndexedAction {
+export function addDraftToCharacter(options: LibraryOptions & { charId: string; actionUuid: string; favorite?: boolean }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
     initializeLibrary(root)
@@ -176,7 +178,7 @@ export function addDraftToCharacter(options: LibraryOptions & { charId: string; 
     const uuid = randomUUID()
     const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: safeChild(root, 'packs', source.packId, 'anim.glb'), uuid,
       status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true,
-      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source) })
+      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source), favorite: options.favorite })
     character.actions = [...new Set([...memberships(root, character, index.actions), created.uuid])]
     writeCharacter(root, character); writeIndex(root)
     return created
@@ -255,6 +257,7 @@ export function setCharacterActionStatus(options: LibraryOptions & { charId: str
 export function addConvertedDraftToCharacter(options: LibraryOptions & {
   charId: string; parentUuid: string; glbFile: string; rig: string; durationSeconds?: number
   manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
+  favorite?: boolean
 }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
@@ -271,7 +274,7 @@ export function addConvertedDraftToCharacter(options: LibraryOptions & {
     const uuid = randomUUID()
     const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: options.glbFile, uuid,
       status: 'draft', version: 1, variantOf: uuid, parentUuid: parent.uuid, preserveAnimationIndex: false,
-      durationSeconds: options.durationSeconds, license: sourceLicense(root, parent), manifestContract: options.manifestContract })
+      durationSeconds: options.durationSeconds, license: sourceLicense(root, parent), manifestContract: options.manifestContract, favorite: options.favorite })
     character.actions = [...new Set([...memberships(root, character, index.actions), created.uuid])]
     writeCharacter(root, character); writeIndex(root)
     return created
@@ -287,7 +290,7 @@ export function copyActionToCharacter(options: LibraryOptions & { actionUuid: st
     const uuid = randomUUID()
     const created = createVersionPack(root, { source, ownerCharId: target.charId, glbFile: safeChild(root, 'packs', source.packId, 'anim.glb'), uuid,
       status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true,
-      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source) })
+      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source), favorite: false })
     target.actions = [...new Set([...memberships(root, target, index.actions), created.uuid])]
     writeCharacter(root, target); writeIndex(root)
     return created
@@ -309,7 +312,7 @@ export function listCharacterActions(options: LibraryOptions & { charId: string;
       actions = [...latest.values()]
     }
     if (options.status) actions = actions.filter((action) => action.status === options.status)
-    return actions.sort((a, b) => (a.variantOf ?? a.uuid).localeCompare(b.variantOf ?? b.uuid) || (a.version ?? 0) - (b.version ?? 0))
+    return actions.sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (a.variantOf ?? a.uuid).localeCompare(b.variantOf ?? b.uuid) || (a.version ?? 0) - (b.version ?? 0))
   })
 }
 

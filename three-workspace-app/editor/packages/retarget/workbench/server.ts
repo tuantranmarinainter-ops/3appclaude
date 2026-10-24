@@ -632,7 +632,9 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
         if (!selection || typeof selection.uuid !== 'string' || !byUuid.has(selection.uuid) || typeof selection.key !== 'string' || !selection.key.trim()) {
           throw new UserError('Each selected Action requires a run UUID and a requiredActions.key tag')
         }
-        return { uuid: selection.uuid, key: selection.key.trim(), ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}) }
+        const favoriteFor = Array.isArray(selection.favoriteFor) ? [...new Set(selection.favoriteFor.filter((value: unknown): value is string => typeof value === 'string' && !!value))] : []
+        if (favoriteFor.some((charId) => !charIds.includes(charId))) throw new UserError('favoriteFor must contain selected destination characters only')
+        return { uuid: selection.uuid, key: selection.key.trim(), favoriteFor, ...(typeof selection.name === 'string' ? { name: selection.name.trim() } : {}), ...(typeof selection.nameVi === 'string' ? { nameVi: selection.nameVi.trim() } : {}), ...(typeof selection.sourceName === 'string' ? { sourceName: selection.sourceName.trim() } : {}) }
       })
       if (new Set(selected.map((item) => item.uuid)).size !== selected.length) throw new UserError('An Action can only be selected once')
       const characters = new Map(listLibraryCharacters().map((character) => [character.charId, character]))
@@ -726,8 +728,8 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
             const directory = join(state.dir, 'library-minecraft20'); mkdirSync(directory, { recursive: true })
             const glbFile = join(directory, `${source.uuid}.glb`)
             writeFileSync(glbFile, selectGlbAnimation(minecraftGlb!, minecraftIndex.get(action.uuid)!))
-            draft = addConvertedDraftToCharacter({ charId, parentUuid: source.uuid, glbFile, rig: 'minecraft20' })
-          } else draft = addDraftToCharacter({ charId, actionUuid: source.uuid })
+            draft = addConvertedDraftToCharacter({ charId, parentUuid: source.uuid, glbFile, rig: 'minecraft20', favorite: action.favoriteFor.includes(charId) })
+          } else draft = addDraftToCharacter({ charId, actionUuid: source.uuid, favorite: action.favoriteFor.includes(charId) })
           const draftPath = join(resolveLibraryPath(), 'packs', draft.packId)
           if (character.rig === 'minecraft20') {
             writeFileSync(join(draftPath, 'anim.bobj'), selectBobjActions(minecraftBobj, new Set([minecraftNames.get(action.uuid)!])))
@@ -738,7 +740,7 @@ export async function startWorkbench(options: { port?: number } = {}): Promise<W
             writeFileSync(join(draftPath, 'anim.original.bbs.bobj'), artifact.bobj)
             writeFileSync(join(draftPath, 'anim.original.glb'), artifact.glb)
           }
-          drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key })
+          drafts.push({ charId, actionUuid: draft.uuid, packId: draft.packId, key: action.key, favorite: !!draft.favorite })
         }
       }
       return json(res, 200, { packId: sharedPackId, drafts })

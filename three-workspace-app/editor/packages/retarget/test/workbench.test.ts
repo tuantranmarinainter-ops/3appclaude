@@ -137,6 +137,8 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(html, /id="actionPicker"[^>]*hidden/)
   assert.match(html, /id="actionPickerClose"/)
   assert.match(html, /id="actionPickerInvert"/)
+  assert.match(html, /id="actionPickerStarredOnly"/)
+  assert.match(html, /id="reviewStarredOnly"/)
   assert.match(app, /pickerStorageKey = 'w01\.actionPicker\.v1'/)
   assert.match(app, /actionPickerClose'\)\.addEventListener\('click', closeActionPicker\)/)
   assert.doesNotMatch(app, /Escape[\s\S]{0,100}closeActionPicker/)
@@ -157,6 +159,8 @@ test('source Action picker is pinned, persisted, and closes only through its X b
   assert.match(html, /chọn một hoặc nhiều/)
   assert.match(app, /transferCharacters: new Set\(\)/)
   assert.match(app, /charIds: config\.charIds/)
+  assert.match(app, /favoriteFor:/)
+  assert.match(app, /event\.key === 's'/)
   assert.doesNotMatch(app, /charIds: \[config\.charId\]/)
 })
 
@@ -672,7 +676,7 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
     assert.equal(rawImport.status, 200, rawImport.text)
     const selected = run.json.manifest.actions[1]
     const sent = await post(`/api/runs/${run.json.runId}/character-library`, {
-      charIds: [first.charId, second.charId, minecraft.charId], actions: [{ uuid: selected.uuid, key: 'walk' }],
+      charIds: [first.charId, second.charId, minecraft.charId], actions: [{ uuid: selected.uuid, key: 'walk', favoriteFor: [first.charId, minecraft.charId] }],
     })
     assert.equal(sent.status, 200, sent.text)
     assert.equal(sent.json.drafts.length, 3)
@@ -680,6 +684,7 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
       const drafts = listCharacterActions({ charId: character.charId, latestOnly: true })
       assert.equal(drafts.length, 1)
       assert.equal(drafts[0]!.status, 'draft')
+      assert.equal(!!drafts[0]!.favorite, character.charId !== second.charId)
       assert.deepEqual(drafts[0]!.tags, ['legacy', 'walk'])
       // Every draft points at the one shared raw Action; Minecraft20 conversions leave no extra shared pack.
       assert.equal(drafts[0]!.parentUuid, selected.uuid)
@@ -729,6 +734,7 @@ test('a PASS run sends only selected Actions to multiple compatible Mixamo65 and
     const updatedCounts = (await call('/api/library/characters')).json.characters.filter((item: any) => [first.charId, second.charId, minecraft.charId].includes(item.charId))
     assert.ok(updatedCounts.every((item: any) => item.counts.draft === 1 && item.counts.edited === 0 && item.counts.approved === 0))
     assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [], actions: [{ uuid: selected.uuid, key: 'walk' }] })).status, 400)
+    assert.equal((await post(`/api/runs/${run.json.runId}/character-library`, { charIds: [first.charId], actions: [{ uuid: selected.uuid, key: 'walk', favoriteFor: [second.charId] }] })).status, 400)
   } finally {
     if (priorLibrary === undefined) delete process.env.W01_LIBRARY
     else process.env.W01_LIBRARY = priorLibrary
