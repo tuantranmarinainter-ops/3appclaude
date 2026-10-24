@@ -4,7 +4,7 @@ import './app3_bridge.test.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 import {validateShot,sha256,clipTime} from './shot_package.js';
 const enc=x=>new TextEncoder().encode(JSON.stringify(x));
-async function fixture(){const docs=readFileSync(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8'),files={};for(const m of docs.matchAll(/<!-- example:shot\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))files[m[1]]=new TextEncoder().encode(m[2]+'\n');files['characters/hero.glb']=new TextEncoder().encode('shot-contract-fixture-v1\n');files['references/stage.glb']=new TextEncoder().encode('shot-contract-reference-v1\n');return files;}
+async function fixture(){const docs=readFileSync(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8')).replace(/\r\n/g,'\n'),files={};for(const m of docs.matchAll(/<!-- example:shot\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))files[m[1]]=new TextEncoder().encode(m[2]+'\n');files['characters/hero.glb']=new TextEncoder().encode('shot-contract-fixture-v1\n');files['references/stage.glb']=new TextEncoder().encode('shot-contract-reference-v1\n');return files;}
 async function check(mutator,code){const f=await fixture(),s=JSON.parse(new TextDecoder().decode(f['shot.json']));mutator(s,f);f['shot.json']=enc(s);const issues=await validateShot(f);assert(issues.some(x=>x.code===code),JSON.stringify(issues));}
 test('contract example valid',async()=>assert.deepEqual(await validateShot(await fixture()),[]));
 for(const[code,fn]of [
