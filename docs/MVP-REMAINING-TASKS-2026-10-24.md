@@ -122,3 +122,12 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   Cần: tái hiện trên Chrome/Edge Windows (file đơn .glb/.fbx/.bobj, nhiều file, cả thư mục, thư mục lớn ~400 animation), kiểm
   `dragover` có `preventDefault` không, vùng thả có bị lớp khác (cột Duyệt animation / thanh chia C8 / overlay) che không, luồng
   `/api/batch-uploads` có lỗi không; có test trình duyệt kéo-thả thật (Playwright `setInputFiles`/DataTransfer).
+- **C13 — App 1 mapping tay: không cho một xương nguồn nằm ở hai ô** (người dùng báo 2026-10-24, *chưa code*). Hiện chọn cùng một
+  xương cho 2 khớp (vd LeftLeg và LeftFoot cùng `L_Foot`) thì cả hai ô đều giữ giá trị, chỉ hiện cảnh báo "Xương này đang gán cho
+  nhiều khớp" → dễ map lệch một bậc. Yêu cầu: khi gán xương đã dùng ở ô khác thì **tự xoá ô cũ** (ô cũ về trống, nổi màu "cần
+  chọn"), có Hoàn tác; không bao giờ hiện hai ô cùng một xương.
+- **C14 — Tự nhận bộ xương LoL kiểu Zyra** (*chưa code xong*). `S:\MINECRAFT MOD\YOUTUBE MC w BAO\Thiet ke skill\Go Xua\zyra.glb`:
+  Root > {Pelvis > L_Hip > L_Knee > L_Foot > L_Toe, Spine > Chest > Neck > Head, Chest > L_Shoulder > L_UpArm > L_ForeArm > L_Hand
+  > L_<Thumb|Index|Middle|Ring|Pinky>_1/_2}; hiện báo "Missing main joints". Bản nháp CHƯA chạy thử ở nhánh
+  `ai1/wip-lol-zyra-automap` (`packages/retarget/cli/autoMapping.ts`: biến thể LoL mới, Hips=Root, Spine=Spine, Spine2=Chest).
+  Cần: chạy normalize zyra → PASS, mapping đủ 65 phần chính, test autoMapping, giữ SHA Samba `68fcdb75d373…`.
