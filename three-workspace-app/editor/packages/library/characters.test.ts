@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
-import { createCharacter, rebuildLibraryIndex, registerBaseModel, registerLibraryCharacter, resolveCharacter, searchLibrary, setCharacterSkin } from './library'
+import { createCharacter, createCharacterWithOwnBase, rebuildLibraryIndex, registerBaseModel, registerLibraryCharacter, resolveCharacter, searchLibrary, setCharacterSkin } from './library'
 import { callLibraryTool } from './mcp'
 import { LIBRARY_VERSION, type MotionPackMetadata } from './types'
 import { readJsonFile, writeJsonAtomic } from './store'
@@ -114,4 +114,17 @@ test('unsafe object paths fail before creating partial records', (t) => {
   const options = fixture(t)
   writeFileSync(options.modelFile, 'arm_bone Root 0 0 0\no ../escape\nv 0 0 0')
   assert.throws(() => registerBaseModel({ ...options, name: 'bad', rig: 'verity' }), /unsafe/)
+})
+test('owned base models are unique per character even for identical files; foreign characters cannot adopt them', (t) => {
+  const options = fixture(t), { root, modelFile, texturesDir } = options
+  const a = createCharacterWithOwnBase({ root, charId: 'char-a', name: 'A', rig: 'verity', modelFile, texturesDir })
+  const b = createCharacterWithOwnBase({ root, charId: 'char-b', name: 'B', rig: 'verity', modelFile, texturesDir })
+  assert.notEqual(a.baseModelId, b.baseModelId)
+  const resolvedA = resolveCharacter({ root, charId: 'char-a' })
+  assert.equal(resolvedA.baseModel?.ownerCharId, 'char-a'); assert.equal(resolvedA.baseModel?.sha256, resolveCharacter({ root, charId: 'char-b' }).baseModel?.sha256)
+  assert.ok(resolvedA.textures['verity.mdl/Body.smd']!.includes(a.baseModelId!), 'textures live in the own base')
+  assert.throws(() => createCharacter({ root, charId: 'char-c', name: 'C', baseModelId: a.baseModelId! }), /belongs to character char-a/)
+  assert.throws(() => createCharacterWithOwnBase({ root, charId: 'char-a', name: 'A', rig: 'verity', modelFile, texturesDir }), /already exists/)
+  assert.equal(registerBaseModel({ root, name: 'A', rig: 'verity', modelFile, texturesDir, ownerCharId: 'char-a' }).created, false, 'same owner is idempotent')
+  assert.equal(registerBaseModel({ root, name: 'shared', rig: 'verity', modelFile, texturesDir }).metadata.ownerCharId, undefined, 'no owner keeps content addressing')
 })
