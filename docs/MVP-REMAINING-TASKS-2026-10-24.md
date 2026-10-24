@@ -131,3 +131,15 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   > L_<Thumb|Index|Middle|Ring|Pinky>_1/_2}; hiện báo "Missing main joints". Bản nháp CHƯA chạy thử ở nhánh
   `ai1/wip-lol-zyra-automap` (`packages/retarget/cli/autoMapping.ts`: biến thể LoL mới, Hips=Root, Spine=Spine, Spine2=Chest).
   Cần: chạy normalize zyra → PASS, mapping đủ 65 phần chính, test autoMapping, giữ SHA Samba `68fcdb75d373…`.
+- **C15 — App 1: tắt tự khớp camera khi đổi animation** (người dùng 2026-10-24). Hiện mỗi lần chọn animation mới, camera tự zoom
+  về góc cũ. Thêm ô tuỳ chọn "Tự khớp camera khi đổi animation", **mặc định KHÔNG tích**, nhớ lựa chọn (localStorage); khi tắt thì
+  giữ nguyên góc/zoom người dùng đang xem ở cả hai khung. Nút "Khớp camera" vẫn bấm tay được.
+- **C16 — App 1: Hiệu chỉnh riêng cho từng animation** (người dùng 2026-10-24). Hiện chỉnh (vd khoảng cách tay) cho một animation
+  thì áp chung cho mọi animation. Yêu cầu: mỗi animation (theo dòng trong "Duyệt animation") giữ bộ Hiệu chỉnh riêng; sang animation
+  chưa chỉnh thì các thanh **về mặc định**; quay lại animation đã chỉnh thì hiện lại giá trị của nó; dòng đã chỉnh có dấu hiệu
+  (vd chấm màu); có nút "Áp dụng cho các animation đã chọn" và "Đặt lại animation này"; khi Chuyển, mỗi animation xuất với bộ
+  Hiệu chỉnh của chính nó (`report.adjustments` theo từng Action).
+- **C17 — App 1: mapping bằng kéo dây giữa hai khung** (người dùng 2026-10-24, làm sau C10/C11/C13). Bấm vào một ô mapping (vd Hips) →
+  khung **nhân vật đích** sáng điểm khớp đó; người dùng nhấn giữ chuột trên điểm của nhân vật đích, kéo sang điểm khớp ở khung
+  **nhân vật nguồn**: hiện **sợi dây nối** theo con trỏ; thả chuột trên điểm nguồn = gán mapping (theo luật C13 không trùng),
+  sợi dây biến mất; thả ra ngoài = huỷ. Điểm nguồn dưới con trỏ sáng lên kèm tên xương (C10).
