@@ -78,9 +78,14 @@ legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
 #progressText { font-size: 12px; color: var(--muted); }
 
 .stage { --source-width: 50%; --transport-height: 104px; display: grid; grid-template-rows: minmax(180px, 1fr) 6px var(--transport-height); min-width: 0; min-height: 0; }
-.viewers { min-height: 0; display: grid; grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr); gap: 0; background: var(--border); }
-.viewers.has-review { grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr) minmax(240px, 300px); }
-.review { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--border); }
+.viewers { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr); gap: 0; background: var(--border); }
+.viewers.has-review { grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr) 6px var(--review-width, 300px); }
+.review-divider[hidden] { display: none; }
+.viewers.review-below { grid-template-columns: minmax(180px, var(--source-width)) 6px minmax(180px, 1fr); grid-template-rows: minmax(180px, 1fr) 6px var(--review-height, 220px); min-height: 406px; }
+.review-below .review-divider { grid-column: 1 / -1; grid-row: 2; width: auto; height: 6px; cursor: row-resize; }
+.review-below .review-divider::after { inset: 2px 0; width: auto; height: 2px; }
+.review-below .review { grid-column: 1 / -1; grid-row: 3; border-left: 0; }
+.review { min-width: 240px; display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--border); }
 .review[hidden] { display: none; }
 .review header { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .review-tools { display: flex; gap: 4px; padding: 4px 8px 0; }
@@ -202,7 +207,7 @@ td input[type=text] { padding: 2px 6px; font-family: var(--mono); font-size: 12p
   body { overflow: auto; }
   .layout { display: block; overflow: auto; }
   .layout > .panel-divider { display: none; }
-  .stage { min-height: 70vh; }
+  .stage { min-height: 70vh; height: max(70vh, 560px); grid-template-rows: minmax(180px, 1fr) 6px minmax(var(--transport-height), max-content); }
   .steps, .panel { max-height: none; }
   .action-picker { left: 3vw; top: 8vh; width: 94vw; }
 }
