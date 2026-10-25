@@ -215,6 +215,37 @@
   color: #111;
 }
 
+.t3d-timeline-unit-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--t3d-border, #3a4152);
+  border-radius: 8px;
+}
+
+.t3d-timeline-unit-btn {
+  height: 22px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--t3d-btn-icon);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.t3d-timeline-unit-btn.is-active {
+  background: var(--t3d-accent, #4c8dff);
+  color: #fff;
+}
+
+.t3d-timeline-clip-duration {
+  opacity: 0.75;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .t3d-timeline-auto-key {
   display: inline-flex;
   align-items: center;
@@ -543,6 +574,54 @@
   pointer-events: none;
 }
 
+.t3d-timeline-inout {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(76, 141, 255, 0.13);
+  border-left: 2px solid var(--t3d-accent, #4c8dff);
+  border-right: 2px solid var(--t3d-accent, #4c8dff);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.t3d-timeline-inout-handle {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 30px;
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.t3d-timeline-inout-handle.is-in {
+  left: -7px;
+}
+
+.t3d-timeline-inout-handle.is-out {
+  right: -7px;
+}
+
+.t3d-timeline-inout-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 14px;
+  background: var(--t3d-accent, #4c8dff);
+}
+
+.t3d-timeline-inout-handle.is-in::after {
+  left: 1px;
+  border-radius: 0 0 6px 0;
+}
+
+.t3d-timeline-inout-handle.is-out::after {
+  right: 1px;
+  border-radius: 0 0 0 6px;
+}
+
 .t3d-timeline-playhead {
   position: absolute;
   top: 30px;
@@ -580,6 +659,17 @@
   text-overflow: ellipsis;
   cursor: pointer;
   border: 1px solid transparent;
+}
+
+/* C27: nháy sáng clip vừa gán sau khi timeline reveal tới nó. */
+.t3d-timeline-clip-flash {
+  animation: t3d-timeline-clip-flash 0.45s ease-in-out 4;
+  z-index: 3;
+}
+
+@keyframes t3d-timeline-clip-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
+  50% { box-shadow: 0 0 0 3px #f5a623, 0 0 14px rgba(245, 166, 35, 0.8); }
 }
 
 .t3d-timeline-clip-camera {

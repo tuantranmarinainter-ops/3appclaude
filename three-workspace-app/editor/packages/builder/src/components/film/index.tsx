@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { getActiveEditSequence, findEditClip, getEditorial, playbackIssues } from '../../evaluate'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
@@ -24,7 +25,7 @@ export function FilmPanel() {
   const activeCameraId = useStore((s) => s.activeCameraId)
   const exporting = useStore((s) => s.exporting)
   const exportOpen = useStore((s) => s.filmExportOpen)
-  const { toggleTimeline, setFilmTimelineHeight, setFilmExportOpen } = useStore()
+  const { toggleTimeline, setFilmTimelineHeight, setFilmExportOpen, setInOutRange } = useStore()
   const clampAvailableHeight = (value: number) => {
     const available = Math.max(390, window.innerHeight - 44 - 180)
     return clampFilmTimelineHeight(Math.min(value, available))
@@ -37,6 +38,12 @@ export function FilmPanel() {
   const editorial = doc ? getEditorial(doc) : null
   const selected = doc && selection ? findEditClip(getEditorial(doc), selection.clipId) : null
   const clip = selected?.sequence.clips[selected.clipIndex] ?? null
+  // N4: chọn một shot -> In = đầu shot, Out = cuối shot (khung nguồn), phát lặp và các
+  // panel Xuất film / Mở shot từ cảnh dùng khoảng này làm mặc định.
+  const selectedShotRange = clip ? { id: clip.id, start: clip.sourceFrameStart, end: clip.sourceFrameEnd } : null
+  useEffect(() => {
+    if (selectedShotRange) setInOutRange(selectedShotRange.start, selectedShotRange.end)
+  }, [selectedShotRange?.id, selectedShotRange?.start, selectedShotRange?.end, setInOutRange])
   // empty-sequence already has its own call-to-action inside the track
   const issues = (doc && sequence ? playbackIssues(doc, sequence.id) : [])
     .filter((issue) => issue.code !== 'empty-sequence')

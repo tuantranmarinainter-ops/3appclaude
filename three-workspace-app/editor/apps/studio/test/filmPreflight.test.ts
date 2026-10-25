@@ -215,3 +215,71 @@ test('series preflight keeps a middle planning failure and a later independent s
   assert.ok(report.errors.some((entry) => entry.code === 'FILM_SERIES_CAMERA_EVALUATION_UNAVAILABLE' && entry.segment === 2))
   assert.ok(report.errors.some((entry) => entry.code === 'ASSET_FILE_MISSING' && entry.segment === 3))
 })
+
+test('off-grid range blocked from sampling reports the tick-grid cause, not a transform failure', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const actor = clean.project.characters[clean.characterIds[0]!]!
+  const report = filmPreflight(clean.project, { characterIds: clean.characterIds, sequenceId: 'sequence-valid',
+    range: { startFrame: 0, endFrame: 27 }, viewportAspect: 16 / 9,
+    assetAvailability: { [actor.assetId]: true }, samplingBlockers: ['TICK_LIMIT'] })
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_TICK_GRID' && entry.message.vi.includes('lưới 20 tick')), JSON.stringify(report.errors))
+  assert.ok(!report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
+  assert.ok(!report.warnings.some((entry) => entry.code === 'FOOT_EVALUATION_UNAVAILABLE'))
+})
+
+test('over-limit range blocked from sampling reports the 255 tick limit as its own cause', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const actor = clean.project.characters[clean.characterIds[0]!]!
+  const report = filmPreflight(clean.project, { characterIds: clean.characterIds, sequenceId: 'sequence-valid',
+    range: { startFrame: 0, endFrame: 599 }, viewportAspect: 16 / 9,
+    assetAvailability: { [actor.assetId]: true }, samplingBlockers: ['TICK_LIMIT'] })
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_TICK_LIMIT' && entry.message.vi.includes('255 tick')), JSON.stringify(report.errors))
+  assert.ok(!report.errors.some((entry) => entry.code === 'FILM_TICK_GRID'))
+  assert.ok(!report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
+})
+
+test('empty camera sequence blocked from sampling reports the empty sequence, not a transform failure', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const project = structuredClone(clean.project)
+  project.scene.content.editorial = { version: 1, activeSequenceId: 'sequence-valid', sequences: [{ id: 'sequence-valid', clips: [] }] }
+  const actor = project.characters[clean.characterIds[0]!]!
+  const report = filmPreflight(project, { characterIds: clean.characterIds, sequenceId: 'sequence-valid',
+    range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9,
+    assetAvailability: { [actor.assetId]: true }, samplingBlockers: ['SEQUENCE_INVALID', 'CAMERA_LIMIT'] })
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_SEQUENCE_EMPTY' && entry.message.vi.includes('chưa có shot')), JSON.stringify(report.errors))
+  assert.ok(!report.errors.some((entry) => entry.code === 'FILM_SEQUENCE_INVALID'))
+  assert.ok(!report.errors.some((entry) => entry.code === 'FILM_CAMERA_LIMIT'))
+  assert.ok(!report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
+  assert.ok(!report.warnings.some((entry) => entry.code === 'FOOT_EVALUATION_UNAVAILABLE'))
+})
+
+test('a sampling attempt that threw is reported with its cause instead of a transform failure', () => {
+  const project = projectFixture()
+  const report = filmPreflight(project, { ...args, samplingError: 'skeleton sampler exploded' })
+  assert.ok(report.errors.some((entry) => entry.code === 'FILM_SAMPLING_FAILED' && entry.message.vi.includes('skeleton sampler exploded')))
+  assert.ok(!report.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
+  assert.ok(!report.warnings.some((entry) => entry.code === 'FOOT_EVALUATION_UNAVAILABLE'))
+})
+
+test('store preflight names grid and empty-sequence causes, then passes once a shot covers the rounded range', async () => {
+  const built = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const projectId = built.project.projectId
+  const current = await readUnifiedProject(projectId)
+  const emptied = structuredClone(current.scene)
+  emptied.content.editorial = { version: 1, activeSequenceId: 'sequence-valid', sequences: [{ id: 'sequence-valid', clips: [] }] }
+  const applied = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: current.revision,
+    command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: emptied, fcurves: current.extensions.topview?.fcurves ?? null }] } })
+  const blocked = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: applied.revision,
+    command: 'film.preflight', args: { characterIds: built.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 27 }, viewportAspect: 16 / 9 } })
+  assert.equal(blocked.result.valid, false)
+  const blockedReport = blocked.result.preflight as FilmPreflightResult
+  assert.ok(blockedReport.errors.some((entry) => entry.code === 'FILM_TICK_GRID'), JSON.stringify(blockedReport.errors))
+  assert.ok(blockedReport.errors.some((entry) => entry.code === 'FILM_SEQUENCE_EMPTY'), JSON.stringify(blockedReport.errors))
+  assert.ok(!blockedReport.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
+
+  const shot = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: applied.revision,
+    command: 'camera.shot.set', args: { sequenceId: 'sequence-valid', clip: { id: 'shot_main_sequence-valid', cameraNodeId: 'camera_1', sourceFrameStart: 0, sourceFrameEnd: 29 } } })
+  const passed = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: shot.revision,
+    command: 'film.preflight', args: { characterIds: built.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 } })
+  assert.equal(passed.result.valid, true, JSON.stringify(passed.result.preflight))
+})

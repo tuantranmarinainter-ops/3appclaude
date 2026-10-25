@@ -1,4 +1,10 @@
 import { action, makeObservable, observable } from 'mobx'
+import {
+  browserInOutStorage,
+  normalizeInOutRange,
+  readTimelineInOut,
+  writeTimelineInOut,
+} from './inOutPreference'
 import type {
   ClipMovePreview,
   ClipResizePreview,
@@ -12,12 +18,16 @@ import type {
   PendingKeyframe,
   SaveState,
   Selection,
+  TimelineUnit,
   WorkspaceMode,
 } from './types'
 
 export const TIMELINE_HEIGHT_MIN = 140
 export const TIMELINE_HEIGHT_MAX = 560
 export const TIMELINE_HEIGHT_DEFAULT = 320
+/** Zoom timeline cảnh: px cho một frame. Max 60 để "Vừa shot" một clip 18 frame vẫn nhìn rõ từng frame. */
+export const PX_PER_FRAME_MIN = 0.2
+export const PX_PER_FRAME_MAX = 60
 export const FILM_TIMELINE_HEIGHT_MIN = 390
 // 上限按「机位面板 + 轨道刚好被片段填满」定：再高只会在片段上下留空带。
 export const FILM_TIMELINE_HEIGHT_MAX = 530
@@ -56,10 +66,15 @@ export class EditorStore {
   timelineSnap = true
   chainCameraMotion = false
   pxPerFrame = 1.5
+  timelineUnit: TimelineUnit = 'frames'
+  /** Mốc In/Out kiểu DaVinci (N4): trạng thái phiên, mirror localStorage theo draft. */
+  inFrame: number | null = null
+  outFrame: number | null = null
   exporting = false
   libraryOpen = false
   libraryTab: LibraryTab = 'object'
   libraryFlash = 0
+  timelineRevealClip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number; nonce: number } | null = null
   libraryContentWidth = CONTENT_WIDTH_DEFAULT
   inspectorOpen = true
   inspectorContentWidth = INSPECTOR_WIDTH_DEFAULT
@@ -73,6 +88,10 @@ export class EditorStore {
   timelineHeight = TIMELINE_HEIGHT_DEFAULT
   viewportFullscreen = false
   followMode = false
+  /** N5: chỉ hiện nhân vật trong khung 3D. Chỉ là cách xem — không nằm trong tài liệu, không lưu project. */
+  charactersOnlyView = false
+  /** N5: ẩn cả nhóm Hậu cảnh trong khung 3D. Chỉ là cách xem — không nằm trong tài liệu, không lưu project. */
+  backgroundViewHidden = false
   poseEditingId: string | null = null
   /** 第一人称操控中的相机 id；null 表示未进入 */
   cameraPilotId: string | null = null
@@ -120,6 +139,11 @@ export class EditorStore {
 
   constructor(initialDraftId: string) {
     this.draftId = initialDraftId
+    const savedInOut = readTimelineInOut(browserInOutStorage(), initialDraftId)
+    if (savedInOut) {
+      this.inFrame = savedInOut.start
+      this.outFrame = savedInOut.end
+    }
     makeObservable(this, {
       clipMovePreview: observable.ref,
       clipResizePreview: observable.ref,
@@ -136,10 +160,14 @@ export class EditorStore {
       timelineSnap: observable,
       chainCameraMotion: observable,
       pxPerFrame: observable,
+      timelineUnit: observable,
+      inFrame: observable,
+      outFrame: observable,
       exporting: observable,
       libraryOpen: observable,
       libraryTab: observable,
       libraryFlash: observable,
+      timelineRevealClip: observable,
       libraryContentWidth: observable,
       inspectorOpen: observable,
       inspectorContentWidth: observable,
@@ -151,6 +179,8 @@ export class EditorStore {
       timelineHeight: observable,
       viewportFullscreen: observable,
       followMode: observable,
+      charactersOnlyView: observable,
+      backgroundViewHidden: observable,
       poseEditingId: observable,
       cameraPilotId: observable,
       cameraPilotSaved: observable.ref,
@@ -211,6 +241,11 @@ export class EditorStore {
       setActiveCamera: action.bound,
       select: action.bound,
       setPxPerFrame: action.bound,
+      setTimelineUnit: action.bound,
+      setInFrame: action.bound,
+      setOutFrame: action.bound,
+      setInOutRange: action.bound,
+      clearInOut: action.bound,
       toggleUserKeys: action.bound,
       toggleAutoKeyframe: action.bound,
       toggleTimelineSnap: action.bound,
@@ -219,6 +254,8 @@ export class EditorStore {
       toggleLibrary: action.bound,
       setLibraryTab: action.bound,
       flashLibraryTab: action.bound,
+      revealTimelineClip: action.bound,
+      clearTimelineReveal: action.bound,
       setLibraryContentWidth: action.bound,
       toggleInspector: action.bound,
       openInspector: action.bound,
@@ -232,6 +269,8 @@ export class EditorStore {
       setTimelineHeight: action.bound,
       toggleViewportFullscreen: action.bound,
       setFollowModeFlag: action.bound,
+      setCharactersOnlyView: action.bound,
+      setBackgroundViewHidden: action.bound,
       setPoseEditingId: action.bound,
       setCameraPilotId: action.bound,
       setPathEditingIdFlag: action.bound,
@@ -249,6 +288,9 @@ export class EditorStore {
 
   resetForDraft(id: string): void {
     this.draftId = id
+    const savedInOut = readTimelineInOut(browserInOutStorage(), id)
+    this.inFrame = savedInOut?.start ?? null
+    this.outFrame = savedInOut?.end ?? null
     this.ready = false
     this.playing = false
     this.activeCameraId = null
@@ -260,6 +302,8 @@ export class EditorStore {
     this.clipMovePreview = null
     this.clipResizePreview = null
     this.followMode = false
+    this.charactersOnlyView = false
+    this.backgroundViewHidden = false
     this.poseEditingId = null
     this.cameraPilotId = null
     this.cameraPilotSaved = null
@@ -329,7 +373,46 @@ export class EditorStore {
   }
 
   setPxPerFrame(v: number): void {
-    this.pxPerFrame = Math.min(Math.max(v, 0.2), 20)
+    this.pxPerFrame = Math.min(Math.max(v, PX_PER_FRAME_MIN), PX_PER_FRAME_MAX)
+  }
+
+  setTimelineUnit(unit: TimelineUnit): void {
+    this.timelineUnit = unit
+  }
+
+  private persistInOut(): void {
+    writeTimelineInOut(
+      browserInOutStorage(),
+      this.draftId,
+      this.inFrame != null && this.outFrame != null ? { start: this.inFrame, end: this.outFrame } : null,
+    )
+  }
+
+  /** Đặt mốc In; kéo qua mốc Out thì Out đi theo (không bao giờ In > Out). */
+  setInFrame(frame: number | null): void {
+    this.inFrame = frame == null ? null : Math.round(frame)
+    if (this.inFrame != null && this.outFrame != null && this.outFrame < this.inFrame) this.outFrame = this.inFrame
+    this.persistInOut()
+  }
+
+  /** Đặt mốc Out; kéo qua mốc In thì In đi theo. */
+  setOutFrame(frame: number | null): void {
+    this.outFrame = frame == null ? null : Math.round(frame)
+    if (this.outFrame != null && this.inFrame != null && this.inFrame > this.outFrame) this.inFrame = this.outFrame
+    this.persistInOut()
+  }
+
+  setInOutRange(start: number, end: number): void {
+    const range = normalizeInOutRange(start, end)
+    this.inFrame = range?.start ?? null
+    this.outFrame = range?.end ?? null
+    this.persistInOut()
+  }
+
+  clearInOut(): void {
+    this.inFrame = null
+    this.outFrame = null
+    this.persistInOut()
   }
 
   toggleUserKeys(): void {
@@ -365,6 +448,18 @@ export class EditorStore {
   flashLibraryTab(tab: LibraryTab): void {
     this.setLibraryTab(tab)
     this.libraryFlash += 1
+  }
+
+  /** C27: chọn node, mở timeline và ghi yêu cầu reveal; SceneTimeline lo cuộn/phóng/nháy sáng. */
+  revealTimelineClip(clip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number }): void {
+    this.selection = { kind: 'node', nodeId: clip.nodeId }
+    this.timelineVisible = true
+    this.timelineOpen = true
+    this.timelineRevealClip = { ...clip, nonce: (this.timelineRevealClip?.nonce ?? 0) + 1 }
+  }
+
+  clearTimelineReveal(): void {
+    this.timelineRevealClip = null
   }
 
   setLibraryContentWidth(w: number): void {
@@ -427,6 +522,14 @@ export class EditorStore {
 
   setFollowModeFlag(v: boolean): void {
     this.followMode = v
+  }
+
+  setCharactersOnlyView(v: boolean): void {
+    this.charactersOnlyView = v
+  }
+
+  setBackgroundViewHidden(v: boolean): void {
+    this.backgroundViewHidden = v
   }
 
   setPoseEditingId(id: string | null): void {

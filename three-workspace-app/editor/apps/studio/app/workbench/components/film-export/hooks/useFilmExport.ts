@@ -3,7 +3,8 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
 import { chooseDirectory, saveJob } from '../../scene-render/utils'
 import { useStudioLocale } from '../../../../../src/devtools/localePreference'
-import { readFilmFrameAspect } from '../../../../../src/filmFrame'
+import { alignFilmRangeToTickGrid, readFilmFrameAspect } from '../../../../../src/filmFrame'
+import { resolveTimelineInOutDefault, type FrameRange } from '../../../../../src/timelineInOut'
 import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src/filmPreflight'
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
@@ -20,8 +21,23 @@ export function useFilmExport(project: UnifiedProject) {
   const [seriesPropSelection, setSeriesPropSelection] = useState<'auto' | 'selected'>('auto')
   const [sequenceId, setSequenceId] = useState(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
   const [exportMode, setExportMode] = useState<'film' | 'series'>('film')
-  const [startFrame, setStartFrame] = useState(project.scene.content.timeline.frameStart)
-  const [endFrame, setEndFrame] = useState(project.scene.content.timeline.frameEnd)
+  // N4: mặc định khoảng xuất = In/Out của timeline (đã làm tròn về lưới 20 tick) khi có;
+  // người dùng sửa tay một lần thì không tự ghi đè nữa.
+  const initialInOut = useRef<FrameRange | null | undefined>(undefined)
+  if (initialInOut.current === undefined) initialInOut.current = resolveTimelineInOutDefault(project.projectId, project.scene.content.timeline)
+  const [startFrame, setStartFrameRaw] = useState(initialInOut.current?.startFrame ?? project.scene.content.timeline.frameStart)
+  const [endFrame, setEndFrameRaw] = useState(initialInOut.current?.endFrame ?? project.scene.content.timeline.frameEnd)
+  const rangeEdited = useRef(false)
+  const setStartFrame = (value: number) => { rangeEdited.current = true; setStartFrameRaw(value) }
+  const setEndFrame = (value: number) => { rangeEdited.current = true; setEndFrameRaw(value) }
+  const applyInOutDefault = () => {
+    if (rangeEdited.current) return false
+    const resolved = resolveTimelineInOutDefault(project.projectId, project.scene.content.timeline)
+    if (!resolved) return false
+    setStartFrameRaw(resolved.startFrame)
+    setEndFrameRaw(resolved.endFrame)
+    return true
+  }
   const [viewportAspectOverride, setViewportAspectOverride] = useState<number | undefined>(undefined)
   const viewportAspect = viewportAspectOverride ?? readFilmFrameAspect(project.extensions)
   const [filmName, setFilmName] = useState(project.name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'project-film')
@@ -36,13 +52,23 @@ export function useFilmExport(project: UnifiedProject) {
   const [checkingPreflight, setCheckingPreflight] = useState(false)
   const preflightGeneration = useRef(0)
 
+  // Single-Film ranges must land on the BBS 20 Hz tick grid; round the end for the user (0–27 @30fps -> 0–29)
+  // and surface the change instead of letting preflight fail on an invisible grid rule.
+  const timeline = project.scene.content.timeline
+  const rangeAlignment = useMemo(() => exportMode === 'film'
+    ? alignFilmRangeToTickGrid({ startFrame, endFrame }, timeline.fps, timeline)
+    : null, [exportMode, startFrame, endFrame, timeline])
+  const effectiveRange = useMemo(() => rangeAlignment?.range ?? { startFrame, endFrame }, [rangeAlignment, startFrame, endFrame])
+  const rangeNotice = rangeAlignment?.changed
+    ? { from: { startFrame, endFrame }, to: rangeAlignment.range }
+    : null
   const selectionArgs = useMemo(() => {
-    const range = { startFrame, endFrame }
+    const range = effectiveRange
     return { content,
       characterIds: content === 'backdrops' ? [] : exportMode === 'series' && seriesCharacterSelection === 'auto' ? 'auto' as const : characterIds,
       propIds: content === 'characters' ? [] : exportMode === 'series' && seriesPropSelection === 'auto' ? 'auto' as const : propIds,
       sequenceId, range, viewportAspect }
-  }, [content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, startFrame, endFrame, viewportAspect])
+  }, [content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, effectiveRange, viewportAspect])
   const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, exportMode, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
@@ -103,7 +129,7 @@ export function useFilmExport(project: UnifiedProject) {
       setError(vi ? 'Chọn ít nhất một hậu cảnh hợp lệ.' : 'Choose at least one valid backdrop.'); return
     }
     if (!sequences.some((sequence) => sequence.id === sequenceId)) { setError(vi ? 'Chọn chuỗi camera có trong dự án.' : 'Choose a camera sequence in the project.'); return }
-    if (exportMode === 'film' && (!Number.isSafeInteger(startFrame) || !Number.isSafeInteger(endFrame) || startFrame < project.scene.content.timeline.frameStart || endFrame > project.scene.content.timeline.frameEnd || endFrame < startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
+    if (exportMode === 'film' && (!Number.isSafeInteger(effectiveRange.startFrame) || !Number.isSafeInteger(effectiveRange.endFrame) || effectiveRange.startFrame < project.scene.content.timeline.frameStart || effectiveRange.endFrame > project.scene.content.timeline.frameEnd || effectiveRange.endFrame < effectiveRange.startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
     const maxNameLength = exportMode === 'series' ? 56 : 64
     if (!Number.isFinite(viewportAspect) || viewportAspect <= 0 || filmName.length > maxNameLength || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filmName) || filmName.endsWith('.')) { setError(vi ? `Aspect phải dương; tên gói cần 1–${maxNameLength} ký tự ASCII an toàn và không kết thúc bằng dấu chấm.` : `Aspect must be positive; the package name needs 1–${maxNameLength} safe ASCII characters and cannot end with a period.`); return }
     setBusy(true); setError(''); setCompletedJob(null); setStatus(vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…')
@@ -118,7 +144,7 @@ export function useFilmExport(project: UnifiedProject) {
           ? { content, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,
               propIds: content === 'characters' ? [] : seriesPropSelection === 'auto' ? 'auto' : propIds, sequenceId, viewportAspect, name: filmName }
           : { content, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
-              sequenceId, range: { startFrame, endFrame }, viewportAspect, filmName } })
+              sequenceId, range: { startFrame: effectiveRange.startFrame, endFrame: effectiveRange.endFrame }, viewportAspect, filmName } })
       const jobId = String(started.result.jobId)
       setActiveJobId(jobId); setStatus(exportMode === 'series' ? (vi ? 'Đang chia đoạn và xuất cả tập…' : 'Segmenting and exporting episode…') : (vi ? 'Đang lấy mẫu và xuất Film…' : 'Sampling and exporting Film…'))
       let job = await loadUnifiedJob(project.projectId, jobId)
@@ -142,6 +168,26 @@ export function useFilmExport(project: UnifiedProject) {
     } finally { setBusy(false); setActiveJobId(null) }
   }
 
+  // A fresh project ships a camera sequence with no shots, which blocks every Film export. Offer to create
+  // one Main Camera shot covering the current (grid-aligned) export range right here in the panel.
+  const selectedSequence = sequences.find((sequence) => sequence.id === sequenceId)
+  const sequenceEmpty = !!selectedSequence && selectedSequence.clips.length === 0
+  const cameraNode = project.scene.content.nodes.find((node) => node.camera)
+  const [creatingShot, setCreatingShot] = useState(false)
+  const createCameraShot = async () => {
+    if (creatingShot || !selectedSequence || !cameraNode) return
+    setCreatingShot(true); setError('')
+    try {
+      await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
+        command: 'camera.shot.set', args: { sequenceId, clip: { id: `shot_main_${sequenceId}`, cameraNodeId: cameraNode.id,
+          sourceFrameStart: effectiveRange.startFrame, sourceFrameEnd: effectiveRange.endFrame } } })
+      window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+      setStatus(vi ? `Đã tạo shot camera (Main Camera) phủ frame ${effectiveRange.startFrame}–${effectiveRange.endFrame}.` : `Created a Main Camera shot covering frames ${effectiveRange.startFrame}–${effectiveRange.endFrame}.`)
+    } catch (cause) {
+      setError(vi ? `Không tạo được shot camera: ${cause instanceof Error ? cause.message : String(cause)}` : `Could not create the camera shot: ${cause instanceof Error ? cause.message : String(cause)}`)
+    } finally { setCreatingShot(false) }
+  }
+
   const cancel = async () => {
     if (!activeJobId) return
     try {
@@ -151,7 +197,7 @@ export function useFilmExport(project: UnifiedProject) {
   }
 
   return { characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
-    sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
+    sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
-    preflight, checkingPreflight, canExport }
+    preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot }
 }

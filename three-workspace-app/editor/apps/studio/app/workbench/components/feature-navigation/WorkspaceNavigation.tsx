@@ -3,14 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { WORKSPACES, workspaceHref, type WorkspaceId, type WorkspaceUrls } from './workspaceNavigationModel'
+import { QUICK_NORMALIZE_LABEL, WORKSPACES, workspaceHref, workspaceProjectListHint, type WorkspaceId, type WorkspaceUrls } from './workspaceNavigationModel'
 import './workspace-navigation.css'
-
-const missingHint: Record<Exclude<WorkspaceId, 'scene' | 'library'>, string> = {
-  normalize: 'Chưa cấu hình NEXT_PUBLIC_RETARGET_WORKBENCH_URL',
-  animation: 'Chưa cấu hình NEXT_PUBLIC_ANIMATION_STUDIO_URL',
-  vfx: 'Chưa cấu hình NEXT_PUBLIC_VFX_URL',
-}
 
 /** Where a page wants the 5-workspace bar. Rendered only after the page hydrated, so the portal never adds DOM React did not expect. */
 export function WorkspaceNavigationSlot() {
@@ -54,24 +48,19 @@ export function WorkspaceNavigation({ urls }: { urls: WorkspaceUrls }) {
     <ol>
       {WORKSPACES.map((workspace) => {
         const internal = unifiedOpen && (workspace.id === 'normalize' || workspace.id === 'scene' || workspace.id === 'animation')
-        const href = internal ? null : workspaceHref(workspace.id, urls, unified)
         const current = workspace.id === active
-        const hint = !href && workspace.id !== 'scene' && workspace.id !== 'library'
-          ? missingHint[workspace.id]
-          : undefined
+        const hint = internal ? null : workspaceProjectListHint(workspace.id, urls)
         return <li key={workspace.id}>
           {internal
             ? <button type="button" aria-current={current ? 'page' : undefined} className={current ? 'is-active' : undefined}
+                title={workspace.id === 'normalize' ? 'Công cụ chuẩn hoá nhanh (V9.12) của Studio, không phải App 1 Workbench' : undefined}
                 onClick={() => window.dispatchEvent(new CustomEvent('bbs-workspace-request', { detail: { workspace: workspace.id === 'normalize' ? 'retarget' : workspace.id } }))}>
-                <span aria-hidden="true">{workspace.number}</span>{workspace.label}
+                <span aria-hidden="true">{workspace.number}</span>{workspace.id === 'normalize' ? QUICK_NORMALIZE_LABEL : workspace.label}
               </button>
-            : href
-            ? <a href={href} aria-current={current ? 'page' : undefined} className={current ? 'is-active' : undefined}>
-                <span aria-hidden="true">{workspace.number}</span>{workspace.label}
-              </a>
-            : <span className={`is-disabled${current ? ' is-active' : ''}`} aria-current={current ? 'page' : undefined} aria-disabled="true" title={hint}>
-                <span aria-hidden="true">{workspace.number}</span>{workspace.label}<small>{hint}</small>
-              </span>}
+            : <a href={workspaceHref(workspace.id, urls, unified)} aria-current={current ? 'page' : undefined} className={current ? 'is-active' : undefined}
+                title={hint ?? undefined}>
+                <span aria-hidden="true">{workspace.number}</span>{workspace.label}{hint ? <small>{hint}</small> : null}
+              </a>}
         </li>
       })}
     </ol>

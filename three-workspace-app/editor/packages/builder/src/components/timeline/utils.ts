@@ -11,7 +11,8 @@ import {
   type Selection,
 } from '../../stores/types'
 import { displayNodeName } from '../displayNames'
-import { CAMERA_XFORM_PROPS, NODE_XFORM_PROPS } from './constants'
+import { CAMERA_XFORM_PROPS, LEFT_W, NODE_XFORM_PROPS, TRACK_INSET } from './constants'
+import { PX_PER_FRAME_MAX, PX_PER_FRAME_MIN } from '../../stores/EditorStore'
 import type { TimelineRow, TimelineSummary } from './types'
 
 function baseOf(n: DirectorDocument['content']['nodes'][number]) {
@@ -560,4 +561,38 @@ export function bundlePreviewOffset(
 ): number {
   if (previewDf == null || !draggingKeyIds || keyIds.length === 0) return 0
   return keyIds.every((id) => draggingKeyIds.has(id)) ? previewDf : 0
+}
+/** Kẹp px/frame trong giới hạn zoom của timeline (khớp EditorStore.setPxPerFrame). */
+export function clampPxPerFrame(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return PX_PER_FRAME_MIN
+  return Math.min(PX_PER_FRAME_MAX, Math.max(PX_PER_FRAME_MIN, value))
+}
+
+/** Zoom bằng Ctrl + lăn chuột / pinch: hệ số mũ theo deltaY đã quy về pixel. */
+export function wheelZoomPxPerFrame(current: number, deltaYPixels: number): number {
+  if (!Number.isFinite(deltaYPixels)) return clampPxPerFrame(current)
+  return clampPxPerFrame(current * Math.exp(-deltaYPixels * 0.002))
+}
+
+/** Frame nằm dưới một điểm của vùng nội dung timeline (contentX đã gồm scrollLeft). */
+export function frameAtContentX(contentX: number, frameStart: number, pxPerFrame: number): number {
+  const px = pxPerFrame > 0 ? pxPerFrame : 1
+  return frameStart + (contentX - LEFT_W - TRACK_INSET) / px
+}
+
+/** scrollLeft mới để frame neo đứng yên dưới con trỏ sau khi đổi px/frame. */
+export function anchoredScrollLeft(args: {
+  anchorFrame: number
+  frameStart: number
+  pxPerFrame: number
+  cursorOffsetX: number
+}): number {
+  return Math.max(0, LEFT_W + TRACK_INSET + (args.anchorFrame - args.frameStart) * args.pxPerFrame - args.cursorOffsetX)
+}
+
+/** px/frame để một khoảng frame vừa khít bề ngang track; null khi chưa có bề ngang đo được. */
+export function fitPxForRange(rangeStart: number, rangeEnd: number, availableTrackW: number): number | null {
+  const count = rangeEnd - rangeStart + 1
+  if (count <= 0 || availableTrackW <= 0) return null
+  return clampPxPerFrame(availableTrackW / count)
 }

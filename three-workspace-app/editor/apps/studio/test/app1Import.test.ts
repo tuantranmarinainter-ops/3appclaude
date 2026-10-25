@@ -174,7 +174,7 @@ test('shot export keeps covered characters and synthesizes a manifest for an unm
   assert.deepEqual(validateShot(built.files), [])
   assert.deepEqual(built.shot.characters.map((character) => character.characterId), [editableCharacterId])
   assert.equal(JSON.parse(Buffer.from(built.files['characters/' + editableCharacterId + '.manifest.json']!).toString()).actions.length, 1)
-  await assert.rejects(createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [omittedCharacterId] }), /requires one MotionClip/)
+  await assert.rejects(createShotPackage(project, { cameraNodeId: 'camera_1', frameStart: 0, frameEnd: fixture.frameEnd, editableCharacterIds: [omittedCharacterId] }), /cần đúng một MotionClip phủ hết frame/)
 })
 
 for (const constant of [false,true]) test(`Result round trip (${constant ? 'constant' : 'dynamic'} placement) and layout preserve atomic history`, async () => {

@@ -33,6 +33,9 @@ export interface FilmPlaybackSnapshot {
 }
 export type FilmSelection = { kind: 'edit-clip'; clipId: string }
 
+/** Đơn vị hiển thị của timeline cảnh: giây / frame / tick BBS 20 Hz (N3). */
+export type TimelineUnit = 'seconds' | 'frames' | 'ticks'
+
 export interface FilmAddDraft {
   cameraNodeId: string
   sourceFrameStart: number
@@ -210,12 +213,19 @@ export interface StudioView {
   pendingKeyframe: PendingKeyframe | null
   chainCameraMotion: boolean
   pxPerFrame: number
+  /** Đơn vị hiển thị thước / ô nhập frame / nhãn clip của timeline cảnh. */
+  timelineUnit: TimelineUnit
+  /** Mốc In/Out của timeline cảnh (N4); null = chưa đặt. */
+  inFrame: number | null
+  outFrame: number | null
   fcurves: FCurveSet | null
   exporting: boolean
   libraryOpen: boolean
   libraryTab: LibraryTab
   /** 每次 `flashLibraryTab` 自增；左侧面板据此播一次高亮 */
   libraryFlash: number
+  /** C27: yêu cầu timeline cuộn/phóng/nháy sáng tới clip vừa gán; nonce tăng mỗi lần yêu cầu. */
+  timelineRevealClip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number; nonce: number } | null
   libraryContentWidth: number
   inspectorOpen: boolean
   inspectorContentWidth: number
@@ -231,6 +241,10 @@ export interface StudioView {
   canUndo: boolean
   canRedo: boolean
   followMode: boolean
+  /** N5: chỉ hiện nhân vật trong khung 3D (chỉ đổi cách xem, không ghi tài liệu). */
+  charactersOnlyView: boolean
+  /** N5: ẩn cả nhóm Hậu cảnh trong khung 3D (chỉ đổi cách xem, không ghi tài liệu). */
+  backgroundViewHidden: boolean
   /** 视口关节摆姿中的角色 id；null 表示未进入 Edit Pose */
   poseEditingId: string | null
   /** 第一人称操控中的相机 id；null 表示未进入 */
@@ -280,6 +294,8 @@ export interface StudioView {
   toggleLibrary: () => void
   setLibraryTab: (t: LibraryTab) => void
   flashLibraryTab: (t: LibraryTab) => void
+  revealTimelineClip: (clip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number }) => void
+  clearTimelineReveal: () => void
   setLibraryContentWidth: (w: number) => void
   toggleInspector: () => void
   openInspector: () => void
@@ -292,6 +308,8 @@ export interface StudioView {
   acceptTimelinePlayHint: () => void
   setTimelineHeight: (h: number) => void
   toggleViewportFullscreen: () => void
+  setCharactersOnlyView: (v: boolean) => void
+  setBackgroundViewHidden: (v: boolean) => void
   setNodeFlags: (nodeId: string, flags: { visible?: boolean; locked?: boolean }) => string | null
   updateEnvironment: (patch: EnvironmentPatch) => void
   setDraft: (id: string) => void
@@ -310,6 +328,11 @@ export interface StudioView {
   endTimelineRangeEdit: () => void
   select: (s: Selection | null) => void
   setPxPerFrame: (v: number) => void
+  setTimelineUnit: (unit: TimelineUnit) => void
+  setInFrame: (frame: number | null) => void
+  setOutFrame: (frame: number | null) => void
+  setInOutRange: (start: number, end: number) => void
+  clearInOut: () => void
   setFcurves: (f: FCurveSet | null) => void
   toggleUserKeys: () => void
   toggleAutoKeyframe: () => void

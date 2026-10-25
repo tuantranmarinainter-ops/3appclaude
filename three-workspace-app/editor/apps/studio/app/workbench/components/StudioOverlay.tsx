@@ -15,6 +15,7 @@ import { WorkspaceNavigationSlot } from './feature-navigation/WorkspaceNavigatio
 import { usePanelNavigation } from './feature-navigation/hooks/usePanelNavigation'
 import { RetargetWorkspace } from './RetargetWorkspace'
 import { AnimationWorkspace } from './AnimationWorkspace'
+import { AnimationAssignPanel } from './animation-assign'
 import { HostDrawer } from './HostDrawer'
 import { SceneRenderPanel } from './scene-render'
 import { FilmExportPanel } from './film-export'
@@ -93,7 +94,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign'
 
 function installDebugHooks(api: DirectorApi): void {
   const target = window as StudioWindow
@@ -128,6 +129,7 @@ export function StudioOverlay({
   const [projectState, setProjectState] = useState<Awaited<ReturnType<typeof loadUnifiedProject>> | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<'scene' | 'retarget' | 'animation'>('scene')
   const [drawer, setDrawer] = useState<HostDrawerId | null>(null)
+  const [assignRequest, setAssignRequest] = useState<{ nodeId: string | null; nonce: number }>({ nodeId: null, nonce: 0 })
   const [historyBusy, setHistoryBusy] = useState(false)
   const [shellError, setShellError] = useState<string | null>(null)
   const [assetMessage, setAssetMessage] = useState('')
@@ -453,8 +455,11 @@ export function StudioOverlay({
   }, [captureReview, reviewImages])
   const playReviewClip = useCallback((clipId: string) => {
     const clip = reviewSequence?.clips.find((item) => item.id === clipId)
-    const stage = getLiveStudio()?.stage
+    const studio = getLiveStudio()
+    const stage = studio?.stage
     if (!clip || !stage) return
+    // N4: phát một shot trong Duyệt cảnh cũng đặt In/Out theo shot để timeline lặp đúng khoảng.
+    studio?.useStore.getState().setInOutRange(clip.sourceFrameStart, clip.sourceFrameEnd)
     stage.seek(clip.sourceFrameStart)
     stage.play()
   }, [reviewSequence])
@@ -496,11 +501,55 @@ export function StudioOverlay({
     window.addEventListener('bbs-workspace-request', onWorkspaceRequest)
     return () => window.removeEventListener('bbs-workspace-request', onWorkspaceRequest)
   }, [openPanel, source])
+  // N1: the builder rail's "Gán animation" button reaches the overlay through the host adapter event.
+  useEffect(() => {
+    if (source !== 'unified') return
+    const onAssignRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ characterNodeId?: string | null }>).detail
+      setAssignRequest((current) => ({ nodeId: detail?.characterNodeId ?? null, nonce: current.nonce + 1 }))
+      setDrawer('assign')
+    }
+    window.addEventListener('bbs-assign-animation', onAssignRequest)
+    return () => window.removeEventListener('bbs-assign-animation', onAssignRequest)
+  }, [source])
+  // C27: after an assignment, reveal the new clip (scroll + zoom + flash) in the builder timeline.
+  // Sources: the assign panel and adapter dispatch 'bbs-reveal-clip'; returning from the Library
+  // page hands the clip over through sessionStorage because the workbench remounts.
+  useEffect(() => {
+    if (source !== 'unified') return
+    type RevealDetail = { projectId?: string; clipId: string; nodeId: string; frameStart: number; frameEnd: number }
+    const applyReveal = (detail: RevealDetail): boolean => {
+      if (detail.projectId && detail.projectId !== documentId) return false
+      const studio = getLiveStudio()
+      if (!studio || studio.documentId !== documentId) return false
+      studio.useStore.getState().revealTimelineClip({ clipId: detail.clipId, nodeId: detail.nodeId, frameStart: detail.frameStart, frameEnd: detail.frameEnd })
+      studio.stage.seek(detail.frameStart)
+      return true
+    }
+    const onReveal = (event: Event) => {
+      const detail = (event as CustomEvent<RevealDetail>).detail
+      if (detail && !applyReveal(detail)) {
+        try { sessionStorage.setItem('bbs-reveal-clip', JSON.stringify(detail)) } catch { /* storage unavailable */ }
+      }
+    }
+    window.addEventListener('bbs-reveal-clip', onReveal)
+    const consumeStored = () => {
+      try {
+        const raw = sessionStorage.getItem('bbs-reveal-clip')
+        if (!raw) return
+        const detail = JSON.parse(raw) as RevealDetail
+        if (applyReveal(detail)) sessionStorage.removeItem('bbs-reveal-clip')
+      } catch { /* ignore malformed handoff */ }
+    }
+    consumeStored()
+    const unsubscribe = subscribeLiveStudio(consumeStored)
+    return () => { window.removeEventListener('bbs-reveal-clip', onReveal); unsubscribe() }
+  }, [source, documentId])
   const openAnimationControls = () => {
-    if (activeWorkspace === 'animation') { setDrawer('animation'); return }
-    openAnimationOnSwitch.current = true
-    setDrawer(null)
-    void openPanel(WORKSPACE_PANELS.animation)
+    // E9: "Thêm animation" chỉ mở bảng điều khiển ngay tại workspace hiện tại
+    // (vd tab Dựng cảnh), không ép chuyển sang tab Animation.
+    openAnimationOnSwitch.current = false
+    setDrawer('animation')
   }
   const openFeatureSearch = () => {
     openAnimationOnSwitch.current = false
@@ -535,13 +584,13 @@ export function StudioOverlay({
           </div>
         </header>
         <WorkspaceNavigationSlot />
-        <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
+        <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" className="cross-app-button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
           {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} /></div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
-          {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={activeWorkspace === 'animation' && drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
+          {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>
         {project && <>
           <HostDrawer open={drawer === 'features'} title={vi ? 'Tìm chức năng' : 'Find a feature'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
@@ -567,7 +616,7 @@ export function StudioOverlay({
             </div>
           </HostDrawer>
           <HostDrawer open={drawer === 'export'} title={vi ? 'Xuất dự án' : 'Export project'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-export" onClose={() => setDrawer(null)}>
-            <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} /></details></div>
+            <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} active={drawer === 'export'} /></details></div>
           </HostDrawer>
           <HostDrawer open={drawer === 'review'} title={vi ? 'Duyệt cảnh' : 'Scene review'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             {reviewSequence ? <><p className="wb-review-capture"><button type="button" disabled={reviewCapturing !== null} onClick={() => void captureAllReview()}>{reviewCapturing ? (vi ? 'Đang chụp…' : 'Capturing…') : (vi ? 'Chụp tất cả cảnh chưa có ảnh (Xem như BBS)' : 'Capture all shots without stills (BBS look)')}</button></p><SceneReviewPanel clips={reviewClips} images={reviewImages} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} onCapture={(clipId, frames) => void captureReview(clipId, frames)} /></> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
@@ -579,6 +628,9 @@ export function StudioOverlay({
             <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
+          <HostDrawer open={drawer === 'assign'} title={vi ? 'Gán animation' : 'Assign animation'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
+            <AnimationAssignPanel key={`${documentId}-${assignRequest.nonce}`} projectId={documentId} project={project} initialNodeId={assignRequest.nodeId} />
+          </HostDrawer>
         </>}
       </div>,
       document.body,

@@ -258,12 +258,14 @@ export function addConvertedDraftToCharacter(options: LibraryOptions & {
   charId: string; parentUuid: string; glbFile: string; rig: string; durationSeconds?: number
   manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
   favorite?: boolean
+  /** N1b: allow a character-owned source Action as the conversion parent (kept as parentUuid). */
+  allowOwnedParent?: boolean
 }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const index = writeIndex(root), character = characterAt(root, options.charId), parent = actionAt(index.actions, options.parentUuid)
-    if (parent.ownerCharId) throw new Error('Converted draft parent must be a raw library action')
+    if (parent.ownerCharId && !options.allowOwnedParent) throw new Error('Converted draft parent must be a raw library action')
     if (!compatibleRig(character.rig, options.rig)) throw new Error(`Rig mismatch: character ${character.rig}, action ${options.rig}`)
     if (!existsSync(options.glbFile)) throw new Error('Converted GLB file does not exist')
     const source: IndexedAction = { ...parent, rig: options.rig, glbAnimationIndex: 0 }
@@ -288,9 +290,22 @@ export function copyActionToCharacter(options: LibraryOptions & { actionUuid: st
     const index = writeIndex(root), target = characterAt(root, options.toCharId), source = actionAt(index.actions, options.actionUuid)
     if (!compatibleRig(target.rig, source.rig)) throw new Error(`Rig mismatch: character ${target.rig}, action ${source.rig}`)
     const uuid = randomUUID()
+    // A copied native (BOBJ-rig) Action needs its sidecar rebuilt against the TARGET character's
+    // base model, exactly like an edited version; without it library.place cannot load the copy
+    // through the native path (anim.bobj / anim.original.bbs.bobj would be missing).
+    let nativeBobj: string | undefined
+    if (['verity', 'minecraft20'].includes(source.rig) && target.baseModelId) {
+      const model = readJsonFile<BaseModelMetadata>(safeChild(root, 'models', target.baseModelId, 'meta.json'))
+      if (model.format === 'bobj' && model.rig === source.rig) {
+        const original = readFileSync(safeChild(root, 'models', target.baseModelId, model.model))
+        if (createHash('sha256').update(original).digest('hex') === model.sha256) {
+          try { nativeBobj = nativeActionBobj(original, readFileSync(safeChild(root, 'packs', source.packId, 'anim.glb')), uuid) } catch { nativeBobj = undefined }
+        }
+      }
+    }
     const created = createVersionPack(root, { source, ownerCharId: target.charId, glbFile: safeChild(root, 'packs', source.packId, 'anim.glb'), uuid,
       status: 'draft', version: 1, variantOf: uuid, parentUuid: source.uuid, preserveAnimationIndex: true,
-      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source), favorite: false })
+      license: sourceLicense(root, source), manifestContract: sourceManifestContract(root, source), favorite: false, nativeBobj })
     target.actions = [...new Set([...memberships(root, target, index.actions), created.uuid])]
     writeCharacter(root, target); writeIndex(root)
     return created

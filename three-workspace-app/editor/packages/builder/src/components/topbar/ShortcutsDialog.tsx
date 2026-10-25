@@ -110,6 +110,7 @@ function buildGroups(t: TranslateFn, mod: string): Array<{
         { labelKey: 'topbar.shortcutFlyVertical', keys: [['Q', 'E']] },
         { labelKey: 'topbar.shortcutFlyFaster', keys: [['Shift']] },
         { labelKey: 'topbar.shortcutFocusSelection', keys: [['F']] },
+        { labelKey: 'topbar.shortcutCharactersOnly', keys: [['Shift', 'H']] },
         { labelKey: 'topbar.shortcutFocusDblclick', keys: [[t('topbar.shortcutDoubleClick')]] },
         { labelKey: 'topbar.shortcutBoxSelect', keys: [[mod, t('topbar.shortcutLeftDrag')]] },
       ],

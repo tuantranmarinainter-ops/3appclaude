@@ -56,6 +56,56 @@ export function fitFilmFrameDimensions(maxWidth: number, maxHeight: number, aspe
   return { width, height, aspect: actualAspect, aspectError: Math.abs(actualAspect - aspect) }
 }
 
+/** BBS Film samples on a fixed 20 Hz tick grid and one segment holds at most 255 ticks. */
+export const FILM_TICK_RATE = 20
+export const FILM_MAX_TICKS = 255
+
+function gcd(a: number, b: number): number {
+  let x = Math.abs(a), y = Math.abs(b)
+  while (y) { const next = x % y; x = y; y = next }
+  return x || 1
+}
+
+/**
+ * Smallest frame-count step whose ranges always land on the 20 Hz tick grid at the timeline fps
+ * (30 fps -> 3 frames per tick quantum, so range lengths must be multiples of 3).
+ */
+export function filmGridFrameStep(fps: number): number {
+  if (!Number.isSafeInteger(fps) || fps <= 0) return 1
+  return fps / gcd(fps, FILM_TICK_RATE)
+}
+
+export interface FilmRangeAlignment {
+  range: { startFrame: number; endFrame: number }
+  changed: boolean
+  /** Whole ticks the aligned range spans; omitted when the range cannot be aligned inside the timeline. */
+  ticks?: number
+}
+
+/**
+ * Round an export range's end so its length lands on the 20 Hz tick grid (0–27 at 30 fps -> 0–29).
+ * Rounding prefers extending the end; when that would leave the timeline it shortens instead, and when
+ * neither fits the range is returned unchanged so preflight can report the real cause.
+ */
+export function alignFilmRangeToTickGrid(
+  range: { startFrame: number; endFrame: number },
+  fps: number,
+  timeline: { frameStart: number; frameEnd: number },
+): FilmRangeAlignment {
+  const unchanged: FilmRangeAlignment = { range: { startFrame: range.startFrame, endFrame: range.endFrame }, changed: false }
+  if (!Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame) || range.endFrame < range.startFrame) return unchanged
+  const step = filmGridFrameStep(fps)
+  const frames = range.endFrame - range.startFrame + 1
+  const remainder = frames % step
+  const ticksFor = (count: number) => count * FILM_TICK_RATE / fps
+  if (remainder === 0) return { range: { ...range }, changed: false, ticks: ticksFor(frames) }
+  const extendedEnd = range.endFrame + (step - remainder)
+  if (extendedEnd <= timeline.frameEnd) return { range: { startFrame: range.startFrame, endFrame: extendedEnd }, changed: true, ticks: ticksFor(extendedEnd - range.startFrame + 1) }
+  const shortenedEnd = range.endFrame - remainder
+  if (shortenedEnd >= range.startFrame) return { range: { startFrame: range.startFrame, endFrame: shortenedEnd }, changed: true, ticks: ticksFor(shortenedEnd - range.startFrame + 1) }
+  return unchanged
+}
+
 /** Validate and immutably write the extension value; the project store owns revision checks and persistence. */
 export function writeFilmFrameAspect(extensions: Extensions, aspect: FilmFrameAspect): Record<string, unknown> {
   if (!(aspect === '16:9' || aspect === '9:16' || aspect === '1:1' ||

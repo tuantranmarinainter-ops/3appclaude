@@ -45,11 +45,13 @@ function RailTabButton({
   active,
   icon: Icon,
   onSelect,
+  className,
 }: {
   label: string
   active: boolean
   icon: (props: { className?: string }) => ReactElement
   onSelect: () => void
+  className?: string
 }): ReactElement {
   const labelRef = useRef<HTMLSpanElement>(null)
   const [truncated, setTruncated] = useState(false)
@@ -79,7 +81,7 @@ function RailTabButton({
   const button = (
     <button
       type="button"
-      className={cx('t3d-leftrail-rail-btn', active && 't3d-leftrail-rail-btn-active')}
+      className={cx('t3d-leftrail-rail-btn', active && 't3d-leftrail-rail-btn-active', className)}
       onClick={onSelect}
     >
       <Icon />
@@ -103,6 +105,7 @@ export function IconRail({
   onSelect,
   onToggle,
   tabs = TAB_ORDER,
+  assignAction,
 }: {
   tab: LibraryTab
   open: boolean
@@ -110,6 +113,8 @@ export function IconRail({
   onSelect: (tab: LibraryTab) => void
   onToggle: () => void
   tabs?: readonly LibraryTab[]
+  /** Cross-app action under the tabs (N1 "Gán animation"), highlighted via the shared cross-app-button class (C23 standard, --cross-app-accent) with bbs-cross-app-action as the local fallback. */
+  assignAction?: { label: string; onClick: () => void }
 }): ReactElement {
   return (
     <div className="t3d-leftrail-rail">
@@ -124,6 +129,11 @@ export function IconRail({
           {id === 'object' ? <div className="t3d-leftrail-rail-divider" role="separator" /> : null}
         </div>
       ))}
+      {assignAction ? (
+        <div className="t3d-leftrail-rail-item">
+          <RailTabButton label={assignAction.label} active={false} icon={TAB_ICON.motion} onSelect={assignAction.onClick} className="bbs-cross-app-action cross-app-button" />
+        </div>
+      ) : null}
       {open ? null : (
         <Tooltip label={t('library.expandContent')} side="right">
           <button type="button" className="t3d-leftrail-expand" onClick={onToggle}>

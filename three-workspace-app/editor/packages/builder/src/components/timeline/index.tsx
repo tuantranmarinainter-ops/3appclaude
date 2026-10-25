@@ -4,10 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TrackProp } from '../../evaluate/curves/KeyframeTrack'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
-import { clampTimelineHeight, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
+import { clampTimelineHeight, PX_PER_FRAME_MAX, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
 import { nodeIdsOf } from '../../stores/nodeSelection'
 import { cx } from '../common/cx'
 import { RangeSlider } from '../common/RangeSlider'
+import { browserPanelStorage } from '../common/panelLayout'
+import type { TimelineUnit } from '../../stores/types'
+import { readTimelineUnit, timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Tooltip } from '../common/Tooltip'
 import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
@@ -30,10 +33,13 @@ import { KeyframeDragPreviewProvider } from './hooks/useKeyframeDrag'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import { useTimelineScrub } from './hooks/useTimelineScrub'
 import { Playhead } from './Playhead'
+import { InOutOverlay } from './InOutOverlay'
+import { formatFrameInUnit } from './utils/timeUnit'
 import { Ruler } from './Ruler'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
-import { buildTree, flattenTree, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, timelineSheetRuler } from './utils'
+import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
+import { getActiveEditSequence } from '../../evaluate'
 
 export function TimelinePanel() {
   const { useStore } = useDirector()
@@ -60,6 +66,9 @@ function SceneTimeline() {
   const timelineSnap = useStore((s) => s.timelineSnap)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
+  const timelineUnit = useStore((s) => s.timelineUnit)
+  const inFrame = useStore((s) => s.inFrame)
+  const outFrame = useStore((s) => s.outFrame)
   const timelineOpen = useStore((s) => s.timelineOpen)
   const timelineHeight = useStore((s) => s.timelineHeight)
   const {
@@ -67,6 +76,10 @@ function SceneTimeline() {
     togglePlay,
     select,
     setPxPerFrame,
+    setTimelineUnit,
+    setInFrame,
+    setOutFrame,
+    clearInOut,
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
@@ -83,7 +96,12 @@ function SceneTimeline() {
     removeKeyframe,
     removeFcurveKeyframe,
     removeTransformKeysAtFrame,
+    clearTimelineReveal,
   } = useStore()
+  const timelineRevealClip = useStore((s) => s.timelineRevealClip)
+  const [onlySelectedCharacter, setOnlySelectedCharacter] = useState(false)
+  const trackAvailRef = useRef(0)
+  const revealNonceRef = useRef(0)
   const clampAvailableHeight = (value: number) => {
     const available = Math.max(140, window.innerHeight - 44 - 180)
     return clampTimelineHeight(Math.min(value, available))
@@ -96,8 +114,23 @@ function SceneTimeline() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const scaleRef = useRef(pxPerFrame)
+  const frameStartRef = useRef(0)
   const [viewW, setViewW] = useState(0)
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
+
+  // N3: nhớ đơn vị hiển thị (giây/frame/tick) như các preference panel khác.
+  const unitHydrated = useRef(false)
+  useEffect(() => {
+    if (!unitHydrated.current) {
+      unitHydrated.current = true
+      const stored = readTimelineUnit(browserPanelStorage())
+      if (stored !== timelineUnit) {
+        setTimelineUnit(stored)
+        return
+      }
+    }
+    writeTimelineUnit(browserPanelStorage(), timelineUnit)
+  }, [timelineUnit, setTimelineUnit])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -131,6 +164,7 @@ function SceneTimeline() {
     ]) - tl.frameStart + 1
     : 1
   const trackAvail = viewW - LEFT_W - TRACK_INSET
+  trackAvailRef.current = trackAvail
   const scale = pxPerFrame
   const fitTimeline = () => {
     const next = timelineFitPx(frameCount, trackAvail)
@@ -140,6 +174,59 @@ function SceneTimeline() {
     if (scroller) scroller.scrollLeft = 0
   }
   scaleRef.current = scale
+  frameStartRef.current = tl?.frameStart ?? 0
+
+  // Ctrl (hoặc pinch trackpad) + lăn chuột: zoom quanh frame dưới con trỏ, frame neo đứng yên.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      const deltaY = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY
+      const oldPx = scaleRef.current
+      const nextPx = wheelZoomPxPerFrame(oldPx, deltaY)
+      if (nextPx === oldPx) return
+      const cursorOffsetX = event.clientX - el.getBoundingClientRect().left
+      const anchorFrame = frameAtContentX(el.scrollLeft + cursorOffsetX, frameStartRef.current, oldPx)
+      setPxPerFrame(nextPx)
+      scaleRef.current = nextPx
+      requestAnimationFrame(() => {
+        el.scrollLeft = anchoredScrollLeft({ anchorFrame, frameStart: frameStartRef.current, pxPerFrame: nextPx, cursorOffsetX })
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [timelineOpen, setPxPerFrame])
+
+  // "Vừa shot": ưu tiên clip đang chọn; không có thì shot biên tập chứa playhead.
+  const fitShotRange = (): { start: number; end: number } | null => {
+    if (!doc || !tl) return null
+    if (selection?.kind === 'clip') {
+      const list = selection.clipType === 'camera'
+        ? tl.animation.cameraMotionClips
+        : selection.clipType === 'motion'
+          ? tl.animation.motionClips
+          : tl.animation.pathMotionClips
+      const clip = list.find((item) => item.id === selection.clipId)
+      if (clip) return { start: clip.frameStart, end: clip.frameEnd }
+    }
+    const sequence = getActiveEditSequence(doc)
+    const shot = sequence?.clips.find((item) => frame >= item.sourceFrameStart && frame <= item.sourceFrameEnd)
+    return shot ? { start: shot.sourceFrameStart, end: shot.sourceFrameEnd } : null
+  }
+  const fitShot = () => {
+    const range = fitShotRange()
+    if (!range || !tl) return
+    const next = fitPxForRange(range.start, range.end, trackAvail)
+    if (next == null) return
+    setPxPerFrame(next)
+    scaleRef.current = next
+    requestAnimationFrame(() => {
+      const scroller = scrollRef.current
+      if (scroller) scroller.scrollLeft = Math.max(0, (range.start - tl.frameStart) * next - 8)
+    })
+  }
   const snap = useSnapFrame(scale)
   const { rulerRef, scrubHandlers } = useTimelineScrub(
     tl?.frameStart ?? 0,
@@ -185,6 +272,34 @@ function SceneTimeline() {
     return () => cancelAnimationFrame(frame)
   }, [selection, timelineOpen])
 
+  // C27: host vừa gán một clip — phóng tới khoảng clip, cuộn ngang tới clip và nháy sáng nó.
+  useEffect(() => {
+    if (!timelineRevealClip || timelineRevealClip.nonce === revealNonceRef.current) return
+    revealNonceRef.current = timelineRevealClip.nonce
+    const request = timelineRevealClip
+    const frames = Math.max(1, request.frameEnd - request.frameStart + 1)
+    if (trackAvailRef.current > 0) setPxPerFrame(trackAvailRef.current / frames)
+    let attempts = 0
+    let raf = 0
+    const tryReveal = () => {
+      const root = scrollRef.current
+      const el = root?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(request.clipId)}"]`)
+      if (root && el) {
+        const rootRect = root.getBoundingClientRect()
+        const elRect = el.getBoundingClientRect()
+        root.scrollLeft = Math.max(0, root.scrollLeft + elRect.left - rootRect.left - LEFT_W - 24)
+        el.classList.add('t3d-timeline-clip-flash')
+        window.setTimeout(() => el.classList.remove('t3d-timeline-clip-flash'), 1900)
+        clearTimelineReveal()
+        return
+      }
+      if (++attempts < 12) raf = requestAnimationFrame(tryReveal)
+      else clearTimelineReveal()
+    }
+    raf = requestAnimationFrame(tryReveal)
+    return () => cancelAnimationFrame(raf)
+  }, [timelineRevealClip, clearTimelineReveal, setPxPerFrame])
+
   if (!doc || !tl) return <div className="t3d-timeline">{t('common.loading')}</div>
 
   const selectedNodeId = selectedTimelineNodeId(doc, selection)
@@ -195,14 +310,16 @@ function SceneTimeline() {
     if (row.kind === 'node') return true
     return false
   }
-  const rows = flattenTree(
+  const allRows = flattenTree(
     buildTree(doc, t, multiSelectedIds.length > 1 ? multiSelectedIds : selectedNodeId, userKeys),
     isOpen,
   )
 
+  const rows = onlySelectedCharacter && selectedNodeId ? allRows.filter((item) => item.row.nodeId === selectedNodeId) : allRows
+
   const trackW = frameCount * scale
   const frame = stage.currentFrame
-  const sheet = timelineSheetRuler(scale, tl.fps)
+  const sheet = timelineUnitRuler(scale, tl.fps, timelineUnit)
 
   const snapshotValue = (nodeId: string, prop: TrackProp): number[] => {
     const snap = stage.getNodeSnapshot(nodeId)
@@ -309,8 +426,37 @@ function SceneTimeline() {
         </Tooltip>
         <label className="t3d-timeline-field">
           {t('timeline.frame')}
-          <TimelineFrameField min={tl.frameStart} max={tl.frameEnd} onChange={setFrame} />
+          <TimelineFrameField min={tl.frameStart} max={tl.frameEnd} onChange={setFrame} unit={timelineUnit} fps={tl.fps} />
         </label>
+        <div className="t3d-timeline-group">
+          <Tooltip label={t('timeline.setInHint')} side="top">
+            <button
+              type="button"
+              className={cx('t3d-timeline-auto-key', inFrame != null && 'is-active')}
+              aria-pressed={inFrame != null}
+              onClick={() => setInFrame(Math.round(frame))}
+            >
+              {t('timeline.inPoint')} {inFrame != null ? formatFrameInUnit(inFrame, tl.fps, timelineUnit) : '—'}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('timeline.setOutHint')} side="top">
+            <button
+              type="button"
+              className={cx('t3d-timeline-auto-key', outFrame != null && 'is-active')}
+              aria-pressed={outFrame != null}
+              onClick={() => setOutFrame(Math.round(frame))}
+            >
+              {t('timeline.outPoint')} {outFrame != null ? formatFrameInUnit(outFrame, tl.fps, timelineUnit) : '—'}
+            </button>
+          </Tooltip>
+          {inFrame != null || outFrame != null ? (
+            <Tooltip label={t('timeline.clearInOut')} side="top">
+              <button type="button" className="t3d-timeline-icon-btn" aria-label={t('timeline.clearInOut')} onClick={clearInOut}>
+                ×
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
         <Tooltip label={t('common.delete')} side="top">
           <button
             type="button"
@@ -338,19 +484,37 @@ function SceneTimeline() {
               onEditEnd={endTimelineRangeEdit}
             />
           </label>
+          <div className="t3d-timeline-unit-switch" role="group" aria-label={t('timeline.unit')}>
+            {(['seconds', 'frames', 'ticks'] as TimelineUnit[]).map((unit) => (
+              <button
+                key={unit}
+                type="button"
+                className={cx('t3d-timeline-unit-btn', timelineUnit === unit && 'is-active')}
+                aria-pressed={timelineUnit === unit}
+                onClick={() => setTimelineUnit(unit)}
+              >
+                {t(unit === 'seconds' ? 'timeline.unitSeconds' : unit === 'frames' ? 'timeline.unitFrames' : 'timeline.unitTicks')}
+              </button>
+            ))}
+          </div>
           <label className="t3d-timeline-field t3d-timeline-zoom">
             {t('timeline.zoom')}
             <RangeSlider
               min={0.2}
-              max={20}
+              max={PX_PER_FRAME_MAX}
               step={0.1}
               aria-label={t('timeline.zoom')}
               value={pxPerFrame}
               onChange={(e) => setPxPerFrame(Number(e.target.value))}
             />
           </label>
-          <Tooltip label={t('film.fit')} side="top">
-            <button type="button" className="t3d-timeline-icon-btn" disabled={!tl || trackAvail <= 0} onClick={fitTimeline}>
+          <Tooltip label={t('timeline.fitShot')} side="top">
+            <button type="button" className="t3d-timeline-auto-key" disabled={!tl || trackAvail <= 0} onClick={fitShot}>
+              {t('timeline.fitShot')}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('timeline.fitAll')} side="top">
+            <button type="button" className="t3d-timeline-icon-btn" disabled={!tl || trackAvail <= 0} onClick={fitTimeline} aria-label={t('timeline.fitAll')}>
               <IconFit />
             </button>
           </Tooltip>
@@ -393,6 +557,10 @@ function SceneTimeline() {
             <input type="checkbox" checked={chainCameraMotion} onChange={toggleChainCameraMotion} />
             {t('timeline.chainMotion')}
           </label>
+          <label className="t3d-timeline-toggle">
+            <input type="checkbox" checked={onlySelectedCharacter} onChange={(event) => setOnlySelectedCharacter(event.target.checked)} />
+            {t('timeline.onlySelectedCharacter')}
+          </label>
         </div>
       </div>
 
@@ -418,6 +586,7 @@ function SceneTimeline() {
               frameStart={tl.frameStart}
               frameEnd={tl.frameEnd}
               fps={tl.fps}
+              unit={timelineUnit}
               pxPerFrame={scale}
               currentFrame={frame}
               ariaLabel={t('timeline.frame')}
@@ -433,6 +602,17 @@ function SceneTimeline() {
               pxPerFrame={scale}
               currentFrame={frame}
               scrubHandlers={scrubHandlers}
+            />
+            <InOutOverlay
+              frameStart={tl.frameStart}
+              pxPerFrame={scale}
+              inFrame={inFrame}
+              outFrame={outFrame}
+              inLabel={t('timeline.inPoint')}
+              outLabel={t('timeline.outPoint')}
+              frameFromClientX={frameFromClientX}
+              onSetIn={setInFrame}
+              onSetOut={setOutFrame}
             />
             {rows.map(({ row, depth }) => (
               <TrackRow

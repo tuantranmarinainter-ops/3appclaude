@@ -4,6 +4,9 @@
     {
       "name": "app1-workbench",
       "runtimeExecutable": "node",
+      "env": {
+        "W01_STUDIO_URL": "http://127.0.0.1:3016"
+      },
       "runtimeArgs": [
         "--max-old-space-size=16384",
         "--import",

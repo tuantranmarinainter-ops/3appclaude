@@ -1,11 +1,13 @@
 import { useRef, type PointerEvent } from 'react'
 import { useEngineEvent } from '../../bridge/useEngineEvent'
-import { formatTimelinePlayhead, timelineSheetRuler } from './utils'
+import type { TimelineUnit } from '../../stores/types'
+import { formatFrameInUnit, timelineUnitRuler } from './utils/timeUnit'
 
 export function Ruler({
   frameStart,
   frameEnd,
   fps,
+  unit,
   pxPerFrame,
   currentFrame,
   ariaLabel,
@@ -15,6 +17,7 @@ export function Ruler({
   frameStart: number
   frameEnd: number
   fps: number
+  unit: TimelineUnit
   pxPerFrame: number
   currentFrame: number
   ariaLabel: string
@@ -27,9 +30,9 @@ export function Ruler({
   }
 }) {
   const labelRef = useRef<HTMLSpanElement>(null)
-  const layoutRef = useRef({ start: frameStart, px: pxPerFrame, fps })
-  layoutRef.current = { start: frameStart, px: pxPerFrame, fps }
-  const sheet = timelineSheetRuler(pxPerFrame, fps)
+  const layoutRef = useRef({ start: frameStart, px: pxPerFrame, fps, unit })
+  layoutRef.current = { start: frameStart, px: pxPerFrame, fps, unit }
+  const sheet = timelineUnitRuler(pxPerFrame, fps, unit)
   const first = Math.floor(frameStart / sheet.step) * sheet.step
   const ticks: number[] = []
   for (let frame = first; frame <= frameEnd; frame += sheet.step) {
@@ -37,11 +40,11 @@ export function Ruler({
   }
 
   useEngineEvent('frame', (frame) => {
-    const { start, px, fps: rate } = layoutRef.current
+    const { start, px, fps: rate, unit: currentUnit } = layoutRef.current
     const el = labelRef.current
     if (!el) return
     el.style.left = `${(frame - start) * px}px`
-    el.textContent = formatTimelinePlayhead(frame, rate)
+    el.textContent = formatFrameInUnit(frame, rate, currentUnit)
   })
 
   return (
@@ -55,7 +58,7 @@ export function Ruler({
         aria-valuemin={frameStart}
         aria-valuemax={frameEnd}
         aria-valuenow={Math.round(currentFrame)}
-        aria-valuetext={formatTimelinePlayhead(currentFrame, fps)}
+        aria-valuetext={formatFrameInUnit(currentFrame, fps, unit)}
         tabIndex={0}
         {...scrubHandlers}
       >
@@ -73,7 +76,7 @@ export function Ruler({
           className="t3d-timeline-cursor-label"
           style={{ left: (currentFrame - frameStart) * pxPerFrame }}
         >
-          {formatTimelinePlayhead(currentFrame, fps)}
+          {formatFrameInUnit(currentFrame, fps, unit)}
         </span>
       </div>
     </div>

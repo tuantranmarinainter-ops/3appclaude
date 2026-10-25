@@ -1,6 +1,7 @@
 import { readFile, realpath, access } from 'node:fs/promises'
 import path from 'node:path'
 import { listLibraryCharacters, resolveLibraryPath } from '../../../../../../../packages/library/index'
+import { libraryCharacterGlb } from '../../../../../src/libraryModels'
 
 export const runtime = 'nodejs'
 
@@ -25,19 +26,30 @@ async function builtinCharacterPath(id: string): Promise<string> {
   }
 }
 
+const notFound = () => new Response('Character not found', { status: 404 })
+const glbResponse = (bytes: Buffer) => new Response(bytes, { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   try {
     const { id } = await context.params
-    let file: string
-    if (BUILTIN.has(id)) file = await builtinCharacterPath(id)
-    else {
-      const character = listLibraryCharacters().find((item) => item.charId === id)
-      if (!character || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id) || character.model !== 'model.glb') return new Response('Character not found', { status: 404 })
-      const root = await realpath(path.resolve(resolveLibraryPath(), 'characters'))
-      const characterRoot = await realpath(path.resolve(root, id))
-      file = await realpath(path.resolve(characterRoot, character.model))
-      if (!characterRoot.startsWith(`${root}${path.sep}`) || !file.startsWith(`${characterRoot}${path.sep}`)) return new Response('Character not found', { status: 404 })
+    if (BUILTIN.has(id)) return glbResponse(await readFile(await builtinCharacterPath(id)))
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(id)) return notFound()
+    const character = listLibraryCharacters().find((item) => item.charId === id)
+    if (!character) return notFound()
+    const root = await realpath(path.resolve(resolveLibraryPath(), 'characters'))
+    const characterRoot = await realpath(path.resolve(root, id))
+    if (!characterRoot.startsWith(`${root}${path.sep}`)) return notFound()
+    if (character.model === 'model.glb') {
+      // Đường đi cũ giữ nguyên từng byte: bản GLB nằm ngay trong thư mục nhân vật.
+      try {
+        const file = await realpath(path.resolve(characterRoot, character.model))
+        if (file.startsWith(`${characterRoot}${path.sep}`)) return glbResponse(await readFile(file))
+      } catch { /* chưa có bản sao cạnh meta.json: dùng model gốc của thư viện bên dưới */ }
     }
-    return new Response(await readFile(file), { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
-  } catch { return new Response('Character not found', { status: 404 }) }
+    // Nhân vật `.bobj` (model.bbs.bobj / model.bobj — Minecraft20, Verity…) hoặc nhân vật
+    // có base model nhưng thiếu bản sao GLB: resolveCharacter tìm model gốc
+    // (models/<baseModelId> hoặc thư mục nhân vật) rồi chuyển sang GLB khi đọc,
+    // cùng đường App 2 dùng để nạp nhân vật.
+    return glbResponse(await libraryCharacterGlb(id))
+  } catch { return notFound() }
 }

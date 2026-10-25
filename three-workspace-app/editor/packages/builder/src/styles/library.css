@@ -214,6 +214,13 @@
   background: #3a3a3a;
 }
 
+/* Shared highlight for cross-app actions (N1 "Gán animation"; C23 standardizes cross-app buttons on this class). */
+.bbs-cross-app-action {
+  border: 2px solid #f5a623 !important;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.35);
+  color: #ffd58a !important;
+}
+
 .t3d-leftrail-rail-item {
   display: flex;
   flex-direction: column;
@@ -746,6 +753,21 @@
 
 .t3d-leftrail-tree-row + .t3d-leftrail-tree-row {
   margin-top: 2px;
+}
+
+/* N5: dòng nhóm "Hậu cảnh" trong cây Đối tượng. */
+.t3d-leftrail-tree-group-row {
+  margin-top: 8px;
+}
+
+.t3d-leftrail-tree-group-main {
+  color: var(--t3d-text);
+  font-weight: 600;
+  cursor: default;
+}
+
+.t3d-leftrail-tree-flags.is-always {
+  display: flex;
 }
 
 .t3d-leftrail-tree-row {

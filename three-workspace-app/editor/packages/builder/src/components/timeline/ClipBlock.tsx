@@ -11,6 +11,7 @@ export function ClipBlock({
   left,
   width,
   label,
+  durationLabel,
   clipId,
   frameStart,
   frameEnd,
@@ -23,6 +24,8 @@ export function ClipBlock({
   left: number
   width: number
   label: string
+  /** Độ dài clip theo đơn vị timeline đang chọn (N3); chỉ hiện khi clip đủ rộng. */
+  durationLabel?: string
   clipId: string
   frameStart: number
   frameEnd: number
@@ -153,7 +156,7 @@ export function ClipBlock({
       style={{ left: previewLeft, width: displayWidth }}
       aria-hidden="true"
       data-drop-preview={clipId}
-    >{label}</div>}
+    >{label}{durationLabel && displayWidth >= 90 ? ` · ${durationLabel}` : ''}</div>}
     <div
       className={cx(
         't3d-timeline-clip',
@@ -236,6 +239,7 @@ export function ClipBlock({
       }}
     >
       {label}
+      {durationLabel && displayWidth >= 90 ? <span className="t3d-timeline-clip-duration"> · {durationLabel}</span> : null}
       {handles}
     </div>
     </>

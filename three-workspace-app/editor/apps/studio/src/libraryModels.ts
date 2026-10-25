@@ -6,6 +6,19 @@ import { bobjModelToGlb, parseBobjModel } from '../../../packages/retarget/src/b
 /** Library BOBJ models face +Z at rest like Minecraft20; native clips already carry the Root turn. */
 export const LIBRARY_GLB_OPTIONS = { faceForward: true } as const
 
+/**
+ * C25 display name for a storyboard node linked to a library character: "Tên vai · Shot NN".
+ * The shot number comes from the trailing number of the storyboard node name
+ * ("go 01_1" / "go 01" -> Shot 01); nodes without a trailing number keep the plain role name.
+ */
+export function libraryShotDisplayName(characterName: string, nodeName: string): string {
+  // Storyboard node names carry Topview's uniqueness suffixes ("go 01" -> "go 01_1");
+  // the shot number is the first trailing number group, before any _N suffixes.
+  const match = /(\d+)(?:_\d+)*\s*$/.exec(nodeName.trim())
+  if (!match) return characterName
+  return `${characterName} · Shot ${match[1]!.padStart(2, '0')}`
+}
+
 export function unpackLibraryGlb(bytes: Buffer) {
   if (bytes.readUInt32LE(0) !== 0x46546c67) throw new Error('Invalid library GLB')
   const size = bytes.readUInt32LE(12)
@@ -103,6 +116,19 @@ export async function libraryCharacterModel(charId: string, faceForward = true) 
   }
   json.buffers[0].byteLength = bin.length
   return { bytes: packLibraryGlb(json, bin), fingerprint }
+}
+
+/**
+ * Mọi nhân vật thư viện dưới dạng GLB cho viewer: nhân vật có base model đi qua
+ * `libraryCharacterModel` (kèm texture/skin); nhân vật cũ chưa có base model thì đọc
+ * model ngay trong thư mục của nó — GLB trả nguyên, `.bobj` chuyển khi đọc.
+ */
+export async function libraryCharacterGlb(charId: string): Promise<Buffer> {
+  const resolved = resolveCharacter(charId)
+  if (resolved.baseModel) return (await libraryCharacterModel(charId)).bytes
+  const source = await readFile(resolved.modelPath)
+  if (resolved.character.model.toLowerCase().endsWith('.bobj')) return Buffer.from(bobjModelToGlb(parseBobjModel(source.toString('utf8')), LIBRARY_GLB_OPTIONS).bytes)
+  return source
 }
 
 /** A character-owned sidecar must extend the exact authoritative native model. */
