@@ -172,3 +172,7 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
 - (Chờ người dùng xác nhận) **C25 — App 2: nối nhân vật storyboard có sẵn với nhân vật thư viện.** Project Tập 15 có 29 nhân vật
   storyboard (`go 01`, `den 01`…) không có `libraryCharacterId`, nên "Lấy từ kho…" không hiện; hiện chỉ có cách thêm nhân vật thư viện
   mới vào cảnh.
+- **C26 — App 2: nút "Chỉ hiện nhân vật" trên khung 3D.** Hiện chỉ ẩn được từng node (nút con mắt trong cây "Đối tượng",
+  `packages/builder/src/components/leftrail/ObjectTree.tsx`, lưu `visible: false` vào project); Tập 15 có 20 khối `set_*` nên phải
+  bấm 20 lần. Cần: một nút bật/tắt (kèm phím tắt) ẩn toàn bộ prop/hậu cảnh, chỉ đổi cách xem (không ghi project, không ảnh hưởng
+  render/xuất film), bấm lại hiện như cũ; nhớ trạng thái theo phiên (localStorage).
