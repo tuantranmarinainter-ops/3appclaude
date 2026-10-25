@@ -345,6 +345,8 @@ export const en: LocaleDict = {
     "snapTitle": "Snap drags to keyframes and clip edges.",
     "frame": "Current frame",
     "zoom": "Zoom",
+    "fitShot": "Fit shot",
+    "fitAll": "Fit all",
     "pxPerFrame": "{{value}}px/frame",
     "userKeys": "User keyframe override",
     "chainMotion": "Chain camera moves",

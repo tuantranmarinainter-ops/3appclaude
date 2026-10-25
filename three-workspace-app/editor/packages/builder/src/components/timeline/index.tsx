@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TrackProp } from '../../evaluate/curves/KeyframeTrack'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
-import { clampTimelineHeight, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
+import { clampTimelineHeight, PX_PER_FRAME_MAX, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
 import { nodeIdsOf } from '../../stores/nodeSelection'
 import { cx } from '../common/cx'
 import { RangeSlider } from '../common/RangeSlider'
@@ -33,7 +33,8 @@ import { Playhead } from './Playhead'
 import { Ruler } from './Ruler'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
-import { buildTree, flattenTree, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, timelineSheetRuler } from './utils'
+import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, timelineSheetRuler, wheelZoomPxPerFrame } from './utils'
+import { getActiveEditSequence } from '../../evaluate'
 
 export function TimelinePanel() {
   const { useStore } = useDirector()
@@ -96,6 +97,7 @@ function SceneTimeline() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const scaleRef = useRef(pxPerFrame)
+  const frameStartRef = useRef(0)
   const [viewW, setViewW] = useState(0)
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
 
@@ -140,6 +142,59 @@ function SceneTimeline() {
     if (scroller) scroller.scrollLeft = 0
   }
   scaleRef.current = scale
+  frameStartRef.current = tl?.frameStart ?? 0
+
+  // Ctrl (hoặc pinch trackpad) + lăn chuột: zoom quanh frame dưới con trỏ, frame neo đứng yên.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      const deltaY = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY
+      const oldPx = scaleRef.current
+      const nextPx = wheelZoomPxPerFrame(oldPx, deltaY)
+      if (nextPx === oldPx) return
+      const cursorOffsetX = event.clientX - el.getBoundingClientRect().left
+      const anchorFrame = frameAtContentX(el.scrollLeft + cursorOffsetX, frameStartRef.current, oldPx)
+      setPxPerFrame(nextPx)
+      scaleRef.current = nextPx
+      requestAnimationFrame(() => {
+        el.scrollLeft = anchoredScrollLeft({ anchorFrame, frameStart: frameStartRef.current, pxPerFrame: nextPx, cursorOffsetX })
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [timelineOpen, setPxPerFrame])
+
+  // "Vừa shot": ưu tiên clip đang chọn; không có thì shot biên tập chứa playhead.
+  const fitShotRange = (): { start: number; end: number } | null => {
+    if (!doc || !tl) return null
+    if (selection?.kind === 'clip') {
+      const list = selection.clipType === 'camera'
+        ? tl.animation.cameraMotionClips
+        : selection.clipType === 'motion'
+          ? tl.animation.motionClips
+          : tl.animation.pathMotionClips
+      const clip = list.find((item) => item.id === selection.clipId)
+      if (clip) return { start: clip.frameStart, end: clip.frameEnd }
+    }
+    const sequence = getActiveEditSequence(doc)
+    const shot = sequence?.clips.find((item) => frame >= item.sourceFrameStart && frame <= item.sourceFrameEnd)
+    return shot ? { start: shot.sourceFrameStart, end: shot.sourceFrameEnd } : null
+  }
+  const fitShot = () => {
+    const range = fitShotRange()
+    if (!range || !tl) return
+    const next = fitPxForRange(range.start, range.end, trackAvail)
+    if (next == null) return
+    setPxPerFrame(next)
+    scaleRef.current = next
+    requestAnimationFrame(() => {
+      const scroller = scrollRef.current
+      if (scroller) scroller.scrollLeft = Math.max(0, (range.start - tl.frameStart) * next - 8)
+    })
+  }
   const snap = useSnapFrame(scale)
   const { rulerRef, scrubHandlers } = useTimelineScrub(
     tl?.frameStart ?? 0,
@@ -342,15 +397,20 @@ function SceneTimeline() {
             {t('timeline.zoom')}
             <RangeSlider
               min={0.2}
-              max={20}
+              max={PX_PER_FRAME_MAX}
               step={0.1}
               aria-label={t('timeline.zoom')}
               value={pxPerFrame}
               onChange={(e) => setPxPerFrame(Number(e.target.value))}
             />
           </label>
-          <Tooltip label={t('film.fit')} side="top">
-            <button type="button" className="t3d-timeline-icon-btn" disabled={!tl || trackAvail <= 0} onClick={fitTimeline}>
+          <Tooltip label={t('timeline.fitShot')} side="top">
+            <button type="button" className="t3d-timeline-auto-key" disabled={!tl || trackAvail <= 0} onClick={fitShot}>
+              {t('timeline.fitShot')}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('timeline.fitAll')} side="top">
+            <button type="button" className="t3d-timeline-icon-btn" disabled={!tl || trackAvail <= 0} onClick={fitTimeline} aria-label={t('timeline.fitAll')}>
               <IconFit />
             </button>
           </Tooltip>

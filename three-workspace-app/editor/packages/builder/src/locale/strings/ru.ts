@@ -335,6 +335,8 @@ export const ru: LocaleDict = {
     "autoKeyframe": "Автоключ",
     "frame": "Кадр",
     "zoom": "Масштаб",
+    "fitShot": "Вписать кадр",
+    "fitAll": "Вписать всё",
     "pxPerFrame": "{{value}}px/кадр",
     "userKeys": "Переопределение пользовательским ключевым кадром",
     "chainMotion": "Сцеплять движения камеры",

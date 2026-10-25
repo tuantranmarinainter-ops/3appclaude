@@ -335,6 +335,8 @@ export const id: LocaleDict = {
     "autoKeyframe": "Keyframe otomatis",
     "frame": "Bingkai",
     "zoom": "Perbesar",
+    "fitShot": "Pas bidikan",
+    "fitAll": "Pas semua",
     "pxPerFrame": "{{value}}px/bingkai",
     "userKeys": "Timpa bingkai kunci pengguna",
     "chainMotion": "Rantai gerakan kamera",

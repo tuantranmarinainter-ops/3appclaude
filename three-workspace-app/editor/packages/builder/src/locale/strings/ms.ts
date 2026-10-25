@@ -335,6 +335,8 @@ export const ms: LocaleDict = {
     "autoKeyframe": "Bingkai kunci auto",
     "frame": "Bingkai",
     "zoom": "Zum",
+    "fitShot": "Muat syot",
+    "fitAll": "Muat semua",
     "pxPerFrame": "{{value}}px/bingkai",
     "userKeys": "Ganti bingkai kunci pengguna",
     "chainMotion": "Rantai gerakan kamera",

@@ -335,6 +335,8 @@ export const tr: LocaleDict = {
     "autoKeyframe": "Otomatik ana kare",
     "frame": "Kare",
     "zoom": "Yakınlaştır",
+    "fitShot": "Çekime sığdır",
+    "fitAll": "Tümüne sığdır",
     "pxPerFrame": "{{value}}px/kare",
     "userKeys": "Kullanıcı anahtar kare geçersiz kılma",
     "chainMotion": "Kamera hareketlerini zincirle",

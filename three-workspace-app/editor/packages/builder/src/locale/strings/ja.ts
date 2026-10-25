@@ -335,6 +335,8 @@ export const ja: LocaleDict = {
     "autoKeyframe": "自動キーフレーム",
     "frame": "フレーム",
     "zoom": "ズーム",
+    "fitShot": "ショットに合わせる",
+    "fitAll": "全体に合わせる",
     "pxPerFrame": "{{value}}px/フレーム",
     "userKeys": "ユーザーキーフレーム上書き",
     "chainMotion": "カメラワークをつなぐ",

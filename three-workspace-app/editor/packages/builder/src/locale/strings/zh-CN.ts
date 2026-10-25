@@ -345,6 +345,8 @@ export const zhCN: LocaleDict = {
     "snapTitle": "拖动时吸附到关键帧和片段边缘。",
     "frame": "当前帧",
     "zoom": "缩放",
+    "fitShot": "适合镜头",
+    "fitAll": "适合全部",
     "pxPerFrame": "{{value}}px/帧",
     "userKeys": "用户关键帧覆写",
     "chainMotion": "运镜衔接",

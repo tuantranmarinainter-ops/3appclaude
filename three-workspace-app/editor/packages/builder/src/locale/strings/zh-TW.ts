@@ -345,6 +345,8 @@ export const zhTW: LocaleDict = {
     "snapTitle": "拖曳時吸附到關鍵影格和片段邊緣。",
     "frame": "目前影格",
     "zoom": "縮放",
+    "fitShot": "適合鏡頭",
+    "fitAll": "適合全部",
     "pxPerFrame": "{{value}}px/影格",
     "userKeys": "使用者關鍵影格覆寫",
     "chainMotion": "運鏡銜接",

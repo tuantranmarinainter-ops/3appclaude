@@ -335,6 +335,8 @@ export const de: LocaleDict = {
     "autoKeyframe": "Auto-Keyframe",
     "frame": "Bild",
     "zoom": "Zoom",
+    "fitShot": "Shot einpassen",
+    "fitAll": "Alles einpassen",
     "pxPerFrame": "{{value}}px/Bild",
     "userKeys": "Benutzer-Schlüsselbild überschreibt",
     "chainMotion": "Kamerafahrten verketten",
