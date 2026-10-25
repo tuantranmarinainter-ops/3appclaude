@@ -154,3 +154,21 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   Yêu cầu: khi khởi động, xoá phiên cũ hơn N ngày/không còn server nào dùng (khoá theo PID); cho đặt thư mục tạm bằng biến môi trường
   (vd `W01_WORKBENCH_TMP=S:\Claude\tmp`) để không ghi lên ổ C; trong phiên, xoá lượt chạy xem thử cũ khi có lượt mới cùng dòng; hiện
   dung lượng phiên + nút "Dọn dữ liệu tạm" trong giao diện. Nhắc Codex đặt thư mục kết quả chạy thử (outputs/QA) trên ổ S.
+
+### Ghi nhận khi người dùng test Thư viện + App 2 (2026-10-25, *chưa code, chỉ lên kế hoạch*)
+- **C20 — App 5 Thư viện: danh sách animation không cuộn được, khung không co giãn.** Danh sách động tác thiếu thanh cuộn nên không
+  xem hết; thanh chia giữa các khung (danh sách / chi tiết) không kéo co giãn được. Cần: mỗi khung cuộn riêng, thanh chia kéo được
+  (dùng lại kiểu thanh chia W2/C8), nhớ kích thước (localStorage).
+- **C21 — App 5: bấm vào cả thẻ để chọn animation.** Hiện phải bấm đúng vào dòng chữ; bấm vào bất kỳ chỗ nào của thẻ/khung cũng phải
+  chọn và hiện chi tiết (trừ khi bấm vào nút con trong thẻ).
+- **C22 — App 5: khung xem 3D nhân vật tỉ lệ 1:1.** Khung xem động tác/nhân vật để vuông (1:1) thay vì khung dài, tiết kiệm chỗ.
+- **C23 — Nút chuyển app phải nổi bật và dễ tìm.** Người dùng không tìm thấy chỗ chuyển sang App 2: "Thêm vào cảnh App 2" chỉ có ở
+  mục **Nhân vật** của Thư viện. Cần:
+  - Mọi nút chuyển sang app khác (thanh 5 workspace, "Thêm vào cảnh App 2", "Mở Chuẩn hoá"/Workbench, mở App 3, "Trả kết quả về cảnh"…)
+    có **viền màu riêng thật dễ thấy**, nổi hơn mọi nút khác, thống nhất ở cả 5 app.
+  - Có lối "Thêm vào cảnh App 2" ngay ở danh sách động tác / "Bộ của nhân vật", không bắt phải sang mục Nhân vật.
+- **C24 — App 5: đánh dấu sao + tab "Yêu thích" trong danh sách animation.** Ở danh sách xem tất cả động tác: nút ☆/★ từng animation và
+  tab/bộ lọc **Yêu thích**. Dùng lại trường `favorite` của thư viện (F1/C18), thống nhất với dấu sao của App 1.
+- (Chờ người dùng xác nhận) **C25 — App 2: nối nhân vật storyboard có sẵn với nhân vật thư viện.** Project Tập 15 có 29 nhân vật
+  storyboard (`go 01`, `den 01`…) không có `libraryCharacterId`, nên "Lấy từ kho…" không hiện; hiện chỉ có cách thêm nhân vật thư viện
+  mới vào cảnh.
