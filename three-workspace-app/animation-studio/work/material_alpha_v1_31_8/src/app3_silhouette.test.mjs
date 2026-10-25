@@ -47,7 +47,7 @@ test('App3 silhouette: two-color pixels, exact off restoration, view-only shortc
   const app2=page.locator('#wb-silhouette-toggle');await app2.click();await page.locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]').getByRole('button',{name:/Animation/}).click();
   const iframe=page.locator('.wb-animation-creation-frame');await iframe.waitFor();const frame=await (await iframe.elementHandle()).contentFrame();assert.ok(frame);await frame.waitForURL(/animation-studio\/v1\.33\.0\/index\.html/);
   await frame.waitForFunction(()=>window.__studio?.ready&&window.__studio.silhouette.enabled,null,{timeout:60000});
-  await page.locator('.wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
+  await frame.locator('#bbsHostControls .wb-animation-creation-toolbar').first().getByRole('button',{name:'Tạo animation',exact:true}).click();
   await frame.waitForFunction(()=>window.__app3LocalBridge?.status().bound,null,{timeout:60000});
   await app2.click();await frame.waitForFunction(()=>!window.__studio.silhouette.enabled);
   const initialRevision=(await request.get(`${base}/api/unified/projects/${projectId}`).then(r=>r.json())).project.revision;
