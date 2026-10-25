@@ -1,6 +1,7 @@
 import type { VfxSheet, VfxSpriteCue } from './objects/vfxSprites'
 import type { EditorViewDirection } from './interact/camera/axisView'
 import type { DirectorDocument, DraftNode } from '../contract/types'
+import type { SceneViewFilter } from '../contract/sceneView'
 import type { FCurveSet } from '../evaluate/curves/FCurveSet'
 import type { UserKeys } from '../evaluate/curves/KeyframeTrack'
 import type { EngineEventMap, EngineEventName } from './core/EventBus'
@@ -115,6 +116,9 @@ export interface DirectorEngine {
   /** 像 BBS FS 一样看（只影响显示，不写文档）。 */
   readonly bbsLook: boolean
   setBbsLook(enabled: boolean): void
+  /** Bộ lọc xem cảnh N5: chỉ hiện nhân vật / ẩn nhóm hậu cảnh（只影响编辑视口显示，不写文档，不影响导出）。 */
+  readonly sceneViewFilter: SceneViewFilter
+  setSceneViewFilter(filter: SceneViewFilter): void
   /** VFX cue preview (view only): sprite sheets keyed by effect name. */
   setVfxCues(cues: readonly VfxSpriteCue[], sheets: Record<string, VfxSheet>): void
   /** Current project's film aspect, or null to clear the host-provided framing. */

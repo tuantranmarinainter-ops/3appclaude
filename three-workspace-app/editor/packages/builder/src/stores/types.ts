@@ -231,6 +231,10 @@ export interface StudioView {
   canUndo: boolean
   canRedo: boolean
   followMode: boolean
+  /** N5: chỉ hiện nhân vật trong khung 3D (chỉ đổi cách xem, không ghi tài liệu). */
+  charactersOnlyView: boolean
+  /** N5: ẩn cả nhóm Hậu cảnh trong khung 3D (chỉ đổi cách xem, không ghi tài liệu). */
+  backgroundViewHidden: boolean
   /** 视口关节摆姿中的角色 id；null 表示未进入 Edit Pose */
   poseEditingId: string | null
   /** 第一人称操控中的相机 id；null 表示未进入 */
@@ -292,6 +296,8 @@ export interface StudioView {
   acceptTimelinePlayHint: () => void
   setTimelineHeight: (h: number) => void
   toggleViewportFullscreen: () => void
+  setCharactersOnlyView: (v: boolean) => void
+  setBackgroundViewHidden: (v: boolean) => void
   setNodeFlags: (nodeId: string, flags: { visible?: boolean; locked?: boolean }) => string | null
   updateEnvironment: (patch: EnvironmentPatch) => void
   setDraft: (id: string) => void

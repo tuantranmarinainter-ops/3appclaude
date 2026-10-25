@@ -73,6 +73,10 @@ export class EditorStore {
   timelineHeight = TIMELINE_HEIGHT_DEFAULT
   viewportFullscreen = false
   followMode = false
+  /** N5: chỉ hiện nhân vật trong khung 3D. Chỉ là cách xem — không nằm trong tài liệu, không lưu project. */
+  charactersOnlyView = false
+  /** N5: ẩn cả nhóm Hậu cảnh trong khung 3D. Chỉ là cách xem — không nằm trong tài liệu, không lưu project. */
+  backgroundViewHidden = false
   poseEditingId: string | null = null
   /** 第一人称操控中的相机 id；null 表示未进入 */
   cameraPilotId: string | null = null
@@ -151,6 +155,8 @@ export class EditorStore {
       timelineHeight: observable,
       viewportFullscreen: observable,
       followMode: observable,
+      charactersOnlyView: observable,
+      backgroundViewHidden: observable,
       poseEditingId: observable,
       cameraPilotId: observable,
       cameraPilotSaved: observable.ref,
@@ -232,6 +238,8 @@ export class EditorStore {
       setTimelineHeight: action.bound,
       toggleViewportFullscreen: action.bound,
       setFollowModeFlag: action.bound,
+      setCharactersOnlyView: action.bound,
+      setBackgroundViewHidden: action.bound,
       setPoseEditingId: action.bound,
       setCameraPilotId: action.bound,
       setPathEditingIdFlag: action.bound,
@@ -260,6 +268,8 @@ export class EditorStore {
     this.clipMovePreview = null
     this.clipResizePreview = null
     this.followMode = false
+    this.charactersOnlyView = false
+    this.backgroundViewHidden = false
     this.poseEditingId = null
     this.cameraPilotId = null
     this.cameraPilotSaved = null
@@ -427,6 +437,14 @@ export class EditorStore {
 
   setFollowModeFlag(v: boolean): void {
     this.followMode = v
+  }
+
+  setCharactersOnlyView(v: boolean): void {
+    this.charactersOnlyView = v
+  }
+
+  setBackgroundViewHidden(v: boolean): void {
+    this.backgroundViewHidden = v
   }
 
   setPoseEditingId(id: string | null): void {

@@ -1,10 +1,11 @@
 import { useState, type ReactElement } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
+import { computeViewHiddenNodeIds, isBackgroundNode } from '../../contract/sceneView'
 import { useT } from '../../locale'
 import { buildNodeSelection, nodeIdsOf, toggleNodeIds } from '../../stores/nodeSelection'
 import { cx } from '../common/cx'
 import { Tooltip } from '../common/Tooltip'
-import { IconCamera, IconCharacter, IconEye, IconEyeOff, IconLock, IconObject, IconProp, IconUnlock } from './icons'
+import { IconCamera, IconCharacter, IconEye, IconEyeOff, IconLock, IconObject, IconProp, IconScene, IconUnlock } from './icons'
 import { SearchField } from './SearchField'
 import { buildObjectRows, treeIconKind, type TreeRow } from './utils'
 
@@ -24,18 +25,38 @@ export function ObjectTree(): ReactElement {
   const selection = useStore((s) => s.selection)
   const film = useStore((s) => s.workspaceMode === 'film')
   const writeLocked = useStore((s) => s.writeLocked)
-  const { select, setNodeFlags, openInspector } = useStore()
-  const rows = buildObjectRows(doc?.content.nodes ?? [], query, t)
+  const charactersOnlyView = useStore((s) => s.charactersOnlyView)
+  const backgroundViewHidden = useStore((s) => s.backgroundViewHidden)
+  const { select, setNodeFlags, openInspector, setBackgroundViewHidden } = useStore()
+  const nodes = doc?.content.nodes ?? []
+  const rows = buildObjectRows(nodes, query, t)
   const selectedIds = new Set(nodeIdsOf(selection))
+  // N5: dòng bị bộ lọc xem ẩn được làm mờ trong cây (chỉ là cách xem, khác với ẩn trong tài liệu).
+  const viewHiddenIds = computeViewHiddenNodeIds(nodes, {
+    charactersOnly: charactersOnlyView,
+    backgroundHidden: backgroundViewHidden,
+  })
+  const backgroundCount = nodes.filter((node) => isBackgroundNode(node)).length
 
   return (
     <div className="t3d-leftrail-object">
       <SearchField value={query} placeholder={t('library.searchObjects')} onChange={setQuery} />
       <div className="t3d-leftrail-tree">
-        {rows.map((row) => (
+        {rows.map((row) => row.type === 'background' ? (
+          <BackgroundGroupRow
+            key={row.id}
+            label={t('library.backgroundGroup')}
+            count={backgroundCount}
+            viewHidden={backgroundViewHidden}
+            hideLabel={t('library.hide')}
+            showLabel={t('library.show')}
+            onToggle={() => setBackgroundViewHidden(!backgroundViewHidden)}
+          />
+        ) : (
           <TreeRowView
             key={row.id}
             row={row}
+            viewDimmed={viewHiddenIds.has(row.id)}
             selected={row.type === 'scene' ? selection == null : selectedIds.has(row.id)}
             sceneLabel={t('library.sceneRoot')}
             hideLabel={t('library.hide')}
@@ -73,8 +94,42 @@ export function ObjectTree(): ReactElement {
   )
 }
 
+function BackgroundGroupRow({
+  label,
+  count,
+  viewHidden,
+  hideLabel,
+  showLabel,
+  onToggle,
+}: {
+  label: string
+  count: number
+  viewHidden: boolean
+  hideLabel: string
+  showLabel: string
+  onToggle: () => void
+}): ReactElement {
+  return (
+    <div className="t3d-leftrail-tree-row t3d-leftrail-tree-group-row">
+      <span className="t3d-leftrail-tree-main t3d-leftrail-tree-group-main">
+        <IconScene />
+        <span>{`${label} (${count})`}</span>
+      </span>
+      {/* Nút mắt của cả nhóm Hậu cảnh: chỉ đổi cách xem (lọc xem), không ghi cờ ẩn vào tài liệu. */}
+      <span className="t3d-leftrail-tree-flags is-always">
+        <Tooltip label={viewHidden ? showLabel : hideLabel} side="top">
+          <button type="button" className={cx(viewHidden && 'is-on')} onClick={onToggle}>
+            {viewHidden ? <IconEyeOff /> : <IconEye />}
+          </button>
+        </Tooltip>
+      </span>
+    </div>
+  )
+}
+
 function TreeRowView({
   row,
+  viewDimmed,
   selected,
   sceneLabel,
   hideLabel,
@@ -87,6 +142,7 @@ function TreeRowView({
   readOnly,
 }: {
   row: TreeRow
+  viewDimmed?: boolean
   selected: boolean
   sceneLabel: string
   hideLabel: string
@@ -107,7 +163,7 @@ function TreeRowView({
     >
       <button type="button" className="t3d-leftrail-tree-main" onClick={(e) => onSelect(e.shiftKey)}>
         <RowIcon kind={treeIconKind(row.type)} />
-        <span className={cx(hidden && 't3d-leftrail-tree-hidden')}>
+        <span className={cx((hidden || viewDimmed) && 't3d-leftrail-tree-hidden')}>
           {row.type === 'scene' ? sceneLabel : row.name}
         </span>
       </button>

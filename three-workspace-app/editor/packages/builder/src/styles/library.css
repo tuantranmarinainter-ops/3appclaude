@@ -748,6 +748,21 @@
   margin-top: 2px;
 }
 
+/* N5: dòng nhóm "Hậu cảnh" trong cây Đối tượng. */
+.t3d-leftrail-tree-group-row {
+  margin-top: 8px;
+}
+
+.t3d-leftrail-tree-group-main {
+  color: var(--t3d-text);
+  font-weight: 600;
+  cursor: default;
+}
+
+.t3d-leftrail-tree-flags.is-always {
+  display: flex;
+}
+
 .t3d-leftrail-tree-row {
   display: flex;
   align-items: center;

@@ -140,6 +140,11 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
         e.preventDefault()
         e.stopPropagation()
         s.finishPathDraw()
+      } else if (!film && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.code === 'KeyH') {
+        // N5: bật/tắt "Chỉ hiện nhân vật" — chỉ đổi cách xem, không ghi tài liệu.
+        e.preventDefault()
+        e.stopPropagation()
+        s.setCharactersOnlyView(!s.charactersOnlyView)
       } else if (!film && (e.key === 'i' || e.key === 'I')) {
         // 多选时一次给所有选中对象打键，压成一条 undo；通道由节点类型决定。
         const ids = nodeIdsOf(s.selection)

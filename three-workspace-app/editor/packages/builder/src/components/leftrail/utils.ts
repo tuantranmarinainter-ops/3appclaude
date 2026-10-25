@@ -1,4 +1,5 @@
 import type { DraftNode } from '../../contract/types'
+import { isBackgroundNode } from '../../contract/sceneView'
 import type { TranslateFn } from '../../locale'
 import { isDerivedTransformPath } from '../../evaluate/path/deriveWalk'
 import { displayNodeName } from '../displayNames'
@@ -38,7 +39,7 @@ export function groupByCategory<T extends { category?: string }>(
 export interface TreeRow {
   id: string
   name: string
-  type: DraftNode['type'] | 'scene'
+  type: DraftNode['type'] | 'scene' | 'background'
   depth: number
   node?: DraftNode
 }
@@ -61,12 +62,67 @@ export function buildObjectRows(nodes: DraftNode[], query: string, t: TranslateF
   }
   const rows = walk(null, 0)
   if (!query.trim()) {
-    return [{ id: '__scene__', name: '', type: 'scene', depth: 0 }, ...rows]
+    const listed = [...byParent.values()].flat()
+    return [
+      { id: '__scene__', name: '', type: 'scene', depth: 0 },
+      ...groupBackgroundRows(rows, listed),
+    ]
   }
   return rows.filter((row) => {
     const persist = row.node?.name ?? row.name
     return matchesQuery(persist, query) || matchesQuery(row.name, query)
   })
+}
+
+/** Node gốc của một cụm hậu cảnh có thể gom: chính nó là hậu cảnh và mọi tổ tiên cũng là hậu cảnh (hoặc không có tổ tiên). */
+function backgroundClusterRootId(node: DraftNode, byId: Map<string, DraftNode>): string | null {
+  if (!isBackgroundNode(node)) return null
+  let top = node
+  let cursor = node
+  const seen = new Set<string>([node.id])
+  while (cursor.parentId && !seen.has(cursor.parentId)) {
+    seen.add(cursor.parentId)
+    const parent = byId.get(cursor.parentId)
+    if (!parent) break
+    if (!isBackgroundNode(parent)) return null
+    top = parent
+    cursor = parent
+  }
+  return top.id
+}
+
+/**
+ * N5: chuyển các cụm hậu cảnh (prop / primitive / set_* ở gốc cây) xuống cuối danh sách,
+ * nằm dưới một dòng nhóm "Hậu cảnh". Node hậu cảnh lồng trong node không phải hậu cảnh
+ * (vd. prop gắn vào nhân vật) giữ nguyên vị trí để không mất ngữ cảnh cha–con.
+ */
+export function groupBackgroundRows(rows: TreeRow[], nodes: DraftNode[]): TreeRow[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const roots = new Set<string>()
+  for (const node of nodes) {
+    const rootId = backgroundClusterRootId(node, byId)
+    if (rootId) roots.add(rootId)
+  }
+  if (roots.size === 0) return rows
+  const kept: TreeRow[] = []
+  const block: TreeRow[] = []
+  let i = 0
+  while (i < rows.length) {
+    const row = rows[i]!
+    if (row.node && roots.has(row.id)) {
+      block.push({ ...row, depth: row.depth + 1 })
+      i += 1
+      while (i < rows.length && rows[i]!.depth > row.depth) {
+        block.push({ ...rows[i]!, depth: rows[i]!.depth + 1 })
+        i += 1
+      }
+    } else {
+      kept.push(row)
+      i += 1
+    }
+  }
+  if (block.length === 0) return rows
+  return [...kept, { id: '__background__', name: '', type: 'background', depth: 0 }, ...block]
 }
 
 export function uniqueCategories(
@@ -89,7 +145,7 @@ export function sectionDomId(tab: string, key: string): string {
 }
 
 export function treeIconKind(type: TreeRow['type']): 'scene' | 'character' | 'prop' | 'camera' | 'object' {
-  if (type === 'scene') return 'scene'
+  if (type === 'scene' || type === 'background') return 'scene'
   if (type === 'character') return 'character'
   if (type === 'camera') return 'camera'
   if (type === 'prop' || type === 'primitive') return 'prop'
