@@ -75,6 +75,7 @@ export function MotionClips({
     <MotionClipBlock
       key={c.id}
       kind="motion"
+      motionClip={c}
       ghost={ghost}
       selected={!ghost && isClipSelected(selection, c.id)}
       {...box(frameStart, pxPerFrame, c.frameStart, c.frameEnd)}

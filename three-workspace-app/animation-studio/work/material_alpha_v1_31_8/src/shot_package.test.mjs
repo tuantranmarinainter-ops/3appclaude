@@ -1,3 +1,4 @@
+import './a1_clip_stretch.test.mjs';
 import './silhouette_view.test.mjs';
 import './app3_mcp_demo_hook.test.mjs';
 import './app3_bridge.test.mjs';

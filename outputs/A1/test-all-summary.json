@@ -1,0 +1,105 @@
+[
+  {
+    "name": "install",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 1
+  },
+  {
+    "name": "builder-build",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 15
+  },
+  {
+    "name": "typecheck",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 18
+  },
+  {
+    "name": "lint",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 9
+  },
+  {
+    "name": "builder-tests",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 8,
+    "counts": {
+      "total": 637,
+      "passed": 636,
+      "failed": 0,
+      "skipped": 1
+    }
+  },
+  {
+    "name": "retarget-tests",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 59,
+    "counts": {
+      "total": 256,
+      "passed": 254,
+      "failed": 0,
+      "skipped": 2,
+      "cancelled": 0,
+      "todo": 0
+    }
+  },
+  {
+    "name": "studio-tests",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 104,
+    "counts": {
+      "total": 261,
+      "passed": 256,
+      "failed": 0,
+      "skipped": 5,
+      "cancelled": 0,
+      "todo": 0
+    }
+  },
+  {
+    "name": "python-tests",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 3,
+    "counts": {
+      "total": 115,
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0,
+      "expectedFailures": 0
+    }
+  },
+  {
+    "name": "app3-build",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 0
+  },
+  {
+    "name": "app3-features",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 0
+  },
+  {
+    "name": "app3-tests",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 125,
+    "counts": {
+      "total": 65,
+      "passed": 65,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    }
+  }
+]

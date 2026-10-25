@@ -218,3 +218,87 @@ test('路径走位：检查器改帧范围不与同目标后一段重叠，无�
   assert.equal(last?.playback.baseDurationFrames, endBefore - 498)
   assert.equal(doc.content.timeline.frameEnd, endBefore)
 })
+
+for (const edge of ['start', 'end'] as const) {
+  test(`A1: ${edge} stretch commits speed, preserves source and supports undo/reload`, () => {
+    const { session, doc, history } = fixture('motion')
+    const clip = motion('stretch', 100, 120)
+    clip.sourceDuration = 2
+    clip.motion.time = 0.5
+    clip.motion.sourceLengthSeconds = 1
+    clip.playback.loop = false
+    doc.content.timeline.animation.motionClips = [clip]
+    const original = JSON.stringify(doc)
+    session.beginClipResize()
+    session.resizeClip('motion', clip.id, edge, edge === 'start' ? 61 : 159)
+    session.endClipResize()
+    const saved = JSON.stringify(doc)
+    const result = JSON.parse(saved).content.timeline.animation.motionClips[0]
+    assert.equal(result.playback.speed, 0.5)
+    assert.equal(result.motion.speed, 0.5)
+    assert.equal(result.motion.time, 0.5)
+    assert.equal(result.motion.sourceLengthSeconds, 1)
+    history.undo()
+    assert.equal(JSON.stringify(doc), original)
+    history.redo()
+    assert.equal(JSON.stringify(doc), saved)
+    const loaded = new DirectorDoc()
+    loaded.replace(JSON.parse(saved))
+    assert.equal(loaded.toContract()!.content.timeline.animation.motionClips[0].playback.speed, 0.5)
+  })
+}
+
+test('A1: numeric speed/reset keep full source, respect neighbours and reject invalid rates', () => {
+  const { session, doc } = fixture('motion')
+  const clip = motion('stretch', 100, 120)
+  clip.sourceDuration = 2
+  doc.content.timeline.animation.motionClips = [clip, motion('next', 250, 300)]
+  session.updateMotionClipConfig(clip.id, { speed: 0.5 })
+  assert.equal(doc.content.timeline.animation.motionClips[0].frameEnd, 219)
+  assert.equal(doc.content.timeline.animation.motionClips[0].playback.speed, 0.5)
+  session.updateMotionClipConfig(clip.id, { speed: 1 })
+  assert.equal(doc.content.timeline.animation.motionClips[0].frameEnd, 159)
+  session.updateMotionClipConfig(clip.id, { speed: 0.1 })
+  assert.equal(doc.content.timeline.animation.motionClips[0].frameEnd, 249)
+  assert.equal(doc.content.timeline.animation.motionClips[0].playback.speed, 0.4)
+  const saved = JSON.stringify(doc)
+  for (const speed of [NaN, Infinity, 0, -1, 16.01, 20]) session.updateMotionClipConfig(clip.id, { speed })
+  assert.equal(JSON.stringify(doc), saved)
+})
+
+test('A1: motion resize/numeric use inclusive neighbour boundaries and one-frame clips', () => {
+  const { session, doc } = fixture('motion')
+  const clip = motion('stretch', 20, 39)
+  clip.sourceDuration = 20 / 30
+  doc.content.timeline.animation.motionClips = [motion('previous', 0, 9), clip, motion('next', 60, 79)]
+  session.beginClipResize()
+  session.resizeClip('motion', clip.id, 'end', 100)
+  session.endClipResize()
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameEnd, 59)
+  assert.equal(doc.content.timeline.animation.motionClips[1].playback.speed, 0.5)
+  session.beginClipResize()
+  session.resizeClip('motion', clip.id, 'start', 0)
+  session.endClipResize()
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameStart, 10)
+  session.updateMotionClipConfig(clip.id, { frameStart: 0, frameEnd: 100, speed: 1 })
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameStart, 10)
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameEnd, 59)
+  doc.content.timeline.animation.motionClips[1].sourceDuration = 16 / 30
+  session.updateMotionClipConfig(clip.id, { speed: 16 })
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameEnd, 10)
+  assert.equal(doc.content.timeline.animation.motionClips[1].playback.speed, 16)
+  assert.equal(doc.content.timeline.animation.motionClips[1].motion.speed, 16)
+})
+
+test('A1: oversized drag rate is ignored without changing source/history', () => {
+  const { session, doc, history } = fixture('motion')
+  const clip = motion('stretch', 0, 59)
+  clip.sourceDuration = 2
+  doc.content.timeline.animation.motionClips = [clip]
+  const before = JSON.stringify(doc)
+  session.beginClipResize()
+  session.resizeClip('motion', clip.id, 'end', 0)
+  session.endClipResize()
+  assert.equal(JSON.stringify(doc), before)
+  assert.equal(history.canUndo, false)
+})

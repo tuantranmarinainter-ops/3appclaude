@@ -1,4 +1,5 @@
 import { computed, makeObservable, observable, runInAction } from 'mobx'
+import { motionSourceSpan, motionStretchPatch } from '../document/clipStretch'
 import { previewClipMove } from '../document/clipMove'
 import { rippleResizeClip } from '../document/clipRipple'
 import { cameraNumericAspect } from '../contract/cameraAspect'
@@ -1327,6 +1328,7 @@ export class StudioSession implements StudioView {
     if (idx < 0) return
     const before = snapshotDocState(this.docModel)
     if (!before) return
+    if (typeof patch.speed === 'number' && (!Number.isFinite(patch.speed) || patch.speed < 0.01 || patch.speed > 16)) return
     const old = live.content.timeline.animation.motionClips[idx]
     const sameTarget = live.content.timeline.animation.motionClips
       .filter((c) => c.id !== clipId && c.target.nodeId === old.target.nodeId)
@@ -1334,28 +1336,35 @@ export class StudioSession implements StudioView {
     const previousCandidates = sameTarget.filter((c) => c.frameEnd <= old.frameStart)
     const previous = previousCandidates[previousCandidates.length - 1]
     const next = sameTarget.find((c) => c.frameStart >= old.frameEnd)
-    const previousEnd = previous?.frameEnd ?? live.content.timeline.frameStart
-    const nextStart = next?.frameStart ?? live.content.timeline.frameEnd
+    const previousEnd = previous ? previous.frameEnd + 1 : live.content.timeline.frameStart
+    const nextStart = next ? next.frameStart - 1 : live.content.timeline.frameEnd
     let frameStart = typeof patch.frameStart === 'number'
-      ? Math.round(Math.max(live.content.timeline.frameStart, Math.min(patch.frameStart, old.frameEnd - 1)))
+      ? Math.round(Math.max(live.content.timeline.frameStart, Math.min(patch.frameStart, old.frameEnd)))
       : old.frameStart
     let frameEnd = typeof patch.frameEnd === 'number'
-      ? Math.round(Math.min(live.content.timeline.frameEnd, Math.max(patch.frameEnd, frameStart + 1)))
+      ? Math.round(Math.min(live.content.timeline.frameEnd, Math.max(patch.frameEnd, frameStart)))
       : old.frameEnd
     frameStart = Math.max(frameStart, previousEnd)
     frameEnd = Math.min(frameEnd, nextStart)
-    if (frameEnd <= frameStart) {
+    if (frameEnd < frameStart) {
       frameStart = old.frameStart
       frameEnd = old.frameEnd
     }
+    if (typeof patch.speed === 'number' && patch.frameStart === undefined && patch.frameEnd === undefined) {
+      frameEnd = Math.min(nextStart, frameStart + Math.max(1, Math.round(motionSourceSpan(old) * live.content.timeline.fps / patch.speed)) - 1)
+    }
+    const stretch = typeof patch.speed === 'number'
+      ? motionStretchPatch(old, live.content.timeline.fps, frameStart, frameEnd) : null
+    if (typeof patch.speed === 'number' && !stretch) return
     const playback = {
       ...old.playback,
-      ...(typeof patch.speed === 'number' ? { speed: Math.max(0.01, patch.speed) } : {}),
+      ...(stretch ? { speed: stretch.speed } : {}),
       ...(typeof patch.loop === 'boolean' ? { loop: patch.loop } : {}),
       ...(typeof patch.loopMode === 'string' ? { loopMode: patch.loopMode } : {}),
     }
     const motion = {
       ...old.motion,
+      ...(stretch ? { speed: stretch.speed } : {}),
       ...(typeof patch.sourceStart === 'number' ? { time: Math.max(0, Math.min(patch.sourceStart, old.sourceDuration)) } : {}),
       ...(typeof patch.inPlace === 'boolean' ? { inPlace: patch.inPlace } : {}),
     }
@@ -2625,13 +2634,13 @@ export class StudioSession implements StudioView {
         : anim.motionClips.filter((c) => c.target.nodeId === nodeId)
     ).sort((a, b) => a.frameStart - b.frameStart)
     const oldIndex = ordered.findIndex((c) => c.id === clipId)
-    const previousEnd = oldIndex > 0 ? ordered[oldIndex - 1].frameEnd : tl.frameStart
-    const nextStart = oldIndex >= 0 && oldIndex < ordered.length - 1 ? ordered[oldIndex + 1].frameStart : tl.frameEnd
+    const previousEnd = oldIndex > 0 ? ordered[oldIndex - 1].frameEnd + (clipType === 'motion' ? 1 : 0) : tl.frameStart
+    const nextStart = oldIndex >= 0 && oldIndex < ordered.length - 1 ? ordered[oldIndex + 1].frameStart - (clipType === 'motion' ? 1 : 0) : tl.frameEnd
     const frameStart = edge === 'start'
-      ? Math.min(Math.max(target, previousEnd), old.frameEnd - 1)
+      ? Math.min(Math.max(target, previousEnd), old.frameEnd - (clipType === 'motion' ? 0 : 1))
       : old.frameStart
     const frameEnd = edge === 'end'
-      ? Math.max(Math.min(target, nextStart), old.frameStart + 1)
+      ? Math.max(Math.min(target, nextStart), old.frameStart + (clipType === 'motion' ? 0 : 1))
       : old.frameEnd
     this.editor.setClipResizePreview({ clipType, clipId, frameStart, frameEnd })
   }
@@ -2673,12 +2682,9 @@ export class StudioSession implements StudioView {
       const source = before.doc.content.timeline.animation.motionClips.find((c) => c.id === preview.clipId)
       animation.motionClips = animation.motionClips.map((c) => {
         if (c.id !== preview.clipId) return c
-        if (preview.frameStart === c.frameStart || !source) {
-          return { ...c, frameStart: preview.frameStart, frameEnd: preview.frameEnd }
-        }
-        const shift = ((preview.frameStart - source.frameStart) / next.content.timeline.fps) * (c.playback.speed ?? 1)
-        const time = Math.max(0, Math.min(source.motion.time + shift, source.sourceDuration))
-        return { ...c, frameStart: preview.frameStart, frameEnd: preview.frameEnd, motion: { ...c.motion, time } }
+        if (!source) return c
+        const patch = motionStretchPatch(source, next.content.timeline.fps, preview.frameStart, preview.frameEnd)
+        return patch ? { ...c, frameStart: patch.frameStart, frameEnd: patch.frameEnd, playback: { ...c.playback, speed: patch.speed }, motion: { ...c.motion, speed: patch.speed } } : c
       })
     }
     runInAction(() => {

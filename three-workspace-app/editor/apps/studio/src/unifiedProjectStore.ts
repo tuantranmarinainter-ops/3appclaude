@@ -1,3 +1,4 @@
+import { applyBakedClipTiming } from './nativeClipTiming'
 import { App3BridgeError } from './app3Bridge'
 import { executeApp3Artifacts } from './app3Artifacts'
 import { previewCameraFraming } from './cameraFraming'
@@ -2168,7 +2169,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     const clipBinding = typeof clipId === 'string' ? project.bindings[clipId] : null
     if (clipId && (!clipBinding || clipBinding.characterId !== characterId || clipBinding.motionId !== motionId)) throw new UnifiedStoreError('REVISION_CONFLICT', 'Selected clip or source Motion changed; reload before saving', 409)
-    if (clipBinding && clipBinding.sourceStartSeconds + clipBinding.sourceLengthSeconds > duration + 1e-6) throw new UnifiedStoreError('VALIDATION_FAILED', 'Edited animation is shorter than the selected clip source range', 400)
+    if (clipBinding && isRecord(edit.lab)) {
+      try { applyBakedClipTiming(structuredClone(project), clipId as string, duration as number) }
+      catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', (error as Error).message, 400) }
+    }
+    if (clipBinding && !isRecord(edit.lab) && clipBinding.sourceStartSeconds + clipBinding.sourceLengthSeconds > duration + 1e-6) throw new UnifiedStoreError('VALIDATION_FAILED', 'Edited animation is shorter than the selected clip source range', 400)
     nativeAnimationAddition = { characterId, sourceMotionId: typeof motionId === 'string' ? motionId : null, clipId: typeof clipId === 'string' ? clipId : null, name, fps: nativeFps as number, duration: duration as number, edit: structuredClone(edit), glbBytes, motionId: randomUUID(), skeletonId: profile.id }
   } else if (envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
     const edit = envelope.command === 'motion.binding.set' ? prepareMotionBindingEdit(project, envelope.args) : null
@@ -2427,6 +2432,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           const paths = next.scene.content.asset.motionPath
           if (!paths.some((entry) => entry.id === motion.id)) paths.push({ id: motion.id, path: url })
           next.bindings[clip.id] = { ...next.bindings[clip.id]!, motionId: motion.id }
+          if (isRecord(nativeAnimationAddition.edit.lab)) applyBakedClipTiming(next, clip.id, motion.durationSeconds)
         }
         changedIds = [`motion:${motion.id}`, `asset:${persisted.asset.id}`, `animation-edit:${motion.id}`,
           ...(nativeAnimationAddition.clipId ? [`motion-clip:${nativeAnimationAddition.clipId}`, `binding:${nativeAnimationAddition.clipId}`] : [])]

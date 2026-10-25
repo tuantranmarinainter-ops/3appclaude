@@ -1,0 +1,51 @@
+{
+  "projectId": "34ac98d1-454d-45b2-a8c2-d82832887bc4",
+  "revision": 5,
+  "speed": 1,
+  "frameStart": 0,
+  "frameEnd": 119,
+  "duration": 4,
+  "reload": true,
+  "poses": [
+    {
+      "frame": 0,
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 30,
+      "position": [
+        0.5,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 60,
+      "position": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 90,
+      "position": [
+        1.5,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": 119,
+      "position": [
+        1.9833333333333334,
+        0,
+        0
+      ]
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "port": 55242,
+  "checks": [
+    {
+      "step": "real pointer edge 20 -> 40 frames",
+      "clip": {
+        "id": "clip",
+        "frameStart": 0,
+        "frameEnd": 39,
+        "target": {
+          "type": "character",
+          "nodeId": "actor"
+        },
+        "source": "test",
+        "sourceDuration": 0.6666666666666666,
+        "playback": {
+          "version": 1,
+          "speed": 0.5,
+          "loop": false,
+          "loopMode": "once"
+        },
+        "motion": {
+          "assetId": "test",
+          "name": "Động tác",
+          "source": "test",
+          "sourceRig": "mixamorig",
+          "url": "",
+          "inPlace": true,
+          "loop": false,
+          "speed": 0.5,
+          "time": 0
+        }
+      }
+    },
+    {
+      "step": "numeric 200%",
+      "clip": {
+        "id": "clip",
+        "frameStart": 0,
+        "frameEnd": 9,
+        "target": {
+          "type": "character",
+          "nodeId": "actor"
+        },
+        "source": "test",
+        "sourceDuration": 0.6666666666666666,
+        "playback": {
+          "version": 1,
+          "speed": 2,
+          "loop": false,
+          "loopMode": "once"
+        },
+        "motion": {
+          "assetId": "test",
+          "name": "Động tác",
+          "source": "test",
+          "sourceRig": "mixamorig",
+          "url": "",
+          "inPlace": true,
+          "loop": false,
+          "speed": 2,
+          "time": 0
+        }
+      }
+    },
+    {
+      "step": "reset100",
+      "clip": {
+        "id": "clip",
+        "frameStart": 0,
+        "frameEnd": 19,
+        "target": {
+          "type": "character",
+          "nodeId": "actor"
+        },
+        "source": "test",
+        "sourceDuration": 0.6666666666666666,
+        "playback": {
+          "version": 1,
+          "speed": 1,
+          "loop": false,
+          "loopMode": "once"
+        },
+        "motion": {
+          "assetId": "test",
+          "name": "Động tác",
+          "source": "test",
+          "sourceRig": "mixamorig",
+          "url": "",
+          "inPlace": true,
+          "loop": false,
+          "speed": 1,
+          "time": 0
+        }
+      }
+    },
+    {
+      "step": "Undo grouped config returns pointer stretch",
+      "clip": {
+        "id": "clip",
+        "frameStart": 0,
+        "frameEnd": 39,
+        "target": {
+          "type": "character",
+          "nodeId": "actor"
+        },
+        "source": "test",
+        "sourceDuration": 0.6666666666666666,
+        "playback": {
+          "version": 1,
+          "speed": 0.5,
+          "loop": false,
+          "loopMode": "once"
+        },
+        "motion": {
+          "assetId": "test",
+          "name": "Động tác",
+          "source": "test",
+          "sourceRig": "mixamorig",
+          "url": "",
+          "inPlace": true,
+          "loop": false,
+          "speed": 0.5,
+          "time": 0
+        }
+      }
+    },
+    {
+      "step": "JSON persist/reload",
+      "clip": {
+        "id": "clip",
+        "frameStart": 0,
+        "frameEnd": 19,
+        "target": {
+          "type": "character",
+          "nodeId": "actor"
+        },
+        "source": "test",
+        "sourceDuration": 0.6666666666666666,
+        "playback": {
+          "version": 1,
+          "speed": 1,
+          "loop": false,
+          "loopMode": "once"
+        },
+        "motion": {
+          "assetId": "test",
+          "name": "Động tác",
+          "source": "test",
+          "sourceRig": "mixamorig",
+          "url": "",
+          "inPlace": true,
+          "loop": false,
+          "speed": 1,
+          "time": 0
+        }
+      }
+    }
+  ],
+  "result": "PASS",
+  "pageErrors": []
+}

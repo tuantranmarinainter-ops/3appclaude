@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
 import { cx } from '../common/cx'
+import { motionStretchPatch } from '../../document/clipStretch'
+import type { MotionClip } from '../../contract/types'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import { clipRefsOf, nextClipSelection } from '../../stores/types'
 
@@ -12,6 +14,7 @@ export function ClipBlock({
   width,
   label,
   durationLabel,
+  motionClip,
   clipId,
   frameStart,
   frameEnd,
@@ -25,6 +28,7 @@ export function ClipBlock({
   width: number
   label: string
   /** Độ dài clip theo đơn vị timeline đang chọn (N3); chỉ hiện khi clip đủ rộng. */
+  motionClip?: MotionClip
   durationLabel?: string
   clipId: string
   frameStart: number
@@ -37,6 +41,8 @@ export function ClipBlock({
   const t = useT()
   const { useStore } = useDirector()
   const snap = useSnapFrame(pxPerFrame)
+  const [speedError, setSpeedError] = useState(false)
+  const fps = useStore((s) => s.doc?.content.timeline.fps ?? 30)
   const [resizing, setResizing] = useState(false)
   const [moving, setMoving] = useState(false)
   const movePreview = useStore((s) => s.clipMovePreview)
@@ -55,7 +61,7 @@ export function ClipBlock({
   const activeEnd = resizeRange?.frameEnd ?? previewRange?.frameEnd ?? frameEnd
   const previewLeft = left + (activeStart - frameStart) * pxPerFrame
   const displayLeft = draggingThis ? left + (movePreview.pointerFrame - frameStart) * pxPerFrame : previewLeft
-  const displayWidth = Math.max(3, (activeEnd - activeStart) * pxPerFrame)
+  const displayWidth = Math.max(3, (activeEnd - activeStart + (kind === 'motion' ? 1 : 0)) * pxPerFrame)
   const dragMove = useRef<{
     startX: number; origFrame: number; pointerId: number; moved: boolean
     scroll: HTMLElement | null; scrollLeft: number; scale: number
@@ -143,7 +149,11 @@ export function ClipBlock({
           onPointerUp={() => {
             dragEdge.current = null
             setResizing(false)
-            useStore.getState().endClipResize()
+            const s = useStore.getState()
+            const range = s.clipResizePreview
+            setSpeedError(!!(motionClip && range?.clipType === 'motion' && range.clipId === clipId
+              && !motionStretchPatch(motionClip, fps, range.frameStart, range.frameEnd)))
+            s.endClipResize()
           }}
           onClick={(e) => e.stopPropagation()}
         />
@@ -179,7 +189,7 @@ export function ClipBlock({
       aria-label={ghost ? undefined : label}
       onClick={ghost ? undefined : (e) => e.stopPropagation()}
       onPointerDown={ghost ? undefined : (e) => {
-        if (e.button !== 0 || (e.target as HTMLElement).closest('.t3d-timeline-clip-handle')) return
+        if (e.button !== 0 || (e.target as HTMLElement).closest('.t3d-timeline-clip-handle, input, button')) return
         e.preventDefault()
         e.stopPropagation()
         const s = useStore.getState()
@@ -240,8 +250,41 @@ export function ClipBlock({
     >
       {label}
       {durationLabel && displayWidth >= 90 ? <span className="t3d-timeline-clip-duration"> · {durationLabel}</span> : null}
+      {motionClip && !ghost && <span style={{ marginLeft: 4 }}>{Number((motionClip.playback.speed * 100).toFixed(2))}%</span>}
       {handles}
     </div>
+      {motionClip && !ghost && selected && !writeLocked && <span title="Tốc độ phát" style={{ position: 'absolute', left: displayLeft + displayWidth + 8, top: 4, zIndex: 4, background: '#20232b', color: '#eee', whiteSpace: 'nowrap' }}>
+        <>
+          <input
+            key={motionClip.playback.speed}
+            type="number"
+            aria-label="Tốc độ clip (%)"
+            min={1}
+            max={1600}
+            step="any"
+            defaultValue={Number((motionClip.playback.speed * 100).toFixed(2))}
+            style={{ width: 52, color: 'inherit', background: '#20232b', border: '1px solid #666' }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Enter') e.currentTarget.blur()
+              if (e.key === 'Escape') {
+                e.currentTarget.value = String(motionClip.playback.speed * 100)
+                e.currentTarget.blur()
+              }
+            }}
+            onBlur={(e) => {
+              const speed = e.currentTarget.valueAsNumber / 100
+              const valid = Number.isFinite(speed) && speed >= 0.01 && speed <= 16
+              setSpeedError(!valid)
+              if (valid && Math.abs(speed - motionClip.playback.speed) > 0.000001) useStore.getState().updateMotionClipConfig(clipId, { speed })
+              else e.currentTarget.value = String(motionClip.playback.speed * 100)
+            }}
+          />%
+          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => { setSpeedError(false); useStore.getState().updateMotionClipConfig(clipId, { speed: 1 }) }}>Về 100%</button>
+          {speedError && <span role="alert"> Tốc độ phải từ 1% đến 1600%; clip được giữ nguyên.</span>}
+        </>
+      </span>}
     </>
   )
 }
