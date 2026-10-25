@@ -58,7 +58,7 @@ for item in spec['segments']:
         try: effect_data=json.loads(source.read(effect_entries[0]).decode('utf-8')) if effect_entries else []
         except (UnicodeDecodeError,json.JSONDecodeError) as error: raise ValueError('Film effects.json is not valid UTF-8 JSON') from error
         if not isinstance(effect_data,list): raise ValueError('Film effects.json must contain a cue array')
-        effects['films/'+item['film']]=effect_data
+        if effect_data: effects['films/'+item['film']]=effect_data
         if 'audio.json' in names:
             audio['films/'+item['film']]=json.loads(source.read('audio.json').decode('utf-8'))
         for name in names:
@@ -77,7 +77,8 @@ for name,data in assets.values():
     target=out.joinpath(*pathlib.PurePosixPath(name).parts)
     target.parent.mkdir(parents=True,exist_ok=True); target.write_bytes(data)
 (out/'series.json').write_text(json.dumps(spec['series'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-(out/'effects.json').write_text(json.dumps(effects,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+if effects: (out/'effects.json').write_text(json.dumps(effects,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(out/'required-mods.json').write_text(json.dumps({'schemaVersion':1,'requiredMods':['BBS FS 2.7']+(['AAA Particles with compatible BBS AAA form renderer/addon'] if effects else []),'includedEffectCount':sum(len(cues) for cues in effects.values()),'effectPlayback':'UNVERIFIED' if effects else 'OMITTED','gamePlayback':'NOT_RUN'},indent=2)+'\n',encoding='utf-8')
 if audio: (out/'audio.json').write_text(json.dumps(audio,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'README.txt').write_text(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'),encoding='utf-8')
 archive=pathlib.Path(sys.argv[4])

@@ -8,7 +8,10 @@ import { cameraSamplesToFilm } from './filmCamera'
 import { bakeFilmPoseTracks } from './filmPoseBake'
 import { projectEvaluationScene, sampleProjectCameraSequence, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
 
+import type { FilmEffectsPolicy } from './filmEffectsPolicy'
+
 export interface FilmSamplingArgs {
+  effectsPolicy?: FilmEffectsPolicy
   characterIds: string[]
   /** Film content to include. Omitted values preserve the historical Characters-only export. */
   content?: string

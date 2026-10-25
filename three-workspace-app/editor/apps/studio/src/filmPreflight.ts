@@ -4,6 +4,7 @@ import { inspectFilmActorTransform } from './filmManifest'
 import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { reviewStatusForSequence } from './sceneReview'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
+import { resolveFilmEffectsPolicy } from './filmEffectsPolicy'
 import type { FilmSeriesSegment } from './filmSeries'
 
 export interface FilmPreflightIssue {
@@ -178,6 +179,10 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
   for (const raw of cues) {
     if (!isRecord(raw) || typeof raw.id !== 'string' || typeof raw.effect !== 'string') continue
     if (range && typeof raw.frameStart === 'number' && typeof raw.frameEnd === 'number' && (raw.frameStart > range.endFrame || raw.frameEnd < range.startFrame)) continue
+    if (resolveFilmEffectsPolicy(args.effectsPolicy).mode === 'omit') {
+      result.warnings.push(issue('VFX_OMITTED', `Không kèm hiệu ứng ${raw.effect}; tránh replay thiếu renderer khi game không có addon AAA.`, `Effect ${raw.effect} omitted to avoid missing AAA renderer replays without the addon.`, { clipId: raw.id }))
+      continue
+    }
     result.warnings.push(issue('VFX_BBS_MISSING', `Hiệu ứng ${raw.effect} chưa được xác nhận có bản dùng được trong BBS FS.`, `Effect ${raw.effect} has no confirmed BBS FS representation.`, { clipId: raw.id }))
   }
 
