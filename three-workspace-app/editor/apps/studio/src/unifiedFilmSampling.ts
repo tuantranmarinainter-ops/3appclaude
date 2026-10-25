@@ -5,6 +5,7 @@ import { validateProject } from '@bbs/animation-workspace-shared'
 import { validateEditorial } from '@topview/3d-builder/evaluate'
 import type { CameraSequenceSample, SkeletonFrameSample } from '@topview/3d-builder/skeleton'
 import { cameraSamplesToFilm } from './filmCamera'
+import { selectExportShots } from './exportShotSelection'
 import { bakeFilmPoseTracks } from './filmPoseBake'
 import { projectEvaluationScene, sampleProjectCameraSequence, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
 
@@ -142,21 +143,23 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
   const gridValid = Number.isFinite(ticks) && Math.abs(ticks - Math.round(ticks)) <= 1e-7 && ticks >= 1
   if (!gridValid || ticks > MAX_TICKS) add('TICK_LIMIT', 'Film range must end on the 20 Hz grid and contain 1-255 ticks')
   const durationTicks = gridValid ? Math.round(ticks) : undefined
-  const sequenceValid = typeof sequenceId === 'string' && validateEditorial(project.scene, { sequenceId, requireClips: true }).length === 0
-  if (!sequenceValid) add('SEQUENCE_INVALID', 'Film requires a valid camera sequence')
-  const sequence = sequenceValid ? project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId) : undefined
-  if (!sequence || sequence.clips.length > 3) add('CAMERA_LIMIT', 'Film currently supports 1-3 camera shots')
-  if (sequence && validRange) {
-    let nextFrame = range.startFrame
-    for (const shot of sequence.clips) {
-      if (shot.sourceFrameStart !== nextFrame) add('SEQUENCE_GAP', 'Film shots must cover the selected source range contiguously in order')
-      nextFrame = shot.sourceFrameEnd + 1
-      const cutTick = (nextFrame - range.startFrame) / timeline.fps * TICK_RATE
-      if (Math.abs(cutTick - Math.round(cutTick)) > 1e-7) add('CAMERA_CUT_GRID', 'Film camera cuts must lie on the 20 Hz grid')
-      const camera = project.scene.content.nodes.find((node) => node.id === shot.cameraNodeId)?.camera
-      if (camera?.projection !== 'perspective') add('CAMERA_PROJECTION', 'Film requires perspective cameras')
-    }
-    if (nextFrame !== range.endFrame + 1) add('SEQUENCE_COVERAGE', 'Film shots must cover the selected source range exactly')
+  const authoredSequence = project.scene.content.editorial?.sequences.find((item) => item.id === sequenceId)
+  const selected = authoredSequence && validRange ? selectExportShots(authoredSequence.clips, range, timeline.fps) : undefined
+  // Validate the export view, so unrelated cameras and shots outside this interval cannot block it.
+  const exportScene = authoredSequence && selected ? { ...project.scene, content: { ...project.scene.content,
+    editorial: { version: 1 as const, activeSequenceId: authoredSequence.id, sequences: [{ ...authoredSequence, clips: selected.clips }] } } } : undefined
+  const sequenceValid = !!exportScene && validateEditorial(exportScene, { sequenceId, requireClips: true }).length === 0
+  if (!sequenceValid) add('SEQUENCE_INVALID', 'Film requires a valid camera sequence for the selected range')
+  const selectionMessages = {
+    RANGE_INVALID: 'Invalid Film range', CAMERA_LIMIT: 'Film currently supports 1-3 camera shots',
+    SEQUENCE_GAP: 'Film shots must cover the selected source range contiguously in order',
+    SEQUENCE_COVERAGE: 'Film shots must cover the selected source range exactly',
+    CAMERA_CUT_GRID: 'Film camera cuts must lie on the 20 Hz grid',
+  }
+  for (const code of selected?.issues ?? []) add(code, selectionMessages[code])
+  if (selected) for (const shot of selected.clips) {
+    const camera = project.scene.content.nodes.find((node) => node.id === shot.cameraNodeId)?.camera
+    if (camera?.projection !== 'perspective') add('CAMERA_PROJECTION', 'Film requires perspective cameras')
   }
   const models: FilmSamplingInspection['models'] = []
   let boneCount = 0
@@ -263,6 +266,7 @@ export function turnFilmSkeletonsByRotationKeys(scene: ReturnType<typeof project
 export async function sampleProjectFilm(project: UnifiedProject, args: FilmSamplingArgs, signal?: AbortSignal) {
   signal?.throwIfAborted()
   const snapshot = structuredClone(project)
+  const sourceSha256 = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')
   const preflight = preflightProjectFilm(snapshot, args)
   const options = { ...structuredClone(args), content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds }
   const sourceHashes = Object.fromEntries(preflight.models.map((model) => [model.assetId, model.source.sha256]))
@@ -274,6 +278,7 @@ export async function sampleProjectFilm(project: UnifiedProject, args: FilmSampl
   const selectedNodes = new Set(preflight.models.map((model) => model.nodeId))
   const dependencyNodes = new Set(selectedNodes)
   const sequence = snapshot.scene.content.editorial!.sequences.find((item) => item.id === options.sequenceId)!
+  sequence.clips = selectExportShots(sequence.clips, options.range, snapshot.scene.content.timeline.fps).clips
   for (const shot of sequence.clips) {
     const camera = snapshot.scene.content.nodes.find((node) => node.id === shot.cameraNodeId)!.camera!
     const targets = [camera.subject?.follow ? camera.subject.nodeId : undefined, camera.lookAtTarget?.nodeId]
@@ -322,7 +327,7 @@ export async function sampleProjectFilm(project: UnifiedProject, args: FilmSampl
   return {
     schemaVersion: 1 as const, kind: 'film-sampling-input' as const, targetVersion: '2.4' as const,
     projectId: snapshot.projectId, sourceRevision: snapshot.revision,
-    sourceSha256: createHash('sha256').update(JSON.stringify(snapshot)).digest('hex'), sourceHashes,
+    sourceSha256, sourceHashes,
     sampleFps: TICK_RATE, range: options.range, sequenceId: options.sequenceId,
     ...preflight, cameras: camera.cameras, aspect: camera.aspect, frames,
   }

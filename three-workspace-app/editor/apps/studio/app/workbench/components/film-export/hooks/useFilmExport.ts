@@ -5,6 +5,7 @@ import { chooseDirectory, saveJob } from '../../scene-render/utils'
 import { useStudioLocale } from '../../../../../src/devtools/localePreference'
 import { alignFilmRangeToTickGrid, readFilmFrameAspect } from '../../../../../src/filmFrame'
 import { resolveTimelineInOutDefault, type FrameRange } from '../../../../../src/timelineInOut'
+import { selectExportShots, exportShotRepairRanges, planExportCameraRepair } from '../../../../../src/exportShotSelection'
 import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src/filmPreflight'
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
@@ -173,19 +174,58 @@ export function useFilmExport(project: UnifiedProject) {
   const selectedSequence = sequences.find((sequence) => sequence.id === sequenceId)
   const sequenceEmpty = !!selectedSequence && selectedSequence.clips.length === 0
   const cameraNode = project.scene.content.nodes.find((node) => node.camera)
+  const shotSelection = useMemo(() => selectExportShots(selectedSequence?.clips ?? [], effectiveRange, timeline.fps), [selectedSequence, effectiveRange, timeline.fps])
+  const shotRepairs = useMemo(() => exportShotRepairRanges(selectedSequence?.clips ?? [], effectiveRange, timeline.fps), [selectedSequence, effectiveRange, timeline.fps])
+  const applyShotRepair = (range: FrameRange) => { setStartFrame(range.startFrame); setEndFrame(range.endFrame) }
+  const chooseShot = (shotId: string) => {
+    const shot = selectedSequence?.clips.find((clip) => clip.id === shotId)
+    if (!shot) return
+    setStartFrame(shot.sourceFrameStart); setEndFrame(shot.sourceFrameEnd)
+  }
+  const [createdShotRevision, setCreatedShotRevision] = useState<number | null>(null)
   const [creatingShot, setCreatingShot] = useState(false)
   const createCameraShot = async () => {
     if (creatingShot || !selectedSequence || !cameraNode) return
     setCreatingShot(true); setError('')
     try {
-      await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
+      const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
         command: 'camera.shot.set', args: { sequenceId, clip: { id: `shot_main_${sequenceId}`, cameraNodeId: cameraNode.id,
           sourceFrameStart: effectiveRange.startFrame, sourceFrameEnd: effectiveRange.endFrame } } })
+      setCreatedShotRevision(response.revision)
       window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
       setStatus(vi ? `Đã tạo shot camera (Main Camera) phủ frame ${effectiveRange.startFrame}–${effectiveRange.endFrame}.` : `Created a Main Camera shot covering frames ${effectiveRange.startFrame}–${effectiveRange.endFrame}.`)
     } catch (cause) {
       setError(vi ? `Không tạo được shot camera: ${cause instanceof Error ? cause.message : String(cause)}` : `Could not create the camera shot: ${cause instanceof Error ? cause.message : String(cause)}`)
     } finally { setCreatingShot(false) }
+  }
+
+  const repairCameraChain = async () => {
+    if (creatingShot || busy || !selectedSequence) return
+    setCreatingShot(true); setError('')
+    try {
+      const repairedId = `export_${crypto.randomUUID()}`
+      const document = planExportCameraRepair(project, sequenceId, effectiveRange, repairedId, `shot_${crypto.randomUUID()}`)
+      const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
+        command: 'scene.apply', args: { operations: [{ type: 'document.replace', document, fcurves: project.extensions.topview?.fcurves ?? null }] } })
+      setCreatedShotRevision(response.revision); setSequenceId(repairedId)
+      window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+      setStatus(vi ? 'Đã tạo chuỗi xuất riêng với một camera; chuỗi gốc được giữ nguyên.' : 'Created a separate export sequence with one camera; the original sequence is preserved.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setCreatingShot(false) }
+  }
+
+  const undoCreateCameraShot = async () => {
+    if (creatingShot || createdShotRevision !== project.revision) return
+    setCreatingShot(true); setError('')
+    try {
+      await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: createdShotRevision,
+        command: 'history.undo', args: {} })
+      setCreatedShotRevision(null)
+      setSequenceId(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
+      window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+      setStatus(vi ? 'Đã hoàn tác sửa camera.' : 'Camera repair undone.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setCreatingShot(false) }
   }
 
   const cancel = async () => {
@@ -199,5 +239,6 @@ export function useFilmExport(project: UnifiedProject) {
   return { characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
     sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
-    preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot }
+    preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot, shotSelection, chooseShot, shotRepairs, applyShotRepair,
+    selectedSequence, repairCameraChain, hasPerspectiveCamera: project.scene.content.nodes.some((node) => node.camera?.projection === 'perspective'), undoCreateCameraShot, canUndoCreateCameraShot: createdShotRevision === project.revision }
 }
