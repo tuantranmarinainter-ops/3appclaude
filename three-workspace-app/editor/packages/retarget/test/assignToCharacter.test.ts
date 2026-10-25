@@ -155,4 +155,22 @@ test('legacy Minecraft20 skin and Mixamo65 original-rig assignments convert and 
   assert.deepEqual(verityDraft.tags, ['idle'])
   assert.equal(parseBobjActions(readFileSync(join(verityPack, 'anim.original.bbs.bobj'), 'utf8')).size, 2)
   assert.equal((await assignToCharacter({ actionUuids: [actionUuid], charId: 'verity-test', libraryRoot: root }))[0]?.status, 'already-exists')
+
+  // N1b both ways between owned Actions. 'verity-test' is labelled mixamo65 but keeps its original Verity skeleton; its Action pack is
+  // labelled mixamo65 too, so routing must follow the owner's real skeleton, not the label.
+  const cross = await assignToCharacter({ actionUuids: [verityDraft.uuid], charId: 'minecraft-test', libraryRoot: root, createNew: true })
+  assert.equal(cross[0]?.status, 'ok', `Verity -> Minecraft20: ${cross[0]?.reason}`)
+  const fromVerity = getAction({ root, actionUuid: cross[0]!.assignedUuid! })
+  assert.equal(fromVerity.rig, 'minecraft20'); assert.equal(fromVerity.parentUuid, verityDraft.uuid); assert.equal(fromVerity.ownerCharId, 'minecraft-test')
+  const fromVerityJson = decodeGlb(readFileSync(fromVerity.glbPath)).json
+  assert.equal(fromVerityJson.skins?.at(-1)?.joints?.length, 20, 'Verity Action lands on all 20 Minecraft20 joints')
+  assert.ok(Math.abs(fromVerity.durationSeconds - verityDraft.durationSeconds) <= 0.1, 'duration preserved Verity -> Minecraft20')
+
+  const back = await assignToCharacter({ actionUuids: [minecraftDraft.uuid], charId: 'verity-test', libraryRoot: root, createNew: true })
+  assert.equal(back[0]?.status, 'ok', `Minecraft20 -> Verity: ${back[0]?.reason}`)
+  const toVerity = getAction({ root, actionUuid: back[0]!.assignedUuid! })
+  assert.equal(toVerity.rig, 'mixamo65', 'stored with the Verity character label'); assert.equal(toVerity.parentUuid, minecraftDraft.uuid); assert.equal(toVerity.ownerCharId, 'verity-test')
+  const toVerityPack = join(root, 'packs', toVerity.packId)
+  assert.ok((decodeGlb(readFileSync(join(toVerityPack, 'anim.original.glb'))).json.skins?.[0]?.joints?.length ?? 0) > 20, 'native Verity GLB written')
+  assert.ok(parseBobjActions(readFileSync(join(toVerityPack, 'anim.original.bbs.bobj'), 'utf8')).size >= 2)
 })

@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { addConvertedDraftToCharacter, addDraftToCharacter, copyActionToCharacter, listCharacterActions } from '../../library/characterActions.ts'
 import { getAction, rebuildLibraryIndex } from '../../library/library.ts'
 import { resolveCharacter } from '../../library/characters.ts'
-import { readJsonFile, resolveLibraryPath, safeChild } from '../../library/store.ts'
-import type { IndexedAction, MotionPackMetadata } from '../../library/types.ts'
+import { resolveLibraryPath, safeChild } from '../../library/store.ts'
+import type { IndexedAction } from '../../library/types.ts'
 import { bobjModelNodeName, bobjModelToGlb, parseBobjModel } from '../src/bobjModel.ts'
 import { parseBobjActions } from '../src/index.ts'
 import { decodeGlb, encodeGlb } from './glb.ts'
@@ -68,6 +68,33 @@ function conversionWarning(sourceRig: string, targetRig: string): string {
 }
 
 type ResolvedLibraryCharacter = ReturnType<typeof resolveCharacter>
+type SkeletonKind = 'verity' | 'minecraft20' | 'mixamo65'
+
+/**
+ * N1b: the REAL skeleton an Action lives on. A pack/character label of mixamo65 does not prove a Mixamo65 body: Verity characters keep
+ * their original 85-bone skeleton (original/model.bbs.bobj) while labelled mixamo65 for App 1. Decide from the owner's base model.
+ */
+function sourceSkeletonKind(root: string, source: ReturnType<typeof getAction>): SkeletonKind {
+  if (source.ownerCharId) {
+    try {
+      const owner = resolveCharacter({ root, charId: source.ownerCharId })
+      if (owner.baseModel?.format === 'bobj' && owner.baseModel.rig === 'verity') return 'verity'
+      if (owner.baseModel?.format === 'bobj' && owner.baseModel.rig === 'minecraft20') return 'minecraft20'
+      if (owner.character.rig === 'verity') return 'verity'
+      if (existsSync(safeChild(root, 'characters', owner.character.charId, 'original', 'model.bbs.bobj'))) return 'verity'
+      if (owner.character.rig === 'minecraft20') return 'minecraft20'
+    } catch { /* fall back to the pack label */ }
+  }
+  return source.rig === 'verity' ? 'verity' : source.rig === 'minecraft20' ? 'minecraft20' : 'mixamo65'
+}
+
+/** Original Verity BOBJ of a Verity-skeleton owner: its registered base model, or the legacy original/model.bbs.bobj copy. */
+function verityModelPathOf(root: string, owner: ResolvedLibraryCharacter | null): string | null {
+  if (!owner) return null
+  if (owner.baseModel?.format === 'bobj' && owner.baseModel.rig === 'verity') return owner.modelPath
+  const legacy = safeChild(root, 'characters', owner.character.charId, 'original', 'model.bbs.bobj')
+  return existsSync(legacy) ? legacy : null
+}
 
 /**
  * N1b: build the source Action's GLB on its OWNER's rig. Native BOBJ owners keep the real
@@ -79,11 +106,12 @@ function ownedSourceGlb(root: string, source: ReturnType<typeof getAction>): Uin
   if (!source.ownerCharId) return oneAnimation(packGlb, source.glbAnimationIndex, source.name)
   let owner: ResolvedLibraryCharacter | null = null
   try { owner = resolveCharacter({ root, charId: source.ownerCharId }) } catch { owner = null }
-  if (owner?.baseModel?.format !== 'bobj' || !['verity', 'minecraft20'].includes(owner.baseModel.rig)) {
+  const verityModelPath = sourceSkeletonKind(root, source) === 'verity' ? verityModelPathOf(root, owner) : null
+  if (!verityModelPath && (owner?.baseModel?.format !== 'bobj' || owner.baseModel.rig !== 'minecraft20')) {
     return oneAnimation(packGlb, source.glbAnimationIndex, source.name)
   }
   const packDir = dirname(source.glbPath)
-  if (owner.baseModel.rig === 'minecraft20') {
+  if (!verityModelPath && owner) {
     const sidecar = join(packDir, 'anim.bobj')
     if (!existsSync(sidecar)) return oneAnimation(packGlb, source.glbAnimationIndex, source.name)
     const model = parseBobjModel(readFileSync(owner.modelPath, 'utf8'))
@@ -93,7 +121,7 @@ function ownedSourceGlb(root: string, source: ReturnType<typeof getAction>): Uin
   }
   const sidecar = join(packDir, 'anim.original.bbs.bobj')
   if (!existsSync(sidecar)) return oneAnimation(packGlb, source.glbAnimationIndex, source.name)
-  const base = parseBobjModel(readFileSync(owner.modelPath, 'utf8'))
+  const base = parseBobjModel(readFileSync(verityModelPath!, 'utf8'))
   const model = parseBobjModel(readFileSync(sidecar, 'utf8'))
   const added = [...model.actions].filter(([name]) => !base.actions.has(name))
   if (added.length !== 1) throw new Error('Native Action sidecar must contain exactly one added Action')
@@ -102,15 +130,44 @@ function ownedSourceGlb(root: string, source: ReturnType<typeof getAction>): Uin
 }
 
 /**
+ * A Verity source makes App 1 append scene-node extras (X_Head_Jaw, manifest rig mixamo65+verity). Cross-skeleton assignment
+ * targets plain Mixamo65 / Minecraft20 / Verity-via-Mixamo65, none of which carry them, so drop the extra nodes and their channels.
+ */
+function stripSceneExtraBones(bytes: Uint8Array): Uint8Array {
+  const { json, bin } = decodeGlb(bytes)
+  const nodes = (json.nodes ?? []) as Array<{ name?: string; children?: number[] }>
+  const extra = new Set(nodes.flatMap((node, index) => /^X_/.test(node.name ?? '') ? [index] : []))
+  if (!extra.size) return bytes
+  for (const node of nodes) if (node.children) { node.children = node.children.filter((child) => !extra.has(child)); if (!node.children.length) delete node.children }
+  for (const scene of (json.scenes ?? []) as Array<{ nodes?: number[] }>) if (scene.nodes) scene.nodes = scene.nodes.filter((index) => !extra.has(index))
+  for (const skin of (json.skins ?? []) as Array<{ joints: number[] }>) skin.joints = skin.joints.filter((index) => !extra.has(index))
+  for (const animation of (json.animations ?? []) as Array<{ channels: Array<{ target: { node?: number } }> }>) {
+    animation.channels = animation.channels.filter((channel) => channel.target.node === undefined || !extra.has(channel.target.node))
+  }
+  return encodeGlb(json, bin)
+}
+
+/**
  * N1b: convert a source Action GLB to Mixamo65 through App 1's normalize pipeline
  * (Minecraft20 .bobj → Mixamo65, and Verity via its Mixamo65 mapping).
  */
-async function convertToMixamo65(root: string, source: ReturnType<typeof getAction>, sourceGlb: Uint8Array): Promise<{ glb: Uint8Array; durationSeconds: number }> {
+async function convertToMixamo65(root: string, source: ReturnType<typeof getAction>, sourceGlb: Uint8Array, skeleton: SkeletonKind): Promise<{ glb: Uint8Array; durationSeconds: number }> {
   let sourceScene
   const owner = source.ownerCharId ? (() => { try { return resolveCharacter({ root, charId: source.ownerCharId }) } catch { return null } })() : null
   const sidecar = join(dirname(source.glbPath), 'anim.bobj')
-  if (source.rig === 'minecraft20' && owner?.baseModel?.format === 'bobj' && owner.baseModel.rig === 'minecraft20' && existsSync(sidecar)) {
+  if (skeleton === 'minecraft20' && owner?.baseModel?.format === 'bobj' && owner.baseModel.rig === 'minecraft20' && existsSync(sidecar)) {
     sourceScene = loadBobj(readFileSync(sidecar, 'utf8'), readFileSync(owner.modelPath, 'utf8'))
+  } else if (skeleton === 'verity' && verityModelPathOf(root, owner) && existsSync(join(dirname(source.glbPath), 'anim.original.bbs.bobj'))) {
+    // Same path as the App 1 CLI for a Verity BOBJ model: the full model keeps the extra bones (jaw, wings) as scene nodes,
+    // which the GLB re-export drops from the retained rig. Keep only the one Action this pack added to the base model.
+    const base = parseBobjModel(readFileSync(verityModelPathOf(root, owner)!, 'utf8'))
+    const sidecarText = readFileSync(join(dirname(source.glbPath), 'anim.original.bbs.bobj'), 'utf8')
+    sourceScene = await loadAsset(new TextEncoder().encode(sidecarText), 'bobj', { skeletonOnly: true })
+    const added = parseBobjModel(sidecarText).actions
+    const addedNames = new Set([...added.keys()].filter((name) => !base.actions.has(name)))
+    if (addedNames.size !== 1) throw new Error('Native Action sidecar must contain exactly one added Action')
+    sourceScene.animations = sourceScene.animations.filter((clip) => addedNames.has(clip.name))
+    if (sourceScene.animations.length !== 1) throw new Error('Verity Action sidecar did not load as one animation clip')
   } else {
     sourceScene = await loadAsset(sourceGlb, 'glb', { skeletonOnly: true })
   }
@@ -128,7 +185,7 @@ async function convertToMixamo65(root: string, source: ReturnType<typeof getActi
     const blocker = (result.report as { blocker?: { message?: string } } | undefined)?.blocker
     throw new Error(`Normalize to Mixamo65 failed: ${blocker?.message ?? result.status}`)
   }
-  return { glb: result.glb, durationSeconds: result.manifest.actions[0]?.durationSeconds ?? source.durationSeconds }
+  return { glb: stripSceneExtraBones(result.glb), durationSeconds: result.manifest.actions[0]?.durationSeconds ?? source.durationSeconds }
 }
 
 /** Assign shared-library or character-owned Actions to a character using that character's native rig. */
@@ -144,17 +201,20 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
   const minecraftArmaturePath = isLegacyMinecraft20 && !character.modelPath.toLowerCase().endsWith('.bobj')
     ? MINECRAFT20_ARMATURE_PATH
     : character.modelPath
+  const targetKind: SkeletonKind = isLegacyMinecraft20 || character.character.rig === 'minecraft20' ? 'minecraft20'
+    : character.character.rig === 'verity' || (character.character.rig === 'mixamo65' && hasOriginalRig) ? 'verity' : 'mixamo65'
   const results: AssignActionResult[] = []
   for (const [index, actionUuid] of options.actionUuids.entries()) {
     if (options.signal?.aborted) break
     try {
       const source = getAction({ root: options.libraryRoot, actionUuid })
       const owned = !!source.ownerCharId
+      const sourceKind = sourceSkeletonKind(root, source)
       const existing = listCharacterActions({ root: options.libraryRoot, charId: character.character.charId })
         .find((item) => item.parentUuid?.toLowerCase() === source.uuid.toLowerCase())
       if (existing && !options.createNew) {
         results.push({ actionUuid, status: 'already-exists', assignedUuid: existing.uuid, name: source.name })
-      } else if (owned && rigsCompatible(character.character.rig, source.rig)) {
+      } else if (owned && sourceKind === targetKind && rigsCompatible(character.character.rig, source.rig)) {
         // Same-rig character-owned source: a straight copy into the target's set (no conversion).
         const draft = copyActionToCharacter({ root: options.libraryRoot, actionUuid: source.uuid, toCharId: character.character.charId })
         results.push({ actionUuid, status: 'ok', assignedUuid: draft.uuid, name: source.name })
@@ -163,7 +223,6 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
         results.push({ actionUuid, status: 'ok', assignedUuid: draft.uuid, name: source.name })
       } else {
         const sourceGlb = owned ? ownedSourceGlb(root, source) : oneAnimation(readFileSync(source.glbPath), source.glbAnimationIndex, source.name)
-        const sourcePack = readJsonFile<MotionPackMetadata>(safeChild(root, 'packs', source.packId, 'meta.json'))
         const conversionRig = isLegacyMinecraft20 ? 'minecraft20'
           : character.character.rig === 'verity' || (character.character.rig === 'mixamo65' && hasOriginalRig) ? 'verity'
             : character.character.rig
@@ -172,7 +231,7 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
           let draft: IndexedAction
           if (conversionRig === 'mixamo65' || conversionRig === 'mixamo65+verity') {
             // Cross-skeleton into Mixamo65 (Minecraft20 .bobj or Verity source) via App 1 normalize.
-            const converted = await convertToMixamo65(root, source, sourceGlb)
+            const converted = await convertToMixamo65(root, source, sourceGlb, sourceKind)
             const glbFile = join(directory, 'assigned.glb')
             writeFileSync(glbFile, converted.glb)
             draft = addConvertedDraftToCharacter({ root: options.libraryRoot, charId: character.character.charId, parentUuid: source.uuid, glbFile,
@@ -185,8 +244,8 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
             // Verity sources reach Minecraft20 (and Mixamo65 sources reach Verity directly) through
             // the Mixamo65 mapping first when the source is not already a Mixamo65-family GLB.
             let inputGlb = sourceGlb
-            if (owned && conversionRig === 'minecraft20' && source.rig === 'verity') inputGlb = (await convertToMixamo65(root, source, sourceGlb)).glb
-            if (owned && conversionRig === 'verity' && source.rig === 'minecraft20') inputGlb = (await convertToMixamo65(root, source, sourceGlb)).glb
+            // Routing uses the owner's real skeleton, never the pack label (a Verity pack is labelled mixamo65).
+            if (owned && sourceKind !== 'mixamo65' && sourceKind !== targetKind) inputGlb = (await convertToMixamo65(root, source, sourceGlb, sourceKind)).glb
             let outputGlb: Uint8Array, sidecar: string, sidecarName: string, originalGlb: Uint8Array | undefined
             if (conversionRig === 'minecraft20') {
               const exported = await exportMinecraft20(inputGlb, sourceText)
@@ -208,7 +267,7 @@ export async function assignToCharacter(options: AssignToCharacterOptions): Prom
             const glbFile = join(directory, 'assigned.glb')
             writeFileSync(glbFile, outputGlb)
             draft = addConvertedDraftToCharacter({ root: options.libraryRoot, charId: character.character.charId, parentUuid: source.uuid, glbFile,
-              rig: conversionRig === 'verity' ? sourcePack.rig : conversionRig, durationSeconds: source.durationSeconds, allowOwnedParent: owned })
+              rig: conversionRig === 'verity' ? (character.character.rig === 'verity' ? 'mixamo65' : character.character.rig) : conversionRig, durationSeconds: source.durationSeconds, allowOwnedParent: owned })
             const draftPack = safeChild(root, 'packs', draft.packId)
             writeFileSync(join(draftPack, sidecarName), sidecar)
             if (originalGlb) writeFileSync(join(draftPack, 'anim.original.glb'), originalGlb)
