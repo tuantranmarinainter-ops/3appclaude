@@ -52,6 +52,7 @@ const state = {
   libraryCharacters: null, libraryDestinations: new Set(), libraryActions: new Map(), transferCharacters: new Set(),
   transferFailed: [], transferRunning: false, transferConfig: null, requestBobj: false,
   favoritesByDestination: new Map(), starredOnly: false,
+  adjustmentsByKey: new Map(), defaultAdjustments: null,
   batch: null, batchRun: null, batchCancelRequested: false, batchFailedEntries: [], batchPresets: new Map(), batchKeys: new Map(), batchEdits: new Map(), batchSelection: new Map(), batchProgress: null, batchCurrent: null, batchRows: [], reviewRows: [], runAbort: false, runQuiet: false,
 }
 
@@ -225,7 +226,9 @@ function drawContacts(contactRanges, total) {
 }
 
 function selectAction(sourceIndex) {
+  captureAdjustments()
   state.selected = sourceIndex
+  if (state.source) applyAdjustmentsToForm(adjustmentsForKey(currentRowKey()))
   const action = state.inspect?.actions?.[sourceIndex]
   const mapped = state.actionMap.get(sourceIndex)
   const duration = mapped?.duration ?? action?.durationSeconds ?? 1
@@ -329,6 +332,7 @@ function selectedBatchGroups() {
 /** Shows one batch animation: loads the entry's source into the left pane once per file, then only switches the clip. */
 function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
   if (!entry.sourceId) return
+  captureAdjustments()
   const key = action ? batchKey(entry, action) : null
   state.batchCurrent = key
   if (shownBatchEntry !== entry.sourceId) {
@@ -342,6 +346,7 @@ function previewBatchAction(entry, action = entry.inspect?.actions?.[0]) {
     clear($('sourceInfo')).append(h('b', { text: entry.name }), h('span', { text: ` · ${entry.inspect?.actions?.length ?? 0} animation · sha256 ${(entry.sha256 ?? '').slice(0, 16)}…` }))
   }
   state.selected = action?.index ?? null
+  if (action) applyAdjustmentsToForm(adjustmentsForKey(key))
   renderReview(false, true)
   let left = Promise.resolve()
   if (state.source.format === 'bobj') { leftLoad = null; viewer.clearSource(); setOverlay('left', 'Nguồn .bobj là thư viện Action của Minecraft20, không có mesh.') }
@@ -392,8 +397,13 @@ async function runPreview() {
 const previewResults = new Map(), previewPending = new Map()
 let previewQueue = Promise.resolve(), prefetchTimer = 0
 function previewPayload(action) {
-  return structuredClone({ sourceId: state.source.sourceId, targetId: state.target.id,
-    options: { ...readOptions(), actionRanges: state.actionRanges, actions: [action], previewAction: action, preview: false, review: true }, wait: true,
+  const options = { ...readOptions(), actionRanges: state.actionRanges, actions: [action], previewAction: action, preview: false, review: true }
+  // C16: the preview, its cache key and prefetch all use THIS Action's own adjustment set — an edited row's set
+  // must never leak into another row's preview, and an unedited row always previews with the default set.
+  const own = state.adjustmentsByKey?.get(`${state.source.sourceId}:${action}`)
+  if (own) { options.adjustments = structuredClone(own); options.adjustmentsByAction = { ...(options.adjustmentsByAction ?? {}), [action]: structuredClone(own) } }
+  else if (action !== state.selected && state.defaultAdjustments) options.adjustments = structuredClone(state.defaultAdjustments)
+  return structuredClone({ sourceId: state.source.sourceId, targetId: state.target.id, options, wait: true,
     ...(state.preset ? { mappingPreset: state.preset, presetFamily: state.presetFamily } : {}) })
 }
 function cachedPreview(payload) {
@@ -472,7 +482,7 @@ function drawReviewRows() {
     const row = rows[i], kept = state.batchSelection.has(row.key), current = row.key === state.batchCurrent, label = reviewLabel(row)
     frag.append(h('div', { class: `review-row${kept ? '' : ' dropped'}${current ? ' current' : ''}`, role: 'option', 'aria-selected': String(current), dataset: { i: String(i) }, style: `top:${i * REVIEW_ROW}px`, title: `${row.entry.name} · ${label}` },
       h('input', { type: 'checkbox', checked: kept, 'aria-label': `Giữ ${label}` }), favoriteButton(row.key, label, () => setKept(row, true)), h('span', { class: 'idx', text: String(row.action.index + 1) }),
-      h('span', { class: 'nm', text: (state.batch.entries.length > 1 ? `${label} · ${row.entry.name}` : label) + (row.entry.status === 'duplicate' ? (row.entry.inLibrary ? ' (đã có trong kho)' : ' (file trùng)') : '') }), h('span', { class: 'dur', text: `${fmt(row.action.durationSeconds)}s` })))
+      h('span', { class: 'nm', text: (state.batch.entries.length > 1 ? `${label} · ${row.entry.name}` : label) + (row.entry.status === 'duplicate' ? (row.entry.inLibrary ? ' (đã có trong kho)' : ' (file trùng)') : '') }), adjustmentDot(row.key), h('span', { class: 'dur', text: `${fmt(row.action.durationSeconds)}s` })))
   }
   $('reviewInner').replaceChildren(frag)
 }
@@ -579,7 +589,7 @@ function renderBatchActionPicker(query) {
       }
       nameCell.addEventListener('dblclick', startRename)
       nameCell.append(h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
-        h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }))
+        h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }), adjustmentDot(key))
       tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', {}, favoriteButton(key, action.name, () => setKept({ key, entry, action }, true))), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
     }
     group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '★' }), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
@@ -626,7 +636,7 @@ function renderActionPicker() {
       queueMicrotask(() => english.focus())
     } else {
       name = h('td', { class: 'name', ondblclick: startRename }, h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
-        h('button', { type: 'button', class: 'icon rename-btn', title: 'Đổi tên (nhấp đúp vào tên)', 'aria-label': `Đổi tên ${edit.name}`, text: '✎', onclick: startRename }))
+        h('button', { type: 'button', class: 'icon rename-btn', title: 'Đổi tên (nhấp đúp vào tên)', 'aria-label': `Đổi tên ${edit.name}`, text: '✎', onclick: startRename }), adjustmentDot(singleActionKey(action)))
     }
     const required = pickerRequiredActions()
     const keySelect = h('select', { 'aria-label': `Thẻ động tác ${edit.name}`, onclick: (event) => event.stopPropagation(), onchange: (event) => state.actionKeys.set(action.index, event.target.value) }, h('option', { value: '', text: '—' }), ...required.map((item) => h('option', { value: item.key, text: `${item.label} (${item.key})` })))
@@ -889,6 +899,14 @@ async function chooseTarget(target) {
 }
 
 // ---------------------------------------------------------------- step 3: inspect
+/** Overview rows for adjustments: the viewed Action's own resolved set (C16) first, then the run-wide set. */
+function overviewAdjustmentRows(report) {
+  const rows = []
+  const perAction = report.adjustmentsByAction?.find((item) => item.index === state.selected)
+  if (perAction) rows.push(['Hiệu chỉnh (Action đang xem)', adjustmentSummary(perAction)])
+  if (report.adjustments) rows.push([perAction ? 'Hiệu chỉnh (toàn cục)' : 'Hiệu chỉnh', adjustmentSummary(report.adjustments)])
+  return rows
+}
 function adjustmentSummary(adjustments) {
   const changed = [...ADJUST_KEYS, 'proportionSide', 'strideSide', 'mirror', 'handPose', 'handSide'].filter((key) => adjustments[key] !== adjustments.defaults?.[key])
   const offsets = Object.keys(adjustments.jointOffsets ?? {})
@@ -910,6 +928,60 @@ function readAdjustments() {
   const form = $('optionsForm')
   return { ...Object.fromEntries(ADJUST_KEYS.map((key) => [key, Number(form.elements[`adj_${key}`].value)])), proportionSide: form.elements.adj_proportionSide.value, strideSide: form.elements.adj_strideSide.value,
     mirror: form.elements.adj_mirror.checked, handPose: form.elements.adj_handPose.value, handSide: form.elements.adj_handSide.value, jointAxes: { ...adjustJointAxes }, jointOffsets: Object.fromEntries(Object.entries(adjustJointOffsets).filter(([, angles]) => angles.some((n) => n !== 0))) }
+}
+// ---------------------------------------------------------------- per-Action adjustments (C16)
+// The form edits the viewed row only. Each row's own set lives in state.adjustmentsByKey under its row key
+// (`${sourceId}:${actionIndex}` — the same key favorites use); a row without an entry uses the default set.
+function defaultAdjustmentsSnapshot() {
+  const form = $('optionsForm')
+  return { ...Object.fromEntries(ADJUST_KEYS.map((key) => [key, Number(form.elements[`adj_${key}`].dataset.default)])), proportionSide: 'both', strideSide: 'both',
+    mirror: false, handPose: 'original', handSide: 'both', jointAxes: {}, jointOffsets: {} }
+}
+function canonicalAdjustments(adj) {
+  const offsets = adj.jointOffsets ?? {}
+  const sorted = (record) => Object.fromEntries(Object.entries(record).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))
+  const axes = Object.fromEntries(Object.entries(adj.jointAxes ?? {}).filter(([joint, value]) => value !== 'local' || offsets[joint]))
+  return { ...adj, jointOffsets: sorted(offsets), jointAxes: sorted(axes) }
+}
+function adjustmentsEqual(a, b) { return JSON.stringify(canonicalAdjustments(a)) === JSON.stringify(canonicalAdjustments(b)) }
+function currentRowKey() { return state.source && state.selected !== null && state.selected !== undefined ? `${state.source.sourceId}:${state.selected}` : null }
+function adjustmentsForKey(key) { return key ? state.adjustmentsByKey.get(key) ?? null : null }
+/** Saves the form's current set under the viewed row's key (a default set removes the entry). Returns true when the Map changed. */
+function captureAdjustments() {
+  const key = currentRowKey()
+  if (!key) return false
+  const current = canonicalAdjustments(readAdjustments())
+  if (adjustmentsEqual(current, defaultAdjustmentsSnapshot())) {
+    if (!state.adjustmentsByKey.delete(key)) return false
+  } else {
+    const previous = state.adjustmentsByKey.get(key)
+    if (previous && adjustmentsEqual(previous, current)) return false
+    state.adjustmentsByKey.set(key, current)
+  }
+  if (state.batch) drawReviewRows()
+  renderActionPicker()
+  return true
+}
+/** Writes a stored set (or the defaults when null) into the form; programmatic writes fire no change events. */
+function applyAdjustmentsToForm(adj) {
+  const form = $('optionsForm'), value = adj ?? defaultAdjustmentsSnapshot()
+  for (const key of ADJUST_KEYS) form.elements[`adj_${key}`].value = value[key]
+  form.elements.adj_proportionSide.value = value.proportionSide; form.elements.adj_strideSide.value = value.strideSide
+  form.elements.adj_mirror.checked = value.mirror; form.elements.adj_handPose.value = value.handPose; form.elements.adj_handSide.value = value.handSide
+  for (const key of Object.keys(adjustJointOffsets)) delete adjustJointOffsets[key]
+  for (const key of Object.keys(adjustJointAxes)) delete adjustJointAxes[key]
+  for (const [joint, angles] of Object.entries(value.jointOffsets ?? {})) adjustJointOffsets[joint] = [...angles]
+  for (const [joint, axes] of Object.entries(value.jointAxes ?? {})) adjustJointAxes[joint] = axes
+  loadAdjustJoint(); renderAdjustOutputs()
+}
+function adjustmentDot(key) { return state.adjustmentsByKey.has(key) ? h('span', { class: 'adj-dot', title: 'Đã hiệu chỉnh riêng', 'aria-label': 'Đã hiệu chỉnh riêng' }) : null }
+/** The `adjustmentsByAction` payload field: this source's stored sets, keyed by Action index. */
+function adjustmentsByActionOptions() {
+  if (!state.adjustmentsByKey?.size) return undefined
+  const prefix = `${state.source?.sourceId ?? 'source'}:`
+  const record = {}
+  for (const [key, value] of state.adjustmentsByKey) if (key.startsWith(prefix)) record[key.slice(prefix.length)] = structuredClone(value)
+  return Object.keys(record).length ? record : undefined
 }
 function renderAdjustOutputs() {
   const form = $('optionsForm')
@@ -933,10 +1005,12 @@ function readOptions() {
   const form = $('optionsForm')
   const get = (name) => form.elements[name]
   const number = (name) => { const value = get(name).value.trim(); return value === '' ? undefined : Number(value) }
+  const byAction = adjustmentsByActionOptions()
   return {
     mode: form.elements.mode.value, rootPolicy: get('rootPolicy').value, rootScale: number('rootScale'), ground: get('ground').value, calibrate: get('calibrate').value,
     facingDegrees: number('facingDegrees'), swapSides: get('swapSides').value, unitMeters: number('unitMeters'), upAxis: get('upAxis').value, bobj: get('bobj').checked, bobjRoot: get('bobjRoot').value,
     adjustments: readAdjustments(),
+    ...(byAction ? { adjustmentsByAction: byAction } : {}),
   }
 }
 let inspectTimer = 0
@@ -989,6 +1063,7 @@ function renderInspectInfo() {
 const optionsForm = $('optionsForm')
 function markOptionsChanged(event) {
   if (event?.target?.matches('#adjustLive, #adjJoint, #adjJointAxes, #adjJointX, #adjJointY, #adjJointZ')) return
+  if (event?.target?.matches?.('[name^=adj_]')) captureAdjustments()
   mappingUndo = null
   state.requestBobj = !!optionsForm.elements.bobj.checked
   if (state.result) { state.stale = true; refreshSteps(); renderOverview(); if (state.selected !== null) selectAction(state.selected) }
@@ -1015,7 +1090,30 @@ $('adjustReset').addEventListener('click', () => {
   loadAdjustJoint()
   markOptionsChanged({ target: optionsForm.elements.adj_armSpace })
 })
+$('adjustResetRow').addEventListener('click', () => {
+  const key = currentRowKey()
+  if (!key) { toast('Chọn một animation để đặt lại hiệu chỉnh.', 'err'); return }
+  state.adjustmentsByKey.delete(key)
+  applyAdjustmentsToForm(null)
+  if (state.batch) drawReviewRows()
+  renderActionPicker()
+  markOptionsChanged({ target: optionsForm.elements.adj_armSpace })
+  toast('Đã đặt lại hiệu chỉnh của animation này.', 'ok')
+})
+$('adjustApplySelected').addEventListener('click', () => {
+  captureAdjustments()
+  const current = canonicalAdjustments(readAdjustments()), isDefault = adjustmentsEqual(current, defaultAdjustmentsSnapshot())
+  const keys = new Set()
+  if (state.batch) { for (const key of state.batchSelection.keys()) keys.add(key); for (const row of state.reviewRows) keys.add(row.key) }
+  else if (state.source) for (const index of state.checked) keys.add(`${state.source.sourceId}:${index}`)
+  if (!keys.size) { toast('Chưa có animation nào đang Giữ, đang lọc hoặc đang tích để áp dụng.', 'err'); return }
+  for (const key of keys) isDefault ? state.adjustmentsByKey.delete(key) : state.adjustmentsByKey.set(key, structuredClone(current))
+  if (state.batch) drawReviewRows()
+  renderActionPicker()
+  toast(`Đã áp dụng hiệu chỉnh đang xem cho ${keys.size} animation.`, 'ok')
+})
 renderAdjustOutputs()
+state.defaultAdjustments = defaultAdjustmentsSnapshot()
 optionsForm.addEventListener('input', markOptionsChanged)
 optionsForm.addEventListener('change', markOptionsChanged)
 /** Rotation buttons: turn the result by a quarter/half turn relative to the facing in use (or back to the measured one). */
@@ -1081,6 +1179,9 @@ async function runNow(onlyActions = null, actionNames = null, { quiet = false } 
   if (reason) { if (quiet) { viewer.suspended = false; setOverlay('right', reason, true) } else toast(reason, 'err'); return }
   const all = onlyActions ?? runActions()
   const options = { ...readOptions(), actionRanges: state.actionRanges, preview: !quiet, ...(actionNames ? { actionNames } : {}), ...(all.length === state.inspect.actions.length ? {} : { actions: all }), ...(state.selected !== null && all.includes(state.selected) ? { previewAction: state.selected } : {}) }
+  // C16: a run covering rows beyond the viewed one (or any transfer) must not inherit the viewed row's set as the
+  // run-wide fallback — unedited Actions resolve to the default set; edited ones travel in adjustmentsByAction.
+  if (!quiet && state.defaultAdjustments && (state.transferRunning || !(all.length === 1 && all[0] === state.selected))) options.adjustments = structuredClone(state.defaultAdjustments)
   state.running = true; state.runAbort = false; state.runQuiet = quiet
   if (quiet) viewer.suspended = true
   $('progress').hidden = false; $('cancelBtn').hidden = false
@@ -1419,7 +1520,7 @@ function renderOverview() {
     report.proportions?.suggestedRootScale ? ['Root-scale gợi ý', fmt(report.proportions.suggestedRootScale, 3)] : null,
     report.input ? ['Root', `${report.input.rootPolicy} × ${fmt(report.proportions?.rootScale ?? report.input.rootScale, 4)}${report.proportions?.rootScaleSource === 'auto-units' ? ' (TỰ ĐỘNG: đơn vị file nguồn sai, hông nguồn không cỡ người)' : ''}`] : null,
     report.ground ? ['Chạm sàn', groundSummary(report.ground)] : null,
-    report.adjustments ? ['Hiệu chỉnh', adjustmentSummary(report.adjustments)] : null,
+    ...overviewAdjustmentRows(report),
     report.calibration ? ['Hướng mặt', `${fmt(report.calibration.facingYawDegrees, 0)}° (đo ${fmt(report.calibration.measuredFacingYawDegrees, 0)}°${report.calibration.facingAmbiguous ? ', MƠ HỒ' : ''}, nguồn ${report.calibration.facingSource})`] : null,
     report.sides ? ['Trái / phải', `${report.sides.mode}${report.sides.swapped ? ', đã đảo' : ''}${report.sides.restTurnDegrees ? `, xoay rest ${report.sides.restTurnDegrees}°` : ''} · bằng chứng ${report.sides.evidence}${report.sides.agreement === null ? '' : ` (${fmt(report.sides.agreement)})`}`] : null,
     report.calibration ? ['Calibration', `${report.calibration.mode}, lệch lớn nhất ${fmt(report.calibration.maxDegrees, 1)}° / ${report.calibration.corrections.length} khớp`] : null,

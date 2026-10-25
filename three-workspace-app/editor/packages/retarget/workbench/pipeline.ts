@@ -38,6 +38,8 @@ export interface RunOptions {
   actionRanges?: Record<number, [number, number]>; actions?: number[]; actionNames?: Record<number, { name: string; nameVi?: string }>; previewAction?: number; unitMeters?: number; upAxis: 'y' | 'z'; rootPolicy: 'preserve' | 'in-place'; rootScale?: number; ground: 'off' | 'lift' | 'level' | 'frame'
   calibrate: 'limbs' | 'none'; facingDegrees?: number; swapSides: 'auto' | 'on' | 'off'; mode: 'animation' | 'model'; bobj: boolean; bobjRoot: 'inPlace' | 'follow'; preview: boolean
   adjustments: AdjustmentSettings
+  /** C16: per-Action adjustment sets keyed by source Action index; Actions without an entry use `adjustments`. */
+  adjustmentsByAction?: Record<number, AdjustmentSettings>
   review: boolean
 }
 
@@ -82,10 +84,22 @@ export function parseOptions(value: unknown): RunOptions {
       actionRanges[Number(key)] = range as [number, number]
     }
   }
+  let adjustmentsByAction: RunOptions['adjustmentsByAction']
+  if (raw.adjustmentsByAction !== undefined && raw.adjustmentsByAction !== null) {
+    if (typeof raw.adjustmentsByAction !== 'object' || Array.isArray(raw.adjustmentsByAction)) throw new UserError('options.adjustmentsByAction must be an object')
+    adjustmentsByAction = {}
+    for (const [key, value] of Object.entries(raw.adjustmentsByAction as Record<string, unknown>)) {
+      if (!/^\d+$/.test(key)) throw new UserError('options.adjustmentsByAction keys must be non-negative Action indices')
+      try { adjustmentsByAction[Number(key)] = parseAdjustments(value) } catch (error) {
+        throw error instanceof UserError ? new UserError(error.message.replace('options.adjustments', `options.adjustmentsByAction.${key}`)) : error
+      }
+    }
+  }
   return {
     actionRanges,
     ...(actionNames ? { actionNames } : {}),
     ...(actions ? { actions } : {}),
+    ...(adjustmentsByAction ? { adjustmentsByAction } : {}),
     previewAction: number('previewAction', (n) => Number.isInteger(n) && n >= 0, 'a non-negative Action index'),
     unitMeters: number('unitMeters', (n) => n > 0, 'a positive number'),
     upAxis: oneOf('upAxis', ['y', 'z'], 'y'), rootPolicy: oneOf('rootPolicy', ['preserve', 'in-place'], 'preserve'),
@@ -145,7 +159,8 @@ function toRequest(source: SourceRecord, target: TargetRecord, options: RunOptio
   return { source: scenes.source, sourceLabel: source.name, sourceSha256: source.sha256, target: scenes.target, targetLabel: target.file, targetSha256: target.sha256,
     actionRanges: options.actionRanges, actions: options.actions, previewAction: options.previewAction, unitMeters: unitMetersFor(source, options), upAxis: options.upAxis, rootPolicy: options.rootPolicy,
     rootScale: options.rootScale, ground: options.ground, mappingPreset: preset ?? undefined, ...(preset && presetFamily ? { presetFamily } : {}), preview: options.preview,
-    calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides, adjustments: options.adjustments }
+    calibrate: options.calibrate, facingDegrees: options.facingDegrees, swapSides: options.swapSides, adjustments: options.adjustments,
+    ...(options.adjustmentsByAction ? { adjustmentsByAction: options.adjustmentsByAction } : {}) }
 }
 
 /** The inspection payload the UI renders: mapping rows, bone list, Actions, proportions, facing. No bake happens. */

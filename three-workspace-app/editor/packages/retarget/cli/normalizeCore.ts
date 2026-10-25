@@ -45,6 +45,8 @@ export interface NormalizeRequest {
   ground?: GroundMode
   /** Mixamo-style adjustments (arm/leg spacing, proportions…) on the normalized Mixamo65 animation; absent = identity. */
   adjustments?: Partial<AdjustmentSettings>
+  /** C16: per-Action adjustments, keyed by source Action index; an Action without an entry falls back to `adjustments`. */
+  adjustmentsByAction?: Readonly<Record<number, Partial<AdjustmentSettings>>>
   mappingPreset?: unknown
   /** A/T calibration of limb directions against the target rest (default 'limbs'). */
   calibrate?: CalibrationMode
@@ -371,6 +373,8 @@ export async function runNormalize(request: NormalizeRequest, prepared?: Awaited
   const exported: Array<{ action: (typeof prunedActions)[number]; bytes: Uint8Array; report: Awaited<ReturnType<typeof normalizeAnimation>>['report'] }> = []
   const skippedActions: Array<{ index: number; name: string; code: string; message: string }> = []
   const adjustments = resolveAdjustments(request.adjustments)
+  // C16: each Action bakes with its own set when `adjustmentsByAction` has an entry for it; otherwise the run-wide set above.
+  const adjustmentsFor = (index: number): AdjustmentSettings => request.adjustmentsByAction?.[index] === undefined ? adjustments : resolveAdjustments(request.adjustmentsByAction[index])
   const bakeList = request.actions ?? prunedActions.map((action) => action.index)
   for (const [position, index] of bakeList.entries()) {
     request.signal?.throwIfAborted()
@@ -382,7 +386,7 @@ export async function runNormalize(request: NormalizeRequest, prepared?: Awaited
     if (!action.ready) { skip('ACTION_UNSUPPORTED', `Unsupported channels: ${[...new Set(action.issues.map((issue) => issue.code))].join(', ')}`); continue }
     try {
       const normalized = await normalizeAnimation({ source: request.source, target: request.target, sourceOptions, targetOptions, pairs: mapping.pairs,
-        range, footLock: request.footLock, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', adjustments, footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
+        range, footLock: request.footLock, actionIndex: index, fps: CONTRACT_FPS, rootTranslationPolicy: rootPolicy, rootTranslationScale: rootScale, groundMode: request.ground ?? 'lift', adjustments: adjustmentsFor(index), footDirection: true, requiredTargetJointIds: mapping.requiredTargetIds,
         calibration: calibration.runtime }, request.signal)
       exported.push({ action: { ...action, durationSeconds: normalized.report.durationSeconds }, bytes: normalized.bytes, report: normalized.report })
     } catch (error) {
@@ -407,17 +411,18 @@ export async function runNormalize(request: NormalizeRequest, prepared?: Awaited
   const extras = sourceExtraManifest ? validateExtraBones(sourceExtraManifest) : []
   const sceneExtraMode = sourceExtraManifest?.extraBoneMode === 'scene-nodes'
   if (extras.length && !sceneExtraMode && !request.sourceExtraGlb) throw new TypeError('v1.1 source GLB bytes are required to validate declared extra joints')
-  // Match the exact retained bake samples, then play the source extras at the same speed.
+  // Match the exact retained bake samples, then play the source extras at the same speed (per-Action trim/speed, C16).
   const extraRange = (index: number): readonly [number, number] => {
+    const own = adjustmentsFor(index)
     const [start, end] = request.actionRanges?.[index] ?? request.range ?? [0, prunedActions[index]!.durationSeconds]
     const steps = Math.ceil((end - start) * CONTRACT_FPS), count = steps + 1
-    const from = Math.min(Math.floor(count * adjustments.trimStart), count - 1), to = Math.max(from + 1, count - Math.floor(count * adjustments.trimEnd))
+    const from = Math.min(Math.floor(count * own.trimStart), count - 1), to = Math.max(from + 1, count - Math.floor(count * own.trimEnd))
     return [start + Math.min(from / CONTRACT_FPS, end - start), start + Math.min((to - 1) / CONTRACT_FPS, end - start)]
   }
   const extraAnimations = inferredVerityEnabled ? exported.map((item, animationIndex) => inferredVerityEnabled.sample(item.action.index,
-    extraRange(item.action.index), item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment, adjustments.speed)) :
+    extraRange(item.action.index), item.action.durationSeconds, animationIndex, targetHeadRest, sourceAlignment, adjustmentsFor(item.action.index).speed)) :
     existingVerity ? exported.map((item, animationIndex) => existingVerity.sample(item.action.index,
-      extraRange(item.action.index), item.action.durationSeconds, animationIndex, adjustments.speed)) : []
+      extraRange(item.action.index), item.action.durationSeconds, animationIndex, adjustmentsFor(item.action.index).speed)) : []
   const glb = extras.length ? preserveExtraBones(mergedGlb, request.sourceExtraGlb, sourceExtraManifest!, { animations: extraAnimations }).glb : mergedGlb
   const extraNames = new Set(extras.map((bone) => bone.name))
   const droppedExtraTracks = [...new Set(request.source.animations.flatMap((clip) => clip.tracks
@@ -521,6 +526,8 @@ export async function runNormalize(request: NormalizeRequest, prepared?: Awaited
     quality: summarizeQuality(perAction),
     ...(request.footLock === 'on' ? { footLock: { mode: 'on', perAction: exported.map(item => ({ name: item.action.name, ...item.report.footLock })) } } : {}),
     adjustments: { ...adjustments, defaults: DEFAULT_ADJUSTMENTS },
+    // C16: the resolved set each exported Action was actually baked with (same shape as `adjustments`, plus index/name).
+    adjustmentsByAction: exported.map((item) => ({ index: item.action.index, name: item.action.name, ...adjustmentsFor(item.action.index), defaults: DEFAULT_ADJUSTMENTS })),
     ground: { mode: request.ground ?? 'lift', perAction: exported.map((item) => ({ name: item.action.name, ...item.report.ground })) },
     sampleCount: exported.reduce((sum, item) => sum + item.report.sampleCount, 0), metrics: primary.metrics, resourceCost: primary.resourceCost,
     roundtrip, glbSha256, elapsedMs: 0 }
