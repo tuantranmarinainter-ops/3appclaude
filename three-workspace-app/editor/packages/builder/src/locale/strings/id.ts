@@ -340,6 +340,7 @@ export const id: LocaleDict = {
     "userKeys": "Timpa bingkai kunci pengguna",
     "chainMotion": "Rantai gerakan kamera",
     "chainMotionTitle": "Aktif: gerakan kamera berikutnya mulai dari pose akhir sebelumnya. Nonaktif: setiap klip memutar kurva aslinya.",
+    "onlySelectedCharacter": "Hanya karakter terpilih",
     "hint": "Alt+V putar · ←/→ langkah · Delete menghapus pilihan · ◆+ kunci bingkai saat ini",
     "position": "Posisi",
     "rotation": "Rotasi",

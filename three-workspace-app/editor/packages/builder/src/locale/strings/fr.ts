@@ -340,6 +340,7 @@ export const fr: LocaleDict = {
     "userKeys": "Remplacement par image clé utilisateur",
     "chainMotion": "Enchaîner les mouvements de caméra",
     "chainMotionTitle": "Activé : le mouvement de caméra suivant part de la pose finale du précédent. Désactivé : chaque clip joue sa courbe native.",
+    "onlySelectedCharacter": "Personnage sélectionné uniquement",
     "hint": "Alt+V lit · ←/→ avance · Delete retire la sélection · ◆+ pose une image clé sur l'image actuelle",
     "position": "Position",
     "rotation": "Rotation",

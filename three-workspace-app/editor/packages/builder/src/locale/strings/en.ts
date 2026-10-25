@@ -350,6 +350,7 @@ export const en: LocaleDict = {
     "userKeys": "User keyframe override",
     "chainMotion": "Chain camera moves",
     "chainMotionTitle": "On: the next camera move starts from the previous end pose. Off: each clip plays its native curve.",
+    "onlySelectedCharacter": "Selected character only",
     "hint": "Alt+V play · ←/→ step · Delete removes selection · ◆+ keys the current frame",
     "position": "Position",
     "rotation": "Rotation",

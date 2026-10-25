@@ -206,6 +206,9 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     this.revisions.set(project.projectId, result.revision)
     window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: result.revision } }))
     window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+    // C27: reveal the freshly placed clip on the timeline.
+    const placement = result.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number } | undefined
+    if (placement) window.dispatchEvent(new CustomEvent('bbs-reveal-clip', { detail: { projectId: project.projectId, clipId: placement.clipId, nodeId: characterNodeId, frameStart: placement.frameStart, frameEnd: placement.frameEnd } }))
   }
 
   async openLibraryAction(documentId: string, actionUuid: string): Promise<void> {

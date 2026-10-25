@@ -340,6 +340,7 @@ export const tr: LocaleDict = {
     "userKeys": "Kullanıcı anahtar kare geçersiz kılma",
     "chainMotion": "Kamera hareketlerini zincirle",
     "chainMotionTitle": "Açık: sonraki kamera hareketi önceki bitiş pozundan başlar. Kapalı: her klip kendi yerel eğrisini oynatır.",
+    "onlySelectedCharacter": "Yalnızca seçili karakter",
     "hint": "Alt+V oynat · ←/→ adım · Delete seçimi siler · ◆+ geçerli kareye anahtar kare koyar",
     "position": "Konum",
     "rotation": "Döndürme",

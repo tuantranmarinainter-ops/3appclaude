@@ -75,9 +75,13 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
     try {
       const response = await fetch('/api/library', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: node.nodeId, frameStart }) })
-      const body = await response.json() as { displayName?: string; frameStart?: number; frameEnd?: number; converted?: boolean; warning?: string; error?: string }
+      const body = await response.json() as { displayName?: string; clipId?: string; frameStart?: number; frameEnd?: number; converted?: boolean; warning?: string; error?: string }
       if (!response.ok) throw new Error(body.error ?? `Gán thất bại (${response.status})`)
       setMessage(`Đã gán “${action.nameVi || action.name}” cho ${body.displayName ?? node.name} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}.${body.warning ? ` ${body.warning}` : ''}`)
+      // C27: let the overlay reveal the new clip on the timeline.
+      if (body.clipId && body.frameStart !== undefined && body.frameEnd !== undefined) {
+        window.dispatchEvent(new CustomEvent('bbs-reveal-clip', { detail: { projectId, clipId: body.clipId, nodeId: node.nodeId, frameStart: body.frameStart, frameEnd: body.frameEnd } }))
+      }
       await refreshProject()
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(null) }

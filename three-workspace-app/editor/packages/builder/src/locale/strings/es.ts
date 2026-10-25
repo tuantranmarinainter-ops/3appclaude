@@ -340,6 +340,7 @@ export const es: LocaleDict = {
     "userKeys": "Sustitución de fotograma clave del usuario",
     "chainMotion": "Encadenar movimientos de cámara",
     "chainMotionTitle": "Activado: el siguiente movimiento de cámara parte de la pose final anterior. Desactivado: cada clip reproduce su curva nativa.",
+    "onlySelectedCharacter": "Solo el personaje seleccionado",
     "hint": "Alt+V reproduce · ←/→ avanza · Delete elimina la selección · ◆+ crea un fotograma clave en el fotograma actual",
     "position": "Posición",
     "rotation": "Rotación",

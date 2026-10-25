@@ -340,6 +340,7 @@ export const de: LocaleDict = {
     "userKeys": "Benutzer-Schlüsselbild überschreibt",
     "chainMotion": "Kamerafahrten verketten",
     "chainMotionTitle": "An: die nächste Kamerafahrt startet aus der Endpose der vorherigen. Aus: jeder Clip spielt seine eigene Kurve.",
+    "onlySelectedCharacter": "Nur ausgewählte Figur",
     "hint": "Alt+V spielt ab · ←/→ schreitet fort · Delete entfernt die Auswahl · ◆+ setzt ein Schlüsselbild auf das aktuelle Bild",
     "position": "Position",
     "rotation": "Drehung",

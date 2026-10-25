@@ -350,6 +350,7 @@ export const zhTW: LocaleDict = {
     "userKeys": "使用者關鍵影格覆寫",
     "chainMotion": "運鏡銜接",
     "chainMotionTitle": "開：下一段運鏡接上一段結束姿態。關：各片段播自己的原生曲線。",
+    "onlySelectedCharacter": "僅顯示所選角色",
     "hint": "Alt+V 播放 · ←/→ 逐步 · Delete 刪除選取 · ◆+ 在目前影格打關鍵影格",
     "position": "位置",
     "rotation": "旋轉",

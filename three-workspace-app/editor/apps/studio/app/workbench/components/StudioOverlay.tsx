@@ -509,6 +509,39 @@ export function StudioOverlay({
     window.addEventListener('bbs-assign-animation', onAssignRequest)
     return () => window.removeEventListener('bbs-assign-animation', onAssignRequest)
   }, [source])
+  // C27: after an assignment, reveal the new clip (scroll + zoom + flash) in the builder timeline.
+  // Sources: the assign panel and adapter dispatch 'bbs-reveal-clip'; returning from the Library
+  // page hands the clip over through sessionStorage because the workbench remounts.
+  useEffect(() => {
+    if (source !== 'unified') return
+    type RevealDetail = { projectId?: string; clipId: string; nodeId: string; frameStart: number; frameEnd: number }
+    const applyReveal = (detail: RevealDetail): boolean => {
+      if (detail.projectId && detail.projectId !== documentId) return false
+      const studio = getLiveStudio()
+      if (!studio || studio.documentId !== documentId) return false
+      studio.useStore.getState().revealTimelineClip({ clipId: detail.clipId, nodeId: detail.nodeId, frameStart: detail.frameStart, frameEnd: detail.frameEnd })
+      studio.stage.seek(detail.frameStart)
+      return true
+    }
+    const onReveal = (event: Event) => {
+      const detail = (event as CustomEvent<RevealDetail>).detail
+      if (detail && !applyReveal(detail)) {
+        try { sessionStorage.setItem('bbs-reveal-clip', JSON.stringify(detail)) } catch { /* storage unavailable */ }
+      }
+    }
+    window.addEventListener('bbs-reveal-clip', onReveal)
+    const consumeStored = () => {
+      try {
+        const raw = sessionStorage.getItem('bbs-reveal-clip')
+        if (!raw) return
+        const detail = JSON.parse(raw) as RevealDetail
+        if (applyReveal(detail)) sessionStorage.removeItem('bbs-reveal-clip')
+      } catch { /* ignore malformed handoff */ }
+    }
+    consumeStored()
+    const unsubscribe = subscribeLiveStudio(consumeStored)
+    return () => { window.removeEventListener('bbs-reveal-clip', onReveal); unsubscribe() }
+  }, [source, documentId])
   const openAnimationControls = () => {
     if (activeWorkspace === 'animation') { setDrawer('animation'); return }
     openAnimationOnSwitch.current = true

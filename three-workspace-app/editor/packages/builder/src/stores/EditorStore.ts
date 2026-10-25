@@ -60,6 +60,7 @@ export class EditorStore {
   libraryOpen = false
   libraryTab: LibraryTab = 'object'
   libraryFlash = 0
+  timelineRevealClip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number; nonce: number } | null = null
   libraryContentWidth = CONTENT_WIDTH_DEFAULT
   inspectorOpen = true
   inspectorContentWidth = INSPECTOR_WIDTH_DEFAULT
@@ -140,6 +141,7 @@ export class EditorStore {
       libraryOpen: observable,
       libraryTab: observable,
       libraryFlash: observable,
+      timelineRevealClip: observable,
       libraryContentWidth: observable,
       inspectorOpen: observable,
       inspectorContentWidth: observable,
@@ -219,6 +221,8 @@ export class EditorStore {
       toggleLibrary: action.bound,
       setLibraryTab: action.bound,
       flashLibraryTab: action.bound,
+      revealTimelineClip: action.bound,
+      clearTimelineReveal: action.bound,
       setLibraryContentWidth: action.bound,
       toggleInspector: action.bound,
       openInspector: action.bound,
@@ -365,6 +369,18 @@ export class EditorStore {
   flashLibraryTab(tab: LibraryTab): void {
     this.setLibraryTab(tab)
     this.libraryFlash += 1
+  }
+
+  /** C27: chọn node, mở timeline và ghi yêu cầu reveal; SceneTimeline lo cuộn/phóng/nháy sáng. */
+  revealTimelineClip(clip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number }): void {
+    this.selection = { kind: 'node', nodeId: clip.nodeId }
+    this.timelineVisible = true
+    this.timelineOpen = true
+    this.timelineRevealClip = { ...clip, nonce: (this.timelineRevealClip?.nonce ?? 0) + 1 }
+  }
+
+  clearTimelineReveal(): void {
+    this.timelineRevealClip = null
   }
 
   setLibraryContentWidth(w: number): void {

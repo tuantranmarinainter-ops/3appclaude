@@ -350,6 +350,7 @@ export const zhCN: LocaleDict = {
     "userKeys": "用户关键帧覆写",
     "chainMotion": "运镜衔接",
     "chainMotionTitle": "开：后一段运镜首帧接前一段末帧，段间空隙保持上一段末帧；关：各段独立播原生曲线",
+    "onlySelectedCharacter": "仅显示所选角色",
     "hint": "Alt+V 播放 · ←/→ 步进 · Delete 删除选中 · ◆+ 在当前帧打关键帧",
     "position": "位移",
     "rotation": "旋转",

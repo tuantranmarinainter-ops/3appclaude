@@ -216,6 +216,8 @@ export interface StudioView {
   libraryTab: LibraryTab
   /** 每次 `flashLibraryTab` 自增；左侧面板据此播一次高亮 */
   libraryFlash: number
+  /** C27: yêu cầu timeline cuộn/phóng/nháy sáng tới clip vừa gán; nonce tăng mỗi lần yêu cầu. */
+  timelineRevealClip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number; nonce: number } | null
   libraryContentWidth: number
   inspectorOpen: boolean
   inspectorContentWidth: number
@@ -280,6 +282,8 @@ export interface StudioView {
   toggleLibrary: () => void
   setLibraryTab: (t: LibraryTab) => void
   flashLibraryTab: (t: LibraryTab) => void
+  revealTimelineClip: (clip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number }) => void
+  clearTimelineReveal: () => void
   setLibraryContentWidth: (w: number) => void
   toggleInspector: () => void
   openInspector: () => void

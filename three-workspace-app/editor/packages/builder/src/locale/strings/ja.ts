@@ -340,6 +340,7 @@ export const ja: LocaleDict = {
     "userKeys": "ユーザーキーフレーム上書き",
     "chainMotion": "カメラワークをつなぐ",
     "chainMotionTitle": "オン：次のカメラワークは前の終了ポーズから始まります。オフ：各クリップは固有のカーブを再生します。",
+    "onlySelectedCharacter": "選択中のキャラクターのみ",
     "hint": "Alt+Vで再生 · ←/→ でコマ送り · Deleteで選択を削除 · ◆+ で現在フレームにキーを打つ",
     "position": "位置",
     "rotation": "回転",

@@ -340,6 +340,7 @@ export const ko: LocaleDict = {
     "userKeys": "사용자 키프레임 덮어쓰기",
     "chainMotion": "카메라 무브 연결",
     "chainMotionTitle": "켜기: 다음 카메라 무브가 이전 끝 포즈에서 시작합니다. 끄기: 각 클립이 고유 커브를 재생합니다.",
+    "onlySelectedCharacter": "선택한 캐릭터만",
     "hint": "Alt+V로 재생 · ←/→로 한 프레임 · Delete로 선택 삭제 · ◆+로 현재 프레임에 키를 넣습니다",
     "position": "위치",
     "rotation": "회전",

@@ -128,6 +128,8 @@ export default function LibraryPage() {
     setPlacingForNode(true)
     try {
       const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: assignTo.nodeId }) })
+      // C27: hand the placed clip to the workbench so its timeline reveals it on return.
+      if (body.clipId) { try { sessionStorage.setItem('bbs-reveal-clip', JSON.stringify({ projectId, clipId: body.clipId, nodeId: assignTo.nodeId, frameStart: body.frameStart, frameEnd: body.frameEnd })) } catch { /* storage unavailable */ } }
       setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}.${body.warning ? ` ${body.warning}` : ''} Quay lại cảnh App 2 để xem.`)
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setPlacingForNode(false) }

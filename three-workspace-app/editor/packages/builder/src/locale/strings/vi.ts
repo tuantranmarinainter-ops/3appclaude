@@ -340,6 +340,7 @@ export const vi: LocaleDict = {
     "userKeys": "Ghi đè khung khóa người dùng",
     "chainMotion": "Nối chuyển động máy",
     "chainMotionTitle": "Bật: chuyển động máy tiếp theo bắt đầu từ tư thế kết thúc trước. Tắt: mỗi đoạn phát đường cong gốc.",
+    "onlySelectedCharacter": "Chỉ nhân vật đang chọn",
     "hint": "Alt+V phát · ←/→ từng bước · Delete xóa lựa chọn · ◆+ khóa khung hiện tại",
     "position": "Vị trí",
     "rotation": "Xoay",
