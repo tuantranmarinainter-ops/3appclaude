@@ -176,3 +176,7 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   `packages/builder/src/components/leftrail/ObjectTree.tsx`, lưu `visible: false` vào project); Tập 15 có 20 khối `set_*` nên phải
   bấm 20 lần. Cần: một nút bật/tắt (kèm phím tắt) ẩn toàn bộ prop/hậu cảnh, chỉ đổi cách xem (không ghi project, không ảnh hưởng
   render/xuất film), bấm lại hiện như cũ; nhớ trạng thái theo phiên (localStorage).
+- **C27 — App 2: thấy ngay clip vừa gán trên timeline.** Tập 15 có 30 nhân vật; nhân vật thêm từ thư viện (`Gỗ Xưa_1`) nằm ở dòng cuối
+  timeline, clip 18 khung ở 0–0,6 s gần như không thấy với thang 0–32 s → người dùng tưởng chưa gán. Cần: sau "Gán N động tác" timeline
+  tự cuộn tới dòng nhân vật đó, phóng tới khoảng clip và nháy sáng clip vừa gán; nhân vật vừa thêm từ thư viện hiện ở đầu danh sách
+  timeline (hoặc có bộ lọc "Chỉ nhân vật đang chọn").
