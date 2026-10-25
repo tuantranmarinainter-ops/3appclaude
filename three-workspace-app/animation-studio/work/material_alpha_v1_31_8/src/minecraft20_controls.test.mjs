@@ -21,3 +21,16 @@ test('MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rot
  assert(c.c.o.getWorldPosition(new T.Vector3()).distanceTo(target.getWorldPosition(new T.Vector3()))<1e-5);
  assert.equal(C.makeRig(root).records.length,20);
 });
+test('MC20 display has every physical FK joint plus four IK/pole pairs',async()=>{
+ const T=await import('three'),D=await import('./control_rig.js');
+ const root=B.parse(new TextEncoder().encode('arm_name Minecraft20\n'+text)),rig=C.makeRig(root);rig.chains=C.chainSpecs(rig);
+ for(const c of rig.chains)for(const prefix of ['ik_','pole_'])rig.controls[prefix+c.id]={object:new T.Object3D()};
+ const previous=globalThis.document;
+ globalThis.document={createElementNS:()=>({namespaceURI:'svg',classList:{add(){}},append(){}}),createElement:()=>({addEventListener(){},dataset:{}})};
+ try {
+  const view={scene:new T.Scene(),container:{append(){}}},defs=D.build(view,rig);
+  for(const rec of rig.records)assert(defs.some(d=>d.id===rec.id),'Missing FK handle '+rec.name);
+  assert.equal(defs.filter(d=>d.id.startsWith('ik_')).length,4);assert.equal(defs.filter(d=>d.id.startsWith('pole_')).length,4);
+  assert.equal(defs.filter(d=>rig.records.some(r=>r.id===d.id)).length,20);
+ }finally{globalThis.document=previous;}
+});
