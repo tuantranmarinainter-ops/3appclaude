@@ -20,3 +20,10 @@
 .actions { margin-top: 3px; }
 .shotSelect { display: flex; flex-direction: column; gap: 0.35rem; margin: 0.75rem 0; }
 .shotSelect select { width: 100%; padding: 0.45rem; }
+.effectHint { margin: 0; color: #aab6c5; font-size: 12px; }
+.effectGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; max-height: 216px; overflow: auto; }
+.effectOption { display: grid; justify-items: center; gap: 5px; padding: 7px 4px; border: 1px solid #45546a; border-radius: 7px; color: #dbe4ef; background: #101722; cursor: pointer; }
+.effectOption:hover { border-color: #6d84a3; background: #16202f; }
+.effectOption[aria-pressed='true'] { border-color: #f2c14e; background: #243247; }
+.effectThumb { display: block; width: 44px; height: 44px; border-radius: 5px; background-color: #05080d; background-repeat: no-repeat; }
+.effectName { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
