@@ -6,6 +6,19 @@ import { bobjModelToGlb, parseBobjModel } from '../../../packages/retarget/src/b
 /** Library BOBJ models face +Z at rest like Minecraft20; native clips already carry the Root turn. */
 export const LIBRARY_GLB_OPTIONS = { faceForward: true } as const
 
+/**
+ * C25 display name for a storyboard node linked to a library character: "Tên vai · Shot NN".
+ * The shot number comes from the trailing number of the storyboard node name
+ * ("go 01_1" / "go 01" -> Shot 01); nodes without a trailing number keep the plain role name.
+ */
+export function libraryShotDisplayName(characterName: string, nodeName: string): string {
+  // Storyboard node names carry Topview's uniqueness suffixes ("go 01" -> "go 01_1");
+  // the shot number is the first trailing number group, before any _N suffixes.
+  const match = /(\d+)(?:_\d+)*\s*$/.exec(nodeName.trim())
+  if (!match) return characterName
+  return `${characterName} · Shot ${match[1]!.padStart(2, '0')}`
+}
+
 export function unpackLibraryGlb(bytes: Buffer) {
   if (bytes.readUInt32LE(0) !== 0x46546c67) throw new Error('Invalid library GLB')
   const size = bytes.readUInt32LE(12)

@@ -225,6 +225,9 @@ export class StudioSession implements StudioView {
   get libraryFlash(): number {
     return this.editor.libraryFlash
   }
+  get timelineRevealClip(): { clipId: string; nodeId: string; frameStart: number; frameEnd: number; nonce: number } | null {
+    return this.editor.timelineRevealClip
+  }
   get libraryContentWidth(): number {
     return this.editor.libraryContentWidth
   }
@@ -340,6 +343,8 @@ export class StudioSession implements StudioView {
   toggleLibrary = (): void => this.editor.toggleLibrary()
   setLibraryTab = (t: LibraryTab): void => this.editor.setLibraryTab(t)
   flashLibraryTab = (t: LibraryTab): void => this.editor.flashLibraryTab(t)
+  revealTimelineClip = (clip: { clipId: string; nodeId: string; frameStart: number; frameEnd: number }): void => this.editor.revealTimelineClip(clip)
+  clearTimelineReveal = (): void => this.editor.clearTimelineReveal()
   setLibraryContentWidth = (w: number): void => this.editor.setLibraryContentWidth(w)
   toggleInspector = (): void => this.editor.toggleInspector()
   openInspector = (): void => this.editor.openInspector()

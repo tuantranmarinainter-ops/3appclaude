@@ -613,6 +613,17 @@
   border: 1px solid transparent;
 }
 
+/* C27: nháy sáng clip vừa gán sau khi timeline reveal tới nó. */
+.t3d-timeline-clip-flash {
+  animation: t3d-timeline-clip-flash 0.45s ease-in-out 4;
+  z-index: 3;
+}
+
+@keyframes t3d-timeline-clip-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
+  50% { box-shadow: 0 0 0 3px #f5a623, 0 0 14px rgba(245, 166, 35, 0.8); }
+}
+
 .t3d-timeline-clip-camera {
   background: var(--t3d-clip-camera);
   color: var(--t3d-clip-camera-text);

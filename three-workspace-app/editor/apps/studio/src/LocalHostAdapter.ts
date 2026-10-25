@@ -164,11 +164,35 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     const project = (await loadUnifiedProject(documentId)).project
     const response = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operation: 'add-to-scene', projectId: project.projectId, expectedRevision: project.revision, charId }) })
-    const body = await response.json() as { revision?: number; error?: string }
+    const body = await response.json() as { revision?: number; error?: string; code?: string; existingNodeNames?: string[] }
+    if (response.status === 409 && body.code === 'LIBRARY_CHARACTER_ALREADY_IN_SCENE') {
+      // C25: the role already has nodes in this project; ask instead of silently duplicating.
+      const names = (body.existingNodeNames ?? []).join(', ')
+      const reuse = window.confirm(`Vai này đã có node trong cảnh (${names}).\nOK = Dùng node có sẵn (không thêm mới)\nHuỷ = Thêm lần xuất hiện mới`)
+      if (reuse) {
+        window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: project.revision } }))
+        window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+        return
+      }
+      const latest = (await loadUnifiedProject(documentId)).project
+      const retry = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'add-to-scene', projectId: latest.projectId, expectedRevision: latest.revision, charId, existingNodePolicy: 'create' }) })
+      const retryBody = await retry.json() as { revision?: number; error?: string }
+      if (!retry.ok || !Number.isInteger(retryBody.revision)) throw new Error(retryBody.error ?? 'Could not add the library Character')
+      this.revisions.set(latest.projectId, retryBody.revision!)
+      window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: latest.projectId, revision: retryBody.revision } }))
+      window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: latest.projectId } }))
+      return
+    }
     if (!response.ok || !Number.isInteger(body.revision)) throw new Error(body.error ?? 'Could not add the library Character')
     this.revisions.set(project.projectId, body.revision!)
     window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: body.revision } }))
     window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+  }
+
+  /** N1: the builder rail's "Gán animation" button opens the host assign drawer in the overlay. */
+  async assignAnimation(documentId: string, characterNodeId: string | null): Promise<void> {
+    window.dispatchEvent(new CustomEvent('bbs-assign-animation', { detail: { documentId, characterNodeId } }))
   }
 
   async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {
@@ -182,6 +206,9 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     this.revisions.set(project.projectId, result.revision)
     window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: result.revision } }))
     window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
+    // C27: reveal the freshly placed clip on the timeline.
+    const placement = result.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number } | undefined
+    if (placement) window.dispatchEvent(new CustomEvent('bbs-reveal-clip', { detail: { projectId: project.projectId, clipId: placement.clipId, nodeId: characterNodeId, frameStart: placement.frameStart, frameEnd: placement.frameEnd } }))
   }
 
   async openLibraryAction(documentId: string, actionUuid: string): Promise<void> {

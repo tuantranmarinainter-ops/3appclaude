@@ -10,12 +10,14 @@ import { useFlashOnChange } from './hooks/useFlashOnChange'
 import { usePanelResize } from './hooks/usePanelResize'
 import { IconRail } from './IconRail'
 import { IconChevron } from './icons'
+import { selectedTimelineNodeId } from '../timeline/utils'
 import { ObjectTree } from './ObjectTree'
 
 export function LeftRail(): ReactElement | null {
   const t = useT()
-  const { useStore } = useDirector()
+  const { useStore, adapter, documentId } = useDirector()
   const doc = useStore((s) => s.doc)
+  const selection = useStore((s) => s.selection)
   const film = useStore((s) => s.workspaceMode === 'film')
   const libraryOpen = useStore((s) => s.libraryOpen)
   const tab = useStore((s) => s.libraryTab)
@@ -50,6 +52,10 @@ export function LeftRail(): ReactElement | null {
           tabs={film ? ['object'] : TAB_ORDER}
           onSelect={film ? () => setLibraryTab('object') : setLibraryTab}
           onToggle={toggleLibrary}
+          assignAction={!film && adapter.assignAnimation ? {
+            label: t('library.assignAnimation'),
+            onClick: () => { void adapter.assignAnimation?.(documentId, doc ? selectedTimelineNodeId(doc, selection) : null).catch(() => undefined) },
+          } : undefined}
         />
         <div
           ref={contentRef}

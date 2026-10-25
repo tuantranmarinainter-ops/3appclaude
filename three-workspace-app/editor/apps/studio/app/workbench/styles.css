@@ -1041,3 +1041,41 @@
 .wb-audio-cues .wb-audio-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
 .wb-audio-cues ul { list-style: none; padding: 0; display: grid; gap: 4px; }
 .wb-audio-cues li { display: flex; justify-content: space-between; gap: 8px; }
+
+/* Shared highlight for cross-app actions (N1; C23 standardizes cross-app buttons on this class). */
+.bbs-cross-app-action {
+  border: 2px solid #f5a623 !important;
+  box-shadow: 0 0 0 1px rgba(245, 166, 35, 0.45), 0 0 10px rgba(245, 166, 35, 0.35);
+  color: #ffd58a !important;
+  background: rgba(245, 166, 35, 0.12);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.bbs-cross-app-action:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+
+/* N1 — AnimationAssignPanel */
+.wb-assign-panel { display: flex; flex-direction: column; gap: 12px; color: #e8e8e8; }
+.wb-assign-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.wb-assign-field select, .wb-assign-panel input[type="search"], .wb-assign-panel select {
+  background: #1c1c22; color: #e8e8e8; border: 1px solid #3a3a44; border-radius: 6px; padding: 6px 8px;
+}
+.wb-assign-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.wb-assign-row input[type="search"] { flex: 1 1 180px; }
+.wb-assign-link { border: 1px dashed #f5a623; border-radius: 8px; padding: 10px 12px; background: rgba(245, 166, 35, 0.07); }
+.wb-assign-link p { margin: 0 0 8px; font-size: 13px; }
+.wb-assign-placement label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.wb-assign-tabs { display: flex; gap: 6px; }
+.wb-assign-tabs button { background: #26262e; color: #cfcfcf; border: 1px solid #3a3a44; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+.wb-assign-tabs button.is-active { background: #f5a623; color: #1c1c22; border-color: #f5a623; font-weight: 600; }
+.wb-assign-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; }
+.wb-assign-list li { display: flex; gap: 10px; align-items: center; background: #1c1c22; border: 1px solid #2c2c35; border-radius: 8px; padding: 8px 10px; }
+.wb-assign-name { flex: 1 1 auto; font-size: 13px; }
+.wb-assign-meta { color: #9a9aa5; font-size: 12px; white-space: nowrap; }
+.wb-assign-list button { background: #f5a623; color: #1c1c22; border: none; border-radius: 6px; padding: 5px 14px; font-weight: 600; cursor: pointer; }
+.wb-assign-list button:disabled { opacity: 0.5; cursor: default; }
+.wb-assign-empty { color: #9a9aa5; font-size: 13px; }
+.wb-assign-footer { display: flex; justify-content: flex-end; }
+.wb-assign-message { margin: 0; font-size: 13px; color: #ffd58a; }
+.wb-assign-note { margin: 0; font-size: 13px; color: #9a9aa5; }

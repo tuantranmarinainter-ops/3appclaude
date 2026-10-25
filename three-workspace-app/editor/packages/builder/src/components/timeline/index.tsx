@@ -89,7 +89,12 @@ function SceneTimeline() {
     removeKeyframe,
     removeFcurveKeyframe,
     removeTransformKeysAtFrame,
+    clearTimelineReveal,
   } = useStore()
+  const timelineRevealClip = useStore((s) => s.timelineRevealClip)
+  const [onlySelectedCharacter, setOnlySelectedCharacter] = useState(false)
+  const trackAvailRef = useRef(0)
+  const revealNonceRef = useRef(0)
   const clampAvailableHeight = (value: number) => {
     const available = Math.max(140, window.innerHeight - 44 - 180)
     return clampTimelineHeight(Math.min(value, available))
@@ -152,6 +157,7 @@ function SceneTimeline() {
     ]) - tl.frameStart + 1
     : 1
   const trackAvail = viewW - LEFT_W - TRACK_INSET
+  trackAvailRef.current = trackAvail
   const scale = pxPerFrame
   const fitTimeline = () => {
     const next = timelineFitPx(frameCount, trackAvail)
@@ -259,6 +265,34 @@ function SceneTimeline() {
     return () => cancelAnimationFrame(frame)
   }, [selection, timelineOpen])
 
+  // C27: host vừa gán một clip — phóng tới khoảng clip, cuộn ngang tới clip và nháy sáng nó.
+  useEffect(() => {
+    if (!timelineRevealClip || timelineRevealClip.nonce === revealNonceRef.current) return
+    revealNonceRef.current = timelineRevealClip.nonce
+    const request = timelineRevealClip
+    const frames = Math.max(1, request.frameEnd - request.frameStart + 1)
+    if (trackAvailRef.current > 0) setPxPerFrame(trackAvailRef.current / frames)
+    let attempts = 0
+    let raf = 0
+    const tryReveal = () => {
+      const root = scrollRef.current
+      const el = root?.querySelector<HTMLElement>(`[data-clip-id="${CSS.escape(request.clipId)}"]`)
+      if (root && el) {
+        const rootRect = root.getBoundingClientRect()
+        const elRect = el.getBoundingClientRect()
+        root.scrollLeft = Math.max(0, root.scrollLeft + elRect.left - rootRect.left - LEFT_W - 24)
+        el.classList.add('t3d-timeline-clip-flash')
+        window.setTimeout(() => el.classList.remove('t3d-timeline-clip-flash'), 1900)
+        clearTimelineReveal()
+        return
+      }
+      if (++attempts < 12) raf = requestAnimationFrame(tryReveal)
+      else clearTimelineReveal()
+    }
+    raf = requestAnimationFrame(tryReveal)
+    return () => cancelAnimationFrame(raf)
+  }, [timelineRevealClip, clearTimelineReveal, setPxPerFrame])
+
   if (!doc || !tl) return <div className="t3d-timeline">{t('common.loading')}</div>
 
   const selectedNodeId = selectedTimelineNodeId(doc, selection)
@@ -269,10 +303,12 @@ function SceneTimeline() {
     if (row.kind === 'node') return true
     return false
   }
-  const rows = flattenTree(
+  const allRows = flattenTree(
     buildTree(doc, t, multiSelectedIds.length > 1 ? multiSelectedIds : selectedNodeId, userKeys),
     isOpen,
   )
+
+  const rows = onlySelectedCharacter && selectedNodeId ? allRows.filter((item) => item.row.nodeId === selectedNodeId) : allRows
 
   const trackW = frameCount * scale
   const frame = stage.currentFrame
@@ -484,6 +520,10 @@ function SceneTimeline() {
           <label className="t3d-timeline-toggle" title={t('timeline.chainMotionTitle')}>
             <input type="checkbox" checked={chainCameraMotion} onChange={toggleChainCameraMotion} />
             {t('timeline.chainMotion')}
+          </label>
+          <label className="t3d-timeline-toggle">
+            <input type="checkbox" checked={onlySelectedCharacter} onChange={(event) => setOnlySelectedCharacter(event.target.checked)} />
+            {t('timeline.onlySelectedCharacter')}
           </label>
         </div>
       </div>

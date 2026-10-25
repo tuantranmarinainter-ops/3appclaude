@@ -15,6 +15,7 @@ import { WorkspaceNavigationSlot } from './feature-navigation/WorkspaceNavigatio
 import { usePanelNavigation } from './feature-navigation/hooks/usePanelNavigation'
 import { RetargetWorkspace } from './RetargetWorkspace'
 import { AnimationWorkspace } from './AnimationWorkspace'
+import { AnimationAssignPanel } from './animation-assign'
 import { HostDrawer } from './HostDrawer'
 import { SceneRenderPanel } from './scene-render'
 import { FilmExportPanel } from './film-export'
@@ -93,7 +94,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign'
 
 function installDebugHooks(api: DirectorApi): void {
   const target = window as StudioWindow
@@ -128,6 +129,7 @@ export function StudioOverlay({
   const [projectState, setProjectState] = useState<Awaited<ReturnType<typeof loadUnifiedProject>> | null>(null)
   const [activeWorkspace, setActiveWorkspace] = useState<'scene' | 'retarget' | 'animation'>('scene')
   const [drawer, setDrawer] = useState<HostDrawerId | null>(null)
+  const [assignRequest, setAssignRequest] = useState<{ nodeId: string | null; nonce: number }>({ nodeId: null, nonce: 0 })
   const [historyBusy, setHistoryBusy] = useState(false)
   const [shellError, setShellError] = useState<string | null>(null)
   const [assetMessage, setAssetMessage] = useState('')
@@ -496,6 +498,50 @@ export function StudioOverlay({
     window.addEventListener('bbs-workspace-request', onWorkspaceRequest)
     return () => window.removeEventListener('bbs-workspace-request', onWorkspaceRequest)
   }, [openPanel, source])
+  // N1: the builder rail's "Gán animation" button reaches the overlay through the host adapter event.
+  useEffect(() => {
+    if (source !== 'unified') return
+    const onAssignRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ characterNodeId?: string | null }>).detail
+      setAssignRequest((current) => ({ nodeId: detail?.characterNodeId ?? null, nonce: current.nonce + 1 }))
+      setDrawer('assign')
+    }
+    window.addEventListener('bbs-assign-animation', onAssignRequest)
+    return () => window.removeEventListener('bbs-assign-animation', onAssignRequest)
+  }, [source])
+  // C27: after an assignment, reveal the new clip (scroll + zoom + flash) in the builder timeline.
+  // Sources: the assign panel and adapter dispatch 'bbs-reveal-clip'; returning from the Library
+  // page hands the clip over through sessionStorage because the workbench remounts.
+  useEffect(() => {
+    if (source !== 'unified') return
+    type RevealDetail = { projectId?: string; clipId: string; nodeId: string; frameStart: number; frameEnd: number }
+    const applyReveal = (detail: RevealDetail): boolean => {
+      if (detail.projectId && detail.projectId !== documentId) return false
+      const studio = getLiveStudio()
+      if (!studio || studio.documentId !== documentId) return false
+      studio.useStore.getState().revealTimelineClip({ clipId: detail.clipId, nodeId: detail.nodeId, frameStart: detail.frameStart, frameEnd: detail.frameEnd })
+      studio.stage.seek(detail.frameStart)
+      return true
+    }
+    const onReveal = (event: Event) => {
+      const detail = (event as CustomEvent<RevealDetail>).detail
+      if (detail && !applyReveal(detail)) {
+        try { sessionStorage.setItem('bbs-reveal-clip', JSON.stringify(detail)) } catch { /* storage unavailable */ }
+      }
+    }
+    window.addEventListener('bbs-reveal-clip', onReveal)
+    const consumeStored = () => {
+      try {
+        const raw = sessionStorage.getItem('bbs-reveal-clip')
+        if (!raw) return
+        const detail = JSON.parse(raw) as RevealDetail
+        if (applyReveal(detail)) sessionStorage.removeItem('bbs-reveal-clip')
+      } catch { /* ignore malformed handoff */ }
+    }
+    consumeStored()
+    const unsubscribe = subscribeLiveStudio(consumeStored)
+    return () => { window.removeEventListener('bbs-reveal-clip', onReveal); unsubscribe() }
+  }, [source, documentId])
   const openAnimationControls = () => {
     // E9: "Thêm animation" chỉ mở bảng điều khiển ngay tại workspace hiện tại
     // (vd tab Dựng cảnh), không ép chuyển sang tab Animation.
@@ -579,6 +625,9 @@ export function StudioOverlay({
             <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
+          <HostDrawer open={drawer === 'assign'} title={vi ? 'Gán animation' : 'Assign animation'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
+            <AnimationAssignPanel key={`${documentId}-${assignRequest.nonce}`} projectId={documentId} project={project} initialNodeId={assignRequest.nodeId} />
+          </HostDrawer>
         </>}
       </div>,
       document.body,
