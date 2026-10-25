@@ -142,7 +142,7 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
         </>
       )}
       <div className="wb-assign-footer">
-        <button type="button" className="bbs-cross-app-action wb-assign-library-btn" disabled={!node}
+        <button type="button" className="cross-app-button bbs-cross-app-action wb-assign-library-btn" disabled={!node}
           onClick={() => window.open(`/library?unified=${encodeURIComponent(projectId)}&assignTo=${encodeURIComponent(node?.nodeId ?? '')}`, '_blank', 'noopener')}>
           Mở trong Thư viện
         </button>
