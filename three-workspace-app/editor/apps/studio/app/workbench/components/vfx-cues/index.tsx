@@ -5,6 +5,8 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 import { useVfxCuePanel } from './hooks/useVfxCuePanel'
 import { useVfxCueHost } from './hooks/useVfxCueHost'
+import { EffectPicker } from './EffectPicker'
+import { EDITORIAL_TIMELINE_SHOT_ID, resolveEditorialShot } from './utils'
 import type { VfxCuePanelProps } from './types'
 import styles from './vfx-cues.module.css'
 
@@ -14,17 +16,20 @@ export function VfxCueHost({ projectId, project, active }: { projectId: string; 
   const [shotId, setShotId] = useState('')
   const editorial = host.project.scene.content.editorial
   const sequence = editorial?.sequences.find((item) => item.id === editorial.activeSequenceId) ?? editorial?.sequences[0]
-  const shot = sequence?.clips.find((item) => item.id === shotId) ?? sequence?.clips[0]
+  const clips = sequence?.clips ?? []
+  const shot = resolveEditorialShot(clips, shotId)
+  const timeline = host.project.scene.content.timeline
   const frameRange = shot ? { startFrame: Math.min(shot.sourceFrameStart, shot.sourceFrameEnd),
     endFrame: Math.max(shot.sourceFrameStart, shot.sourceFrameEnd) } : {
-    startFrame: host.project.scene.content.timeline.frameStart, endFrame: host.project.scene.content.timeline.frameEnd,
+    startFrame: timeline.frameStart, endFrame: timeline.frameEnd,
   }
   return <div>
-    {sequence && <label className={styles.shotSelect}>{vi ? 'Cảnh biên tập' : 'Editorial shot'}
-      <select value={shot?.id ?? ''} onChange={(event) => setShotId(event.target.value)}>
-        {sequence.clips.map((clip, index) => <option key={clip.id} value={clip.id}>{vi ? 'Cảnh' : 'Shot'} {index + 1} · {clip.sourceFrameStart}–{clip.sourceFrameEnd}</option>)}
+    <label className={styles.shotSelect}>{vi ? 'Cảnh biên tập' : 'Editorial shot'}
+      <select value={shot?.id ?? EDITORIAL_TIMELINE_SHOT_ID} onChange={(event) => setShotId(event.target.value)}>
+        <option value={EDITORIAL_TIMELINE_SHOT_ID}>{vi ? 'Cảnh mặc định' : 'Default shot'} · {timeline.frameStart}–{timeline.frameEnd}</option>
+        {clips.map((clip, index) => <option key={clip.id} value={clip.id}>{vi ? 'Cảnh' : 'Shot'} {index + 1} · {clip.sourceFrameStart}–{clip.sourceFrameEnd}</option>)}
       </select>
-    </label>}
+    </label>
     {host.loading && <p role="status">{vi ? 'Đang tải hiệu ứng…' : 'Loading effects…'}</p>}
     {host.error && <p role="alert">{host.error}</p>}
     <VfxCuePanel key={`${sequence?.id ?? 'timeline'}:${shot?.id ?? 'all'}`} project={host.project} cues={host.cues} frameRange={frameRange}
@@ -52,6 +57,7 @@ export function VfxCuePanel(props: VfxCuePanelProps) {
     <fieldset className={styles.form} disabled={busy}>
       <legend>{editingId ? (vi ? 'Sửa hiệu ứng' : 'Edit effect') : (vi ? 'Thêm hiệu ứng' : 'Add effect')}</legend>
       <label>{vi ? 'Tên hiệu ứng App 4' : 'App 4 effect name'}<input value={form.effect} maxLength={128} onChange={(event) => setField('effect', event.target.value)} placeholder="aura01" /></label>
+      <EffectPicker value={form.effect} onPick={(name) => setField('effect', name)} vi={vi} />
       <div className={styles.grid}>
         <label>{vi ? 'Frame đầu' : 'Start frame'}<input type="number" step="1" value={form.frameStart} onChange={(event) => setField('frameStart', Number(event.target.value))} /></label>
         <label>{vi ? 'Frame cuối' : 'End frame'}<input type="number" step="1" value={form.frameEnd} onChange={(event) => setField('frameEnd', Number(event.target.value))} /></label>
