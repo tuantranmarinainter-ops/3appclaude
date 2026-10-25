@@ -169,9 +169,15 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   - Có lối "Thêm vào cảnh App 2" ngay ở danh sách động tác / "Bộ của nhân vật", không bắt phải sang mục Nhân vật.
 - **C24 — App 5: đánh dấu sao + tab "Yêu thích" trong danh sách animation.** Ở danh sách xem tất cả động tác: nút ☆/★ từng animation và
   tab/bộ lọc **Yêu thích**. Dùng lại trường `favorite` của thư viện (F1/C18), thống nhất với dấu sao của App 1.
-- (Chờ người dùng xác nhận) **C25 — App 2: nối nhân vật storyboard có sẵn với nhân vật thư viện.** Project Tập 15 có 29 nhân vật
-  storyboard (`go 01`, `den 01`…) không có `libraryCharacterId`, nên "Lấy từ kho…" không hiện; hiện chỉ có cách thêm nhân vật thư viện
-  mới vào cảnh.
+- **C25 — App 2: nối nhân vật storyboard có sẵn với nhân vật thư viện** (người dùng xác nhận 2026-10-25: "Gỗ Xưa chính là go 01, duy
+  nhất"). Project Tập 15 có các node storyboard theo từng shot (`go 01_1`, `go 04_1`… đều là **một** nhân vật Gỗ Xưa; tương tự `hero xx`,
+  `den xx`, `ga xx`, `mystery xx`) không có `libraryCharacterId`, nên "Lấy từ kho…" không hiện. Chúng dùng model tạm: Gỗ Xưa storyboard =
+  Man builtin tô xanh, **Mixamo65 66 xương**, còn Gỗ Xưa thư viện = **bộ xương gốc Verity 85 xương (có Jaw)** → Action thư viện không đặt
+  được lên `go 01_1` (đo trên project `7090a526…` rev 274). Hiện chỉ có cách thêm nhân vật thư viện mới (`Gỗ Xưa_1`) đứng riêng.
+  Cần lệnh "Nối với nhân vật thư viện…" (chọn một hoặc nhiều node cùng một vai): thay model bằng base model riêng của nhân vật thư viện,
+  giữ vị trí/hướng/khung shot của từng node, gắn `libraryCharacterId`; clip cũ (Mixamo65/V9.12) được chuyển sang xương mới hoặc thay
+  bằng Nháp cùng tên trong bộ của nhân vật, báo rõ clip nào không chuyển được; có Hoàn tác một bước. Sau khi nối, "Lấy từ kho…" và
+  "Thêm animation" dùng được trực tiếp trên `go 01_1`.
 - **C26 — App 2: nút "Chỉ hiện nhân vật" trên khung 3D.** Hiện chỉ ẩn được từng node (nút con mắt trong cây "Đối tượng",
   `packages/builder/src/components/leftrail/ObjectTree.tsx`, lưu `visible: false` vào project); Tập 15 có 20 khối `set_*` nên phải
   bấm 20 lần. Cần: một nút bật/tắt (kèm phím tắt) ẩn toàn bộ prop/hậu cảnh, chỉ đổi cách xem (không ghi project, không ảnh hưởng
