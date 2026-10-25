@@ -1,4 +1,5 @@
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
+import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
 import { inspectFilmActorTransform } from './filmManifest'
 import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { reviewStatusForSequence } from './sceneReview'
@@ -21,12 +22,21 @@ export interface FilmPreflightArgs extends FilmSamplingArgs {
   propBoneCounts?: Record<string, number>
   /** CPU skeleton samples; omitted when source evaluation is unavailable. */
   footSamples?: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>>
+  /**
+   * Host-supplied reason codes for why skeleton sampling did not run (inspection issue codes such as
+   * TICK_LIMIT or SEQUENCE_INVALID, ASSET_FILE_MISSING, ...). When present, missing foot samples are
+   * explained by those causes — the checks they block are already reported — instead of a misleading
+   * CHARACTER_TRANSFORM_UNAVAILABLE.
+   */
+  samplingBlockers?: string[]
+  /** Message from a skeleton sampling attempt that ran but threw; reported verbatim as the failure cause. */
+  samplingError?: string
 }
 
 export interface FilmPreflightResult { errors: FilmPreflightIssue[]; warnings: FilmPreflightIssue[] }
 
 /** Runs the same preflight independently for each planned series segment and annotates every issue. */
-export function filmSeriesPreflight(segments: readonly FilmSeriesSegment[], evidence: ReadonlyMap<number, Pick<FilmPreflightArgs, 'assetAvailability' | 'propBoneCounts' | 'footSamples'>> = new Map()): FilmPreflightResult {
+export function filmSeriesPreflight(segments: readonly FilmSeriesSegment[], evidence: ReadonlyMap<number, Pick<FilmPreflightArgs, 'assetAvailability' | 'propBoneCounts' | 'footSamples' | 'samplingBlockers' | 'samplingError'>> = new Map()): FilmPreflightResult {
   const result: FilmPreflightResult = { errors: [], warnings: [] }
   for (const segment of segments) {
     const entry = filmPreflight(segment.project, { ...segment.exportArgs, ...evidence.get(segment.order) })
@@ -90,10 +100,36 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
   }
   const inspection = inspectProjectFilm(project, args, { includePropBudget: true, propBoneCounts: args.propBoneCounts })
   for (const validation of inspection.issues) {
-    const [vi, en] = samplingMessages[validation.code] ?? [validation.message, validation.message]
+    let code = `FILM_${validation.code}`
+    let [vi, en] = samplingMessages[validation.code] ?? [validation.message, validation.message]
+    if (validation.code === 'TICK_LIMIT' && args.range) {
+      // One inspection code covers two different causes; name the real one so the user can fix it.
+      const fps = project.scene.content.timeline.fps
+      const frames = args.range.endFrame - args.range.startFrame + 1
+      const ticks = frames / fps * FILM_TICK_RATE
+      if (Number.isFinite(ticks) && Math.abs(ticks - Math.round(ticks)) > 1e-7) {
+        code = 'FILM_TICK_GRID'
+        vi = `Khoảng xuất ${args.range.startFrame}–${args.range.endFrame} lệch lưới ${FILM_TICK_RATE} tick: ${frames} frame ở ${fps} fps = ${ticks.toFixed(2)} tick, không phải số nguyên. Hãy chọn độ dài khoảng là bội của ${filmGridFrameStep(fps)} frame (panel Xuất tự làm tròn khi xuất Film).`
+        en = `Export range ${args.range.startFrame}–${args.range.endFrame} is off the ${FILM_TICK_RATE} Hz tick grid: ${frames} frames at ${fps} fps = ${ticks.toFixed(2)} ticks, not a whole number. Use a range length that is a multiple of ${filmGridFrameStep(fps)} frames (the export panel rounds for single Films).`
+      } else if (Number.isFinite(ticks) && ticks > FILM_MAX_TICKS) {
+        vi = `Đoạn xuất dài ${Math.round(ticks)} tick, vượt giới hạn ${FILM_MAX_TICKS} tick của BBS Film; hãy rút ngắn khoảng xuất hoặc xuất theo chế độ Cả tập.`
+        en = `The export spans ${Math.round(ticks)} ticks, over the BBS Film limit of ${FILM_MAX_TICKS} ticks; shorten the range or export the entire episode.`
+      }
+    }
     const character = validation.characterId ? project.characters[validation.characterId] : undefined
     const nodeId = character?.nodeId ?? validation.propId
-    addError(issue(`FILM_${validation.code}`, vi, en, nodeId ? { nodeId } : {}))
+    addError(issue(code, vi, en, nodeId ? { nodeId } : {}))
+  }
+  // An existing sequence with no shots is not "invalid": say so, and drop the misleading camera-limit error
+  // the inspection adds because it cannot see the sequence at all in that state.
+  const targetSequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
+  if (targetSequence && targetSequence.clips.length === 0 && result.errors.some((entry) => entry.code === 'FILM_SEQUENCE_INVALID')) {
+    for (let index = result.errors.length - 1; index >= 0; index--) {
+      if (result.errors[index]!.code === 'FILM_SEQUENCE_INVALID' || result.errors[index]!.code === 'FILM_CAMERA_LIMIT') result.errors.splice(index, 1)
+    }
+    addError(issue('FILM_SEQUENCE_EMPTY',
+      'Chuỗi camera chưa có shot nào. Hãy bấm nút "Tạo shot camera cho khoảng này" trong panel Xuất (shot Main Camera sẽ phủ đúng khoảng đang chọn), hoặc dựng shot trong trình biên tập chuỗi camera.',
+      'The camera sequence has no shots yet. Use the "Create a camera shot for this range" button in the export panel (a Main Camera shot covering the selected range), or build shots in the sequence editor.'))
   }
 
   const range = args.range
@@ -145,13 +181,21 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
     result.warnings.push(issue('VFX_BBS_MISSING', `Hiệu ứng ${raw.effect} chưa được xác nhận có bản dùng được trong BBS FS.`, `Effect ${raw.effect} has no confirmed BBS FS representation.`, { clipId: raw.id }))
   }
 
+  if (args.samplingError) {
+    addError(issue('FILM_SAMPLING_FAILED', `Không lấy được mẫu skeleton để kiểm tra biến đổi và chân: ${args.samplingError}`, `Skeleton sampling for preflight failed: ${args.samplingError}`))
+  }
+  // When sampling never ran because a precondition failed (off-grid range, empty sequence, missing
+  // files, ...), those causes are already reported above; blaming the Character's transform misleads.
+  const samplingExplained = !!args.samplingError || !!args.samplingBlockers?.length
   for (const characterId of selectedCharacters) {
     const character = project.characters[characterId]
     if (!character) continue
     const samples = args.footSamples?.[characterId]
     if (!samples?.length) {
-      addError(issue('CHARACTER_TRANSFORM_UNAVAILABLE', `Không thể đo biến đổi thực của ${character.name}; chưa thể xác nhận tỉ lệ/shear.`, `The world transform for ${character.name} could not be measured, so scale and shear cannot be checked.`, { nodeId: character.nodeId }))
-      result.warnings.push(issue('FOOT_EVALUATION_UNAVAILABLE', `Không đủ dữ liệu skeleton đo chân của ${character.name}; cần kiểm tra vị trí sàn trong khung nhìn.`, `Skeleton foot data for ${character.name} is unavailable; check floor contact in the preview.`, { nodeId: character.nodeId }))
+      if (!samplingExplained) {
+        addError(issue('CHARACTER_TRANSFORM_UNAVAILABLE', `Không thể đo biến đổi thực của ${character.name}; chưa thể xác nhận tỉ lệ/shear.`, `The world transform for ${character.name} could not be measured, so scale and shear cannot be checked.`, { nodeId: character.nodeId }))
+        result.warnings.push(issue('FOOT_EVALUATION_UNAVAILABLE', `Không đủ dữ liệu skeleton đo chân của ${character.name}; cần kiểm tra vị trí sàn trong khung nhìn.`, `Skeleton foot data for ${character.name} is unavailable; check floor contact in the preview.`, { nodeId: character.nodeId }))
+      }
       continue
     }
     const seenTransformCodes = new Set<string>()

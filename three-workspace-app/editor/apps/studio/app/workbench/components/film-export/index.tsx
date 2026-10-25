@@ -58,6 +58,17 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
         <label>Aspect<input type="number" min="0.01" step="0.01" value={state.viewportAspect} onChange={(event) => state.setViewportAspect(Number(event.target.value))} disabled={state.busy} /></label>
         <label>{vi ? 'Tên gói' : 'Package name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} disabled={state.busy} maxLength={state.exportMode === 'series' ? 56 : 64} /></label>
         <small>{vi ? 'Xuất Film editable cho BBS FS 2.7. Chế độ Cả tập tự chia theo giới hạn worker, chỉ cắt ở ranh giới cảnh.' : 'Exports editable Film for BBS FS 2.7. Entire episode splits at shot boundaries to fit worker limits.'}</small>
+        {state.rangeNotice && <p role="status">{vi
+          ? `Đã tự làm tròn khoảng xuất ${state.rangeNotice.from.startFrame}–${state.rangeNotice.from.endFrame} → ${state.rangeNotice.to.startFrame}–${state.rangeNotice.to.endFrame} để khớp lưới 20 tick của BBS Film.`
+          : `Export range rounded ${state.rangeNotice.from.startFrame}–${state.rangeNotice.from.endFrame} → ${state.rangeNotice.to.startFrame}–${state.rangeNotice.to.endFrame} to fit the BBS Film 20 Hz tick grid.`}</p>}
+        {state.sequenceEmpty && (state.hasCamera
+          ? <div className="wb-scene-render-actions">
+              <button type="button" onClick={() => void state.createCameraShot()} disabled={state.busy || state.creatingShot}>
+                {state.creatingShot ? (vi ? 'Đang tạo shot…' : 'Creating shot…') : (vi ? 'Tạo shot camera cho khoảng này' : 'Create a camera shot for this range')}
+              </button>
+              <span>{vi ? 'Chuỗi camera đang rỗng; shot Main Camera sẽ phủ đúng khoảng xuất hiện tại.' : 'The camera sequence is empty; a Main Camera shot will cover the current export range.'}</span>
+            </div>
+          : <p role="alert">{vi ? 'Chuỗi camera đang rỗng và dự án chưa có camera nào; hãy thêm một camera vào cảnh trước khi xuất.' : 'The camera sequence is empty and the project has no camera; add a camera to the scene before exporting.'}</p>)}
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : state.checkingPreflight ? (vi ? 'Đang kiểm tra…' : 'Checking…') : (vi ? 'Xuất gói' : 'Export package')}</button>
           {state.busy && state.activeJobId && <button type="button" onClick={() => void state.cancel()}>{vi ? 'Hủy' : 'Cancel'}</button>}

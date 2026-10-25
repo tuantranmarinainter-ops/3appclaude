@@ -352,8 +352,19 @@ async function collectFilmPreflightEvidence(project: UnifiedProject, args: FilmP
   }
   const footSamples: NonNullable<FilmPreflightArgs['footSamples']> = {}
   const sampling = inspectProjectFilm(project, args, { propBoneCounts })
+  const assetsAvailable = Object.values(assetAvailability).every(Boolean)
   const canSample = sampling.durationTicks !== undefined && sampling.durationTicks <= 255 &&
-    sampling.models.length === (Array.isArray(args.characterIds) ? args.characterIds.length : -1) && Object.values(assetAvailability).every(Boolean)
+    sampling.models.length === (Array.isArray(args.characterIds) ? args.characterIds.length : -1) && assetsAvailable
+  // When sampling cannot run, hand the preflight the real causes so it does not blame the Characters'
+  // transforms; when it runs but throws, hand over the error instead of swallowing it silently.
+  const samplingBlockers: string[] = []
+  if (!canSample) {
+    for (const blocker of sampling.issues.map((item) => item.code)) if (!samplingBlockers.includes(blocker)) samplingBlockers.push(blocker)
+    if (sampling.durationTicks !== undefined && sampling.durationTicks > 255 && !samplingBlockers.includes('TICK_LIMIT')) samplingBlockers.push('TICK_LIMIT')
+    if (!assetsAvailable && !samplingBlockers.includes('ASSET_FILE_MISSING')) samplingBlockers.push('ASSET_FILE_MISSING')
+    if (!samplingBlockers.length) samplingBlockers.push('SAMPLING_PRECONDITIONS_UNMET')
+  }
+  let samplingError: string | undefined
   if (canSample && Array.isArray(args.characterIds) && args.characterIds.length) {
     try {
       const evaluationScene = projectEvaluationScene(project)
@@ -375,9 +386,9 @@ async function collectFilmPreflightEvidence(project: UnifiedProject, args: FilmP
             airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
         }
       }
-    } catch { /* filmPreflight reports unavailable transform evidence for this selection. */ }
+    } catch (error) { samplingError = error instanceof Error ? error.message : String(error) }
   }
-  return { assetAvailability, propBoneCounts, footSamples }
+  return { assetAvailability, propBoneCounts, footSamples, samplingBlockers, ...(samplingError ? { samplingError } : {}) }
 }
 
 function applyCameraShot(document: UnifiedProject['scene'], sequenceId: string, clip: EditSequenceClip): { document: UnifiedProject['scene']; shotId: string } {
@@ -1322,7 +1333,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         const preflight = { errors: [{ code: 'FILM_SERIES_PLAN_INVALID', message: { vi: message, en: message } }], warnings: [] as FilmPreflightIssue[] }
         return success(envelope.requestId, id, project.revision, { valid: false, sourceRevision: project.revision, viewportAspect: effectiveAspect, preflight })
       }
-      const evidence = new Map<number, { assetAvailability: Record<string, boolean>; propBoneCounts: Record<string, number>; footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>> }>()
+      const evidence = new Map<number, { assetAvailability: Record<string, boolean>; propBoneCounts: Record<string, number>; footSamples: Record<string, Array<{ frame: number; leftY?: number; rightY?: number; airborne?: boolean; actorWorldMatrix?: number[] }>>; samplingBlockers: string[]; samplingError?: string }>()
       for (const segment of plan) {
         const segmentEvidence = await collectFilmPreflightEvidence(segment.project, segment.exportArgs)
         evidence.set(segment.order, segmentEvidence)
