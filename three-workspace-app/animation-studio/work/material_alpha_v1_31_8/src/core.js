@@ -26,7 +26,8 @@ export function makeRig(root,name='Rig',asset=null){
  const mix=major.filter(n=>names.includes(n)).length;
  const meta=records.some(r=>/^spine(\.|$)/i.test(r.name))&&records.some(r=>/^upper_arm\.L$/i.test(r.name))&&records.some(r=>/^thigh\.R$/i.test(r.name));
  const iclone=names.includes('ccbaseboneroot')&&names.includes('ccbasehip');
- const profile=mix===major.length?'Mixamo':meta?'Metarig':iclone?'iClone':'Khác';
+ const mc20=['anchor','body','lowbody','head','leftarm','lowleftarm','lowleftarmend','rightarm','lowrightarm','lowrightarmend','rightleg','lowlegright','leftleg','lowleftleg','miscbone1','miscbone2','miscbone3','miscgbone1','miscgbone2','miscgbone3'];
+ const profile=names.length===20&&mc20.every(n=>names.includes(n))?'Minecraft20':mix===major.length?'Mixamo':meta?'Metarig':iclone?'iClone':'Khác';
  const warnings=[];if(profile==='Mixamo'&&records.length!==65)warnings.push('Profile Mixamo theo khớp chính; '+records.length+' bone vật lý, chưa đúng 65.');
  const duplicates=records.filter((r,i)=>records.findIndex(x=>x.name===r.name)!==i);if(duplicates.length)warnings.push(duplicates.length+' tên trùng: '+duplicates.slice(0,6).map(r=>r.name).join(', ')+(duplicates.length>6?' … Chọn armature để phân biệt.':''));
  for(const r of records){if([...r.rest.p,...r.rest.q,...r.rest.s].some(v=>!Number.isFinite(v)))throw Error('Transform không hữu hạn tại '+r.name);if(r.rest.s.some(v=>v<=0)||Math.max(...r.rest.s)-Math.min(...r.rest.s)>1e-4)warnings.push('Scale âm / không đều: '+r.name);}
@@ -79,6 +80,14 @@ export function validateProject(p,rig){
  const result=clone(p);result.ikOptions=p.ikOptions||{};result.skinAdjustments=S.validate(p.skinAdjustments,rig);return result;
 }
 export function chainSpecs(rig){
+ if(rig.profile==='Minecraft20'){
+  const find=name=>rig.records.find(r=>canon(r.name)===canon(name));
+  return [['leftArm','left_arm','low_left_arm','low_left_arm.end'],['rightArm','right_arm','low_right_arm','low_right_arm.end'],['leftLeg','left_leg','low_left_leg'],['rightLeg','right_leg','low_leg_right']].map(([id,a,b,end])=>{
+   const upper=find(a),lower=find(b);let tip=end?find(end):null;
+   if(!tip&&lower&&upper){const o=lower.o.mc20IKTip||new T.Object3D();o.name='MC20 IK endpoint';if(!o.parent){lower.o.add(o);const p=lower.o.getWorldPosition(new T.Vector3()).multiplyScalar(2).sub(upper.o.getWorldPosition(new T.Vector3()));o.position.copy(lower.o.worldToLocal(p));lower.o.mc20IKTip=o;}tip={id:lower.id,name:lower.name,o,parent:lower.id,virtual:true};}
+   return{id,label:id,root:rig.roots[0].id,a:upper,b:lower,c:tip,mode:'fk',virtualEnd:!end};
+  }).filter(c=>c.a&&c.b&&c.c);
+ }
  const sets=rig.roots.length>1?rig.roots.map(root=>({root:root.id,records:descendants(rig,root.id)})):[{root:rig.roots[0].id,records:rig.records}];
  const specs=[['leftArm','Tay trái','LeftArm','LeftForeArm','LeftHand','upper_arm.L','forearm.L','hand.L'],['rightArm','Tay phải','RightArm','RightForeArm','RightHand','upper_arm.R','forearm.R','hand.R'],['leftLeg','Chân trái','LeftUpLeg','LeftLeg','LeftFoot','thigh.L','shin.L','foot.L'],['rightLeg','Chân phải','RightUpLeg','RightLeg','RightFoot','thigh.R','shin.R','foot.R']];
  const aliases={LeftArm:'Upper_Arm_L',LeftForeArm:'Lower_Arm_L',LeftHand:'Hand_L',RightArm:'Upper_Arm_R',RightForeArm:'Lower_Arm_R',RightHand:'Hand_R',LeftUpLeg:'Upper_Leg_L',LeftLeg:'Lower_Leg_L',LeftFoot:'Foot_L',RightUpLeg:'Upper_Leg_R',RightLeg:'Lower_Leg_R',RightFoot:'Foot_R'};
@@ -96,7 +105,7 @@ export function solveIK(rig,c){
  const q1=new T.Quaternion().setFromUnitVectors(B.clone().sub(A).normalize(),mid.clone().sub(A).normalize()).multiply(a.getWorldQuaternion(new T.Quaternion()));if(c.bendAxisLocal){const axis=mid.clone().sub(A).normalize(),normal=c.bendAxisLocal.clone().applyQuaternion(q1);normal.addScaledVector(axis,-normal.dot(axis));const desired=bend.clone().addScaledVector(axis,-bend.dot(axis));if(normal.lengthSq()>1e-10&&desired.lengthSq()>1e-10){normal.normalize();desired.normalize();const angle=Math.atan2(axis.dot(normal.clone().cross(desired)),normal.dot(desired));q1.premultiply(new T.Quaternion().setFromAxisAngle(axis,angle));}}setWorldQ(a,q1);
  const nowB=b.getWorldPosition(new T.Vector3()),nowC=e.getWorldPosition(new T.Vector3());
  const q2=new T.Quaternion().setFromUnitVectors(nowC.sub(nowB).normalize(),end.sub(nowB).normalize()).multiply(b.getWorldQuaternion(new T.Quaternion()));setWorldQ(b,q2);
- setWorldQ(e,effective.q);c.outOfReach=goal.distanceTo(A)>l1+l2;
+ if(!c.virtualEnd)setWorldQ(e,effective.q);c.outOfReach=goal.distanceTo(A)>l1+l2;
 }
 export function suggestMapping(src,dst){const mapping={};const aliases={'upperarml':'leftarm','forearml':'leftforearm','handl':'lefthand','thighl':'leftupleg','shinl':'leftleg','footl':'leftfoot','upperarmr':'rightarm','forearmr':'rightforearm','handr':'righthand','thighr':'rightupleg','shinr':'rightleg','footr':'rightfoot','spine':'hips','spine001':'spine','spine002':'spine1','spine003':'spine2','spine004':'neckbase','spine005':'neck','spine006':'head','shoulderl':'leftshoulder','shoulderr':'rightshoulder','toel':'lefttoebase','toer':'righttoebase'};
  const role=(r,rig)=>rig.profile==='Metarig'?(aliases[canon(r.name)]||canon(r.name)):canon(r.name);
