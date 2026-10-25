@@ -21,6 +21,7 @@ import { useViewportInteractions } from './hooks/useViewportInteractions'
 import { useSceneViewFilter } from './hooks/useSceneViewFilter'
 import { GizmoHoverTip } from './GizmoHoverTip'
 import { FilmFrameOverlay } from './FilmFrameOverlay'
+import { GroundViewControls } from './GroundViewControls'
 
 export function Viewport() {
   const t = useT()
@@ -295,6 +296,7 @@ export function Viewport() {
       )}
       {!film ? (
         <div className="t3d-viewport-bottom">
+          <GroundViewControls />
           <div className="t3d-gizmo-toolbar" data-tutorial-anchor="tools">
             <QuickAddMenu />
             <div className="t3d-gizmo-group">

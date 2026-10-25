@@ -12,6 +12,8 @@ import { isTemplateShared } from './templateShared'
 
 export const GROUND_NAME = 't3d-ground'
 export const GRID_NAME = 't3d-grid'
+/** Mặt sàn UV checker của lớp xem N6 (engine/objects/groundChecker.ts); trạng thái tính từ tài liệu không bao giờ hiện nó. */
+export const GROUND_CHECKER_NAME = 't3d-ground-checker'
 export const CHARACTER_LABEL_KIND = 'characterLabel'
 export const OBJECT_LABEL_KIND = 'objectLabel'
 /** 可见地面边长（米）。与地面网格外沿重合，路径绘制的有效范围必须与它一致。 */
@@ -42,6 +44,10 @@ export function applyEnvironment(graph: StageGraph): void {
   if (!doc) return
   applySkyColor(graph.scene, doc)
   ensureGround(graph.scene, doc)
+  // Sàn checker chỉ được lớp xem bật ngay trước khi vẽ khung tương tác; mọi lần tính từ tài liệu đều tắt nó,
+  // để đường xuất/thumbnail (evaluate rồi render thẳng) không bao giờ dính checker.
+  const checker = sceneChildByName(graph.scene, GROUND_CHECKER_NAME)
+  if (checker) checker.visible = false
   const byId: NodeLookup = new Map(doc.content.nodes.map((n) => [n.id, n]))
   applyCharacterLook(graph, doc, byId)
   applyPropAndPrimitiveLook(graph, byId)

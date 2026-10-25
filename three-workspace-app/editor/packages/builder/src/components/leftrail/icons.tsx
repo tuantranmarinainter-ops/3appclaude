@@ -211,6 +211,15 @@ export function IconTimeline({ className }: { className?: string }): ReactElemen
   )
 }
 
+export function IconGrid({ className }: { className?: string }): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="4" y="4" width="16" height="16" rx="1" />
+      <path d="M9.3 4v16M14.7 4v16M4 9.3h16M4 14.7h16" />
+    </Svg>
+  )
+}
+
 export function IconPlus({ className }: { className?: string }): ReactElement {
   return (
     <Svg className={className}>
