@@ -237,8 +237,10 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
     setError(''); setMessage('')
   }
   function closeControls() { onClose() }
-  return <div className="wb-animation-layout" hidden={!active}>
-    <div className="wb-animation-editor" role="region" aria-label={vi ? 'Trình tạo animation' : 'Animation Creation'}>{project && animationMounted && <AnimationCreationPanel projectId={projectId} project={project} active={active} onProject={setProject} onEditorDirty={onEditorDirty} />}</div>
+  // E9: khi bảng "Thêm animation" được mở từ workspace khác (vd Dựng cảnh), layout phải
+  // hiện để dialog trong đó hiển thị được, nhưng vùng trình tạo animation vẫn ẩn.
+  return <div className="wb-animation-layout" hidden={!active && !controlsOpen}>
+    <div className="wb-animation-editor" hidden={!active} role="region" aria-label={vi ? 'Trình tạo animation' : 'Animation Creation'}>{project && animationMounted && <AnimationCreationPanel projectId={projectId} project={project} active={active} onProject={setProject} onEditorDirty={onEditorDirty} />}</div>
     <HostDrawer open={controlsOpen} title={vi ? 'Animation' : 'Animation'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-animation" onClose={closeControls}>
     <section className="wb-animation-panel" aria-labelledby="wb-animation-title">
     <div className="wb-retarget-session-heading"><div><h1 id="wb-animation-title">{vi ? 'Thêm animation' : 'Add animation'}</h1><p>{vi ? 'Chọn animation và nhân vật cùng bộ xương.' : 'Choose an animation and a character with the same skeleton.'}</p></div><span>{clips.length} {vi ? 'clip' : 'clips'}</span></div>
