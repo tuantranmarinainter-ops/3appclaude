@@ -335,6 +335,8 @@ export const vi: LocaleDict = {
     "autoKeyframe": "Khung hình tự động",
     "frame": "Khung",
     "zoom": "Phóng",
+    "fitShot": "Vừa shot",
+    "fitAll": "Vừa toàn bộ",
     "pxPerFrame": "{{value}}px/khung",
     "userKeys": "Ghi đè khung khóa người dùng",
     "chainMotion": "Nối chuyển động máy",

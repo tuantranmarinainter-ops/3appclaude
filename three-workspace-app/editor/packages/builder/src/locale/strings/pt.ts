@@ -335,6 +335,8 @@ export const pt: LocaleDict = {
     "autoKeyframe": "Quadro-chave auto",
     "frame": "Quadro",
     "zoom": "Zoom",
+    "fitShot": "Ajustar à cena",
+    "fitAll": "Ajustar tudo",
     "pxPerFrame": "{{value}}px/quadro",
     "userKeys": "Substituição de quadro-chave do usuário",
     "chainMotion": "Encadear movimentos de câmera",

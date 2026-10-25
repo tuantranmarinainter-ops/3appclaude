@@ -335,6 +335,8 @@ export const ar: LocaleDict = {
     "autoKeyframe": "إطار مفتاحي تلقائي",
     "frame": "إطار",
     "zoom": "تكبير",
+    "fitShot": "ملاءمة اللقطة",
+    "fitAll": "ملاءمة الكل",
     "pxPerFrame": "{{value}}px/إطار",
     "userKeys": "تجاوز إطار مفتاحي للمستخدم",
     "chainMotion": "تسلسل حركات الكاميرا",

@@ -335,6 +335,8 @@ export const es: LocaleDict = {
     "autoKeyframe": "Fotograma clave auto",
     "frame": "Fotograma",
     "zoom": "Zoom",
+    "fitShot": "Ajustar toma",
+    "fitAll": "Ajustar todo",
     "pxPerFrame": "{{value}}px/fotograma",
     "userKeys": "Sustitución de fotograma clave del usuario",
     "chainMotion": "Encadenar movimientos de cámara",

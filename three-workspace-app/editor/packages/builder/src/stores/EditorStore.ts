@@ -18,6 +18,9 @@ import type {
 export const TIMELINE_HEIGHT_MIN = 140
 export const TIMELINE_HEIGHT_MAX = 560
 export const TIMELINE_HEIGHT_DEFAULT = 320
+/** Zoom timeline cảnh: px cho một frame. Max 60 để "Vừa shot" một clip 18 frame vẫn nhìn rõ từng frame. */
+export const PX_PER_FRAME_MIN = 0.2
+export const PX_PER_FRAME_MAX = 60
 export const FILM_TIMELINE_HEIGHT_MIN = 390
 // 上限按「机位面板 + 轨道刚好被片段填满」定：再高只会在片段上下留空带。
 export const FILM_TIMELINE_HEIGHT_MAX = 530
@@ -329,7 +332,7 @@ export class EditorStore {
   }
 
   setPxPerFrame(v: number): void {
-    this.pxPerFrame = Math.min(Math.max(v, 0.2), 20)
+    this.pxPerFrame = Math.min(Math.max(v, PX_PER_FRAME_MIN), PX_PER_FRAME_MAX)
   }
 
   toggleUserKeys(): void {

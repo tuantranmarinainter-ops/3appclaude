@@ -335,6 +335,8 @@ export const ko: LocaleDict = {
     "autoKeyframe": "자동 키프레임",
     "frame": "프레임",
     "zoom": "줌",
+    "fitShot": "샷에 맞추기",
+    "fitAll": "전체에 맞추기",
     "pxPerFrame": "{{value}}px/프레임",
     "userKeys": "사용자 키프레임 덮어쓰기",
     "chainMotion": "카메라 무브 연결",
