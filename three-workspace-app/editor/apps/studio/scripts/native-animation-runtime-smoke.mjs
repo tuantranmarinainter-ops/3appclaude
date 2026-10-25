@@ -84,10 +84,10 @@ try {
     return { stopped, resumed: window.__hostRafSchedules > stoppedAt }
   })
   assert.ok(rendererLifecycle.stopped && rendererLifecycle.resumed, `Hidden iframe renderer did not pause/resume: ${JSON.stringify(rendererLifecycle)}`)
-  const selectInfo = await page.locator('.wb-animation-creation-toolbar select').first().evaluate((select) => ({ disabled: select.disabled, options: [...select.options].map((option) => ({ text: option.text, value: option.value })) }))
+  const selectInfo = await frame.locator('#bbsHostControls .wb-animation-creation-toolbar select').first().evaluate((select) => ({ disabled: select.disabled, options: [...select.options].map((option) => ({ text: option.text, value: option.value })) }))
   console.log('native character selector', JSON.stringify(selectInfo), 'project characters', Object.keys(projectAfterCharacter.project.characters))
-  await page.locator('.wb-animation-creation-toolbar select').first().selectOption(added.result.characterId)
-  await page.getByRole('button', { name: 'Tạo animation' }).click()
+  await frame.locator('#bbsHostControls .wb-animation-creation-toolbar select').first().selectOption(added.result.characterId)
+  await frame.getByRole('button', { name: 'Tạo animation' }).click()
   await frame.waitForFunction(() => window.__studio?.ready === true && window.__studio.recordNames().length > 10 && document.getElementById('status')?.textContent.includes('T-Pose.fbx'))
   const native = await frame.evaluate(() => {
     const studio = window.__studio
@@ -145,7 +145,7 @@ try {
   assert.equal(beforeUnloadType, 'beforeunload', 'A dirty native animation did not guard browser reload/close')
 
   let saved
-  try { saved = await command('motion.edit', () => page.getByRole('button', { name: 'Lưu vào project' }).click()) }
+  try { saved = await command('motion.edit', () => frame.getByRole('button', { name: 'Lưu vào project' }).click()) }
   catch (error) {
     console.log('save panel', await page.locator('.wb-animation-creation').innerText())
     console.log('native state', await frame.evaluate(() => ({ draft: window.__studio.state.draft, sourceClip: window.__studio.state.sourceClip, dirty: window.__studio.state.dirty, selected: window.__studio.state.selected, mode: window.__studio.state.mode, keys: Object.values(window.__studio.project().keys).reduce((count, keys) => count + keys.length, 0), status: document.getElementById('status')?.textContent })))
@@ -249,8 +249,8 @@ try {
   await page.reload()
   const refreshedWorkspaces = page.getByRole('navigation', { name: 'Workspaces' })
   await refreshedWorkspaces.getByRole('button', { name: /3 Animation/ }).click()
-  await page.locator('.wb-animation-creation-toolbar select').first().selectOption(added.result.characterId)
-  const motionSelectBeforeClone = page.locator('.wb-animation-creation-toolbar select').nth(1)
+  await frame.locator('#bbsHostControls .wb-animation-creation-toolbar select').first().selectOption(added.result.characterId)
+  const motionSelectBeforeClone = frame.locator('#bbsHostControls .wb-animation-creation-toolbar select').nth(1)
   await motionSelectBeforeClone.selectOption(motionId)
   await page.getByRole('button', { name: 'Chỉnh animation' }).click()
   const cloneFrame = page.frame({ url: /animation-studio\/v1\.31\.8\/index\.html/ })
@@ -266,7 +266,7 @@ try {
   }, { boneId: poseBone.id })
   const [cloneSaveResponse] = await Promise.all([
     page.waitForResponse((response) => response.url().endsWith('/api/unified/commands') && response.request().postDataJSON()?.command === 'motion.edit'),
-    page.getByRole('button', { name: 'Lưu vào project' }).click(),
+    frame.getByRole('button', { name: 'Lưu vào project' }).click(),
   ])
   const cloneSave = await cloneSaveResponse.json()
   assert.equal(cloneSave.ok, true, JSON.stringify(cloneSave))
@@ -279,7 +279,7 @@ try {
   await page.reload()
   const reloadedWorkspaces = page.getByRole('navigation', { name: 'Workspaces' })
   await reloadedWorkspaces.getByRole('button', { name: /3 Animation/ }).click()
-  const motionSelect = page.locator('.wb-animation-creation-toolbar select').nth(1)
+  const motionSelect = frame.locator('#bbsHostControls .wb-animation-creation-toolbar select').nth(1)
   await motionSelect.waitFor()
   await assert.doesNotReject(() => motionSelect.selectOption(motionId))
   await page.getByRole('button', { name: 'Chỉnh animation' }).click()
