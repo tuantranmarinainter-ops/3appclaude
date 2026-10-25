@@ -920,7 +920,7 @@
 .wb-export-groups .wb-scene-render-actions button { min-height: 34px; border-color: var(--wb-border); border-radius: 6px; background: #25272d; color: var(--wb-text); }
 
 .wb-retarget { display: flex; gap: 12px; overflow: hidden; padding: 14px 16px 16px; color: var(--wb-text); }
-.wb-retarget[hidden],.wb-animation-layout[hidden] { display: none; }
+.wb-retarget[hidden],.wb-animation-layout[hidden],.wb-animation-editor[hidden] { display: none; }
 .wb-retarget-header { min-height: 48px; align-items: center; gap: 8px; }
 .wb-retarget-header h1 { font-size: 17px; font-weight: 600; }
 .wb-retarget-header p { margin-top: 3px; color: var(--wb-muted); }

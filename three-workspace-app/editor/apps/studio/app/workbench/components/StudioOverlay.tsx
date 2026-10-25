@@ -497,10 +497,10 @@ export function StudioOverlay({
     return () => window.removeEventListener('bbs-workspace-request', onWorkspaceRequest)
   }, [openPanel, source])
   const openAnimationControls = () => {
-    if (activeWorkspace === 'animation') { setDrawer('animation'); return }
-    openAnimationOnSwitch.current = true
-    setDrawer(null)
-    void openPanel(WORKSPACE_PANELS.animation)
+    // E9: "Thêm animation" chỉ mở bảng điều khiển ngay tại workspace hiện tại
+    // (vd tab Dựng cảnh), không ép chuyển sang tab Animation.
+    openAnimationOnSwitch.current = false
+    setDrawer('animation')
   }
   const openFeatureSearch = () => {
     openAnimationOnSwitch.current = false
@@ -541,7 +541,7 @@ export function StudioOverlay({
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
           {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} /></div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
-          {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={activeWorkspace === 'animation' && drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
+          {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>
         {project && <>
           <HostDrawer open={drawer === 'features'} title={vi ? 'Tìm chức năng' : 'Find a feature'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
