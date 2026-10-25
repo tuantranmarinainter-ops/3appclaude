@@ -588,8 +588,10 @@ function renderBatchActionPicker(query) {
         english.focus()
       }
       nameCell.addEventListener('dblclick', startRename)
+      // append() thô ép null thành chữ "null" (E5); h() tự bỏ kid null nhưng append() thì không.
+      const dot = adjustmentDot(key)
       nameCell.append(h('span', { text: edit.nameVi ? `${edit.name} | ${edit.nameVi}` : edit.name }),
-        h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }), adjustmentDot(key))
+        h('button', { type: 'button', class: 'icon-button', text: '✎', title: 'Đổi tên', 'aria-label': `Đổi tên ${entry.name}: ${action.name}`, onclick: startRename }), ...(dot ? [dot] : []))
       tableBody.append(h('tr', { class: 'clickable', onclick: () => previewBatchAction(entry, action) }, h('td', {}, checkbox), h('td', {}, favoriteButton(key, action.name, () => setKept({ key, entry, action }, true))), h('td', { class: 'num', text: String(action.index + 1) }), nameCell, h('td', {}, tag), h('td', { class: 'num', text: `${fmt(action.durationSeconds)} s` }), h('td', { class: 'quality', text: action.ready ? 'Sẵn sàng' : 'Cần kiểm tra' })))
     }
     group.append(h('table', {}, h('thead', {}, h('tr', {}, h('th'), h('th', { text: '★' }), h('th', { text: '#' }), h('th', { text: 'Tên animation' }), h('th', { text: 'Thẻ động tác' }), h('th', { text: 'Thời lượng' }), h('th', { text: 'Trạng thái' }))), tableBody)); body.append(group)
@@ -1307,20 +1309,29 @@ function renderTransferDestinations() {
 function selectedTransferCharacters() {
   return (state.libraryCharacters ?? []).filter((character) => state.transferCharacters.has(character.charId))
 }
+/** Danh sách thẻ cho hộp Chuyển: phần chung `requiredActions` của các nhân vật đích; chưa chọn
+ * nhân vật hoặc không có phần chung thì dùng danh sách mặc định của thư viện — không còn rơi về
+ * đúng một thẻ 'idle' cho cả lô như trước (E6). */
+function transferRequiredActions(characters) {
+  if (!characters.length) return DEFAULT_REQUIRED_ACTIONS
+  const common = (characters[0].requiredActions ?? []).filter((item) => characters.every((character) => (character.requiredActions ?? []).some((required) => required.key === item.key)))
+  return common.length ? common : DEFAULT_REQUIRED_ACTIONS
+}
+/** Thẻ của một Action khi Chuyển (E6): thẻ gắn riêng trong bảng chọn thắng; tiếp theo là thẻ
+ * chọn ở hộp Chuyển; nếu hộp để "— (không gắn thẻ / theo tên)" thì đoán theo tên của chính
+ * Action đó. Tên không đoán được mới rơi về thẻ đầu danh sách (thường là idle) vì API thư viện
+ * yêu cầu key không rỗng. */
+function resolveTransferKey(explicitKey, config, actionName) {
+  if (explicitKey) return explicitKey
+  if (config.key) return config.key
+  const required = transferRequiredActions((state.libraryCharacters ?? []).filter((character) => config.charIds.includes(character.charId)))
+  return suggestActionKey(required, [actionName]) ?? required[0]?.key ?? 'idle'
+}
 function renderTransferKeys() {
   const characters = selectedTransferCharacters()
   const select = clear($('transferActionKey'))
-  const requiredActions = characters.length
-    ? (characters[0].requiredActions ?? []).filter((item) => characters.every((character) => (character.requiredActions ?? []).some((required) => required.key === item.key)))
-    : []
-  for (const required of requiredActions) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
-  if (!select.options.length) select.append(h('option', { value: 'idle', text: 'Đứng yên (idle)' }))
-  const selectedNames = selectedActionIndices().map((index) => {
-    const action = state.inspect?.actions?.find((item) => item.index === index)
-    return action?.displayName ?? action?.name
-  }).filter(Boolean)
-  const suggestion = suggestActionKey(requiredActions, selectedNames)
-  if (suggestion) select.value = suggestion
+  select.append(h('option', { value: '', text: '— (không gắn thẻ / theo tên)' }))
+  for (const required of transferRequiredActions(characters)) select.append(h('option', { value: required.key, text: `${required.label} (${required.key})` }))
   if (!characters.length) $('transferCharacterPack').checked = false
   else if ($('transferCharacterPack').disabled) $('transferCharacterPack').checked = true
   $('transferCharacterPack').disabled = !characters.length
@@ -1350,9 +1361,9 @@ async function transferSelected(indices, retryConfig = null) {
   for (const index of indices) { const edit = state.actionEdits.get(index); if (!edit) continue; const base = edit.name.trim(); const count = nameCounts.get(base.toLocaleLowerCase()) ?? 0; nameCounts.set(base.toLocaleLowerCase(), count + 1); transferNames[index] = { ...edit, name: count ? `${base}_${count + 1}` : base } }
   const transferred = await executeTransfer({ indices, toCharacter, toShared, normalize: (exact) => runNow(exact, transferNames),
     importCharacter: (result, succeeded) => api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: {
-      charIds: config.charIds, actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: state.actionKeys.get(index) || config.key, favoriteFor: favoriteFor(`${state.source.sourceId}:${index}`, config.charIds), ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
+      charIds: config.charIds, actions: succeeded.map((action) => { const index = action.sourceActionIndex; const edited = state.actionEdits.get(index); return { uuid: action.uuid, key: resolveTransferKey(state.actionKeys.get(index), config, action.name), favoriteFor: favoriteFor(`${state.source.sourceId}:${index}`, config.charIds), ...(edited ? { name: action.name, nameVi: edited.nameVi } : {}) } }),
     } }),
-    importShared: (result, succeeded) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => ({ uuid: action.uuid, key: state.actionKeys.get(action.sourceActionIndex) || config.key || 'idle' })) } }),
+    importShared: (result, succeeded) => api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => ({ uuid: action.uuid, key: resolveTransferKey(state.actionKeys.get(action.sourceActionIndex), config, action.name) })) } }),
   })
   const succeeded = transferred.actions, drafts = transferred.drafts, shared = transferred.shared
   state.transferFailed = transferred.failed
@@ -1417,7 +1428,7 @@ async function transferBatch(groups, retryConfig = null) {
         const sent = await api(`/api/runs/${result.runId}/character-library`, { method: 'POST', json: { charIds: config.charIds, actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
-          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', favoriteFor: favoriteFor(batchKey(entry, sourceAction), config.charIds), name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
+          return { uuid: action.uuid, key: resolveTransferKey(state.batchKeys.get(batchKey(entry, sourceAction)), config, action.name), favoriteFor: favoriteFor(batchKey(entry, sourceAction), config.charIds), name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }) } })
         drafts += sent.drafts?.length ?? succeeded.length
       }
@@ -1426,7 +1437,7 @@ async function transferBatch(groups, retryConfig = null) {
         const shared = await api(`/api/runs/${result.runId}/library`, { method: 'POST', json: { actions: succeeded.map((action) => {
           const sourceAction = actions.find((item) => item.index === action.sourceActionIndex)
           const edit = state.batchEdits.get(batchKey(entry, sourceAction))
-          return { uuid: action.uuid, key: state.batchKeys.get(batchKey(entry, sourceAction)) || config.key || 'idle', name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
+          return { uuid: action.uuid, key: resolveTransferKey(state.batchKeys.get(batchKey(entry, sourceAction)), config, action.name), name: action.name, ...(action.nameVi ? { nameVi: action.nameVi } : edit ? { nameVi: edit.nameVi } : {}), sourceName: action.sourceName ?? sourceAction.sourceName ?? sourceAction.name }
         }), ...(licenseSource ? { license: { id: 'internal-only', commitable: false, source: licenseSource } } : {}) } })
         // One shared pack per source file; it may already exist when the character drafts were made first.
         sharedPacks += 1
