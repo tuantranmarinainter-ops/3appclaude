@@ -32,6 +32,11 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   const timeline = project.scene.content.timeline
   const [cameraId, setCameraId] = useState(cameras[0]?.id ?? '')
   const [shotRange, setShotRange] = useState<[number, number]>([timeline.frameStart, timeline.frameEnd])
+  // E10: các MotionClip của nhân vật đang chọn trên timeline (theo node của nhân vật, khớp cách shotExchange kiểm tra).
+  const selectedClips = useMemo(() => {
+    const nodeId = project.characters[characterId]?.nodeId
+    return timeline.animation.motionClips.filter((clip) => clip.target.nodeId === nodeId)
+  }, [project, characterId, timeline])
   const [shotId, setShotId] = useState('')
   const [withBobj, setWithBobj] = useState(false)
   const nativeMotions = useMemo(() => Object.values(project.motions).filter((motion) => {
@@ -58,6 +63,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }, [receive, onEditorDirty])
 
   useEffect(() => { if (!characters.some((character) => character.id === characterId)) setCharacterId(characters[0]?.id ?? '') }, [characters, characterId])
+  // E10: mặc định khoảng shot = khoảng clip của nhân vật đang chọn (không phải toàn timeline 0–300);
+  // chỉ áp một lần cho mỗi nhân vật để không ghi đè khoảng người dùng đã sửa tay.
+  const shotRangeSyncedFor = useRef('')
+  useEffect(() => {
+    if (shotRangeSyncedFor.current === characterId) return
+    shotRangeSyncedFor.current = characterId
+    if (selectedClips.length === 1) setShotRange([selectedClips[0]!.frameStart, selectedClips[0]!.frameEnd])
+  }, [characterId, selectedClips])
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
 
@@ -120,6 +133,19 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   /** App 2 → App 3: export the shot from the scene (shot.export), then open its ZIP in the editor. */
   async function openShot(range: [number, number] = shotRange, blank = false) {
     if (busy || !characterId || !cameraId) return
+    if (!blank) {
+      // E10: chặn ngay tại client với thông báo tiếng Việt khi khoảng chọn không nằm trọn
+      // trong đúng một MotionClip của nhân vật (khớp điều kiện shotExchange kiểm tra phía server).
+      const character = project.characters[characterId]
+      const overlapping = selectedClips.filter((clip) => clip.frameStart <= range[1] && clip.frameEnd >= range[0])
+      const covered = overlapping.length === 1 && overlapping[0]!.frameStart <= range[0] && overlapping[0]!.frameEnd >= range[1]
+      if (character && !covered) {
+        const existing = selectedClips.length ? selectedClips.map((clip) => `${clip.frameStart}–${clip.frameEnd}`).join(', ') : 'chưa có clip nào trên timeline'
+        setError(`Nhân vật ${character.name} cần đúng một MotionClip phủ hết khoảng shot ${range[0]}–${range[1]}; clip hiện có của nhân vật: ${existing}. Hãy chọn khoảng nằm trọn trong một clip.`)
+        setStatus('Không mở được shot.')
+        return
+      }
+    }
     setBusy(true); setError(''); setStatus('Đang xuất gói shot từ cảnh…')
     try {
       const latest = await loadUnifiedProject(projectId)

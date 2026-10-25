@@ -49,6 +49,13 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
   const pickerCharacter = libraryCharacters.find((item) => item.id === pickerCharacterId)
   const libraryCharacterId = pickerCharacter?.libraryCharacterId ?? ''
 
+  // E8: pickerCharacterId không được để trống/không hợp lệ — nếu không, ô "Nhân vật nhận"
+  // hiển thị phần tử đầu theo mặc định của trình duyệt trong khi danh sách nạp cho nhân vật khác.
+  useEffect(() => {
+    if (libraryCharacters.some((item) => item.id === pickerCharacterId)) return
+    setPickerCharacterId(libraryCharacters.some((item) => item.id === characterId) ? characterId : libraryCharacters[0]?.id ?? '')
+  }, [libraryCharacters, pickerCharacterId, characterId])
+
   useEffect(() => { if (active) setAnimationMounted(true) }, [active])
 
   useEffect(() => {
@@ -143,9 +150,14 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
   }
 
   async function openLibraryPicker(targetId?: string) {
-    const target = libraryCharacters.find((item) => item.id === (targetId ?? (libraryCharacters.some((item) => item.id === characterId) ? characterId : libraryCharacters[0]?.id)))
+    // E8: đích mặc định là nhân vật đang chọn ở bảng (hoặc phần tử đầu danh sách);
+    // targetId rỗng '' cũng tính là chưa chỉ định, tránh find('') trượt im lặng.
+    const target = libraryCharacters.find((item) => item.id === (targetId || (libraryCharacters.some((item) => item.id === characterId) ? characterId : libraryCharacters[0]?.id)))
     if (!target) return
     setPickerCharacterId(target.id)
+    // Xoá danh sách cũ ngay khi đổi nhân vật: không để Action của nhân vật trước
+    // hiện dưới tên nhân vật mới trong lúc đang nạp danh sách đúng.
+    setLibraryActions([]); setLibrarySelected([])
     try {
       const q = libraryQuery ? `&q=${encodeURIComponent(libraryQuery)}` : ''
       const [sharedResponse, own] = await Promise.all([fetch(`/api/library?raw=1${q}`, { cache: 'no-store' }), fetch(`/api/library?charId=${encodeURIComponent(target.libraryCharacterId)}`, { cache: 'no-store' })])
