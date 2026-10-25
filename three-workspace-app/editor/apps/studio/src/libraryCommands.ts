@@ -151,20 +151,30 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
     if (!(error instanceof UnifiedStoreError) || error.code !== 'PROFILE_MISMATCH') throw error
     const target = resolveCharacter(libraryCharacterId)
     let draftUuid: string
+    let warning: string | undefined
     if (action.ownerCharId && action.ownerCharId !== libraryCharacterId) {
       const compatible = target.character.rig === action.rig || target.character.rig === 'verity' && (action.rig === 'mixamo65' || action.rig === 'mixamo65+verity') || (target.character.rig === 'mixamo65' || target.character.rig === 'mixamo65+verity') && action.rig === 'verity'
-      if (!compatible) throw new Error(`Động tác thuộc xương ${action.rig}, nhân vật đích dùng xương ${target.character.rig}; chuyển xương tự động cho động tác của nhân vật khác thuộc N1b`)
-      draftUuid = copyActionToCharacter({ actionUuid: input.actionUuid, toCharId: libraryCharacterId }).uuid
+      if (compatible) {
+        draftUuid = copyActionToCharacter({ actionUuid: input.actionUuid, toCharId: libraryCharacterId }).uuid
+      } else {
+        // N1b: cross-skeleton conversion of another character's Action through the retarget pipeline.
+        const { assignToCharacter } = await import('./libraryAssign')
+        const [result] = await assignToCharacter({ actionUuids: [input.actionUuid], charId: libraryCharacterId })
+        if (!result || result.status === 'error' || !result.assignedUuid) throw new Error(result?.reason ?? 'Không chuyển được động tác sang nhân vật đích')
+        draftUuid = result.assignedUuid
+        warning = result.warning
+      }
     } else if (!action.ownerCharId) {
       const { assignToCharacter } = await import('./libraryAssign')
       const [result] = await assignToCharacter({ actionUuids: [input.actionUuid], charId: libraryCharacterId })
       if (!result || result.status === 'error' || !result.assignedUuid) throw new Error(result?.reason ?? 'Không chuyển được động tác sang nhân vật đích')
       draftUuid = result.assignedUuid
+      warning = result.warning
     } else throw error
     const latest = await readUnifiedProject(input.projectId)
     const placed = await place(draftUuid, latest.revision)
     const placement = placed.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number }
-    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: draftUuid, converted: true, ...placement }
+    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: draftUuid, converted: true, ...(warning ? { warning } : {}), ...placement }
   }
 }
 

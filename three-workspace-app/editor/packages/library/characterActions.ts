@@ -258,12 +258,14 @@ export function addConvertedDraftToCharacter(options: LibraryOptions & {
   charId: string; parentUuid: string; glbFile: string; rig: string; durationSeconds?: number
   manifestContract?: Pick<NormalizedManifest, 'version' | 'extraBoneMode' | 'extraBones'>
   favorite?: boolean
+  /** N1b: allow a character-owned source Action as the conversion parent (kept as parentUuid). */
+  allowOwnedParent?: boolean
 }): IndexedAction {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const index = writeIndex(root), character = characterAt(root, options.charId), parent = actionAt(index.actions, options.parentUuid)
-    if (parent.ownerCharId) throw new Error('Converted draft parent must be a raw library action')
+    if (parent.ownerCharId && !options.allowOwnedParent) throw new Error('Converted draft parent must be a raw library action')
     if (!compatibleRig(character.rig, options.rig)) throw new Error(`Rig mismatch: character ${character.rig}, action ${options.rig}`)
     if (!existsSync(options.glbFile)) throw new Error('Converted GLB file does not exist')
     const source: IndexedAction = { ...parent, rig: options.rig, glbAnimationIndex: 0 }

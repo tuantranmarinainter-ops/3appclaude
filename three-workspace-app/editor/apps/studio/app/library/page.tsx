@@ -128,7 +128,7 @@ export default function LibraryPage() {
     setPlacingForNode(true)
     try {
       const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: assignTo.nodeId }) })
-      setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}. Quay lại cảnh App 2 để xem.`)
+      setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}.${body.warning ? ` ${body.warning}` : ''} Quay lại cảnh App 2 để xem.`)
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setPlacingForNode(false) }
   }

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 // Keep the Node-only App 1 pipeline inside the server bundle without making the Studio
 // TypeScript project compile the CLI's .ts-suffix import graph as part of its own app.
-interface AssignActionResult { actionUuid: string; status: 'ok' | 'already-exists' | 'error'; assignedUuid?: string; name?: string; reason?: string }
+interface AssignActionResult { actionUuid: string; status: 'ok' | 'already-exists' | 'error'; assignedUuid?: string; name?: string; reason?: string; warning?: string }
 const { assignToCharacter } = require('../../../packages/retarget/cli/assignToCharacter') as {
   assignToCharacter(options: { actionUuids: string[]; charId: string; createNew?: boolean; signal?: AbortSignal; onProgress?: (completed: number, total: number) => void }): Promise<AssignActionResult[]>
 }
