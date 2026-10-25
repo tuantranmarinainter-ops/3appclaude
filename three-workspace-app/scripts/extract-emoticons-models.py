@@ -1,5 +1,6 @@
 """Extract only native model BOBJs into a NEW external directory; no mesh in Git."""
 import argparse
+import re
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -16,6 +17,8 @@ def extract(jar, destination):
         if not entries:
             raise ValueError('No Emoticons entity models found')
         names = [Path(i.filename).name for i in entries]
+        if any(not re.fullmatch(r'[A-Za-z0-9_-]+\.bobj', name) for name in names):
+            raise ValueError('Unsafe model basename')
         if len(names) != len(set(names)) or any(i.file_size > 32 * 1024 * 1024 for i in entries):
             raise ValueError('Duplicate names or oversized model')
         destination.mkdir(parents=True)
