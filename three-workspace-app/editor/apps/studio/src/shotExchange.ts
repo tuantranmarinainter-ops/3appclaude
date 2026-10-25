@@ -35,7 +35,7 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
   for(const character of Object.values(project.characters)) {
     const covering=timeline.animation.motionClips.filter(c=>c.target.nodeId===character.nodeId&&c.frameStart<=args.frameEnd&&c.frameEnd>=args.frameStart)
     if(covering.length!==1||covering[0]!.frameStart>args.frameStart||covering[0]!.frameEnd<args.frameEnd) {
-      if(args.editableCharacterIds.includes(character.id)) throw new TypeError(`Shot editable Character ${character.name} requires one MotionClip covering frames ${args.frameStart}–${args.frameEnd}`)
+      if(args.editableCharacterIds.includes(character.id)) { const own=timeline.animation.motionClips.filter(c=>c.target.nodeId===character.nodeId); throw new TypeError(`Nhân vật ${character.name} cần đúng một MotionClip phủ hết frame ${args.frameStart}–${args.frameEnd}; clip hiện có của nhân vật: ${own.length?own.map(c=>`${c.frameStart}–${c.frameEnd}`).join(', '):'chưa có clip nào trên timeline'}`) }
       continue
     }
     const clip=covering[0]!,motion=project.motions[clip.motion.assetId],binding=project.bindings[clip.id]
