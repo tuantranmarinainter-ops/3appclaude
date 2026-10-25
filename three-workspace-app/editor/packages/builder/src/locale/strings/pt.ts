@@ -159,6 +159,7 @@ export const pt: LocaleDict = {
     "categoryAll": "Todos",
     "categoryPrimitives": "Primitivos",
     "collapseContent": "Recolher painel lateral",
+    "assignAnimation": "Atribuir animação",
     "expandContent": "Expandir painel lateral",
     "resizeLeftPanel": "Redimensionar painel esquerdo",
     "emptyAssets": "Nenhum ativo correspondente",

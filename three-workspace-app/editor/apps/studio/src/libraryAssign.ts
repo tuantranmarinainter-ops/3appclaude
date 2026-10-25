@@ -7,6 +7,10 @@ const { assignToCharacter } = require('../../../packages/retarget/cli/assignToCh
   assignToCharacter(options: { actionUuids: string[]; charId: string; createNew?: boolean; signal?: AbortSignal; onProgress?: (completed: number, total: number) => void }): Promise<AssignActionResult[]>
 }
 
+/** Direct access for server-side one-shot assignments (N1 place-for-node); the job API below stays the UI path. */
+export { assignToCharacter }
+export type { AssignActionResult }
+
 export type LibraryAssignJobStatus = 'queued' | 'running' | 'completed' | 'cancelled'
 export interface LibraryAssignJob {
   jobId: string

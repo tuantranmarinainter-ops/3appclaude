@@ -159,6 +159,7 @@ export const en: LocaleDict = {
     "categoryAll": "All",
     "categoryPrimitives": "Primitives",
     "collapseContent": "Collapse left panel",
+    "assignAnimation": "Assign animation",
     "expandContent": "Expand left panel",
     "resizeLeftPanel": "Resize left panel",
     "emptyAssets": "No matching assets",

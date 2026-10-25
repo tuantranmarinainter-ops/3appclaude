@@ -16,6 +16,7 @@ import {
   type CharacterMetadata,
   type RequiredAction,
 } from '../../../packages/library/index'
+import { UnifiedStoreError } from './unifiedProjectStore'
 import { executeUnifiedCommand, readUnifiedProject } from './unifiedProjectStore'
 import { stageAssetUpload } from './unifiedAssetFiles'
 import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction } from './libraryModels'
@@ -123,6 +124,48 @@ export async function linkStoryboardNodesToLibrary(input: { projectId: string; e
   const response = await executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: input.expectedRevision,
     command: 'library.link', args: { nodeIds: input.nodeIds, libraryCharacterId: input.charId } })
   return { projectId: input.projectId, revision: response.revision, ...(response.result as Record<string, unknown>) }
+}
+
+/**
+ * N1: place a library Action onto one specific scene node (the Library page's
+ * "Gán cho <Tên vai · Shot NN>" flow). Direct placement is tried first; a same-rig
+ * Action owned by another character is copied into the target's set first, and a
+ * shared Action goes through the existing assignment pipeline. Cross-skeleton
+ * conversion of character-owned Actions is N1b's extension of that pipeline.
+ */
+export async function placeLibraryActionForNode(input: { projectId: string; actionUuid: string; nodeId: string; frameStart?: number }) {
+  const project = await readUnifiedProject(input.projectId)
+  const character = Object.values(project.characters).find((item) => item.nodeId === input.nodeId)
+  const node = project.scene.content.nodes.find((item) => item.id === input.nodeId)
+  if (!character || !node) throw new Error('Node không còn trong project; hãy mở lại cảnh App 2')
+  const libraryCharacterId = typeof node.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : null
+  if (!libraryCharacterId) throw new Error('Node chưa nối với nhân vật thư viện; hãy nối node này trước (C25) rồi gán lại')
+  const action = getAction({ actionUuid: input.actionUuid })
+  const place = async (actionUuid: string, revision: number) => executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: revision,
+    command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}) } })
+  try {
+    const placed = await place(input.actionUuid, project.revision)
+    const placement = placed.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number }
+    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: input.actionUuid, converted: false, ...placement }
+  } catch (error) {
+    if (!(error instanceof UnifiedStoreError) || error.code !== 'PROFILE_MISMATCH') throw error
+    const target = resolveCharacter(libraryCharacterId)
+    let draftUuid: string
+    if (action.ownerCharId && action.ownerCharId !== libraryCharacterId) {
+      const compatible = target.character.rig === action.rig || target.character.rig === 'verity' && (action.rig === 'mixamo65' || action.rig === 'mixamo65+verity') || (target.character.rig === 'mixamo65' || target.character.rig === 'mixamo65+verity') && action.rig === 'verity'
+      if (!compatible) throw new Error(`Động tác thuộc xương ${action.rig}, nhân vật đích dùng xương ${target.character.rig}; chuyển xương tự động cho động tác của nhân vật khác thuộc N1b`)
+      draftUuid = copyActionToCharacter({ actionUuid: input.actionUuid, toCharId: libraryCharacterId }).uuid
+    } else if (!action.ownerCharId) {
+      const { assignToCharacter } = await import('./libraryAssign')
+      const [result] = await assignToCharacter({ actionUuids: [input.actionUuid], charId: libraryCharacterId })
+      if (!result || result.status === 'error' || !result.assignedUuid) throw new Error(result?.reason ?? 'Không chuyển được động tác sang nhân vật đích')
+      draftUuid = result.assignedUuid
+    } else throw error
+    const latest = await readUnifiedProject(input.projectId)
+    const placed = await place(draftUuid, latest.revision)
+    const placement = placed.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number }
+    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: draftUuid, converted: true, ...placement }
+  }
 }
 
 /**

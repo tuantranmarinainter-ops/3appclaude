@@ -159,6 +159,7 @@ export const ru: LocaleDict = {
     "categoryAll": "Все",
     "categoryPrimitives": "Примитивы",
     "collapseContent": "Свернуть боковую панель",
+    "assignAnimation": "Назначить анимацию",
     "expandContent": "Развернуть боковую панель",
     "resizeLeftPanel": "Изменение размера левой панели",
     "emptyAssets": "Нет соответствующих активов",

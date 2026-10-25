@@ -1711,9 +1711,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     }
   } else if (envelope.command === 'library.place') {
-    const { actionUuid, characterId } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId)) {
-      throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID and Character UUID', 400)
+    const { actionUuid, characterId, frameStart: requestedFrameStart } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
+      requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID, Character UUID and an optional nonnegative frameStart', 400)
     }
     const character = project.characters[characterId]
     const targetProfile = character && project.skeletons[character.skeletonId]
@@ -1734,7 +1735,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
           throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
         }
-        libraryPlacement = { characterId, motionId: existing.id, frameStart: 0, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
         stagedAssetImports = []
       } else {
         const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
@@ -1754,7 +1755,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
         imported.motions = [selected]
         stagedAssetImports = [{ upload, imported }]
-        libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: 0, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
       }
     } catch (error) {
       if (error instanceof UnifiedStoreError) throw error
@@ -2660,10 +2661,13 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           if (!character || !profile || !(libraryPlacement.nativeValidated ? next.skeletons[motion.skeletonId] && sameRigTopology(next.skeletons[motion.skeletonId] as NonNullable<ImportedAsset['skeleton']>, profile) : isMixamo65Topology(profile.bones) && isMixamo65Topology(next.skeletons[motion.skeletonId]?.bones ?? []))) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Action không tương thích với rig của nhân vật đã chọn', 422)
           const scene = structuredClone(next.scene)
           const priorClips = scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === character.nodeId)
-          const frameStart = Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
+          // N1: an explicit frameStart places the clip at the shot start / current frame the user
+          // picked; without one the clip is appended after the character's last clip as before.
+          const frameStart = libraryPlacement.frameStart >= 0 ? libraryPlacement.frameStart : Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
           const durationFrames = Math.max(1, Math.round(motion.durationSeconds * scene.content.timeline.fps))
           const frameEnd = frameStart + durationFrames - 1
           if (!Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
+          if (libraryPlacement.frameStart >= 0 && priorClips.some((clip) => clip.frameStart <= frameEnd && clip.frameEnd >= frameStart)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
           const metadata = next.extensions.retargetMotionMetadata?.[motion.id] as { clipIndex?: number } | undefined
           const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(motion.assetId)}/source?format=glb`
           const clip = appendMotionClip(scene, { type: 'add-motion', libraryId: motion.id, name: libraryPlacement.name, fbxKey: url, targetNodeId: character.nodeId, frameStart, durationSeconds: motion.durationSeconds })

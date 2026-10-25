@@ -37,6 +37,8 @@ export default function LibraryPage() {
   const [message, setMessage] = useState(''), [previewJobs, setPreviewJobs] = useState<Record<string, { state: string; message?: string }>>({}), [assignTarget, setAssignTarget] = useState('')
   const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
   const [sceneConflict, setSceneConflict] = useState<{ charId: string; names: string[] } | null>(null)
+  const [assignTo, setAssignTo] = useState<{ nodeId: string; displayName: string; libraryCharacterId: string | null } | null>(null)
+  const [placingForNode, setPlacingForNode] = useState(false)
 
   const loadCharacters = useCallback(async () => {
     const body = await json('/api/library?characters=1')
@@ -60,8 +62,21 @@ export default function LibraryPage() {
 
   useEffect(() => {
     setHasOpener(!!window.opener)
-    const requested = new URLSearchParams(window.location.search).get('unified')
-    if (requested) void loadUnifiedProject(requested).then(({ project }) => setProjectId(project.projectId)).catch(error => setMessage(String(error)))
+    const params = new URLSearchParams(window.location.search)
+    const requested = params.get('unified')
+    const assignNodeId = params.get('assignTo')
+    if (requested) void loadUnifiedProject(requested).then(({ project }) => {
+      setProjectId(project.projectId)
+      // N1: opened from App 2's "Mở trong Thư viện" — preselect the node's role and offer per-Action assign buttons.
+      if (assignNodeId) {
+        const node = project.scene.content.nodes.find(item => item.id === assignNodeId)
+        if (node) {
+          const libraryCharacterId = typeof node.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : null
+          setAssignTo({ nodeId: node.id, displayName: node.name, libraryCharacterId })
+          if (libraryCharacterId) { setCharacterId(libraryCharacterId); setWarehouse(false) }
+        }
+      }
+    }).catch(error => setMessage(String(error)))
   }, [])
   useEffect(() => { void loadCharacters().catch(error => setMessage(String(error))) }, [loadCharacters])
   useEffect(() => { void json('/api/library/previews').then(body => setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job])))).catch(() => undefined) }, [])
@@ -108,6 +123,15 @@ export default function LibraryPage() {
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, name, nameVi }) })
     await loadActions(); setMessage('Đã lưu tên động tác.')
   }
+  async function placeForNode(action: Action) {
+    if (!assignTo || !projectId) return
+    setPlacingForNode(true)
+    try {
+      const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: assignTo.nodeId }) })
+      setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}. Quay lại cảnh App 2 để xem.`)
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+    finally { setPlacingForNode(false) }
+  }
   function notifyOpener(type: string) {
     if (!selected || !window.opener) return setMessage('Mở Thư viện từ App 2 để dùng thao tác này.')
     window.opener.postMessage({ type, actionUuid: selected.uuid }, window.location.origin)
@@ -117,6 +141,11 @@ export default function LibraryPage() {
     <h1>App 5 · Thư viện</h1>
     <WorkspaceNavigationSlot />
     <nav style={{ display: 'flex', gap: 8, marginBottom: 18 }}><button onClick={() => setTab('actions')}>Động tác</button><button onClick={() => setTab('characters')}>Nhân vật</button><button onClick={() => setTab('coverage')}>Bảng động tác</button></nav>
+    {assignTo && tab === 'actions' && <div role="status" style={{ marginBottom: 14, padding: '10px 12px', background: '#2b2113', border: '2px solid #f5a623', borderRadius: 8 }}>
+      <strong>Đang gán cho {assignTo.displayName}</strong>{assignTo.libraryCharacterId
+        ? <> — mỗi động tác có nút “Gán cho {assignTo.displayName}”; gán xong hãy quay lại cảnh App 2.</>
+        : <> — node này chưa nối với nhân vật thư viện; hãy nối node trong App 2 (bảng Gán animation) trước khi gán.</>}
+    </div>}
     {tab === 'actions' && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
       <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
@@ -129,12 +158,14 @@ export default function LibraryPage() {
         {actions.map(action => <article key={action.uuid} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
           {action.preview ? <AutoPreviewVideo uuid={action.uuid} onClick={() => setSelected(action)} /> : <div style={{ height: 120, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="Ảnh bìa dự phòng" width={220} height={90} unoptimized /> : 'Đang tạo video…'}</div>}
           <button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}><strong>{action.favorite ? '★ ' : ''}{formatBilingual(action.name, action.nameVi)}</strong></button><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
+          {assignTo?.libraryCharacterId && <button type="button" disabled={placingForNode} onClick={() => void placeForNode(action)} style={{ marginTop: 6, border: '2px solid #f5a623', background: 'rgba(245,166,35,.12)', color: '#ffd58a', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontWeight: 600 }}>{placingForNode ? 'Đang gán…' : `Gán cho ${assignTo.displayName}`}</button>}
         </article>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
       <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
         <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig} · {/mixamo/i.test(`${selected.licenseId} ${selected.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}</p>{selected.preview && <video controls muted loop playsInline src={`/api/library/video/${encodeURIComponent(selected.uuid)}`} style={{ width: '100%' }} />}<button onClick={() => void json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: [selected.uuid], regenerate: true }) }).then(body => { setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job]))) }).catch(error => setMessage(String(error)))}>Tạo lại video</button>
         <form key={selected.uuid} onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); void saveActionName(String(data.get('name') ?? ''), String(data.get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Anh <input name="name" required defaultValue={selected.name} /></label><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
+        {assignTo?.libraryCharacterId && <p><button type="button" disabled={placingForNode} onClick={() => void placeForNode(selected)} style={{ border: '2px solid #f5a623', background: 'rgba(245,166,35,.12)', color: '#ffd58a', borderRadius: 6, padding: '6px 10px', cursor: 'pointer', fontWeight: 600 }}>{placingForNode ? 'Đang gán…' : `Gán cho ${assignTo.displayName}`}</button></p>}
         <p><select aria-label="Nhân vật để gán" value={assignTarget || characterId} onChange={event => setAssignTarget(event.target.value)}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button onClick={() => void json('/api/library/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: [selected.uuid], charId: assignTarget || characterId }) }).then(() => setMessage('Đã gửi yêu cầu gán animation cho nhân vật.')).catch(error => setMessage(`Không thể gán animation: ${String(error)}`))}>Gán cho nhân vật…</button></p><button onClick={() => notifyOpener('bbs-library-place-action')}>Dùng cho nhân vật đang chọn</button><button onClick={() => notifyOpener('bbs-library-open-app3')}>Sửa ở App 3</button>
         <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
       </> : <p>Chọn một động tác.</p>}</aside>

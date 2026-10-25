@@ -159,6 +159,7 @@ export const zhCN: LocaleDict = {
     "categoryAll": "全部",
     "categoryPrimitives": "基础形状",
     "collapseContent": "收起左侧面板",
+    "assignAnimation": "分配动画",
     "expandContent": "展开左侧面板",
     "resizeLeftPanel": "调整左侧栏宽度",
     "emptyAssets": "暂无匹配素材",

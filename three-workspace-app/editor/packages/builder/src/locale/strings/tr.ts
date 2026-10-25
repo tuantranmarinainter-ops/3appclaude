@@ -159,6 +159,7 @@ export const tr: LocaleDict = {
     "categoryAll": "Hepsi",
     "categoryPrimitives": "İlkeller",
     "collapseContent": "Yan paneli daralt",
+    "assignAnimation": "Animasyon ata",
     "expandContent": "Yan paneli genişlet",
     "resizeLeftPanel": "Sol paneli yeniden boyutlandır",
     "emptyAssets": "Eşleşen öğe yok",

@@ -190,6 +190,11 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
   }
 
+  /** N1: the builder rail's "Gán animation" button opens the host assign drawer in the overlay. */
+  async assignAnimation(documentId: string, characterNodeId: string | null): Promise<void> {
+    window.dispatchEvent(new CustomEvent('bbs-assign-animation', { detail: { documentId, characterNodeId } }))
+  }
+
   async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {
     if (this.base !== '/api/unified/projects') throw new Error('Shared-library Actions can only be placed in an App 2 project')
     const project = (await loadUnifiedProject(documentId)).project

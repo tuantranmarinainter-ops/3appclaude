@@ -1,6 +1,6 @@
 import { libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
-import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
+import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
 
 export const runtime = 'nodejs'
 
@@ -65,7 +65,7 @@ export async function PATCH(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[] }
+    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number }
     if (body.operation === 'copy') {
       if (!body.actionUuid || !body.toCharId) return Response.json({ error: 'actionUuid and toCharId are required' }, { status: 400 })
       return Response.json({ action: copyCharacterAction(body.actionUuid, body.toCharId) })
@@ -74,6 +74,10 @@ export async function POST(request: Request): Promise<Response> {
       if (!body.projectId || !body.charId || !Number.isSafeInteger(body.expectedRevision)) return Response.json({ error: 'projectId, expectedRevision and charId are required' }, { status: 400 })
       if (body.existingNodePolicy !== undefined && !['ask', 'reuse', 'create'].includes(body.existingNodePolicy)) return Response.json({ error: 'existingNodePolicy must be ask, reuse or create' }, { status: 400 })
       return Response.json(await addLibraryCharacterToProject({ projectId: body.projectId, expectedRevision: body.expectedRevision!, charId: body.charId, existingNodePolicy: body.existingNodePolicy as ExistingNodePolicy | undefined }))
+    }
+    if (body.operation === 'place-for-node') {
+      if (!body.projectId || !body.actionUuid || !body.nodeId || body.frameStart !== undefined && (!Number.isSafeInteger(body.frameStart) || (body.frameStart as number) < 0)) return Response.json({ error: 'projectId, actionUuid, nodeId and an optional nonnegative frameStart are required' }, { status: 400 })
+      return Response.json(await placeLibraryActionForNode({ projectId: body.projectId, actionUuid: body.actionUuid, nodeId: body.nodeId, ...(body.frameStart !== undefined ? { frameStart: body.frameStart } : {}) }))
     }
     if (body.operation === 'link-nodes') {
       if (!body.projectId || !body.charId || !Number.isSafeInteger(body.expectedRevision) || !Array.isArray(body.nodeIds) || !body.nodeIds.length || body.nodeIds.some((id) => typeof id !== 'string')) return Response.json({ error: 'projectId, expectedRevision, charId and nodeIds are required' }, { status: 400 })
