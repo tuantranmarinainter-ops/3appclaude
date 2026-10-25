@@ -269,3 +269,5 @@ body{font-size:13px}body>header{height:auto;min-height:54px;flex-wrap:wrap;gap:8
 
 /* View overlays are hidden without changing their original inline visibility. */
 .viewport.silhouette-view > :not(.studio-scene-canvas){visibility:hidden!important;}
+
+.timeline-key-menu{position:fixed;z-index:10000;padding:4px;background:#20212b;border:1px solid #5c526c;border-radius:5px;box-shadow:0 4px 16px #0008}.timeline-key-menu[hidden]{display:none}.timeline-key-menu button{min-width:100px;text-align:left}
