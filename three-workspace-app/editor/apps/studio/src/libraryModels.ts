@@ -105,6 +105,19 @@ export async function libraryCharacterModel(charId: string, faceForward = true) 
   return { bytes: packLibraryGlb(json, bin), fingerprint }
 }
 
+/**
+ * Mọi nhân vật thư viện dưới dạng GLB cho viewer: nhân vật có base model đi qua
+ * `libraryCharacterModel` (kèm texture/skin); nhân vật cũ chưa có base model thì đọc
+ * model ngay trong thư mục của nó — GLB trả nguyên, `.bobj` chuyển khi đọc.
+ */
+export async function libraryCharacterGlb(charId: string): Promise<Buffer> {
+  const resolved = resolveCharacter(charId)
+  if (resolved.baseModel) return (await libraryCharacterModel(charId)).bytes
+  const source = await readFile(resolved.modelPath)
+  if (resolved.character.model.toLowerCase().endsWith('.bobj')) return Buffer.from(bobjModelToGlb(parseBobjModel(source.toString('utf8')), LIBRARY_GLB_OPTIONS).bytes)
+  return source
+}
+
 /** A character-owned sidecar must extend the exact authoritative native model. */
 export async function libraryNativeAction(charId: string, sidecar: string) {
   const resolved = resolveCharacter(charId)
