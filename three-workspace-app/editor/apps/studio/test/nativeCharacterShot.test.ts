@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
@@ -27,7 +27,9 @@ if (process.env.NATIVE_SHOT_LIBRARY_FIXTURE) assert.ok(fixtureExists, `Explicit 
 const oldLibrary = process.env.W01_LIBRARY, oldProjects = process.env.BBS_UNIFIED_PROJECTS_DIR
 process.env.W01_LIBRARY = path.join(run, 'library')
 process.env.BBS_UNIFIED_PROJECTS_DIR = path.join(run, 'projects')
-if (fixtureExists) cpSync(source, process.env.W01_LIBRARY, { recursive: true })
+// The default fixture path is a Windows junction (C:\w01-samples\* → S:\…); copying the link itself would make the
+// test write its new versions straight into the shared fixture, so copy the resolved directory's contents.
+if (fixtureExists) cpSync(realpathSync(source), process.env.W01_LIBRARY, { recursive: true, dereference: true })
 const sambaHash = '68fcdb75d373b7338ecf58a9f2f8a2d3a12d3501615a88de9f06285254f644c4'
 const sambaSource = process.env.NATIVE_SHOT_SAMBA_FIXTURE || 'C:/w01-samples/adjust-base-main/Samba Dancing.glb'
 const sambaExists = existsSync(sambaSource)
