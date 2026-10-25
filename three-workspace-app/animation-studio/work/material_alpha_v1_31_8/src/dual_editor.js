@@ -1,11 +1,11 @@
 function captureEditorSlot(side=activeEditorSlot){
  if(!rig)return;
- editorSlots[side]={view:editView,views:editViews,onion,rig,project,time,playing,selected,selectionKeys,history,historyIndex,dirty,draft,studioMode,studioBanks,labClipId,clipboard,mapping,targetRig,onionRevision,sourceUnits:$('sourceUnits').value,speed:Number($('speedInput').value)||1,loop:$('loop').checked};
+ editorSlots[side]={view:editView,views:editViews,onion,rig,project,time,playing,selected,selectionKeys,history,historyIndex,dirty,draft,studioMode,studioBanks,labClipId,mapping,targetRig,onionRevision,sourceUnits:$('sourceUnits').value,speed:Number($('speedInput').value)||1,loop:$('loop').checked};
 }
 
 function restoreEditorSlot(side){
  const s=editorSlots[side];if(!s)throw Error('Nhân vật '+side+' chưa sẵn sàng.');
- editView=s.view;editViews=s.views;activeEditView=s.view;onion=s.onion;rig=s.rig;project=s.project;time=s.time;playing=s.playing;selected=s.selected;selectionKeys=s.selectionKeys;history=s.history;historyIndex=s.historyIndex;dirty=s.dirty;draft=s.draft;studioMode=s.studioMode;studioBanks=s.studioBanks;labClipId=s.labClipId;clipboard=s.clipboard;mapping=s.mapping;targetRig=s.targetRig;onionRevision=s.onionRevision;activeEditorSlot=side;
+ editView=s.view;editViews=s.views;activeEditView=s.view;onion=s.onion;rig=s.rig;project=s.project;time=s.time;playing=s.playing;selected=s.selected;selectionKeys=s.selectionKeys;history=s.history;historyIndex=s.historyIndex;dirty=s.dirty;draft=s.draft;studioMode=s.studioMode;studioBanks=s.studioBanks;labClipId=s.labClipId;mapping=s.mapping;targetRig=s.targetRig;onionRevision=s.onionRevision;activeEditorSlot=side;
 }
 
 function syncEditorSlotUI(){
