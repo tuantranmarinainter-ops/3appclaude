@@ -9,7 +9,7 @@ test('A7 evaluated key capture, whole/selected paste, exact Undo and saved round
  const server=createServer((q,r)=>{r.setHeader('Content-Type','text/html');r.end(html);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const browser=await chromium.launch({headless:true});
  try{
- const page=await browser.newPage({viewport:{width:1600,height:1050}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.__studio?.ready);
+ const page=await browser.newPage({viewport:{width:1600,height:1050}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.accept());await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.__studio?.ready);
  const fixture=await page.evaluate(async()=>{const s=window.__studio,p=s.serialized(),data=s.pose(),id=s.recordNames().find(r=>/LeftArm$/.test(r.name)).id;p.duration=2;p.loop=[0,2];p.keys={};p.ikModes={};p.ikOptions={};const a=structuredClone(data[id]),b=structuredClone(a);b.q=[0,0,Math.sin(.3),Math.cos(.3)];s.core.addKey(p,id,0,a,'linear');s.core.addKey(p,id,.5,b,'linear');await s.loadProject(p);s.seek(.5);const expected=s.pose();s.seek(0);return{id,expected};});
  await page.locator('#minimalKeyOptions summary').click();
  async function rightClickKey(){await page.locator('#timeline').scrollIntoViewIfNeeded();await page.waitForTimeout(200);const box=await page.locator('#timeline').boundingBox(),row=Number(await page.locator('#timeline').getAttribute('data-row-height'));await page.mouse.click(box.x+130+(box.width-142)*.5/2,box.y+row/2,{button:'right'});}
