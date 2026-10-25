@@ -2372,14 +2372,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
               const metadata = motionMetadata[motionId]
               return motion.assetId === assetId && motion.skeletonId === skeletonId && isRecord(metadata) && metadata.clipIndex === item.clipIndex
             })
+            // E1: a library.place import must keep the Action UUID as its own Motion id even when a
+            // byte-identical Action of another character already produced a Motion for the same
+            // (asset, skeleton, clipIndex). The Motions share the asset, but each Action keeps its
+            // own Motion so its provenance (library ownerCharId, resolved via the Action UUID) and
+            // per-character placement stay intact instead of folding into the other character's Motion.
+            const keepOwnMotion = libraryPlacement !== null && stagedAssetImports.length === 1 && item.motion.id === libraryPlacement.motionId && !next.motions[item.motion.id]
             if (imported.app1Manifest && next.motions[item.motion.id]) {
               const existing = next.motions[item.motion.id]!
               if (existing.sourceClip.sha256 !== imported.asset.source.sha256) throw new UnifiedStoreError('ASSET_CONFLICT', 'App 1 Action UUID already exists with a different GLB SHA-256', 409)
               motionIds.push(existing.id)
               continue
             }
-            if (duplicate && imported.app1Manifest && duplicate[0] !== item.motion.id) throw new UnifiedStoreError('ASSET_CONFLICT', 'This clip was already imported with another Action UUID', 409)
-            if (duplicate) {
+            if (duplicate && imported.app1Manifest && duplicate[0] !== item.motion.id && !keepOwnMotion) throw new UnifiedStoreError('ASSET_CONFLICT', 'This clip was already imported with another Action UUID', 409)
+            if (duplicate && !keepOwnMotion) {
               const oldMetadata = (isRecord(motionMetadata[duplicate[0]]) ? motionMetadata[duplicate[0]] : {}) as Record<string, unknown>
               const sourceFileName = next.assets[assetId]?.provenance.original.path.split('/').at(-1) ?? item.nativeFingerprint.name
               const updatedMetadata = { ...oldMetadata, name: item.name, clipIndex: item.clipIndex, nativeFingerprint: { ...item.nativeFingerprint, name: sourceFileName } }
@@ -2436,7 +2442,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           const motion = next.motions[libraryPlacement.motionId]
           const character = next.characters[libraryPlacement.characterId]
           const profile = character && next.skeletons[character.skeletonId]
-          if (!motion || !character || !profile || !(libraryPlacement.nativeValidated ? next.skeletons[motion.skeletonId] && sameRigTopology(next.skeletons[motion.skeletonId] as NonNullable<ImportedAsset['skeleton']>, profile) : isMixamo65Topology(profile.bones) && isMixamo65Topology(next.skeletons[motion.skeletonId]?.bones ?? []))) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Imported Action is not compatible with the selected Character', 422)
+          // A missing Motion here means the import above failed to register the Action, not a rig
+          // mismatch; report the real cause instead of blaming the Character profile (E1).
+          if (!motion) throw new UnifiedStoreError('ASSET_MISSING', 'Action đã nhập nhưng Motion của nó không có trong project; không thể gán cho nhân vật', 422)
+          if (!character || !profile || !(libraryPlacement.nativeValidated ? next.skeletons[motion.skeletonId] && sameRigTopology(next.skeletons[motion.skeletonId] as NonNullable<ImportedAsset['skeleton']>, profile) : isMixamo65Topology(profile.bones) && isMixamo65Topology(next.skeletons[motion.skeletonId]?.bones ?? []))) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Action không tương thích với rig của nhân vật đã chọn', 422)
           const scene = structuredClone(next.scene)
           const priorClips = scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === character.nodeId)
           const frameStart = Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
