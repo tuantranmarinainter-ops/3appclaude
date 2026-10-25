@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_FILM_FRAME_ASPECT, fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect } from '../src/filmFrame'
+import { alignFilmRangeToTickGrid, DEFAULT_FILM_FRAME_ASPECT, filmGridFrameStep, fitFilmFrameDimensions, readFilmFrameAspect, resolveFilmFrameAspect, writeFilmFrameAspect } from '../src/filmFrame'
 
 test('film frame extension helpers default old projects to 16:9 and read named aspects', () => {
     assert.equal(readFilmFrameAspect(undefined), DEFAULT_FILM_FRAME_ASPECT)
@@ -33,4 +33,33 @@ test('render bounds fit exact named aspects and report custom numeric rounding',
   assert.equal(resolveFilmFrameAspect({ filmFrame: { aspect: '9:16' } }, undefined), 9 / 16)
   assert.equal(resolveFilmFrameAspect({ filmFrame: { aspect: '1:1' } }, 9 / 16), 9 / 16)
   assert.throws(() => fitFilmFrameDimensions(64, 64, 9 / 16), /minimum 64 pixel/)
+})
+
+test('film tick grid step is the frame quantum that keeps ranges on the 20 Hz grid', () => {
+  assert.equal(filmGridFrameStep(30), 3)
+  assert.equal(filmGridFrameStep(60), 3)
+  assert.equal(filmGridFrameStep(24), 6)
+  assert.equal(filmGridFrameStep(25), 5)
+  assert.equal(filmGridFrameStep(20), 1)
+  assert.equal(filmGridFrameStep(0), 1)
+})
+
+test('alignFilmRangeToTickGrid extends an off-grid end (0-27 at 30 fps becomes 0-29)', () => {
+  const aligned = alignFilmRangeToTickGrid({ startFrame: 0, endFrame: 27 }, 30, { frameStart: 0, frameEnd: 300 })
+  assert.deepEqual(aligned, { range: { startFrame: 0, endFrame: 29 }, changed: true, ticks: 20 })
+})
+
+test('alignFilmRangeToTickGrid leaves an on-grid range untouched', () => {
+  const aligned = alignFilmRangeToTickGrid({ startFrame: 0, endFrame: 29 }, 30, { frameStart: 0, frameEnd: 300 })
+  assert.deepEqual(aligned, { range: { startFrame: 0, endFrame: 29 }, changed: false, ticks: 20 })
+})
+
+test('alignFilmRangeToTickGrid shortens when extending would leave the timeline', () => {
+  const aligned = alignFilmRangeToTickGrid({ startFrame: 270, endFrame: 298 }, 30, { frameStart: 0, frameEnd: 298 })
+  assert.deepEqual(aligned, { range: { startFrame: 270, endFrame: 296 }, changed: true, ticks: 18 })
+})
+
+test('alignFilmRangeToTickGrid keeps the range when no grid fit exists inside the timeline', () => {
+  const aligned = alignFilmRangeToTickGrid({ startFrame: 0, endFrame: 1 }, 30, { frameStart: 0, frameEnd: 1 })
+  assert.deepEqual(aligned, { range: { startFrame: 0, endFrame: 1 }, changed: false })
 })
