@@ -125,7 +125,7 @@
             </div>
             <fieldset id="adjustFieldset">
               <legend>Hiệu chỉnh (kiểu Mixamo)</legend>
-              <small>Áp lên kết quả Mixamo65 sau khi chuẩn hoá, nguồn giữ nguyên. Mặc định = không đổi. Tay chạm/chéo nhau? Tăng "Khoảng cách tay".</small>
+              <small>Áp lên kết quả Mixamo65 sau khi chuẩn hoá, nguồn giữ nguyên. Mặc định = không đổi. Tay chạm/chéo nhau? Tăng "Khoảng cách tay". Mỗi animation giữ bộ hiệu chỉnh riêng (dòng đã chỉnh có chấm vàng); chuyển sang animation khác thì các thanh hiện bộ của animation đó.</small>
               <h4>Tỉ lệ xương / cơ thể</h4>
               <label class="field">Áp dụng <select name="adj_proportionSide"><option value="both">Cả hai</option><option value="left">Trái</option><option value="right">Phải</option></select></label>
               <label class="field adj">Khoảng cách tay (Arm-Space) <output data-adj-out="armSpace" data-unit="x100"></output>
@@ -184,6 +184,8 @@
               <button type="button" id="adjustPreview">Xem thử</button>
               <label class="inline"><input type="checkbox" id="adjustLive">Tự xem thử khi đổi hiệu chỉnh</label>
               <button type="button" id="adjustReset">Đặt lại hiệu chỉnh</button>
+              <button type="button" id="adjustResetRow">Đặt lại animation này</button>
+              <button type="button" id="adjustApplySelected">Áp dụng cho các animation đã chọn</button>
             </fieldset>
             <fieldset>
               <legend>Minecraft20 (.bobj cho BBS FS)</legend>
