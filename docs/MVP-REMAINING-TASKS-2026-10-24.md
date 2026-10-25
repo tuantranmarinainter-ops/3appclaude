@@ -155,7 +155,9 @@ Thư viện (App 5) → dựng cảnh App 2 → sang App 3 chỉnh → trả k�
   (vd `W01_WORKBENCH_TMP=S:\Claude\tmp`) để không ghi lên ổ C; trong phiên, xoá lượt chạy xem thử cũ khi có lượt mới cùng dòng; hiện
   dung lượng phiên + nút "Dọn dữ liệu tạm" trong giao diện. Nhắc Codex đặt thư mục kết quả chạy thử (outputs/QA) trên ổ S.
 
-### Ghi nhận khi người dùng test Thư viện + App 2 (2026-10-25, *chưa code, chỉ lên kế hoạch*)
+### Ghi nhận khi người dùng test Thư viện + App 2 (2026-10-25)
+> **Đã chốt và giao 2026-10-25:** C20–C25, C27 (C26 gộp vào N5) cùng N1–N6 nằm trong
+> [`APP2-ANIM-TIMELINE-TASKS-2026-10-25.md`](APP2-ANIM-TIMELINE-TASKS-2026-10-25.md). Các mục dưới giữ làm lịch sử.
 - **C20 — App 5 Thư viện: danh sách animation không cuộn được, khung không co giãn.** Danh sách động tác thiếu thanh cuộn nên không
   xem hết; thanh chia giữa các khung (danh sách / chi tiết) không kéo co giãn được. Cần: mỗi khung cuộn riêng, thanh chia kéo được
   (dùng lại kiểu thanh chia W2/C8), nhớ kích thước (localStorage).
