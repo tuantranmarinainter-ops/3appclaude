@@ -1,3 +1,5 @@
+import { filmSceneWorldMatrices } from './filmSceneWorld'
+import { Vector3 } from 'three'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { createFrameSnapshot, evaluateFrame } from '@topview/3d-builder/evaluate'
 import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
@@ -34,6 +36,7 @@ films=out/'films'; films.mkdir()
 assets={}
 effects={}
 audio={}
+anchors={}
 def unsafe_name(name):
     path=pathlib.PurePosixPath(name)
     devices={'con','prn','aux','nul','conin$','conout$'}
@@ -59,6 +62,8 @@ for item in spec['segments']:
         except (UnicodeDecodeError,json.JSONDecodeError) as error: raise ValueError('Film effects.json is not valid UTF-8 JSON') from error
         if not isinstance(effect_data,list): raise ValueError('Film effects.json must contain a cue array')
         if effect_data: effects['films/'+item['film']]=effect_data
+        if 'world-anchor.json' in names:
+            anchors['films/'+item['film']]=json.loads(source.read('world-anchor.json').decode('utf-8'))
         if 'audio.json' in names:
             audio['films/'+item['film']]=json.loads(source.read('audio.json').decode('utf-8'))
         for name in names:
@@ -79,6 +84,7 @@ for name,data in assets.values():
 (out/'series.json').write_text(json.dumps(spec['series'],ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 if effects: (out/'effects.json').write_text(json.dumps(effects,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'required-mods.json').write_text(json.dumps({'schemaVersion':1,'requiredMods':['BBS FS 2.7']+(['AAA Particles with compatible BBS AAA form renderer/addon'] if effects else []),'includedEffectCount':sum(len(cues) for cues in effects.values()),'effectPlayback':'UNVERIFIED' if effects else 'OMITTED','gamePlayback':'NOT_RUN'},indent=2)+'\n',encoding='utf-8')
+if anchors: (out/'world-anchors.json').write_text(json.dumps(anchors,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 if audio: (out/'audio.json').write_text(json.dumps(audio,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'README.txt').write_text(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'),encoding='utf-8')
 archive=pathlib.Path(sys.argv[4])
@@ -153,6 +159,18 @@ function selectedPropIds(project: UnifiedProject, clips: readonly { id: string; 
 export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentArgs, cameraSamples: readonly FilmSeriesCameraSample[] = [], cameraErrors: ReadonlyMap<string, string> = new Map(), options: { retainInvalidSingles?: boolean } = {}): FilmSeriesSegment[] {
   const content = args.content ?? (Array.isArray(args.propIds) && args.propIds.length ? 'both' : 'characters')
   args = { ...args, content }
+  // Pin one source pivot before segmentation so separate Films keep the same world placement.
+  if ((args.worldAnchor?.mode ?? 'local-origin') === 'local-origin' && !args.worldAnchor?.sourceOrigin) {
+    const sourceFrame = args.range?.startFrame ?? project.scene.content.editorial?.sequences.find((sequence) => sequence.id === args.sequenceId)?.clips[0]?.sourceFrameStart ?? project.scene.content.timeline.frameStart
+    const worldMatrix = filmSceneWorldMatrices(project, sourceFrame)
+    const anchorClips = project.scene.content.editorial?.sequences.find((sequence) => sequence.id === args.sequenceId)?.clips ?? []
+    const firstId = anchorClips.length ? selectedCharacterIds(project, anchorClips, args.characterIds)[0] : undefined
+    const nodeId = content === 'backdrops' || !firstId
+      ? (anchorClips.length ? selectedPropIds(project, anchorClips, args.propIds, cameraSamples)[0] : undefined)
+      : firstId ? project.characters[firstId]?.nodeId : undefined
+    const point = nodeId ? new Vector3().setFromMatrixPosition(worldMatrix(nodeId)) : undefined
+    if (point) args = { ...args, worldAnchor: { ...args.worldAnchor, mode: 'local-origin', sourceOrigin: [point.x, point.y, point.z] } }
+  }
   const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
   if (!sequence?.clips.length) fail(`Camera sequence ${String(args.sequenceId)} does not exist or has no clips`)
 

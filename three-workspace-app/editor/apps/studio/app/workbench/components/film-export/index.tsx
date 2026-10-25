@@ -6,6 +6,7 @@ import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 import { ExportShotPicker } from './ExportShotPicker'
 import { EffectsOptions } from './EffectsOptions'
+import { WorldAnchorFields } from './WorldAnchorFields'
 import { BbsInstallPanel } from './BbsInstallPanel'
 
 export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
@@ -23,6 +24,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
       <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
       <EffectsOptions value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
       <div className="wb-film-export-controls">
+        <WorldAnchorFields value={state.worldAnchor} onChange={state.setWorldAnchor} />
         <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
           <select value={state.exportMode} onChange={(event) => state.setExportMode(event.target.value as 'film' | 'series')} disabled={state.busy}>
             <option value="film">{vi ? 'Film hiện tại' : 'Current Film'}</option>

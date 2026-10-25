@@ -1,3 +1,6 @@
+import { filmSceneWorldMatrices } from './filmSceneWorld'
+import { Matrix4 } from 'three'
+import { applyFilmWorldAnchor, resolveFilmWorldAnchor } from './filmWorldAnchor'
 import { stageSceneConversion, type SceneConversionArgs } from './sceneConversion'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -7,7 +10,7 @@ import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { renderFrames } from '@topview/3d-director-cli/render.mjs'
 import { resolveUnifiedAssetFile } from './unifiedAssetFiles'
-import { FILM_MODEL_FACING_OFFSET, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
+import { FILM_MODEL_FACING_OFFSET, inspectFilmActorTransform, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
 import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
@@ -18,7 +21,6 @@ import { listVfxPreviews, readVfxSheetImage } from './vfxPreviews'
 import { filmAudioPackage } from './audioMix'
 import { getAction, resolveCharacter } from '../../../packages/library/index'
 import { resolveLibraryPath } from '../../../packages/library/index'
-import { Matrix4 } from 'three'
 import { bobjModelToGlb, buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 import { LIBRARY_GLB_OPTIONS } from './libraryModels'
 
@@ -208,8 +210,9 @@ export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: numbe
 }
 
 /** Add static backdrop actors after conversion; this pure step is shared by the job and manifest tests. */
-export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number): void {
+export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number, sourceFrame = project.scene.content.timeline.frameStart): void {
   if (!Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Backdrop Film duration must be a positive whole number of ticks')
+  const worldMatrix = filmSceneWorldMatrices(project, sourceFrame)
   for (const propId of propIds) {
     const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
     const assetId = node?.metadata?.assetId
@@ -221,8 +224,9 @@ export function appendFilmBackdropActors(manifest: FilmManifest, project: Unifie
     const prior = manifest.models.find((item) => item.id === profile.modelId)
     if (prior && JSON.stringify(prior) !== JSON.stringify(model)) throw new TypeError(`Converted backdrop model ID ${profile.modelId} has conflicting profiles`)
     if (!prior) manifest.models.push(model)
-    const { position, rotation } = node.transform
-    const pose = (tick: number) => ({ tick, x: position.x, y: position.y, z: position.z, pitch: 0, yaw: FILM_MODEL_FACING_OFFSET - rotation.y })
+    const inspected = inspectFilmActorTransform(worldMatrix(propId).toArray(), 0)
+    if (!inspected.transform) throw new TypeError(`Backdrop ${node.name}: ${inspected.issues[0]?.message ?? 'invalid transform'}`)
+    const pose = (tick: number) => ({ ...inspected.transform!, tick, yaw: inspected.transform!.yaw + FILM_MODEL_FACING_OFFSET })
     manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId: profile.modelId,
       transformSamples: [pose(0), pose(durationTicks)], poseTracks: [] })
   }
@@ -435,7 +439,10 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
         propProfiles.set(assetId, converted)
       }
     }
-    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks)
+    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks, args.range.startFrame)
+    const source = manifest.actors[0]?.transformSamples[0] ?? manifest.cameras[0]!.keyframes[0]!
+    const worldAnchor = resolveFilmWorldAnchor(args.worldAnchor, [source.x, source.y, source.z])
+    applyFilmWorldAnchor(manifest, worldAnchor, effects)
     // B15: VFX cues ride in the Film itself as AAA Particles replays (the effects must be installed in the game under
     // config/bbs/assets/<root>; W01_AAA_EFFECT_ROOT, default effeks/samples). effects.json stays as a sidecar.
     if (effects.length) Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks) })
@@ -453,6 +460,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
 `, { flag: 'wx' })
     await writeFile(path.join(packagePath, 'required-mods.json'), `${JSON.stringify(filmRequiredMods(effects.length), null, 2)}\n`, { flag: 'wx' })
     if (effects.length) await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
+    await writeFile(path.join(packagePath, 'world-anchor.json'), `${JSON.stringify(worldAnchor, null, 2)}\n`, { flag: 'wx' })
     // B16: voices/SFX/music heard in this Film, their 20 Hz schedule and a ducked mix for video editing.
     const audio = await filmAudioPackage(snapshot, args.range.startFrame, args.range.endFrame, signal)
     if (audio) {
@@ -463,6 +471,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     await writeFile(path.join(packagePath, 'README.txt'), [
       'BBS FS 2.7 Film package. Copy films/*.dat into saves/<world>/bbs/films/ and assets/** into config/bbs/assets/, keeping the included directory layout.',
+      'world-anchor.json records the explicit world anchor applied equally to actors, backdrops, cameras and effects. The local-origin default places the first actor pivot at (0,64,0); this is not a live player position. Set destination XYZ for the intended world location.',
       effects.length ? 'Effects are UNVERIFIED in game. The target AAA renderer/addon was explicitly confirmed. effects.json is a project-side schedule with one transform per cue interval; startTick and endTick are relative to this Film at 20 Hz.' : 'Effects omitted: no AAA/VFX forms or replay actors are included. See required-mods.json.',
       'Attached VFX cues follow evaluated scene nodes or Character bones in App 2. Export currently accepts only attachments whose world transform stays constant for the exported interval; moving attachments are rejected because the available sidecar consumer cannot be verified to replay transform keys.',
       'Film structure was exported by the local worker. Playback in a BBS FS game was not tested by this package export.',
@@ -481,7 +490,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     await saveArtifact(record, archive, archiveName, files)
     signal.throwIfAborted()
     record.result = { files, provenance: { sourceRevision: record.sourceRevision, sourceSha256: record.sourceSha256,
-      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes }, warnings: [], blockedRequests: [] }
+      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes, worldAnchor }, warnings: [], blockedRequests: [] }
     record.state = 'succeeded'; record.progress = 1
   } catch (error) {
     if (signal.aborted || error instanceof DOMException && error.name === 'AbortError') record.state = 'cancelled'

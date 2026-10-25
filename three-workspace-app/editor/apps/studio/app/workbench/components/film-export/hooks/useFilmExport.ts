@@ -1,3 +1,4 @@
+import type { FilmWorldAnchor } from '../../../../../src/filmWorldAnchor'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
@@ -17,6 +18,7 @@ export function useFilmExport(project: UnifiedProject) {
   const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
   const sequences = project.scene.content.editorial?.sequences ?? []
   const [effectsPolicy, setEffectsPolicy] = useState<FilmEffectsPolicy>({ mode: 'omit' })
+  const [worldAnchor, setWorldAnchor] = useState<FilmWorldAnchor>({ mode: 'local-origin', destination: [0, 64, 0] })
   const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
   const [propIds, setPropIds] = useState<string[]>(props.map((node) => node.id))
@@ -67,11 +69,11 @@ export function useFilmExport(project: UnifiedProject) {
     : null
   const selectionArgs = useMemo(() => {
     const range = effectiveRange
-    return { content, effectsPolicy,
+    return { worldAnchor, content, effectsPolicy,
       characterIds: content === 'backdrops' ? [] : exportMode === 'series' && seriesCharacterSelection === 'auto' ? 'auto' as const : characterIds,
       propIds: content === 'characters' ? [] : exportMode === 'series' && seriesPropSelection === 'auto' ? 'auto' as const : propIds,
       sequenceId, range, viewportAspect }
-  }, [effectsPolicy, content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, effectiveRange, viewportAspect])
+  }, [worldAnchor, effectsPolicy, content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, effectiveRange, viewportAspect])
   const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, exportMode, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
@@ -144,9 +146,9 @@ export function useFilmExport(project: UnifiedProject) {
       const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
         command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
         args: exportMode === 'series'
-          ? { content, effectsPolicy, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,
+          ? { content, effectsPolicy, worldAnchor, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,
               propIds: content === 'characters' ? [] : seriesPropSelection === 'auto' ? 'auto' : propIds, sequenceId, viewportAspect, name: filmName }
-          : { content, effectsPolicy, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
+          : { content, effectsPolicy, worldAnchor, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
               sequenceId, range: { startFrame: effectiveRange.startFrame, endFrame: effectiveRange.endFrame }, viewportAspect, filmName } })
       const jobId = String(started.result.jobId)
       setActiveJobId(jobId); setStatus(exportMode === 'series' ? (vi ? 'Đang chia đoạn và xuất cả tập…' : 'Segmenting and exporting episode…') : (vi ? 'Đang lấy mẫu và xuất Film…' : 'Sampling and exporting Film…'))
@@ -238,7 +240,7 @@ export function useFilmExport(project: UnifiedProject) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
-  return { effectsPolicy, setEffectsPolicy, characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
+  return { effectsPolicy, setEffectsPolicy, worldAnchor, setWorldAnchor, characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
     sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot, shotSelection, chooseShot, shotRepairs, applyShotRepair,
