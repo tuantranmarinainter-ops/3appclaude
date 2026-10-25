@@ -174,6 +174,8 @@ export class DualViewport {
   cameraPilot = false
   jointBusy = false
   previewAspect = FALLBACK_ASPECT
+  /** Nút đang bị bộ lọc xem của Stage (N5) giấu: vòng gizmo camera bên dưới không bật lại gizmo của các nút này. */
+  viewHiddenNodeIds: ReadonlySet<string> | null = null
   /** 非空时主视口按机位取景：机位画面正好落在居中的取景框里，框外是延伸出去的场景。 */
   framedAspect: number | null = null
   /** 非空时主视口是成片监看：机位画面按画幅撑满画布，四周黑边，不露框外场景。 */
@@ -689,7 +691,7 @@ export class DualViewport {
       // 橙色是选中态。预览用的 active camera 未选中时保持蓝色。
       cam.gizmo.setActive(selectedIds?.has(id) ?? false)
       if (!skipGizmoIds?.has(id)) cam.gizmo.sync(cam.camera)
-      cam.gizmo.group.visible = !hideOverlays && !followCamInst && cam.node.visible !== false
+      cam.gizmo.group.visible = !hideOverlays && !followCamInst && cam.node.visible !== false && !(this.viewHiddenNodeIds?.has(id) ?? false)
     }
     if (rendererAlive(this.rendererMain)) this.mainPixelRatio.apply(this.rendererMain, window.devicePixelRatio)
     if (rendererAlive(this.rendererMain) && fitRenderer(this.rendererMain)) {

@@ -72,7 +72,9 @@ import { applyNodeVisibility, applyViewVisibility } from '../objects/visibility'
 import { computeViewHiddenNodeIds, type SceneViewFilter } from '../../contract/sceneView'
 import { addRuntimeNode, hasNode, removeNode } from '../objects/ObjectFactory'
 import { clearGraph, loadDocument } from '../objects/SceneLoader'
-import { CHARACTER_LABEL_KIND, disposeSceneChildren } from '../objects/environment'
+import { applyEnvironment, CHARACTER_LABEL_KIND, disposeSceneChildren } from '../objects/environment'
+import { GroundCheckerView } from '../objects/groundChecker'
+import { normalizeGroundViewOptions, type GroundViewOptions } from '../../contract/groundView'
 import { syncLabelTransforms } from '../objects/labels'
 import type { CamInstance, CharInstance } from '../objects/types'
 import { PlaybackClock } from './Clock'
@@ -182,6 +184,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   private readonly silhouetteView = new SilhouetteView()
   private silhouetteWanted = false
   private sceneViewFilterWanted: SceneViewFilter = { charactersOnly: false, backgroundHidden: false }
+  private readonly groundCheckerView = new GroundCheckerView()
+  private groundViewWanted: GroundViewOptions | null = null
   private viewHiddenCache: {
     doc: DirectorDocument | null
     charactersOnly: boolean
@@ -338,9 +342,60 @@ export class Stage implements DirectorEngine, PathViewHost {
    */
   syncViewVisibility(): void {
     const filter = this.sceneViewFilterWanted
-    if (!filter.charactersOnly && !filter.backgroundHidden) return
-    if (this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot) return
-    applyViewVisibility(this, this.currentViewHiddenIds())
+    if (!filter.charactersOnly && !filter.backgroundHidden) {
+      this.viewport.viewHiddenNodeIds = null
+      return
+    }
+    if (this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot) {
+      this.viewport.viewHiddenNodeIds = null
+      return
+    }
+    const ids = this.currentViewHiddenIds()
+    // Viewport.render mỗi lần vẽ tự đặt lại visibility cho gizmo camera theo tài liệu,
+    // nên phải báo thêm tập nút đang bị lọc xem giấu — không thì gizmo camera bị bật lại
+    // ngay sau bước áp dụng này.
+    this.viewport.viewHiddenNodeIds = ids
+    applyViewVisibility(this, ids)
+  }
+
+  /** Sàn UV checker N6：只影响编辑视口显示，不写入文档，不进导出/成片。 */
+  get groundViewOptions(): GroundViewOptions | null {
+    return this.groundViewWanted
+  }
+
+  setGroundViewOptions(options: GroundViewOptions | null): void {
+    const next = options ? normalizeGroundViewOptions(options) : null
+    const prev = this.groundViewWanted
+    if (
+      prev?.enabled === next?.enabled
+      && prev?.style === next?.style
+      && prev?.cellSize === next?.cellSize
+      && prev?.opacity === next?.opacity
+    ) return
+    this.groundViewWanted = next
+    if (!next?.enabled) {
+      // Tắt checker: áp lại môi trường theo tài liệu (sàn/lưới trở về trạng thái tài liệu, checker bị ẩn).
+      if (this.doc) applyEnvironment(this)
+      else this.groundCheckerView.hide(this.scene, true)
+    }
+    this.invalidate()
+  }
+
+  /**
+   * 每次编辑视口绘制前调用（与 syncSilhouette / syncViewVisibility 并列）。
+   * 导出/缩略图路径只调 evaluate（applyEnvironment 会关掉 checker 面）后直接渲染，不走这里。
+   * 成片预览、跟随/操控机位、或文档本身关地面时也不套用 checker。
+   */
+  syncGroundView(): void {
+    const options = this.groundViewWanted
+    const display = this.doc?.content.environment.display
+    const docGroundVisible = display?.groundVisible !== false
+    const suspended = this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot
+    if (options?.enabled && docGroundVisible && !suspended) {
+      this.groundCheckerView.apply(this.scene, options, display?.groundHeight ?? 0)
+    } else if (this.groundCheckerView.active) {
+      this.groundCheckerView.hide(this.scene, docGroundVisible)
+    }
   }
 
   setFilmFrameAspect(aspect: number | null): void {
@@ -1458,6 +1513,7 @@ export class Stage implements DirectorEngine, PathViewHost {
   dispose(): void {
     this.silhouetteView.restore(this.scene)
     this.silhouetteView.dispose()
+    this.groundCheckerView.dispose(this.scene)
     this.bbsLookView.restore(this.scene)
     this.bbsLookView.dispose()
     this.vfxLayer.dispose()
@@ -1555,6 +1611,7 @@ export class Stage implements DirectorEngine, PathViewHost {
         this.evaluate(this.ambientFrame, this.evalUserKeys, this.evalUserKeysEnabled, this.evalChainCameraMotion, true)
         this.syncSilhouette()
         this.syncViewVisibility()
+        this.syncGroundView()
         this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
         this.evaluateCurrent(true)
       }
@@ -1563,6 +1620,7 @@ export class Stage implements DirectorEngine, PathViewHost {
       this.viewport.previewAspect = viewAspect
       this.syncSilhouette()
       this.syncViewVisibility()
+      this.syncGroundView()
       this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
       return
     }
@@ -1595,6 +1653,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.viewport.outlineRoots = hideOverlays || this.gizmoSuspended ? [] : this.selectionOutlineRoots(selectedIds)
     this.syncSilhouette()
     this.syncViewVisibility()
+    this.syncGroundView()
     this.viewport.render(
       this.scene,
       this.cameras,

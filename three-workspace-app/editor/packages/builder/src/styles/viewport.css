@@ -350,6 +350,108 @@
   bottom: 0;
 }
 
+/* N6: nút + bảng tuỳ chọn sàn UV checker ở góc phải thanh dưới khung 3D. */
+.t3d-viewport-bottom > .t3d-ground-view {
+  position: absolute;
+  /* Chừa chỗ cho nút toàn màn hình 40px ở góc phải (right 16 + rộng 40 + đệm 8). */
+  right: 48px;
+  bottom: 0;
+}
+
+.t3d-ground-view {
+  position: relative;
+}
+
+.t3d-ground-view-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+  padding: 12px;
+  border: 1px solid var(--t3d-dock-border);
+  border-radius: 10px;
+  background: var(--t3d-dock-surface);
+  box-shadow: var(--t3d-shadow-float);
+  backdrop-filter: blur(var(--t3d-dock-blur));
+  -webkit-backdrop-filter: blur(var(--t3d-dock-blur));
+  color: var(--t3d-text);
+  font-size: 12px;
+}
+
+.t3d-ground-view-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.t3d-ground-view-toggle {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.t3d-ground-view-toggle input {
+  accent-color: var(--t3d-accent);
+}
+
+.t3d-ground-view-label {
+  flex: none;
+  width: 64px;
+  color: var(--t3d-text-muted);
+}
+
+.t3d-ground-view-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.t3d-ground-view-seg button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--t3d-dock-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t3d-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.t3d-ground-view-seg button:hover:not(:disabled) {
+  color: var(--t3d-text);
+}
+
+.t3d-ground-view-seg button.is-active {
+  background: var(--t3d-ui-active-strong);
+  color: var(--t3d-text);
+  border-color: var(--t3d-accent);
+}
+
+.t3d-ground-view-seg button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.t3d-ground-view-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--t3d-accent);
+}
+
+.t3d-ground-view-row input[type="range"]:disabled {
+  opacity: 0.45;
+}
+
+.t3d-ground-view-value {
+  flex: none;
+  width: 36px;
+  text-align: right;
+  color: var(--t3d-text-muted);
+}
+
 .t3d-viewport-bottom .t3d-agent-composer-panel {
   width: min(560px, calc(100cqw - var(--t3d-bottom-side) * 2));
 }
