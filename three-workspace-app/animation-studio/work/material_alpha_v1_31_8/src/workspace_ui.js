@@ -48,7 +48,7 @@ function setupStudioWorkspace(){
  $('minimalKeyOptions').querySelector('summary').textContent='Chỉnh key · Nội suy · Thời lượng';
  const help=$('help').querySelector('ol');help.children[2].textContent='Trong Animation, bật Control Rig ở thanh 3D. Chọn khớp rồi mở tab Thuộc tính bên phải để chỉnh FK/IK, Snap và Transform.';
  const graphOptions=make('details','studio-graph-options');graphOptions.append(make('summary','','Chỉnh đường cong ▾'),document.querySelector('.graph-editbar'));$('graphPanel').append(graphOptions);
- setupStudioAdvancedTools();setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();setupStudioSceneWorkspace();
+ setupStudioAdvancedTools();setupStudioSettings();setupStudioCompare();setupStudioMenus();setupStudioTextureDrag();setupStudioSceneWorkspace();setupStudioPaneSizing();
  const timelineGrip=document.querySelector('[data-resize=timeline]');timelineGrip.title='Kéo để đổi chiều cao editor · khung 3D giữ ít nhất 45% cửa sổ';
  const fitTimeline=()=>{if(mode!=='compare')clampStudioTimelineHeight(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'))||240);};
  const sizing=new ResizeObserver(fitTimeline);for(const el of [document.querySelector('.stage'),toolbar,transport])sizing.observe(el);fitTimeline();
@@ -164,4 +164,47 @@ function setupStudioSceneWorkspace(){
  };
  if(connect())return;
  const ready=new MutationObserver(()=>{if(connect())ready.disconnect();});ready.observe(document.body,{childList:true,subtree:true});
+}
+
+// View preferences are deliberately separate from workspaceSnapshot/project/history.
+function setupStudioPaneSizing(){
+ const root=document.documentElement,workspace=$('createWorkspace'),key='animation-studio-pane-sizes-v1';
+ let sizes={};try{const value=JSON.parse(localStorage.getItem(key)||'{}');if(value&&typeof value==='object')for(const [k,v]of Object.entries(value))if(Number.isFinite(v))sizes[k]=v;}catch{}
+ const save=()=>{try{localStorage.setItem(key,JSON.stringify(sizes));}catch{}};
+ const originalTimelineBounds=studioTimelineBounds;studioTimelineBounds=()=>{if(innerWidth>700)return originalTimelineBounds();const stage=document.querySelector('.stage'),fixed=[...stage.children].filter(el=>!['viewportGrid','viewportShell','animationArea'].includes(el.id)).reduce((sum,el)=>sum+el.getBoundingClientRect().height,0),max=Math.max(0,Math.min(500,stage.clientHeight-fixed-Math.min(Math.ceil(innerHeight*.45),Math.max(100,stage.clientHeight-fixed-80))));return{min:Math.min(80,max),max};};
+ const bounds=(min,max)=>[Math.min(min,Math.max(0,max)),Math.max(0,max)];
+ const sizeKey=kind=>innerWidth<=700?'mobile-'+kind:kind;
+ const widthBounds=()=>bounds(innerWidth<=700?140:180,Math.max(0,innerWidth<=700?workspace.clientWidth*.8:Math.min(workspace.clientWidth*.4,(workspace.clientWidth-240)/2)));
+ const specs={
+  scene:{variable:'--studio-scene-width',axis:'x',sign:-1,range:widthBounds,fallback:400},
+  left:{variable:'--studio-left-width',axis:'x',sign:1,range:widthBounds,fallback:260},
+  right:{variable:'--right-width',axis:'x',sign:-1,range:widthBounds,fallback:320},
+  timeline:{variable:'--timeline-height',axis:'y',sign:-1,range:()=>{const b=studioTimelineBounds();return[b.min,b.max];},fallback:240},
+  compareSide:{variable:'--compare-side-width',axis:'x',sign:-1,range:()=>bounds(innerWidth<=700?80:180,innerWidth*.45),fallback:300,target:$('compareWorkspace')},
+  compareSplit:{variable:'--compare-split',axis:'x',sign:1,range:()=>[20,80],fallback:50,unit:'%',scale:()=>100/document.querySelector('.compare-grid').clientWidth,target:$('compareWorkspace')}
+ };
+ const handles=new Map();let drag=null;
+ const apply=(kind,value)=>{const spec=specs[kind],[min,max]=spec.range(),n=Math.max(min,Math.min(max,value));(spec.target||root).style.setProperty(spec.variable,n+(spec.unit||'px'));const h=handles.get(kind);if(h){h.setAttribute('aria-valuemin',Math.round(min));h.setAttribute('aria-valuemax',Math.round(max));h.setAttribute('aria-valuenow',Math.round(n));}return n;};
+ const restore=()=>{for(const[k,s]of Object.entries(specs))apply(k,sizes[sizeKey(k)]??s.fallback);};
+ const bind=(handle,kind)=>{
+  if(!handle)return;handles.set(kind,handle);const spec=specs[kind];handle.setAttribute('aria-orientation',spec.axis==='x'?'vertical':'horizontal');handle.tabIndex=0;
+  const end=(cancel=false)=>{if(!drag||drag.handle!==handle)return;const d=drag;drag=null;if(cancel)apply(kind,d.start);else{sizes[sizeKey(kind)]=d.value;save();}if(handle.hasPointerCapture(d.id))handle.releasePointerCapture(d.id);document.body.classList.remove('studio-pane-dragging');};
+  handle.addEventListener('pointerdown',e=>{if(e.button!==0||!e.isPrimary||workspace.dataset.maximized)return;e.stopImmediatePropagation();e.preventDefault();const start=parseFloat((spec.target||root).style.getPropertyValue(spec.variable))||spec.fallback;drag={handle,id:e.pointerId,start,value:start,position:spec.axis==='x'?e.clientX:e.clientY};handle.setPointerCapture(e.pointerId);handle.focus({preventScroll:true});document.body.classList.add('studio-pane-dragging');},true);
+  handle.addEventListener('pointermove',e=>{if(drag?.handle!==handle||drag.id!==e.pointerId)return;e.stopImmediatePropagation();const position=spec.axis==='x'?e.clientX:e.clientY;drag.value=apply(kind,drag.start+(position-drag.position)*spec.sign*(spec.scale?.()||1));},true);
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])handle.addEventListener(event,e=>{if(drag?.handle!==handle)return;e.stopImmediatePropagation();end(event==='pointercancel');},true);
+  handle.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','Escape'].includes(e.key))return;e.stopImmediatePropagation();e.preventDefault();if(e.key==='Escape'){end(true);return;}if(workspace.dataset.maximized)return;const[min,max]=spec.range(),current=parseFloat((spec.target||root).style.getPropertyValue(spec.variable))||spec.fallback;const n=e.key==='Home'?min:e.key==='End'?max:current+(['ArrowRight','ArrowDown'].includes(e.key)?1:-1)*spec.sign*(e.shiftKey?30:10)*(spec.unit==='%'?.1:1);sizes[sizeKey(kind)]=apply(kind,n);save();},true);
+  window.addEventListener('blur',()=>end());
+ };
+ bind(document.querySelector('[data-resize=right]'),'right');bind(document.querySelector('[data-resize=timeline]'),'timeline');bind(document.querySelector('.compare-side-resize'),'compareSide');bind($('compareABResize'),'compareSplit');
+ // The existing animation picker becomes the left dock; all buttons/listeners survive.
+ const dock=()=>{const panel=$('floatingAnimationList');if(!panel||panel.dataset.paneDock)return;panel.dataset.paneDock='true';workspace.prepend(panel);const grip=document.createElement('div');grip.id='studioLeftDivider';grip.className='studio-left-divider';grip.setAttribute('role','separator');grip.setAttribute('aria-label','Đổi rộng danh sách animation');panel.after(grip);bind(grip,'left');const sync=()=>{workspace.classList.toggle('studio-left-open',!panel.hidden);if(innerWidth<=700){workspace.classList.toggle('studio-mobile-left-open',!panel.hidden);if(!panel.hidden)workspace.classList.remove('studio-mobile-right-open');}};new MutationObserver(sync).observe(panel,{attributes:true,attributeFilter:['hidden']});sync();};
+ const sceneDock=()=>{const panel=$('sceneStudioDialog');if(!panel||$('studioSceneDivider'))return;const grip=document.createElement('div');grip.id='studioSceneDivider';grip.className='studio-scene-divider';grip.setAttribute('role','separator');grip.setAttribute('aria-label','Đổi rộng công cụ cảnh');panel.prepend(grip);bind(grip,'scene');};
+ const ready=new MutationObserver(()=>{dock();sceneDock();});ready.observe(workspace,{childList:true,subtree:true});dock();sceneDock();
+ const mobileTools=document.createElement('div');mobileTools.className='studio-mobile-pane-tools';
+ for(const[kind,label]of [['left','Animation'],['right','Công cụ']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('aria-label','Mở / đóng '+label);button.dataset.mobilePane=kind;button.setAttribute('aria-expanded','false');button.setAttribute('aria-controls',kind==='left'?'floatingAnimationList':'minimalSidebar');button.addEventListener('click',()=>{const cls='studio-mobile-'+kind+'-open',open=!workspace.classList.contains(cls);workspace.classList.remove('studio-mobile-left-open','studio-mobile-right-open');if(open){if(kind==='left'&&$('floatingAnimationList')?.hidden)$('animationListToggle').click();workspace.classList.add(cls);}button.setAttribute('aria-expanded',String(open));});mobileTools.append(button);}
+ const syncMobileButtons=()=>{for(const button of mobileTools.children)button.setAttribute('aria-expanded',String(workspace.classList.contains('studio-mobile-'+button.dataset.mobilePane+'-open')));};new MutationObserver(syncMobileButtons).observe(workspace,{attributes:true,attributeFilter:['class']});
+ document.querySelector('.stage-toolbar').prepend(mobileTools);
+ // Legacy layout application must not overwrite locally saved view sizes.
+ const originalApply=applyWorkspaceLayout;applyWorkspaceLayout=(...args)=>{const result=originalApply(...args);restore();return result;};
+ window.addEventListener('resize',restore);$('resetLayout').addEventListener('click',()=>{sizes={};save();restore();});restore();
 }
