@@ -43,7 +43,10 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
+  /* C23: the 5-workspace bar switches apps, so every item carries the shared cross-app border. */
+  border: 2px solid var(--cross-app-accent, #ff8c1a);
   border-radius: 5px;
+  box-sizing: border-box;
   color: inherit;
   text-align: center;
   text-decoration: none;

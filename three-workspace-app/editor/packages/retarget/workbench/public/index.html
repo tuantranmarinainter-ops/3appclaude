@@ -230,7 +230,7 @@
             <button type="button" id="reviewStarredOnly" aria-pressed="false">Chỉ ★</button>
           </div>
           <div class="review-list" id="reviewList" tabindex="0" role="listbox" aria-label="Danh sách animation: ↑↓ ←→ để duyệt, Space để giữ/bỏ"><div class="review-inner" id="reviewInner"></div></div>
-          <footer><button type="button" class="primary" id="reviewTransfer">Chuyển sang nhân vật đích</button><small>↑↓ ←→ duyệt · Space giữ/bỏ · S gắn sao · tick = Giữ</small></footer>
+          <footer><button type="button" class="primary cross-app-button" id="reviewTransfer">Chuyển sang nhân vật đích</button><small>↑↓ ←→ duyệt · Space giữ/bỏ · S gắn sao · tick = Giữ</small></footer>
         </aside>
       </div>
       <div class="panel-divider panel-divider-horizontal" data-resize-panel="timeline" role="separator" aria-orientation="horizontal" aria-label="Đổi chiều cao timeline" tabindex="0"></div>
@@ -274,14 +274,14 @@
       </div>
       <div class="action-picker-list" id="actionPickerList"></div>
       <footer class="action-transfer">
-        <button type="button" class="primary" id="transferOpen">Chuyển sang nhân vật đích</button>
+        <button type="button" class="primary cross-app-button" id="transferOpen">Chuyển sang nhân vật đích</button>
         <div class="transfer-confirm" id="transferConfirm" hidden>
           <fieldset class="transfer-destinations"><legend>Nhân vật đích (chọn một hoặc nhiều)</legend><div id="transferCharacter" class="destination-grid" role="group" aria-label="Nhân vật đích"></div></fieldset>
           <label class="inline"><input type="checkbox" id="transferCharacterPack" checked> Bộ của nhân vật (Nháp)</label>
           <label class="inline"><input type="checkbox" id="transferShared"> Kho dùng chung</label>
           <label>Nguồn / giấy phép <input id="transferLicenseSource" type="text" placeholder="Chọn nguồn cho cả lô (tuỳ chọn)"></label>
           <label>Thẻ động tác <select id="transferActionKey"></select></label>
-          <button type="button" class="primary" id="transferStart">Chuyển</button>
+          <button type="button" class="primary cross-app-button" id="transferStart">Chuyển</button>
         </div>
         <div class="summary" id="transferStatus"></div>
         <button type="button" id="transferRetry" hidden>Thử lại các action lỗi</button>

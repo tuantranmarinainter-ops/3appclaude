@@ -233,9 +233,9 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       </select></label>
       <label>Từ frame<input type="number" value={shotRange[0]} min={timeline.frameStart} max={shotRange[1]} disabled={busy || !!shotId} onChange={(event) => setShotRange([Number(event.target.value), shotRange[1]])} /></label>
       <label>Đến frame<input type="number" value={shotRange[1]} min={shotRange[0]} max={timeline.frameEnd} disabled={busy || !!shotId} onChange={(event) => setShotRange([shotRange[0], Number(event.target.value)])} /></label>
-      <button type="button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
+      <button type="button" className="cross-app-button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
       <label><input type="checkbox" checked={withBobj} disabled={busy} onChange={(event) => setWithBobj(event.target.checked)} />Kèm .bobj</label>
-      <button type="button" className="wb-host-primary" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
+      <button type="button" className="wb-host-primary cross-app-button" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
     </header>
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>
