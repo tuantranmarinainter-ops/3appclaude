@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
+import { WorldAnchorFields } from './WorldAnchorFields'
 import { BbsInstallPanel } from './BbsInstallPanel'
 
 export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
@@ -20,6 +21,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
       <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
       <div className="wb-film-export-controls">
+        <WorldAnchorFields value={state.worldAnchor} onChange={state.setWorldAnchor} />
         <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
           <select value={state.exportMode} onChange={(event) => state.setExportMode(event.target.value as 'film' | 'series')} disabled={state.busy}>
             <option value="film">{vi ? 'Film hiện tại' : 'Current Film'}</option>

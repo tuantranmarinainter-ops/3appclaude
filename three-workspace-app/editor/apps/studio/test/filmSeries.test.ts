@@ -305,7 +305,7 @@ test('cancelling a series aborts its active segment, releases the reservation, a
 test('series ZIP includes ordered films and series metadata, deduplicates identical assets, and rejects conflicting names', () => {
   const python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
   const fixture = path.join(temp, 'fake-package.py')
-  writeFileSync(fixture, `import json,sys,zipfile\nfor index,spec in enumerate(json.loads(sys.argv[1])):\n  with zipfile.ZipFile(spec[0], 'w') as z:\n    z.writestr('films/source.dat', spec[1])\n    z.writestr('effects.json', json.dumps([{'effect':'spark','startTick':3+index,'endTick':5+index}]))\n    z.writestr(spec[3] if len(spec)>3 else 'assets/models/shared/model.bobj', b'same' if spec[2] == 'same' else spec[2].encode())\n`)
+  writeFileSync(fixture, `import json,sys,zipfile\nfor index,spec in enumerate(json.loads(sys.argv[1])):\n  with zipfile.ZipFile(spec[0], 'w') as z:\n    z.writestr('films/source.dat', spec[1])\n    z.writestr('world-anchor.json', json.dumps({'mode':'local-origin','offset':[-10000,-436,8000]}))\n    z.writestr('effects.json', json.dumps([{'effect':'spark','startTick':3+index,'endTick':5+index}]))\n    z.writestr(spec[3] if len(spec)>3 else 'assets/models/shared/model.bobj', b'same' if spec[2] == 'same' else spec[2].encode())\n`)
   const fakeArchives = [path.join(temp, 'first.zip'), path.join(temp, 'second.zip')]
   assert.equal(spawnSync(python, [fixture, JSON.stringify([[fakeArchives[0], 'film1', 'same'], [fakeArchives[1], 'film2', 'same']])]).status, 0)
   const specPath = path.join(temp, 'input.json'), readme = path.join(temp, 'README.txt')
@@ -318,9 +318,10 @@ test('series ZIP includes ordered films and series metadata, deduplicates identi
   writeFileSync(readme, 'BBS FS 2.7 install instructions')
   const assembled = spawnSync(python, ['-c', FILM_SERIES_ARCHIVE_SCRIPT, specPath, output, readme, archive], { encoding: 'utf8' })
   assert.equal(assembled.status, 0, assembled.stderr)
-  const inspect = spawnSync(python, ['-c', "import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(json.dumps({'names':sorted(z.namelist()),'series':json.loads(z.read('series.json')),'effects':json.loads(z.read('effects.json')),'first':z.read('films/episode-01.dat').decode(),'second':z.read('films/episode-02.dat').decode(),'asset':z.read('assets/models/shared/model.bobj').decode(),'readme':z.read('README.txt').decode()}))", archive], { encoding: 'utf8' })
+  const inspect = spawnSync(python, ['-c', "import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); print(json.dumps({'names':sorted(z.namelist()),'series':json.loads(z.read('series.json')),'effects':json.loads(z.read('effects.json')),'anchors':json.loads(z.read('world-anchors.json')),'first':z.read('films/episode-01.dat').decode(),'second':z.read('films/episode-02.dat').decode(),'asset':z.read('assets/models/shared/model.bobj').decode(),'readme':z.read('README.txt').decode()}))", archive], { encoding: 'utf8' })
   assert.equal(inspect.status, 0, inspect.stderr)
   const contents = JSON.parse(inspect.stdout)
+  assert.deepEqual(contents.anchors, { 'films/episode-01.dat': { mode: 'local-origin', offset: [-10000,-436,8000] }, 'films/episode-02.dat': { mode: 'local-origin', offset: [-10000,-436,8000] } })
   assert.deepEqual(contents.series.map((item: { order: number }) => item.order), [1, 2])
   assert.deepEqual(contents.effects, { 'films/episode-01.dat': [{ effect: 'spark', startTick: 3, endTick: 5 }], 'films/episode-02.dat': [{ effect: 'spark', startTick: 4, endTick: 6 }] })
   assert.deepEqual(contents.names.filter((name: string) => name.endsWith('.dat')), ['films/episode-01.dat', 'films/episode-02.dat'])

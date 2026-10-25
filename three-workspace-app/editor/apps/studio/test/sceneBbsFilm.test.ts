@@ -292,3 +292,25 @@ test('scene.export.bbsFilm writes <scene>.bbs-film.zip with both actors, both ca
   assert.deepEqual(scene.cameraNodeIds, ['camera_1', 'camera_2'])
   console.log('scene.export.bbsFilm', JSON.stringify({ archiveBytes: archive.sizeBytes, names, actors: report.actors, cameras: report.cameras, poseTracks: report.poseTracks }))
 })
+
+test('Film API commands accept and validate explicit world anchors without modifying the authored project', async () => {
+  const fixture = await backdropOnlyScene()
+  const project = await readUnifiedProject(fixture.projectId)
+  const before = JSON.stringify(project)
+  const worldAnchor = { mode: 'local-origin', destination: [-230, 67.25, 412] }
+  const common = { content: 'backdrops', characterIds: [], propIds: [fixture.propId], sequenceId: 'seq', worldAnchor }
+  for (const [command, args] of [
+    ['film.export', { ...common, range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9, filmName: 'anchor-api' }],
+    ['scene.export.bbsFilm', { ...common, name: 'anchor-api' }],
+    ['scene.export.bbsFilmSeries', { ...common, name: 'anchor-api' }],
+  ] as const) {
+    const response = await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command, args, dryRun: true })
+    assert.equal(response.result.valid, true)
+    await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command,
+      args: { ...args, worldAnchor: { mode: 'local-origin', destination: [0, 'bad', 0] } }, dryRun: true }), /anchor|coordinates/i)
+  }
+  const checked = await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command: 'film.preflight',
+    args: { ...common, range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 } })
+  assert.equal(checked.result.sourceRevision, fixture.revision)
+  assert.equal(JSON.stringify(await readUnifiedProject(fixture.projectId)), before)
+})

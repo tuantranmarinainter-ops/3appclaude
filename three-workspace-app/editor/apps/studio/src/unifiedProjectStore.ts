@@ -1257,11 +1257,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     return response
   }
   if (envelope.command === 'film.export') {
-    const { content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
+    const { worldAnchor, content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['worldAnchor', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
         content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content)) ||
         propIds !== undefined && !Array.isArray(propIds) ||
         typeof filmName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) {
@@ -1274,6 +1274,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           content !== 'backdrops' && !Array.isArray(characterIds)) throw new TypeError('Film sampling arguments are invalid')
       const resolved = resolveSceneBbsFilmArgs(project, {
         ...(content === undefined ? {} : { content }),
+        ...(worldAnchor === undefined ? {} : { worldAnchor }),
         sequenceId,
         frameStart: range.startFrame as number,
         frameEnd: range.endFrame as number,
@@ -1301,7 +1302,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'film.preflight') {
-    if (Object.keys(envelope.args).some((key) => !['mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['worldAnchor', 'mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
         envelope.args.mode !== undefined && envelope.args.mode !== 'film' && envelope.args.mode !== 'series' ||
         envelope.args.content !== undefined && (typeof envelope.args.content !== 'string' || !['characters', 'backdrops', 'both'].includes(envelope.args.content)) ||
         envelope.args.mode === 'series' && envelope.args.characterIds !== undefined && envelope.args.characterIds !== 'auto' && !isUniqueStringIdList(envelope.args.characterIds) ||
@@ -1333,7 +1334,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       let plan: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>>
       try {
         const resolved = resolveSceneBbsFilmArgs(project, {
-          content: 'characters', sequenceId: envelope.args.sequenceId, characterIds: [], propIds: [],
+          content: 'characters', sequenceId: envelope.args.sequenceId, characterIds: [], propIds: [], worldAnchor: envelope.args.worldAnchor,
           viewportAspect: effectiveAspect,
           name: 'preflight-series',
         })
@@ -1407,7 +1408,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film series snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
     const { content, ...sceneArgs } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
+    if (Object.keys(envelope.args).some((key) => !['worldAnchor', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
     }
     if (sceneArgs.characterIds !== undefined && sceneArgs.characterIds !== 'auto' && !isUniqueStringIdList(sceneArgs.characterIds) ||

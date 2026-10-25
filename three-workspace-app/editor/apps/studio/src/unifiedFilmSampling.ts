@@ -1,3 +1,4 @@
+import { resolveFilmWorldAnchor } from './filmWorldAnchor'
 import { createHash } from 'node:crypto'
 import { Euler, Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
@@ -9,6 +10,7 @@ import { bakeFilmPoseTracks } from './filmPoseBake'
 import { projectEvaluationScene, sampleProjectCameraSequence, sampleProjectSkeletonRange } from './unifiedSkeletonEvaluation'
 
 export interface FilmSamplingArgs {
+  worldAnchor?: import('./filmWorldAnchor').FilmWorldAnchor
   characterIds: string[]
   /** Film content to include. Omitted values preserve the historical Characters-only export. */
   content?: string
@@ -124,6 +126,8 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
   const add = (code: string, message: string, characterId?: string, propId?: string) => { if (!issues.some((item) => item.code === code && item.characterId === characterId && item.propId === propId)) issues.push({ code, message, ...(characterId ? { characterId } : {}), ...(propId ? { propId } : {}) }) }
   if (!args || typeof args !== 'object') return { issues: [{ code: 'ARGUMENTS_INVALID', message: 'Film sampling arguments are invalid' }], models: [] }
   if (!validateProject(project)) return { issues: [{ code: 'PROJECT_INVALID', message: 'Film sampling requires a valid shared project' }], models: [] }
+  try { resolveFilmWorldAnchor(args.worldAnchor, [0, 0, 0]) }
+  catch (cause) { add('WORLD_ANCHOR_INVALID', cause instanceof Error ? cause.message : 'Invalid Film world anchor') }
   const { sequenceId, range, viewportAspect } = args
   let selection: ReturnType<typeof resolveContentSelection> | undefined
   try { selection = resolveContentSelection(project, args) }
