@@ -97,15 +97,51 @@ export function updateCharacterProfile(charId: string, personality: { summary: s
 
 export function libraryCoverage() { return coverageMatrix() }
 
+export type ExistingNodePolicy = 'ask' | 'reuse' | 'create'
+
+export class LibraryCharacterAlreadyInSceneError extends Error {
+  readonly code = 'LIBRARY_CHARACTER_ALREADY_IN_SCENE'
+  constructor(readonly charId: string, readonly existingNodeIds: string[], readonly existingNodeNames: string[]) {
+    super(`Nhân vật thư viện đã có ${existingNodeIds.length} node trong cảnh; hãy chọn dùng node có sẵn hoặc thêm lần xuất hiện mới`)
+    this.name = 'LibraryCharacterAlreadyInSceneError'
+  }
+}
+
+export function libraryCharacterSceneNodes(project: Awaited<ReturnType<typeof readUnifiedProject>>, charId: string) {
+  return project.scene.content.nodes.filter((node) => node.type === 'character' && node.metadata?.libraryCharacterId === charId)
+}
+
+/**
+ * C25: link existing storyboard nodes to a library character in one undoable store command.
+ * Nodes keep their transform/shot framing; clips are re-placed from same-name Drafts of the
+ * character or reported as unconverted in the command result.
+ */
+export async function linkStoryboardNodesToLibrary(input: { projectId: string; expectedRevision: number; charId: string; nodeIds: string[] }) {
+  const character = listLibraryCharacters().find((item) => item.charId === input.charId)
+  if (!character) throw new Error('Library character was not found')
+  if (!input.nodeIds.length) throw new Error('Select at least one storyboard node to link')
+  const response = await executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: input.expectedRevision,
+    command: 'library.link', args: { nodeIds: input.nodeIds, libraryCharacterId: input.charId } })
+  return { projectId: input.projectId, revision: response.revision, ...(response.result as Record<string, unknown>) }
+}
+
 /**
  * Add a library character through the existing project commands. The base model is
  * content-addressed, so repeated characters import one project asset while each node
  * keeps its own skin and library identity.
  */
-export async function addLibraryCharacterToProject(input: { projectId: string; expectedRevision: number; charId: string }) {
+export async function addLibraryCharacterToProject(input: { projectId: string; expectedRevision: number; charId: string; existingNodePolicy?: ExistingNodePolicy }) {
   const character = listLibraryCharacters().find((item) => item.charId === input.charId)
   if (!character) throw new Error('Library character was not found')
   const project = await readUnifiedProject(input.projectId)
+  // C25: never silently duplicate a role that already has nodes in this project. A caller with
+  // a stale revision skips this check so the store still reports the revision conflict first.
+  const existingNodes = input.expectedRevision === project.revision ? libraryCharacterSceneNodes(project, input.charId) : []
+  if (existingNodes.length) {
+    const policy = input.existingNodePolicy ?? 'ask'
+    if (policy === 'ask') throw new LibraryCharacterAlreadyInSceneError(input.charId, existingNodes.map((node) => node.id), existingNodes.map((node) => node.name))
+    if (policy === 'reuse') return { projectId: input.projectId, revision: project.revision, reused: true, nodeIds: existingNodes.map((node) => node.id), nodeNames: existingNodes.map((node) => node.name) }
+  }
   const resolved = resolveCharacter(character.charId)
   if (!resolved.baseModel) throw new Error('Library character has no base model')
   if (character.defaultAction && resolved.baseModel.format === 'bobj' && ['verity', 'minecraft20'].includes(resolved.baseModel.rig)) {

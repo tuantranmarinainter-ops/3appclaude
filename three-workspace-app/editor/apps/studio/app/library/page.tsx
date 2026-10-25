@@ -36,6 +36,7 @@ export default function LibraryPage() {
   const previousPreviewJobs = useRef<Record<string, { state: string; message?: string }>>({})
   const [message, setMessage] = useState(''), [previewJobs, setPreviewJobs] = useState<Record<string, { state: string; message?: string }>>({}), [assignTarget, setAssignTarget] = useState('')
   const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
+  const [sceneConflict, setSceneConflict] = useState<{ charId: string; names: string[] } | null>(null)
 
   const loadCharacters = useCallback(async () => {
     const body = await json('/api/library?characters=1')
@@ -72,14 +73,18 @@ export default function LibraryPage() {
   const selectedCharacter = characters.find(item => item.charId === characterId)
   const compatibleTargets = useMemo(() => characters.filter(item => (item.rig === selected?.rig || item.rig === 'verity' && selected?.rig === 'mixamo65+verity') && item.charId !== selected?.ownerCharId), [characters, selected])
   const effectiveCopyTarget = compatibleTargets.some(item => item.charId === copyTarget) ? copyTarget : compatibleTargets[0]?.charId ?? ''
-  async function addCharacter(charId: string) {
+  async function addCharacter(charId: string, policy?: 'reuse' | 'create') {
     if (window.opener) { window.opener.postMessage({ type: 'bbs-library-add-character', charId }, window.location.origin); return }
     if (!projectId) return
     setAdding(true)
     try {
       const { project } = await loadUnifiedProject(projectId)
-      await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'add-to-scene', charId, projectId, expectedRevision: project.revision }) })
-      setMessage('Đã thêm nhân vật vào cảnh App 2.')
+      const response = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'add-to-scene', charId, projectId, expectedRevision: project.revision, ...(policy ? { existingNodePolicy: policy } : {}) }) })
+      const body = await response.json()
+      if (response.status === 409 && body.code === 'LIBRARY_CHARACTER_ALREADY_IN_SCENE') { setSceneConflict({ charId, names: body.existingNodeNames ?? [] }); return }
+      if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`)
+      setSceneConflict(null)
+      setMessage(body.reused ? 'Đã dùng node có sẵn của vai này trong cảnh.' : 'Đã thêm nhân vật vào cảnh App 2.')
     } finally { setAdding(false) }
   }
   async function queueMissingPreviews() {
@@ -134,11 +139,73 @@ export default function LibraryPage() {
         <p><select aria-label="Nhân vật đích" value={effectiveCopyTarget} onChange={event => setCopyTarget(event.target.value)}>{compatibleTargets.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select><button disabled={!compatibleTargets.length} onClick={() => void copy().catch(error => setMessage(String(error)))}>Sao chép sang…</button></p>
       </> : <p>Chọn một động tác.</p>}</aside>
     </div></>}
-    {tab === 'characters' && <CharacterProfiles characters={characters} onSaved={loadCharacters} setMessage={setMessage} onAdd={hasOpener || projectId ? addCharacter : undefined} adding={adding} />}
+    {tab === 'characters' && <>{projectId && <LinkStoryboardPanel projectId={projectId} characters={characters} setMessage={setMessage} />}<CharacterProfiles characters={characters} onSaved={loadCharacters} setMessage={setMessage} onAdd={hasOpener || projectId ? addCharacter : undefined} adding={adding} /></>}
+    {sceneConflict && <div role="dialog" aria-modal="true" aria-label="Vai đã có trong cảnh" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#0009', display: 'grid', placeItems: 'center' }}>
+      <section style={{ width: 'min(520px,92vw)', padding: 20, color: '#eee', background: '#20242c' }}>
+        <h2>Vai này đã có node trong cảnh</h2>
+        <p>Các node hiện có: {sceneConflict.names.join(', ')}. Bạn muốn dùng node có sẵn hay thêm một lần xuất hiện mới?</p>
+        <p style={{ display: 'flex', gap: 8 }}>
+          <button type="button" disabled={adding} onClick={() => { setSceneConflict(null); setMessage('Đã dùng node có sẵn của vai này trong cảnh.') }}>Dùng node có sẵn</button>
+          <button type="button" disabled={adding} onClick={() => void addCharacter(sceneConflict.charId, 'create').catch(error => setMessage(String(error)))}>Thêm lần xuất hiện mới</button>
+          <button type="button" onClick={() => setSceneConflict(null)}>Huỷ</button>
+        </p>
+      </section>
+    </div>}
     {tab === 'coverage' && <CoverageMatrix rows={coverage} onMissing={(key, charId) => { setCharacterId(charId); setQuery(key); setWarehouse(true); setTab('actions') }} />}
     {projectId && <a href={`/?unified=${encodeURIComponent(projectId)}`}>Quay lại cảnh App 2</a>}
     {message && <p role="status">{message}</p>}
   </main>
+}
+
+type LinkNodeResult = { nodeId: string; displayName: string; replacedClips: Array<{ name: string }>; unconvertedClips: Array<{ name: string; reason: string }> }
+
+function LinkStoryboardPanel({ projectId, characters, setMessage }: { projectId: string; characters: Character[]; setMessage: (value: string) => void }) {
+  const [charId, setCharId] = useState('')
+  const [nodes, setNodes] = useState<Array<{ id: string; name: string; linked: boolean }>>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [pattern, setPattern] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<LinkNodeResult[]>([])
+  const load = useCallback(async () => {
+    const { project } = await loadUnifiedProject(projectId)
+    setNodes(project.scene.content.nodes.filter(node => node.type === 'character').map(node => ({ id: node.id, name: node.name, linked: typeof node.metadata?.libraryCharacterId === 'string' })))
+  }, [projectId])
+  useEffect(() => { void load().catch(error => setMessage(String(error))) }, [load])
+  useEffect(() => { if (!characters.some(item => item.charId === charId)) setCharId(characters[0]?.charId ?? '') }, [characters, charId])
+  const unlinked = nodes.filter(node => !node.linked)
+  function selectByPattern() {
+    const prefix = pattern.trim().replace(/\*+$/, '').toLowerCase()
+    if (!prefix) return
+    setSelectedIds(unlinked.filter(node => node.name.toLowerCase().startsWith(prefix)).map(node => node.id))
+  }
+  async function link() {
+    if (!charId || !selectedIds.length) return
+    setBusy(true)
+    try {
+      const { project } = await loadUnifiedProject(projectId)
+      const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'link-nodes', projectId, expectedRevision: project.revision, charId, nodeIds: selectedIds }) })
+      const linked = (body.linkedNodes ?? []) as LinkNodeResult[]
+      setResults(linked)
+      const replaced = linked.reduce((sum, node) => sum + node.replacedClips.length, 0)
+      const unconverted = linked.reduce((sum, node) => sum + node.unconvertedClips.length, 0)
+      setMessage(`Đã nối ${linked.length} node với ${characters.find(item => item.charId === charId)?.name ?? charId}: thay ${replaced} clip bằng Nháp cùng tên${unconverted ? `, ${unconverted} clip chưa chuyển được (xem chi tiết bên dưới)` : ''}.`)
+      setSelectedIds([])
+      await load()
+    } catch (error) { setMessage(String(error)) } finally { setBusy(false) }
+  }
+  if (!unlinked.length && !results.length) return <section style={{ padding: 14, background: '#20242c', marginBottom: 14 }}><h2>Nối node storyboard với nhân vật thư viện</h2><p>Mọi node nhân vật trong cảnh App 2 đã nối thư viện.</p></section>
+  return <section style={{ padding: 14, background: '#20242c', marginBottom: 14 }}>
+    <h2>Nối node storyboard với nhân vật thư viện</h2>
+    <p>Thay model tạm của node bằng base model của nhân vật thư viện, giữ nguyên vị trí và khung shot. Clip trùng tên Nháp của nhân vật sẽ được thay sang xương mới; clip không thay được sẽ được báo rõ. Toàn bộ là một bước Hoàn tác.</p>
+    <p style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <select aria-label="Nhân vật thư viện để nối" value={charId} onChange={event => setCharId(event.target.value)}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
+      <input aria-label="Mẫu tên node" placeholder="Mẫu tên, vd go *" value={pattern} onChange={event => setPattern(event.target.value)} />
+      <button type="button" onClick={selectByPattern}>Chọn theo mẫu</button>
+      <button type="button" disabled={busy || !selectedIds.length || !charId} onClick={() => void link()}>{busy ? 'Đang nối…' : `Nối ${selectedIds.length} node đã chọn`}</button>
+    </p>
+    <div style={{ display: 'grid', gap: 4 }}>{unlinked.map(node => <label key={node.id}><input type="checkbox" checked={selectedIds.includes(node.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, node.id] : current.filter(id => id !== node.id))} /> {node.name}</label>)}</div>
+    {!!results.length && <div>{results.map(node => <div key={node.nodeId} style={{ marginTop: 8 }}><strong>{node.displayName}</strong>{node.replacedClips.map((clip, index) => <div key={index}>Đã thay clip bằng Nháp “{clip.name}”.</div>)}{node.unconvertedClips.map((clip, index) => <div key={index} role="status">Chưa chuyển được clip “{clip.name}”: {clip.reason}</div>)}</div>)}</div>}
+  </section>
 }
 
 function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: { onAdd?: (charId: string) => Promise<void>; adding: boolean; characters: Character[]; onSaved: () => Promise<void>; setMessage: (value: string) => void }) {
