@@ -142,6 +142,8 @@ export interface DirectorEngine {
   invalidate(): void
   on<E extends EngineEventName>(event: E, fn: (payload: EngineEventMap[E]) => void): () => void
 
+  /** Khoảng phát lặp In/Out của timeline (N4); null = toàn timeline. */
+  setPlayRange(range: { start: number; end: number } | null): void
   load(doc: DirectorDocument, onProgress?: (msg: string) => void): Promise<void>
   reset(): void
   setEvalContext(ctx: EvalContext): void

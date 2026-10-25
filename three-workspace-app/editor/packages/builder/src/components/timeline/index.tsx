@@ -33,6 +33,8 @@ import { KeyframeDragPreviewProvider } from './hooks/useKeyframeDrag'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import { useTimelineScrub } from './hooks/useTimelineScrub'
 import { Playhead } from './Playhead'
+import { InOutOverlay } from './InOutOverlay'
+import { formatFrameInUnit } from './utils/timeUnit'
 import { Ruler } from './Ruler'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
@@ -65,6 +67,8 @@ function SceneTimeline() {
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
   const timelineUnit = useStore((s) => s.timelineUnit)
+  const inFrame = useStore((s) => s.inFrame)
+  const outFrame = useStore((s) => s.outFrame)
   const timelineOpen = useStore((s) => s.timelineOpen)
   const timelineHeight = useStore((s) => s.timelineHeight)
   const {
@@ -73,6 +77,9 @@ function SceneTimeline() {
     select,
     setPxPerFrame,
     setTimelineUnit,
+    setInFrame,
+    setOutFrame,
+    clearInOut,
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
@@ -421,6 +428,35 @@ function SceneTimeline() {
           {t('timeline.frame')}
           <TimelineFrameField min={tl.frameStart} max={tl.frameEnd} onChange={setFrame} unit={timelineUnit} fps={tl.fps} />
         </label>
+        <div className="t3d-timeline-group">
+          <Tooltip label={t('timeline.setInHint')} side="top">
+            <button
+              type="button"
+              className={cx('t3d-timeline-auto-key', inFrame != null && 'is-active')}
+              aria-pressed={inFrame != null}
+              onClick={() => setInFrame(Math.round(frame))}
+            >
+              {t('timeline.inPoint')} {inFrame != null ? formatFrameInUnit(inFrame, tl.fps, timelineUnit) : '—'}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('timeline.setOutHint')} side="top">
+            <button
+              type="button"
+              className={cx('t3d-timeline-auto-key', outFrame != null && 'is-active')}
+              aria-pressed={outFrame != null}
+              onClick={() => setOutFrame(Math.round(frame))}
+            >
+              {t('timeline.outPoint')} {outFrame != null ? formatFrameInUnit(outFrame, tl.fps, timelineUnit) : '—'}
+            </button>
+          </Tooltip>
+          {inFrame != null || outFrame != null ? (
+            <Tooltip label={t('timeline.clearInOut')} side="top">
+              <button type="button" className="t3d-timeline-icon-btn" aria-label={t('timeline.clearInOut')} onClick={clearInOut}>
+                ×
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
         <Tooltip label={t('common.delete')} side="top">
           <button
             type="button"
@@ -566,6 +602,17 @@ function SceneTimeline() {
               pxPerFrame={scale}
               currentFrame={frame}
               scrubHandlers={scrubHandlers}
+            />
+            <InOutOverlay
+              frameStart={tl.frameStart}
+              pxPerFrame={scale}
+              inFrame={inFrame}
+              outFrame={outFrame}
+              inLabel={t('timeline.inPoint')}
+              outLabel={t('timeline.outPoint')}
+              frameFromClientX={frameFromClientX}
+              onSetIn={setInFrame}
+              onSetOut={setOutFrame}
             />
             {rows.map(({ row, depth }) => (
               <TrackRow

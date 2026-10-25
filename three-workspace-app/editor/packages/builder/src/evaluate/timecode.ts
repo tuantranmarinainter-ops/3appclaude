@@ -43,3 +43,17 @@ export function parseTimecode(value: string, fps: number): number | null {
 function pad2(value: number): string {
   return String(value).padStart(2, '0')
 }
+/**
+ * Tiến frame trong một khoảng kín [start, end] và vòng lại đầu khoảng khi vượt cuối
+ * (phát lặp In/Out kiểu DaVinci, N4). Delta âm cũng vòng về cuối khoảng.
+ */
+export function advanceFrameWithinRange(frame: number, delta: number, start: number, end: number): number {
+  const span = end - start + 1
+  if (span <= 0 || !Number.isFinite(frame) || !Number.isFinite(delta)) return frame
+  // Playhead đang ngoài khoảng (vừa seek đi chỗ khác): phát lại từ đầu khoảng.
+  if (frame < start || frame > end) return start
+  let next = frame + delta
+  if (next > end) next = start + ((next - start) % span)
+  if (next < start) next = end - ((end - next) % span)
+  return next
+}

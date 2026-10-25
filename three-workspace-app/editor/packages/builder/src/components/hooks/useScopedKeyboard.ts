@@ -145,6 +145,19 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
         e.preventDefault()
         e.stopPropagation()
         s.setCharactersOnlyView(!s.charactersOnlyView)
+      } else if (!film && e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyI' || e.code === 'KeyO')) {
+        // Alt+I / Alt+O: xoá mốc In / Out (kiểu DaVinci, N4).
+        e.preventDefault()
+        if (e.code === 'KeyI') s.setInFrame(null)
+        else s.setOutFrame(null)
+      } else if (!film && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        // I: đặt mốc In tại playhead (N4). Shift+I giữ hành vi chèn keyframe ở nhánh dưới.
+        e.preventDefault()
+        s.setInFrame(Math.round(s.frame))
+      } else if (!film && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === 'o' || e.key === 'O')) {
+        // O: đặt mốc Out tại playhead (N4).
+        e.preventDefault()
+        s.setOutFrame(Math.round(s.frame))
       } else if (!film && (e.key === 'i' || e.key === 'I')) {
         // 多选时一次给所有选中对象打键，压成一条 undo；通道由节点类型决定。
         const ids = nodeIdsOf(s.selection)

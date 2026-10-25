@@ -215,6 +215,9 @@ export interface StudioView {
   pxPerFrame: number
   /** Đơn vị hiển thị thước / ô nhập frame / nhãn clip của timeline cảnh. */
   timelineUnit: TimelineUnit
+  /** Mốc In/Out của timeline cảnh (N4); null = chưa đặt. */
+  inFrame: number | null
+  outFrame: number | null
   fcurves: FCurveSet | null
   exporting: boolean
   libraryOpen: boolean
@@ -326,6 +329,10 @@ export interface StudioView {
   select: (s: Selection | null) => void
   setPxPerFrame: (v: number) => void
   setTimelineUnit: (unit: TimelineUnit) => void
+  setInFrame: (frame: number | null) => void
+  setOutFrame: (frame: number | null) => void
+  setInOutRange: (start: number, end: number) => void
+  clearInOut: () => void
   setFcurves: (f: FCurveSet | null) => void
   toggleUserKeys: () => void
   toggleAutoKeyframe: () => void

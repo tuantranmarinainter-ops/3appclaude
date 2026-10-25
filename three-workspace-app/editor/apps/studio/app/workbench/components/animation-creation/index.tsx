@@ -5,6 +5,7 @@ import { useSilhouetteSync } from './hooks/useSilhouetteSync'
 import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
+import { resolveTimelineInOutDefault } from '../../../../src/timelineInOut'
 
 const CHANNEL = 'bbs-animation-studio-v1.33.0'
 const FRAME_URL = '/animation-studio/v1.33.0/index.html'
@@ -37,6 +38,19 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     const nodeId = project.characters[characterId]?.nodeId
     return timeline.animation.motionClips.filter((clip) => clip.target.nodeId === nodeId)
   }, [project, characterId, timeline])
+  // N4: mặc định khoảng shot = In/Out của timeline (làm tròn về lưới 20 tick) khi có;
+  // người dùng sửa tay một lần thì không tự ghi đè nữa.
+  const shotRangeEdited = useRef(false)
+  const [shotRangeFromInOut, setShotRangeFromInOut] = useState(false)
+  useEffect(() => {
+    if (!active || shotRangeEdited.current) return
+    const resolved = resolveTimelineInOutDefault(projectId, timeline)
+    if (resolved) {
+      setShotRange([resolved.startFrame, resolved.endFrame])
+      setShotRangeFromInOut(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, projectId])
   const [shotId, setShotId] = useState('')
   const [withBobj, setWithBobj] = useState(false)
   const nativeMotions = useMemo(() => Object.values(project.motions).filter((motion) => {
@@ -257,12 +271,13 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       <label>Camera<select value={cameraId} onChange={(event) => setCameraId(event.target.value)} disabled={busy || !!shotId || !cameras.length}>
         {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.name}</option>)}
       </select></label>
-      <label>Từ frame<input type="number" value={shotRange[0]} min={timeline.frameStart} max={shotRange[1]} disabled={busy || !!shotId} onChange={(event) => setShotRange([Number(event.target.value), shotRange[1]])} /></label>
-      <label>Đến frame<input type="number" value={shotRange[1]} min={shotRange[0]} max={timeline.frameEnd} disabled={busy || !!shotId} onChange={(event) => setShotRange([shotRange[0], Number(event.target.value)])} /></label>
+      <label>Từ frame<input type="number" value={shotRange[0]} min={timeline.frameStart} max={shotRange[1]} disabled={busy || !!shotId} onChange={(event) => { shotRangeEdited.current = true; setShotRangeFromInOut(false); setShotRange([Number(event.target.value), shotRange[1]]) }} /></label>
+      <label>Đến frame<input type="number" value={shotRange[1]} min={shotRange[0]} max={timeline.frameEnd} disabled={busy || !!shotId} onChange={(event) => { shotRangeEdited.current = true; setShotRangeFromInOut(false); setShotRange([shotRange[0], Number(event.target.value)]) }} /></label>
       <button type="button" className="cross-app-button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
       <label><input type="checkbox" checked={withBobj} disabled={busy} onChange={(event) => setWithBobj(event.target.checked)} />Kèm .bobj</label>
       <button type="button" className="wb-host-primary cross-app-button" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
     </header>
+    {shotRangeFromInOut && <p className="wb-animation-creation-status" role="status">Khoảng shot đang dùng mặc định In/Out của timeline (đã làm tròn về lưới 20 tick).</p>}
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>
     <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.33.0" src={FRAME_URL} onLoad={() => {

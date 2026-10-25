@@ -49,6 +49,7 @@ import type {
 } from '../stores/types'
 import { buildNodeSelection, isLookAtPickTarget, isPathApplyPickTarget, isPathApplyTarget, isPathEditTarget, isPlaceOnSupportPickTarget, nodeIdsOf, unlockedNodeIds } from '../stores/nodeSelection'
 import { clipRefsOf, keyframeRefsOf, makeKeyframeSelection, type ClipRef } from '../stores/types'
+import { clampInOutRange, normalizeInOutRange } from '../stores/inOutPreference'
 import type { EditorStore } from '../stores/EditorStore'
 import type { StudioView } from '../stores/types'
 import { downloadJson } from './downloadJson'
@@ -209,6 +210,12 @@ export class StudioSession implements StudioView {
   }
   get timelineUnit(): TimelineUnit {
     return this.editor.timelineUnit
+  }
+  get inFrame(): number | null {
+    return this.editor.inFrame
+  }
+  get outFrame(): number | null {
+    return this.editor.outFrame
   }
   get fcurves(): FCurveSet | null {
     return this.docModel.fcurves
@@ -450,6 +457,21 @@ export class StudioSession implements StudioView {
   }
   setPxPerFrame = (v: number): void => this.editor.setPxPerFrame(v)
   setTimelineUnit = (unit: TimelineUnit): void => this.editor.setTimelineUnit(unit)
+  private clampToTimeline(frame: number): number {
+    const tl = this.docModel.snapshot?.content.timeline
+    if (!tl) return Math.round(frame)
+    return Math.min(Math.max(Math.round(frame), tl.frameStart), tl.frameEnd)
+  }
+  setInFrame = (frame: number | null): void => this.editor.setInFrame(frame == null ? null : this.clampToTimeline(frame))
+  setOutFrame = (frame: number | null): void => this.editor.setOutFrame(frame == null ? null : this.clampToTimeline(frame))
+  setInOutRange = (start: number, end: number): void => {
+    const range = clampInOutRange(
+      normalizeInOutRange(start, end) ?? { start: 0, end: 0 },
+      this.docModel.snapshot?.content.timeline ?? { frameStart: start, frameEnd: end },
+    )
+    if (range) this.editor.setInOutRange(range.start, range.end)
+  }
+  clearInOut = (): void => this.editor.clearInOut()
   toggleUserKeys = (): void => this.editor.toggleUserKeys()
   toggleAutoKeyframe = (): void => this.editor.toggleAutoKeyframe()
 

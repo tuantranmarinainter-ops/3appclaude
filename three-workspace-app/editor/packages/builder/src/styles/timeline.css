@@ -574,6 +574,54 @@
   pointer-events: none;
 }
 
+.t3d-timeline-inout {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(76, 141, 255, 0.13);
+  border-left: 2px solid var(--t3d-accent, #4c8dff);
+  border-right: 2px solid var(--t3d-accent, #4c8dff);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.t3d-timeline-inout-handle {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 30px;
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.t3d-timeline-inout-handle.is-in {
+  left: -7px;
+}
+
+.t3d-timeline-inout-handle.is-out {
+  right: -7px;
+}
+
+.t3d-timeline-inout-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 14px;
+  background: var(--t3d-accent, #4c8dff);
+}
+
+.t3d-timeline-inout-handle.is-in::after {
+  left: 1px;
+  border-radius: 0 0 6px 0;
+}
+
+.t3d-timeline-inout-handle.is-out::after {
+  right: 1px;
+  border-radius: 0 0 0 6px;
+}
+
 .t3d-timeline-playhead {
   position: absolute;
   top: 30px;
