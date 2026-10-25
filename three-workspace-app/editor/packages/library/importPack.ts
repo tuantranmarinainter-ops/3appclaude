@@ -354,7 +354,7 @@ function registerRigUnlocked(root: string, rigId: string, bones: RigBone[]): voi
 
 /** Change searchable metadata only; immutable GLB and App 1 manifest bytes are preserved. */
 export function updateActionMetadata(options: {
-  libraryRoot: string; actionUuid: string; preview?: ActionMetadata['preview'] | null; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; name?: string; nameVi?: string; sourceName?: string
+  libraryRoot: string; actionUuid: string; preview?: ActionMetadata['preview'] | null; category?: ActionCategory; tags?: string[]; loop?: boolean; parentUuid?: string | null; name?: string; nameVi?: string; sourceName?: string; favorite?: boolean
 }): MotionPackMetadata {
   if (!UUID.test(options.actionUuid)) throw new Error('Invalid action UUID')
   if (options.category !== undefined && !ACTION_CATEGORIES.includes(options.category)) throw new Error(`Unknown action category: ${options.category}`)
@@ -381,6 +381,7 @@ export function updateActionMetadata(options: {
       if (options.category !== undefined) action.category = options.category
       if (options.tags !== undefined) action.tags = [...new Set(options.tags.map((tag) => tag.trim()))]
       if (options.loop !== undefined) action.loop = options.loop
+      if (options.favorite !== undefined) { if (options.favorite) action.favorite = true; else delete action.favorite }
       if (options.parentUuid !== undefined) action.parentUuid = options.parentUuid
       if (options.name !== undefined) {
         if (!action.sourceName) action.sourceName = options.sourceName?.trim() || action.name

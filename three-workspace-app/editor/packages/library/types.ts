@@ -73,7 +73,8 @@ export interface ActionMetadata {
   /** UUID of version 1 in this immutable character-action chain. */
   variantOf?: string
   notes?: string
-  /** Character-local pin. Only character-owned Actions use this flag. */
+  /** Favorite pin (★). Set per character when an App 1 transfer targets that character (C18);
+   * App 5 toggles it on any action from the library page (C24). Copies to another character do not carry it. */
   favorite?: boolean
 }
 

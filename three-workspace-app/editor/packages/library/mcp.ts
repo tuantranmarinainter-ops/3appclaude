@@ -29,6 +29,7 @@ export const LIBRARY_MCP_TOOLS = [
     inputSchema: { type: 'object', additionalProperties: false, required: ['actionUuid'], properties: {
       actionUuid: { type: 'string' }, nameVi: { type: 'string' }, category: { type: 'string', enum: ACTION_CATEGORIES },
       tags: { type: 'array', items: { type: 'string' } }, loop: { type: 'boolean' }, parentUuid: { type: ['string', 'null'] },
+      favorite: { type: 'boolean' },
     } },
   },
   {
@@ -116,12 +117,14 @@ export function callLibraryTool(name: string, input: unknown, options: LibraryOp
     if (args.category !== undefined && (typeof args.category !== 'string' || !(ACTION_CATEGORIES as readonly string[]).includes(args.category))) throw new Error('Invalid category')
     if (args.tags !== undefined && (!Array.isArray(args.tags) || !args.tags.every((tag) => typeof tag === 'string'))) throw new Error('tags must be an array of strings')
     if (args.loop !== undefined && typeof args.loop !== 'boolean') throw new Error('loop must be a boolean')
+    if (args.favorite !== undefined && typeof args.favorite !== 'boolean') throw new Error('favorite must be a boolean')
     if (args.parentUuid !== undefined && args.parentUuid !== null && typeof args.parentUuid !== 'string') throw new Error('parentUuid must be a string or null')
     setActionMetadata({ ...options, actionUuid: args.actionUuid,
       ...(typeof args.nameVi === 'string' ? { nameVi: args.nameVi } : {}),
       ...(typeof args.category === 'string' ? { category: args.category as SearchOptions['category'] } : {}),
       ...(Array.isArray(args.tags) ? { tags: args.tags as string[] } : {}),
       ...(typeof args.loop === 'boolean' ? { loop: args.loop } : {}),
+      ...(typeof args.favorite === 'boolean' ? { favorite: args.favorite } : {}),
       ...(typeof args.parentUuid === 'string' || args.parentUuid === null ? { parentUuid: args.parentUuid } : {}),
     })
     return getAction({ ...options, actionUuid: args.actionUuid })

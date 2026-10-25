@@ -30,7 +30,7 @@ async function json(url: string, init?: RequestInit) {
 }
 
 export default function LibraryPage() {
-  const [tab, setTab] = useState<'actions' | 'characters' | 'coverage'>('actions')
+  const [tab, setTab] = useState<'actions' | 'favorites' | 'characters' | 'coverage'>('actions')
   const [actions, setActions] = useState<Action[]>([]), [characters, setCharacters] = useState<Character[]>([])
   const [coverage, setCoverage] = useState<Coverage[]>([]), [characterId, setCharacterId] = useState('')
   const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(true)
@@ -64,16 +64,26 @@ export default function LibraryPage() {
     setCopyTarget(current => rows.some(item => item.charId === current) ? current : rows[0]?.charId ?? '')
   }, [])
   const loadActions = useCallback(async () => {
-    if (!warehouse && !characterId) { setActions([]); return }
-    const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
-    const body = await json(`/api/library?${params}`)
-    let rows = (body.actions as Action[]).filter((action, index, all) => all.findIndex(other => other.uuid === action.uuid) === index).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
+    let fetched: Action[]
+    if (tab === 'favorites') {
+      const [rawBody, ...charBodies] = await Promise.all([
+        json('/api/library?raw=1'),
+        ...characters.map(item => json(`/api/library?charId=${encodeURIComponent(item.charId)}`)),
+      ])
+      fetched = [...(rawBody.actions as Action[]), ...charBodies.flatMap(body => body.actions as Action[])].filter(action => action.favorite)
+    } else {
+      if (!warehouse && !characterId) { setActions([]); return }
+      const params = warehouse ? new URLSearchParams({ raw: '1', ...(query ? { q: query } : {}) }) : new URLSearchParams({ charId: characterId, ...(status ? { status } : {}) })
+      const body = await json(`/api/library?${params}`)
+      fetched = body.actions as Action[]
+    }
+    let rows = fetched.filter((action, index, all) => all.findIndex(other => other.uuid === action.uuid) === index).map(action => ({ ...action, coverPath: action.coverPath ?? (('cover' in action && typeof action.cover === 'string' && action.cover) ? `/api/library/cover/${encodeURIComponent(action.uuid)}` : null) }))
     rows = filterLibraryActions(rows, query, category)
     if (sourceFilter) rows = rows.filter(action => sourceFilter === 'mixamo' ? /mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) : !/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`))
     if (inPlaceOnly) rows = rows.filter(action => action.inPlace)
     rows = [...rows].sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (sortOrder === 'newest' ? b.createdAt.localeCompare(a.createdAt) : a.name.localeCompare(b.name)))
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
-  }, [category, characterId, inPlaceOnly, query, sortOrder, sourceFilter, status, warehouse])
+  }, [category, characterId, characters, inPlaceOnly, query, sortOrder, sourceFilter, status, tab, warehouse])
 
   useEffect(() => {
     setHasOpener(!!window.opener)
@@ -106,6 +116,15 @@ export default function LibraryPage() {
     const body = await json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids }) })
     setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job]))); setMessage(`Đã xếp hàng ${actionUuids.length} video.`)
   }
+  async function toggleFavorite(action: Action) {
+    const next = !action.favorite
+    setActions(current => current.map(item => item.uuid === action.uuid ? { ...item, favorite: next } : item))
+    setSelected(current => current?.uuid === action.uuid ? { ...current, favorite: next } : current)
+    try {
+      await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: action.uuid, favorite: next }) })
+      await loadActions()
+    } catch (error) { setMessage(String(error)); await loadActions().catch(() => undefined) }
+  }
   async function approve() {
     if (!selected?.ownerCharId) return
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'approve', charId: selected.ownerCharId, actionUuid: selected.uuid }) })
@@ -129,8 +148,8 @@ export default function LibraryPage() {
   return <main style={{ padding: 24, color: '#eee', background: '#111318', minHeight: '100vh', fontFamily: 'system-ui' }}>
     <h1>App 5 · Thư viện</h1>
     <WorkspaceNavigationSlot />
-    <nav style={{ display: 'flex', gap: 8, marginBottom: 18 }}><button onClick={() => setTab('actions')}>Động tác</button><button onClick={() => setTab('characters')}>Nhân vật</button><button onClick={() => setTab('coverage')}>Bảng động tác</button></nav>
-    {tab === 'actions' && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+    <nav style={{ display: 'flex', gap: 8, marginBottom: 18 }}><button onClick={() => setTab('actions')}>Động tác</button><button onClick={() => setTab('favorites')}>★ Yêu thích</button><button onClick={() => setTab('characters')}>Nhân vật</button><button onClick={() => setTab('coverage')}>Bảng động tác</button></nav>
+    {(tab === 'actions' || tab === 'favorites') && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
       <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
       <button onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
@@ -141,7 +160,7 @@ export default function LibraryPage() {
       <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start', overflowY: 'auto', minHeight: 0, paddingRight: 4 }}>
         {actions.map(action => <article key={action.uuid} onClick={event => { if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return; setSelected(action) }} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left', cursor: 'pointer' }}>
           {action.preview ? <AutoPreviewVideo uuid={action.uuid} onClick={() => setSelected(action)} /> : <div style={{ height: 120, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="Ảnh bìa dự phòng" width={220} height={90} unoptimized /> : 'Đang tạo video…'}</div>}
-          <button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}><strong>{action.favorite ? '★ ' : ''}{formatBilingual(action.name, action.nameVi)}</strong></button><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}><button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer', flex: 1 }}><strong>{formatBilingual(action.name, action.nameVi)}</strong></button><button type="button" aria-label={action.favorite ? `Bỏ yêu thích ${action.name}` : `Đánh dấu yêu thích ${action.name}`} aria-pressed={!!action.favorite} title={action.favorite ? 'Bỏ yêu thích' : 'Đánh dấu yêu thích'} onClick={() => void toggleFavorite(action)} style={{ border: 0, padding: '6px 2px', background: 'transparent', cursor: 'pointer', fontSize: 17, lineHeight: 1, color: action.favorite ? '#f2c14e' : '#8a8f98' }}>{action.favorite ? '★' : '☆'}</button></div><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
         </article>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
       <div role="separator" aria-orientation="vertical" aria-label="Kéo để đổi độ rộng khung chi tiết" title="Kéo để đổi độ rộng khung chi tiết" onPointerDown={startResizeDetail} style={{ cursor: 'col-resize', background: '#2c313a', borderRadius: 4, touchAction: 'none' }} />
