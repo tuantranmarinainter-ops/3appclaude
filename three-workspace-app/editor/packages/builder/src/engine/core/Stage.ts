@@ -342,9 +342,20 @@ export class Stage implements DirectorEngine, PathViewHost {
    */
   syncViewVisibility(): void {
     const filter = this.sceneViewFilterWanted
-    if (!filter.charactersOnly && !filter.backgroundHidden) return
-    if (this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot) return
-    applyViewVisibility(this, this.currentViewHiddenIds())
+    if (!filter.charactersOnly && !filter.backgroundHidden) {
+      this.viewport.viewHiddenNodeIds = null
+      return
+    }
+    if (this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot) {
+      this.viewport.viewHiddenNodeIds = null
+      return
+    }
+    const ids = this.currentViewHiddenIds()
+    // Viewport.render mỗi lần vẽ tự đặt lại visibility cho gizmo camera theo tài liệu,
+    // nên phải báo thêm tập nút đang bị lọc xem giấu — không thì gizmo camera bị bật lại
+    // ngay sau bước áp dụng này.
+    this.viewport.viewHiddenNodeIds = ids
+    applyViewVisibility(this, ids)
   }
 
   /** Sàn UV checker N6：只影响编辑视口显示，不写入文档，不进导出/成片。 */
