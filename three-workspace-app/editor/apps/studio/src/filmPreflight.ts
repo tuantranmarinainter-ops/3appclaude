@@ -1,10 +1,43 @@
-import type { UnifiedProject } from '@bbs/animation-workspace-shared'
+import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
+import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
 import { inspectFilmActorTransform } from './filmManifest'
 import { inspectProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { reviewStatusForSequence } from './sceneReview'
 import { resolveSceneBbsFilmArgs } from './sceneBbsFilm'
 import type { FilmSeriesSegment } from './filmSeries'
+
+const canonicalFootBone = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+
+/** Floor is scene world Y=0, in metres. Sample matrices already include model units, basis,
+ * wrappers, animation and actor placement; never apply metersPerUnit a second time.
+ * MC20 has equal upper/lower leg segments and no ankle joint. Extend the rest thigh→knee
+ * vector once more, expressed in the shin's local frame, then evaluate that tip in world space.
+ * Missing/ambiguous profiles leave evidence unavailable rather than claiming floor contact.
+ */
+export function measureFilmFeet(skeleton: { metersPerUnit: number; bones: Array<{ name: string; worldMatrix: number[] }> }, profile?: SkeletonProfile): { leftY?: number; rightY?: number } {
+  const result: { leftY?: number; rightY?: number } = {}
+  for (const side of ['left', 'right'] as const) {
+    const foot = skeleton.bones.find((bone) => [side + 'foot', 'foot' + side, side[0] + 'foot', 'foot' + side[0]].includes(canonicalFootBone(bone.name)))
+    if (foot) { result[side === 'left' ? 'leftY' : 'rightY'] = foot.worldMatrix[13]; continue }
+    if (profile?.family !== 'minecraft20' || !Number.isFinite(profile.metersPerUnit) || profile.metersPerUnit <= 0 || profile.metersPerUnit !== skeleton.metersPerUnit) continue
+    const shinName = side === 'left' ? 'lowleftleg' : 'lowlegright'
+    const shins = profile.bones.filter((bone) => canonicalFootBone(bone.name) === shinName)
+    const samples = skeleton.bones.filter((bone) => canonicalFootBone(bone.name) === shinName || shins.some((shin) => bone.name === PropertyBinding.sanitizeNodeName(shin.name)))
+    if (shins.length !== 1 || samples.length !== 1) continue
+    const shin = shins[0]!, sample = samples[0]!
+    const parent = profile.bones.find((bone) => bone.id === shin.parentId)
+    if (!parent || canonicalFootBone(parent.name) !== side + 'leg' || !isRecord(shin.rest)) continue
+    const { position, rotation, scale } = shin.rest
+    if (!Array.isArray(position) || position.length !== 3 || !Array.isArray(rotation) || rotation.length !== 4 || !Array.isArray(scale) || scale.length !== 3 ||
+      ![...position, ...rotation, ...scale].every((v) => typeof v === 'number' && Number.isFinite(v)) || scale.some((v) => Math.abs(v) < 1e-12) ||
+      Math.hypot(...position) < 1e-12 || Math.abs(Math.hypot(...rotation) - 1) > 1e-3 || sample.worldMatrix.length !== 16 || !sample.worldMatrix.every(Number.isFinite)) continue
+    const local = new Matrix4().compose(new Vector3().fromArray(position), new Quaternion().fromArray(rotation), new Vector3().fromArray(scale))
+    const tip = new Vector3().fromArray(position).multiplyScalar(2).applyMatrix4(local.invert()).applyMatrix4(new Matrix4().fromArray(sample.worldMatrix))
+    if (Number.isFinite(tip.y)) result[side === 'left' ? 'leftY' : 'rightY'] = tip.y
+  }
+  return result
+}
 
 export interface FilmPreflightIssue {
   code: string

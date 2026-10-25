@@ -36,7 +36,7 @@ import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction, libraryShot
 import { getAction, listCharacterActions, resolveCharacter, resolveLibraryPath } from '../../../packages/library/index'
 import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCommandResult } from './cameraMotionCommand'
-import { filmPreflight, filmSeriesPreflight, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
+import { filmPreflight, filmSeriesPreflight, measureFilmFeet, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
 import { makeVfxCue, readVfxCueExtension, updateVfxCue, type VfxCue } from './vfxCues'
 import { makeAudioCue, readAudioCueExtension, updateAudioCue, type AudioCue } from './audioCues'
 
@@ -385,16 +385,9 @@ async function collectFilmPreflightEvidence(project: UnifiedProject, args: FilmP
         for (const skeleton of sample.skeletonSamples) {
           const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
           if (!character) continue
-          const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-          const sideFor = (name: string) => {
-            const value = canonical(name)
-            if (['leftfoot', 'footleft', 'lfoot', 'footl'].includes(value)) return 'left'
-            if (['rightfoot', 'footright', 'rfoot', 'footr'].includes(value)) return 'right'
-            return undefined
-          }
-          const feet = skeleton.bones.flatMap((bone) => { const side = sideFor(bone.name); return side ? [{ side, y: bone.worldMatrix[13]! }] : [] })
+          const feet = measureFilmFeet(skeleton, project.skeletons[character.skeletonId])
           const values = footSamples[character.id] ?? (footSamples[character.id] = [])
-          values.push({ frame: sample.frame, leftY: feet.find((foot) => foot.side === 'left')?.y, rightY: feet.find((foot) => foot.side === 'right')?.y,
+          values.push({ frame: sample.frame, ...feet,
             airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
         }
       }
