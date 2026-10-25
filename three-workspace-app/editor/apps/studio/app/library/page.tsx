@@ -16,6 +16,9 @@ type Character = { charId: string; name: string; rig: string; previewUrl: string
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
 const MISSING_PREVIEW_CAP = 20
+const DETAIL_WIDTH_KEY = 'w01.library.detailWidth.v1'
+const DETAIL_WIDTH_MIN = 280
+const DETAIL_WIDTH_MAX = 720
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
 
@@ -36,6 +39,21 @@ export default function LibraryPage() {
   const previousPreviewJobs = useRef<Record<string, { state: string; message?: string }>>({})
   const [message, setMessage] = useState(''), [previewJobs, setPreviewJobs] = useState<Record<string, { state: string; message?: string }>>({}), [assignTarget, setAssignTarget] = useState('')
   const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
+  const [detailWidth, setDetailWidth] = useState(380)
+
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem(DETAIL_WIDTH_KEY))
+    if (Number.isFinite(saved) && saved >= DETAIL_WIDTH_MIN && saved <= DETAIL_WIDTH_MAX) setDetailWidth(saved)
+  }, [])
+  function startResizeDetail(event: React.PointerEvent) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = detailWidth
+    let width = startWidth
+    const onMove = (move: PointerEvent) => { width = Math.min(DETAIL_WIDTH_MAX, Math.max(DETAIL_WIDTH_MIN, startWidth + startX - move.clientX)); setDetailWidth(width) }
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.localStorage.setItem(DETAIL_WIDTH_KEY, String(width)) }
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
+  }
 
   const loadCharacters = useCallback(async () => {
     const body = await json('/api/library?characters=1')
@@ -119,14 +137,15 @@ export default function LibraryPage() {
       <button disabled={!missingPreviews.length} title={`Mỗi lần bấm tạo tối đa ${MISSING_PREVIEW_CAP} video`} onClick={() => void queueMissingPreviews().catch(error => setMessage(String(error)))}>{`Tạo video còn thiếu (${missingPreviews.length}, tối đa ${MISSING_PREVIEW_CAP}/lần)`}</button>
       <input aria-label="Tìm động tác" placeholder="Tìm" value={query} onChange={event => setQuery(event.target.value)} />
       <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select><select aria-label="Nguồn" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="">Mọi nguồn</option><option value="mixamo">Mixamo</option><option value="other">Khác</option></select><label><input type="checkbox" checked={inPlaceOnly} onChange={event => setInPlaceOnly(event.target.checked)} /> In Place</label><select aria-label="Sắp xếp" value={sortOrder} onChange={event => setSortOrder(event.target.value as 'name' | 'newest')}><option value="name">Theo tên</option><option value="newest">Mới nhập</option></select>
-    </div><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(280px,1fr)', gap: 20 }}>
-      <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start' }}>
+    </div><div style={{ display: 'grid', gridTemplateColumns: `minmax(0,1fr) 10px ${detailWidth}px`, gap: 10, height: 'calc(100vh - 235px)', minHeight: 340 }}>
+      <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start', overflowY: 'auto', minHeight: 0, paddingRight: 4 }}>
         {actions.map(action => <article key={action.uuid} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left' }}>
           {action.preview ? <AutoPreviewVideo uuid={action.uuid} onClick={() => setSelected(action)} /> : <div style={{ height: 120, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="Ảnh bìa dự phòng" width={220} height={90} unoptimized /> : 'Đang tạo video…'}</div>}
           <button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer' }}><strong>{action.favorite ? '★ ' : ''}{formatBilingual(action.name, action.nameVi)}</strong></button><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
         </article>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
-      <aside style={{ padding: 16, background: '#20242c', alignSelf: 'start' }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
+      <div role="separator" aria-orientation="vertical" aria-label="Kéo để đổi độ rộng khung chi tiết" title="Kéo để đổi độ rộng khung chi tiết" onPointerDown={startResizeDetail} style={{ cursor: 'col-resize', background: '#2c313a', borderRadius: 4, touchAction: 'none' }} />
+      <aside style={{ padding: 16, background: '#20242c', overflowY: 'auto', minHeight: 0 }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
         <p>{selected.durationSeconds.toFixed(2)} giây · {selected.fps} fps · {selected.rig} · {/mixamo/i.test(`${selected.licenseId} ${selected.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}</p>{selected.preview && <video controls muted loop playsInline src={`/api/library/video/${encodeURIComponent(selected.uuid)}`} style={{ width: '100%' }} />}<button onClick={() => void json('/api/library/previews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuids: [selected.uuid], regenerate: true }) }).then(body => { setPreviewJobs(Object.fromEntries((body.jobs as Array<{ uuid: string; state: string; message?: string }>).map(job => [job.uuid, job]))) }).catch(error => setMessage(String(error)))}>Tạo lại video</button>
         <form key={selected.uuid} onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); void saveActionName(String(data.get('name') ?? ''), String(data.get('nameVi') ?? '')).catch(error => setMessage(String(error))) }}><label>Tên tiếng Anh <input name="name" required defaultValue={selected.name} /></label><label>Tên tiếng Việt <input name="nameVi" defaultValue={selected.nameVi ?? ''} /></label><button type="submit">Lưu tên</button></form>
         {selected.ownerCharId && selected.status !== 'approved' && <button onClick={() => void approve().catch(error => setMessage(String(error)))}>Duyệt</button>}
