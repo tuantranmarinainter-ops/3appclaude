@@ -14,3 +14,17 @@ body {
   position: relative;
   height: 100vh;
 }
+
+:root {
+  /* C23: one accent for every button that hands work to another app, shared by all 5 apps. */
+  --cross-app-accent: #ff8c1a;
+}
+
+/* C23: cross-app buttons (workspace bar, "Thêm vào cảnh App 2", "Mở Chuẩn hoá", mở App 3,
+   "Trả kết quả về cảnh"...) get a thick bright-orange border so they stand out everywhere.
+   !important on the border only: several surfaces reset button borders locally. */
+.cross-app-button {
+  border: 2px solid var(--cross-app-accent, #ff8c1a) !important;
+  border-radius: 6px;
+  box-shadow: 0 0 8px rgba(255, 140, 26, 0.45);
+}

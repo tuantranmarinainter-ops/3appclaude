@@ -6,7 +6,11 @@
   --fail: #f87171; --fail-bg: #3b1818; --block: #c4b5fd; --block-bg: #2a2147; --idle-bg: #2b3340;
   --viewer-bg: #1c2128; --viewer-grid: #39414d; --viewer-bone: #ffd34d; --left-foot: #60a5fa; --right-foot: #fb923c;
   --radius: 8px; --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* C23: one accent for every button that hands work to another app, shared by all 5 apps. */
+  --cross-app-accent: #ff8c1a;
 }
+/* C23: cross-app buttons get a thick bright-orange border so they stand out everywhere. */
+.cross-app-button { border: 2px solid var(--cross-app-accent, #ff8c1a) !important; border-radius: 6px; box-shadow: 0 0 8px rgba(255, 140, 26, 0.45); }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); display: flex; flex-direction: column; overflow: hidden; }

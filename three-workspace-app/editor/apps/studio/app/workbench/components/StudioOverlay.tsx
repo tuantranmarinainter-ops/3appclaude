@@ -535,7 +535,7 @@ export function StudioOverlay({
           </div>
         </header>
         <WorkspaceNavigationSlot />
-        <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
+        <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" className="cross-app-button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
