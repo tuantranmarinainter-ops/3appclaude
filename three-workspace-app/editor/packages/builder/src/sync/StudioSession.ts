@@ -255,6 +255,12 @@ export class StudioSession implements StudioView {
   get followMode(): boolean {
     return this.editor.followMode
   }
+  get charactersOnlyView(): boolean {
+    return this.editor.charactersOnlyView
+  }
+  get backgroundViewHidden(): boolean {
+    return this.editor.backgroundViewHidden
+  }
   get poseEditingId(): string | null {
     return this.editor.poseEditingId
   }
@@ -346,6 +352,8 @@ export class StudioSession implements StudioView {
   acceptTimelinePlayHint = (): void => this.editor.acceptTimelinePlayHint()
   setTimelineHeight = (h: number): void => this.editor.setTimelineHeight(h)
   toggleViewportFullscreen = (): void => this.editor.toggleViewportFullscreen()
+  setCharactersOnlyView = (v: boolean): void => this.editor.setCharactersOnlyView(v)
+  setBackgroundViewHidden = (v: boolean): void => this.editor.setBackgroundViewHidden(v)
   setNodeFlags = (nodeId: string, flags: { visible?: boolean; locked?: boolean }): string | null =>
     this.writeLocked ? 'write-locked' : library.setNodeFlags(this, nodeId, flags)
   updateEnvironment = (patch: EnvironmentPatch): void => {

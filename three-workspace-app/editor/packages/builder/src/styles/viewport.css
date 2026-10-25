@@ -310,6 +310,13 @@
   color: var(--t3d-text);
 }
 
+/* N5: nút chuyển chế độ xem đang bật (vd. "Chỉ hiện nhân vật"). */
+.t3d-reset-view-btn.is-active {
+  background: linear-gradient(var(--t3d-ui-active-strong), var(--t3d-ui-active-strong)), var(--t3d-dock-surface);
+  color: var(--t3d-text);
+  border-color: var(--t3d-accent);
+}
+
 .t3d-follow-exit {
   position: absolute;
   top: 10px;

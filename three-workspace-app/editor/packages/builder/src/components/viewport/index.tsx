@@ -18,6 +18,7 @@ import { useFramedAspect } from './hooks/useFramedAspect'
 import { useFilmFrameAspect } from './hooks/useFilmFrameAspect'
 import { useGizmoHoverTip } from './hooks/useGizmoHoverTip'
 import { useViewportInteractions } from './hooks/useViewportInteractions'
+import { useSceneViewFilter } from './hooks/useSceneViewFilter'
 import { GizmoHoverTip } from './GizmoHoverTip'
 import { FilmFrameOverlay } from './FilmFrameOverlay'
 
@@ -39,6 +40,8 @@ export function Viewport() {
   const pathApplyPickingId = useStore((s) => s.pathApplyPickingId)
   const placeOnSupportPickingId = useStore((s) => s.placeOnSupportPickingId)
   const doc = useStore((s) => s.doc)
+  const charactersOnlyView = useStore((s) => s.charactersOnlyView)
+  const backgroundViewHidden = useStore((s) => s.backgroundViewHidden)
   const viewportFullscreen = useStore((s) => s.viewportFullscreen)
   const timelineVisible = useStore((s) => s.timelineVisible)
   const timelinePlayHint = useStore((s) => s.timelinePlayHintVisible)
@@ -84,6 +87,7 @@ export function Viewport() {
     return () => cancelAnimationFrame(raf)
   }, [stage, selection, gizmoMode, followMode, pathDrawMode, poseEditingId, cameraPilotId, pathEditingId, pathEditPointIndex, lookAtPickingId, pathApplyPickingId, placeOnSupportPickingId, film])
 
+  useSceneViewFilter(charactersOnlyView, backgroundViewHidden)
   const { selectionBox, lookAtHoverId } = useViewportInteractions(ref)
   const { tip: gizmoTip, tipRef: gizmoTipRef } = useGizmoHoverTip(stage)
 
@@ -236,6 +240,15 @@ export function Viewport() {
             onClick={() => useStore.getState().resetEditorView()}
           >
             <span>{t('viewport.resetView')}</span>
+          </button>
+          <button
+            type="button"
+            className={cx('t3d-reset-view-btn', charactersOnlyView && 'is-active')}
+            aria-pressed={charactersOnlyView}
+            title="Shift+H"
+            onClick={() => useStore.getState().setCharactersOnlyView(!charactersOnlyView)}
+          >
+            <span>{t('viewport.charactersOnly')}</span>
           </button>
         </div>
       ) : null}

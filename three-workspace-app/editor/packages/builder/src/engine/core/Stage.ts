@@ -68,7 +68,8 @@ import {
   worldContactPoint as computeWorldContactPoint,
   worldContactY as computeWorldContactY,
 } from '../objects/groundContact'
-import { applyNodeVisibility } from '../objects/visibility'
+import { applyNodeVisibility, applyViewVisibility } from '../objects/visibility'
+import { computeViewHiddenNodeIds, type SceneViewFilter } from '../../contract/sceneView'
 import { addRuntimeNode, hasNode, removeNode } from '../objects/ObjectFactory'
 import { clearGraph, loadDocument } from '../objects/SceneLoader'
 import { CHARACTER_LABEL_KIND, disposeSceneChildren } from '../objects/environment'
@@ -180,6 +181,13 @@ export class Stage implements DirectorEngine, PathViewHost {
   private readonly joints = new JointHandleLayer()
   private readonly silhouetteView = new SilhouetteView()
   private silhouetteWanted = false
+  private sceneViewFilterWanted: SceneViewFilter = { charactersOnly: false, backgroundHidden: false }
+  private viewHiddenCache: {
+    doc: DirectorDocument | null
+    charactersOnly: boolean
+    backgroundHidden: boolean
+    ids: Set<string>
+  } | null = null
   private readonly bbsLookView = new BbsLookView()
   private readonly vfxLayer = new VfxSpriteLayer()
   private bbsLookWanted = false
@@ -283,6 +291,56 @@ export class Stage implements DirectorEngine, PathViewHost {
       this.bbsLookView.restore(this.scene)
     } else this.applyFilmPoseView(this.frameOut)
     this.invalidate()
+  }
+
+  /** Bộ lọc xem N5：只影响编辑视口（渲染前在 syncViewVisibility 里套用），不写入文档，也不影响导出帧。 */
+  get sceneViewFilter(): SceneViewFilter {
+    return this.sceneViewFilterWanted
+  }
+
+  setSceneViewFilter(filter: SceneViewFilter): void {
+    if (
+      filter.charactersOnly === this.sceneViewFilterWanted.charactersOnly
+      && filter.backgroundHidden === this.sceneViewFilterWanted.backgroundHidden
+    ) return
+    this.sceneViewFilterWanted = {
+      charactersOnly: filter.charactersOnly === true,
+      backgroundHidden: filter.backgroundHidden === true,
+    }
+    // 先按文档把可见性还原，下一帧渲染时再按新筛选叠加，避免关筛选后残留隐藏状态。
+    applyNodeVisibility(this)
+    this.invalidate()
+  }
+
+  private currentViewHiddenIds(): ReadonlySet<string> {
+    const filter = this.sceneViewFilterWanted
+    const cache = this.viewHiddenCache
+    if (
+      cache
+      && cache.doc === this.doc
+      && cache.charactersOnly === filter.charactersOnly
+      && cache.backgroundHidden === filter.backgroundHidden
+    ) return cache.ids
+    const ids = computeViewHiddenNodeIds(this.doc?.content.nodes ?? [], filter)
+    this.viewHiddenCache = {
+      doc: this.doc,
+      charactersOnly: filter.charactersOnly,
+      backgroundHidden: filter.backgroundHidden,
+      ids,
+    }
+    return ids
+  }
+
+  /**
+   * 每次编辑视口绘制前调用（与 syncSilhouette 并列）。导出/缩略图路径只调 evaluate 后直接渲染，
+   * 不走这里，所以筛选永远不会进入导出帧。成片预览、跟随机位、第一人称操控时也不套用，
+   * 与 hideOverlays 的「干净画面」口径一致。
+   */
+  syncViewVisibility(): void {
+    const filter = this.sceneViewFilterWanted
+    if (!filter.charactersOnly && !filter.backgroundHidden) return
+    if (this.programPreviewActive || this.viewport.followMode || this.viewport.cameraPilot) return
+    applyViewVisibility(this, this.currentViewHiddenIds())
   }
 
   setFilmFrameAspect(aspect: number | null): void {
@@ -1496,6 +1554,7 @@ export class Stage implements DirectorEngine, PathViewHost {
         this.viewport.previewAspect = viewAspect
         this.evaluate(this.ambientFrame, this.evalUserKeys, this.evalUserKeysEnabled, this.evalChainCameraMotion, true)
         this.syncSilhouette()
+        this.syncViewVisibility()
         this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
         this.evaluateCurrent(true)
       }
@@ -1503,6 +1562,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     } else if (!mainDirty) {
       this.viewport.previewAspect = viewAspect
       this.syncSilhouette()
+      this.syncViewVisibility()
       this.viewport.render(this.scene, this.cameras, this.activeCameraId, true, undefined, 'preview')
       return
     }
@@ -1534,6 +1594,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     )
     this.viewport.outlineRoots = hideOverlays || this.gizmoSuspended ? [] : this.selectionOutlineRoots(selectedIds)
     this.syncSilhouette()
+    this.syncViewVisibility()
     this.viewport.render(
       this.scene,
       this.cameras,
