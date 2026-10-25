@@ -8,6 +8,9 @@ import { clampTimelineHeight, PX_PER_FRAME_MAX, TIMELINE_HEIGHT_DEFAULT } from '
 import { nodeIdsOf } from '../../stores/nodeSelection'
 import { cx } from '../common/cx'
 import { RangeSlider } from '../common/RangeSlider'
+import { browserPanelStorage } from '../common/panelLayout'
+import type { TimelineUnit } from '../../stores/types'
+import { readTimelineUnit, timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Tooltip } from '../common/Tooltip'
 import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
@@ -33,7 +36,7 @@ import { Playhead } from './Playhead'
 import { Ruler } from './Ruler'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
-import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, timelineSheetRuler, wheelZoomPxPerFrame } from './utils'
+import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
 import { getActiveEditSequence } from '../../evaluate'
 
 export function TimelinePanel() {
@@ -61,6 +64,7 @@ function SceneTimeline() {
   const timelineSnap = useStore((s) => s.timelineSnap)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
+  const timelineUnit = useStore((s) => s.timelineUnit)
   const timelineOpen = useStore((s) => s.timelineOpen)
   const timelineHeight = useStore((s) => s.timelineHeight)
   const {
@@ -68,6 +72,7 @@ function SceneTimeline() {
     togglePlay,
     select,
     setPxPerFrame,
+    setTimelineUnit,
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
@@ -100,6 +105,20 @@ function SceneTimeline() {
   const frameStartRef = useRef(0)
   const [viewW, setViewW] = useState(0)
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
+
+  // N3: nhớ đơn vị hiển thị (giây/frame/tick) như các preference panel khác.
+  const unitHydrated = useRef(false)
+  useEffect(() => {
+    if (!unitHydrated.current) {
+      unitHydrated.current = true
+      const stored = readTimelineUnit(browserPanelStorage())
+      if (stored !== timelineUnit) {
+        setTimelineUnit(stored)
+        return
+      }
+    }
+    writeTimelineUnit(browserPanelStorage(), timelineUnit)
+  }, [timelineUnit, setTimelineUnit])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -257,7 +276,7 @@ function SceneTimeline() {
 
   const trackW = frameCount * scale
   const frame = stage.currentFrame
-  const sheet = timelineSheetRuler(scale, tl.fps)
+  const sheet = timelineUnitRuler(scale, tl.fps, timelineUnit)
 
   const snapshotValue = (nodeId: string, prop: TrackProp): number[] => {
     const snap = stage.getNodeSnapshot(nodeId)
@@ -364,7 +383,7 @@ function SceneTimeline() {
         </Tooltip>
         <label className="t3d-timeline-field">
           {t('timeline.frame')}
-          <TimelineFrameField min={tl.frameStart} max={tl.frameEnd} onChange={setFrame} />
+          <TimelineFrameField min={tl.frameStart} max={tl.frameEnd} onChange={setFrame} unit={timelineUnit} fps={tl.fps} />
         </label>
         <Tooltip label={t('common.delete')} side="top">
           <button
@@ -393,6 +412,19 @@ function SceneTimeline() {
               onEditEnd={endTimelineRangeEdit}
             />
           </label>
+          <div className="t3d-timeline-unit-switch" role="group" aria-label={t('timeline.unit')}>
+            {(['seconds', 'frames', 'ticks'] as TimelineUnit[]).map((unit) => (
+              <button
+                key={unit}
+                type="button"
+                className={cx('t3d-timeline-unit-btn', timelineUnit === unit && 'is-active')}
+                aria-pressed={timelineUnit === unit}
+                onClick={() => setTimelineUnit(unit)}
+              >
+                {t(unit === 'seconds' ? 'timeline.unitSeconds' : unit === 'frames' ? 'timeline.unitFrames' : 'timeline.unitTicks')}
+              </button>
+            ))}
+          </div>
           <label className="t3d-timeline-field t3d-timeline-zoom">
             {t('timeline.zoom')}
             <RangeSlider
@@ -478,6 +510,7 @@ function SceneTimeline() {
               frameStart={tl.frameStart}
               frameEnd={tl.frameEnd}
               fps={tl.fps}
+              unit={timelineUnit}
               pxPerFrame={scale}
               currentFrame={frame}
               ariaLabel={t('timeline.frame')}

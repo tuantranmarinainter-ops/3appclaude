@@ -3,7 +3,22 @@ import { useT } from '../../locale'
 import { assetNameLabel } from '../../locale/assetLabels'
 import { isClipSelected, type Selection } from '../../stores/types'
 import { displayCameraMotionName } from '../displayNames'
+import type { ComponentProps } from 'react'
 import { ClipBlock } from './ClipBlock'
+import { useDirector } from '../../bridge/DirectorContext'
+import { formatDurationInUnit } from './utils/timeUnit'
+
+function useClipDurationLabel(frameStart: number, frameEnd: number): string {
+  const { useStore } = useDirector()
+  const unit = useStore((s) => s.timelineUnit)
+  const fps = useStore((s) => s.doc?.content.timeline.fps ?? 30)
+  return formatDurationInUnit(frameEnd - frameStart + 1, fps, unit)
+}
+
+function MotionClipBlock(props: ComponentProps<typeof ClipBlock>) {
+  const durationLabel = useClipDurationLabel(props.frameStart, props.frameEnd)
+  return <ClipBlock {...props} durationLabel={durationLabel} />
+}
 
 import { box } from './utils/trackRow'
 
@@ -24,7 +39,7 @@ export function CameraClips({
 }) {
   const t = useT()
   return clips.map((c) => (
-    <ClipBlock
+    <MotionClipBlock
       key={c.id}
       kind="camera"
       ghost={ghost}
@@ -57,7 +72,7 @@ export function MotionClips({
 }) {
   const t = useT()
   return clips.map((c) => (
-    <ClipBlock
+    <MotionClipBlock
       key={c.id}
       kind="motion"
       ghost={ghost}
@@ -90,7 +105,7 @@ export function PathClips({
 }) {
   const t = useT()
   return clips.map((c) => (
-    <ClipBlock
+    <MotionClipBlock
       key={c.id}
       kind="path"
       ghost={ghost}

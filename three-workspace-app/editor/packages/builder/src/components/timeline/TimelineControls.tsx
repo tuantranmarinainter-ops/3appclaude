@@ -2,6 +2,8 @@ import { useRef, useState, type ReactNode } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useEngineEvent } from '../../bridge/useEngineEvent'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
+import type { TimelineUnit } from '../../stores/types'
+import { frameToUnitValue, unitValueToFrame } from './utils/timeUnit'
 import { Tooltip } from '../common/Tooltip'
 import { cx } from '../common/cx'
 
@@ -9,31 +11,37 @@ export function TimelineFrameField({
   min,
   max,
   onChange,
+  unit = 'frames',
+  fps = 30,
 }: {
   min: number
   max: number
   onChange: (n: number) => void
+  /** Đơn vị hiển thị (N3); giá trị ra/vào vẫn là frame. */
+  unit?: TimelineUnit
+  fps?: number
 }) {
   const { stage } = useDirector()
-  const [value, setValue] = useState(() => Math.round(stage.currentFrame))
+  const [frame, setFrame] = useState(() => Math.round(stage.currentFrame))
   const editingRef = useRef(false)
-  useEngineEvent('frame', (frame) => {
-    if (!editingRef.current) setValue(Math.round(frame))
+  useEngineEvent('frame', (next) => {
+    if (!editingRef.current) setFrame(Math.round(next))
   })
   return (
     <ScrubNumberInput
-      value={value}
-      min={min}
-      max={max}
-      step={1}
-      precision={0}
+      value={frameToUnitValue(frame, fps, unit)}
+      min={frameToUnitValue(min, fps, unit)}
+      max={frameToUnitValue(max, fps, unit)}
+      step={unit === 'seconds' ? 0.1 : 1}
+      precision={unit === 'frames' ? 0 : unit === 'ticks' ? 1 : 2}
       onEditStart={() => {
         editingRef.current = true
       }}
       onChange={(n) => {
         editingRef.current = true
-        setValue(n)
-        onChange(n)
+        const next = unitValueToFrame(n, fps, unit)
+        setFrame(next)
+        onChange(next)
       }}
       onEditEnd={() => {
         editingRef.current = false

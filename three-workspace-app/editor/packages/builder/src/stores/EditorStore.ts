@@ -12,6 +12,7 @@ import type {
   PendingKeyframe,
   SaveState,
   Selection,
+  TimelineUnit,
   WorkspaceMode,
 } from './types'
 
@@ -59,6 +60,7 @@ export class EditorStore {
   timelineSnap = true
   chainCameraMotion = false
   pxPerFrame = 1.5
+  timelineUnit: TimelineUnit = 'frames'
   exporting = false
   libraryOpen = false
   libraryTab: LibraryTab = 'object'
@@ -139,6 +141,7 @@ export class EditorStore {
       timelineSnap: observable,
       chainCameraMotion: observable,
       pxPerFrame: observable,
+      timelineUnit: observable,
       exporting: observable,
       libraryOpen: observable,
       libraryTab: observable,
@@ -214,6 +217,7 @@ export class EditorStore {
       setActiveCamera: action.bound,
       select: action.bound,
       setPxPerFrame: action.bound,
+      setTimelineUnit: action.bound,
       toggleUserKeys: action.bound,
       toggleAutoKeyframe: action.bound,
       toggleTimelineSnap: action.bound,
@@ -333,6 +337,10 @@ export class EditorStore {
 
   setPxPerFrame(v: number): void {
     this.pxPerFrame = Math.min(Math.max(v, PX_PER_FRAME_MIN), PX_PER_FRAME_MAX)
+  }
+
+  setTimelineUnit(unit: TimelineUnit): void {
+    this.timelineUnit = unit
   }
 
   toggleUserKeys(): void {
