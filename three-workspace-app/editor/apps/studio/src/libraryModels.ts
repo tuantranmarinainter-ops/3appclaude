@@ -109,6 +109,9 @@ export async function libraryCharacterModel(charId: string, faceForward = true) 
       for (const primitive of mesh.primitives) {
         const material = structuredClone(json.materials[primitive.material] ?? {})
         material.pbrMetallicRoughness = { ...material.pbrMetallicRoughness, baseColorFactor: [1, 1, 1, 1], baseColorTexture: { index: texture } }
+        // Minecraft skins keep the outer layer (hat/jacket) as transparent texels; cut them out like the game does,
+        // otherwise the Emoticons overlay faces render black over the base layer (A9).
+        if (resolved.baseModel?.rig === 'minecraft20') { material.alphaMode = 'MASK'; material.alphaCutoff = 0.5 }
         primitive.material = json.materials.push(material) - 1
       }
       node.mesh = json.meshes.push(mesh) - 1

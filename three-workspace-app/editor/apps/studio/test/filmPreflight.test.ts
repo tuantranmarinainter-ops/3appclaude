@@ -51,7 +51,7 @@ test('pure preflight reports unapproved shots, missing files, selected backdrop 
   assert.ok(result.errors.some((entry) => entry.code === 'CHARACTER_TRANSFORM_UNAVAILABLE'))
   assert.ok(result.errors.some((entry) => entry.code === 'ASSET_FILE_MISSING'))
   assert.ok(result.warnings.some((entry) => entry.code === 'SHOT_NOT_APPROVED' && entry.clipId === 'shot-1'))
-  assert.ok(result.warnings.some((entry) => entry.code === 'VFX_BBS_MISSING' && entry.clipId === 'cue-1'))
+  assert.ok(result.warnings.some((entry) => entry.code === 'VFX_OMITTED' && entry.clipId === 'cue-1'))
   const approved = filmPreflight(project, { ...args, footSamples: { actor: [{ frame: 0, leftY: 0, rightY: 0, actorWorldMatrix: new Matrix4().toArray() }] } })
   assert.ok(!approved.warnings.some((entry) => entry.code === 'SHOT_NOT_APPROVED'))
   const badBackdrop = filmPreflight(project, { ...args, propIds: ['backdrop-node'] })

@@ -1,9 +1,13 @@
+import { resolveFilmWorldAnchor, type FilmWorldAnchor } from './filmWorldAnchor'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import type { FilmSamplingArgs } from './unifiedFilmSampling'
+import { resolveFilmEffectsPolicy, type FilmEffectsPolicy } from './filmEffectsPolicy'
 import { resolveFilmFrameAspect } from './filmFrame'
 
 /** `scene.export.bbsFilm` arguments; every field is optional and defaults to "the whole scene". */
 export interface SceneBbsFilmArgs {
+  effectsPolicy?: FilmEffectsPolicy
+  worldAnchor?: FilmWorldAnchor
   content?: 'characters' | 'backdrops' | 'both'
   sequenceId?: string
   frameStart?: number
@@ -38,7 +42,7 @@ export interface ResolvedSceneBbsFilm {
   }
 }
 
-const KEYS = ['content', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
+const KEYS = ['effectsPolicy', 'worldAnchor', 'content', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 function fail(message: string): never { throw new TypeError(message) }
@@ -57,6 +61,7 @@ export function safeFilmName(value: string): string {
 export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<string, unknown>): ResolvedSceneBbsFilm {
   if (Object.keys(raw).some((key) => !KEYS.includes(key))) fail(`scene.export.bbsFilm accepts only ${KEYS.join(', ')}`)
   const args = raw as SceneBbsFilmArgs
+  resolveFilmWorldAnchor(args.worldAnchor, [0, 0, 0])
   // Preserve the existing scene command behavior when callers explicitly passed propIds before content was added.
   const content = args.content ?? (args.propIds?.length ? 'both' : 'characters')
   if (!['characters', 'backdrops', 'both'].includes(content)) fail('content must be characters, backdrops, or both')
@@ -102,7 +107,7 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   if (typeof filmName !== 'string' || !SAFE_NAME.test(filmName) || filmName.endsWith('.')) fail('name must use 1-64 safe ASCII characters')
   const range = { startFrame, endFrame }
   return {
-    film: { characterIds, content, propIds, sequenceId, range, viewportAspect, filmName },
+    film: { worldAnchor: args.worldAnchor, characterIds, content, propIds, sequenceId, range, viewportAspect, filmName, effectsPolicy: resolveFilmEffectsPolicy(args.effectsPolicy) },
     archiveName: `${filmName}.bbs-film.zip`,
     sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', content, sequenceId, range, viewportAspect,
       characterIds, propIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },

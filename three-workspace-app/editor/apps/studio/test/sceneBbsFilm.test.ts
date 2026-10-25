@@ -1,3 +1,6 @@
+import { Object3D, Quaternion, Euler, Vector3 } from 'three'
+import { FCurveSet } from '@topview/3d-builder/evaluate'
+import { planFilmSeries } from '../src/filmSeries'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -88,7 +91,8 @@ test('scene.export.bbsFilm defaults to every Character and the whole camera sequ
     executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args }), pattern)
   await reject({ mode: 'playback' }, /editable/)
   await reject({ frameEnd: 28 }, /20 Hz grid/)
-  await reject({ frameEnd: 26 }, /cover the selected source range exactly/)
+  const trimmed = await executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command: 'scene.export.bbsFilm', args: { frameEnd: 26 } })
+  assert.equal(trimmed.result.valid, true, 'an aligned partial range uses a detached clipped shot selection')
   await reject({ characterIds: ['missing'] }, /Characters/)
   await reject({ name: '../x' }, /safe ASCII/)
   await reject({ cameras: [] }, /accepts only/)
@@ -291,4 +295,88 @@ test('scene.export.bbsFilm writes <scene>.bbs-film.zip with both actors, both ca
   assert.equal(manifest.cameras.length, 2)
   assert.deepEqual(scene.cameraNodeIds, ['camera_1', 'camera_2'])
   console.log('scene.export.bbsFilm', JSON.stringify({ archiveBytes: archive.sizeBytes, names, actors: report.actors, cameras: report.cameras, poseTracks: report.poseTracks }))
+})
+
+test('all Film broker entrypoints reject unconfirmed effects and preserve source extensions', async () => {
+  const { projectId, characterIds } = await twoCharacterScene()
+  const project = await readUnifiedProject(projectId)
+  const before = JSON.stringify(project.extensions)
+  const common = { characterIds, sequenceId: 'seq', effectsPolicy: { mode: 'include' } }
+  for (const [command, args] of [
+    ['film.export', { ...common, filmName: 'effects-policy', range: { startFrame: 0, endFrame: 29 } }],
+    ['film.preflight', { ...common, range: { startFrame: 0, endFrame: 29 } }],
+    ['scene.export.bbsFilm', { ...common, name: 'effects-policy' }],
+    ['scene.export.bbsFilmSeries', { ...common, name: 'effects-policy' }],
+  ] as const) {
+    await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command, args }), /explicit confirmation/)
+  }
+  const defaulted = resolveSceneBbsFilmArgs(project, { characterIds, sequenceId: 'seq' })
+  assert.deepEqual(defaulted.film.effectsPolicy, { mode: 'omit' })
+  const after = await readUnifiedProject(projectId)
+  assert.equal(after.revision, project.revision)
+  assert.equal(JSON.stringify(after.extensions), before)
+})
+
+test('Film API commands accept and validate explicit world anchors without modifying the authored project', async () => {
+  const fixture = await backdropOnlyScene()
+  const project = await readUnifiedProject(fixture.projectId)
+  const before = JSON.stringify(project)
+  const worldAnchor = { mode: 'local-origin', destination: [-230, 67.25, 412] }
+  const common = { content: 'backdrops', characterIds: [], propIds: [fixture.propId], sequenceId: 'seq', worldAnchor }
+  for (const [command, args] of [
+    ['film.export', { ...common, range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9, filmName: 'anchor-api' }],
+    ['scene.export.bbsFilm', { ...common, name: 'anchor-api' }],
+    ['scene.export.bbsFilmSeries', { ...common, name: 'anchor-api' }],
+  ] as const) {
+    const response = await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command, args, dryRun: true })
+    assert.equal(response.result.valid, true)
+    await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command,
+      args: { ...args, worldAnchor: { mode: 'local-origin', destination: [0, 'bad', 0] } }, dryRun: true }), /anchor|coordinates/i)
+  }
+  const checked = await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command: 'film.preflight',
+    args: { ...common, range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 } })
+  assert.equal(checked.result.sourceRevision, fixture.revision)
+  assert.equal(JSON.stringify(await readUnifiedProject(fixture.projectId)), before)
+})
+
+
+test('nested backdrop and series pivot use evaluated world hierarchy at the export start frame', async () => {
+  const fixture = await backdropOnlyScene()
+  let project = await readUnifiedProject(fixture.projectId)
+  const scene = structuredClone(project.scene)
+  const prop = scene.content.nodes.find((node) => node.id === fixture.propId)!
+  const parent = { id: randomUUID(), type: 'group' as const, name: 'Translated rotated parent', visible: true, locked: false, transform: structuredClone(prop.transform), children: [prop.id] }
+  parent.transform.position = { x: 10000, y: 500, z: -8000 }
+  parent.transform.rotation = { x: 0, y: 43, z: 0 }
+  prop.parentId = parent.id
+  prop.transform.position = { x: 4, y: -1.25, z: -7 }
+  prop.transform.rotation = { x: -17, y: 0, z: 0 }
+  scene.content.nodes.push(parent)
+  scene.content.editorial!.sequences[0]!.clips = [12, 15, 18, 21].map((start, i) => ({ id: `nested-${i}`, cameraNodeId: 'camera_1', sourceFrameStart: start, sourceFrameEnd: i === 3 ? 29 : start + 2 }))
+  const fcurves = FCurveSet.persist(null, { [parent.id]: { position: [{ id: 'parent-start', frame: 0, value: [10000,500,-8000], interpolation: 'linear' }, { id: 'parent-key', frame: 12, value: [11000,550,-7900], interpolation: 'linear' }] } })
+  await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, expectedRevision: fixture.revision, command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: scene, fcurves }] } })
+  project = await readUnifiedProject(fixture.projectId)
+  const evaluated = await executeUnifiedCommand({ requestId: randomUUID(), projectId: fixture.projectId, command: 'scene.evaluate', args: { frame: 12 } })
+  const transforms = evaluated.result.transforms as Record<string, { position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } }>
+  const object = (id: string) => {
+    const t = transforms[id]!, value = new Object3D()
+    value.position.set(t.position.x,t.position.y,t.position.z)
+    value.rotation.set(t.rotation.x*Math.PI/180,t.rotation.y*Math.PI/180,t.rotation.z*Math.PI/180,'XYZ')
+    value.scale.set(t.scale.x,t.scale.y,t.scale.z)
+    return value
+  }
+  const parentObject = object(parent.id), childObject = object(prop.id)
+  parentObject.add(childObject); parentObject.updateMatrixWorld(true)
+  const expectedPosition = childObject.getWorldPosition(new Vector3()), expectedRotation = childObject.getWorldQuaternion(new Quaternion())
+  const manifest = { models: [], actors: [], cameras: [] } as unknown as ReturnType<typeof buildFilmExportManifest>
+  const assetId = prop.metadata!.assetId as string
+  const profile = convertedProfile(project.assets[assetId]!.source.sha256, 'nested-prop', [{ id: 'root', name: 'root', parentId: null }])
+  appendFilmBackdropActors(manifest, project, [prop.id], new Map([[assetId,profile]]), 20, 12)
+  const actual = manifest.actors[0]!.transformSamples[0]!
+  assert.ok(new Vector3(actual.x,actual.y,actual.z).distanceTo(expectedPosition) < 1e-8)
+  const actualRotation = new Quaternion().setFromEuler(new Euler(actual.pitch*Math.PI/180,-(actual.yaw-FILM_MODEL_FACING_OFFSET)*Math.PI/180,0,'YXZ'))
+  assert.ok(1-Math.abs(actualRotation.dot(expectedRotation)) < 1e-8)
+  const segments = planFilmSeries(project, { content: 'backdrops', characterIds: [], propIds: [prop.id], sequenceId: 'seq', viewportAspect: 16/9, range: { startFrame: 12, endFrame: 29 } })
+  assert.ok(segments.length > 1)
+  for (const segment of segments) assert.deepEqual(segment.exportArgs.worldAnchor!.sourceOrigin, expectedPosition.toArray())
 })

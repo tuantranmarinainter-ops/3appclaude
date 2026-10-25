@@ -145,3 +145,74 @@ body[data-workflow-step="refine"] #minimalSidebar .properties>*:not(.area-header
 body[data-workflow-step="refine"] #minimalAdvanced>#limbOptions{display:none}
 @media(max-width:1050px){#workflowSteps button{min-width:0;padding:5px 7px;font-size:11px}.studio-workspace>header{gap:8px}}
 @media(max-width:760px){#workflowSteps button{font-size:10px;padding:4px 5px}#workflowTools>summary{font-size:10px;padding:4px 6px}}
+
+/* Pane preferences affect only the view; retain usable stage space on narrow windows. */
+.studio-workspace #createWorkspace{--studio-left-track:0px;--studio-left-grip:0px;--studio-right-track:var(--right-width);--studio-right-grip:8px}
+.studio-workspace #createWorkspace.studio-left-open{--studio-left-track:var(--studio-left-width,260px);--studio-left-grip:8px}
+.studio-workspace #createWorkspace.minimal-sidebar-closed{--studio-right-track:0px;--studio-right-grip:0px}
+.studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode){grid-template-columns:var(--studio-left-track) var(--studio-left-grip) minmax(0,1fr) var(--studio-right-grip) var(--studio-right-track)}
+.studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>.stage{grid-column:3}
+.studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>.right-resize{grid-column:4}
+.studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>#minimalSidebar{grid-column:5;overflow:auto}
+.studio-workspace #createWorkspace>#floatingAnimationList{position:static;grid-column:1;grid-row:1;width:auto;max-width:none;max-height:none;min-height:0;border-radius:0;box-shadow:none;overflow:auto}
+.studio-workspace #floatingAnimationList>header{cursor:default;flex:none;flex-wrap:wrap;height:auto}
+.studio-workspace #floatingAnimationList .floating-animation-body{min-width:0}
+.studio-left-divider{grid-column:2;grid-row:1;cursor:col-resize;touch-action:none;background:var(--bg);display:none}
+.studio-left-open>.studio-left-divider{display:block}
+.studio-workspace #createWorkspace:is([data-maximized],.studio-scene-mode)>:is(#floatingAnimationList,.studio-left-divider){display:none}
+.studio-workspace #createWorkspace>.right-resize,.studio-workspace .compare-side-resize{touch-action:none;cursor:col-resize}
+.studio-left-divider:hover,.studio-left-divider:focus-visible{background:var(--accent)}
+.studio-pane-dragging{user-select:none}
+@media(max-width:700px){
+ .studio-workspace #createWorkspace{--studio-right-track:min(var(--right-width),38vw)}
+ .studio-workspace #createWorkspace.studio-left-open{--studio-left-track:min(var(--studio-left-width),30vw)}
+ .studio-workspace #minimalSidebar .minimal-tabs{flex-wrap:wrap}
+ .studio-workspace #createWorkspace #viewportShell{min-height:100px}
+ .studio-workspace .transport{display:flex;flex-wrap:wrap;gap:4px}
+ .studio-workspace #createWorkspace .stage-toolbar{max-height:110px;overflow:auto}
+}
+
+.studio-workspace #createWorkspace.studio-scene-mode:has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) var(--studio-scene-width,400px)}
+.studio-workspace #createWorkspace.studio-scene-editing:not(.minimal-sidebar-closed):has(#sceneStudioDialog:not([hidden])){grid-template-columns:minmax(0,1fr) var(--right-width) var(--studio-scene-width,400px)}
+.studio-workspace #createWorkspace.studio-scene-mode>#sceneStudioDialog{position:relative!important}
+.studio-scene-divider{position:absolute;left:0;top:0;bottom:0;width:8px;cursor:col-resize;touch-action:none;z-index:5}
+.studio-scene-divider:hover{background:var(--accent)}
+
+@media(max-width:700px){
+ .studio-workspace #createWorkspace .stage-toolbar>.row{flex-wrap:nowrap!important}
+ .studio-workspace #createWorkspace .transport{flex-wrap:nowrap;overflow:auto;max-height:80px}
+ .studio-workspace #createWorkspace .transport>.studio-group{flex:none;flex-wrap:nowrap}
+}
+
+@media(max-width:700px){
+ .studio-workspace #createWorkspace .animation-area>.area-header{flex-wrap:nowrap;padding:4px;overflow:auto;min-height:38px}
+ .studio-workspace #createWorkspace .editor-tabs{flex-wrap:nowrap;flex:none}
+ .studio-workspace #createWorkspace #studioKeyTools{flex-wrap:nowrap;overflow:auto;gap:4px;padding:4px;min-height:34px}
+ .studio-workspace #createWorkspace #studioKeyTools>*{flex:none}
+}
+
+.studio-mobile-pane-tools{display:none}
+@media(max-width:700px){
+ .studio-workspace #createWorkspace{position:relative}
+ .studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode){grid-template-columns:minmax(0,1fr)}
+ .studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>.stage{grid-column:1}
+ .studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>#minimalSidebar{position:absolute;right:0;top:0;bottom:0;width:var(--right-width);max-width:80vw;z-index:70;display:none}
+ .studio-workspace #createWorkspace>#floatingAnimationList{position:absolute;left:0;top:0;bottom:0;width:var(--studio-left-width);max-width:80vw;z-index:70;display:none}
+ .studio-workspace #createWorkspace.studio-mobile-right-open:not([data-maximized],.studio-scene-mode)>#minimalSidebar{display:flex!important}
+ .studio-workspace #createWorkspace.studio-mobile-left-open:not([data-maximized],.studio-scene-mode)>#floatingAnimationList:not([hidden]){display:flex}
+ .studio-workspace #createWorkspace>.right-resize,.studio-workspace #createWorkspace>.studio-left-divider{display:none;position:absolute;top:0;bottom:0;width:8px;z-index:75}
+ .studio-workspace #createWorkspace.studio-mobile-left-open>.studio-left-divider{display:block;left:var(--studio-left-width)}
+ .studio-workspace #createWorkspace.studio-mobile-right-open>.right-resize{display:block;right:var(--right-width)}
+ .studio-workspace .studio-mobile-pane-tools{display:flex;gap:6px;flex:none}
+}
+
+@media(max-width:700px){.studio-workspace #createWorkspace:not([data-maximized],.studio-scene-mode)>#minimalSidebar,.studio-workspace #createWorkspace>#floatingAnimationList,.studio-workspace #createWorkspace>.right-resize,.studio-workspace #createWorkspace>.studio-left-divider{top:44px}}
+
+@media(max-width:700px){.studio-workspace #createWorkspace>.right-resize,.studio-workspace #createWorkspace>.studio-left-divider{grid-area:auto}}
+
+@media(max-width:700px){
+ .studio-workspace #createWorkspace .stage-toolbar{height:48px;max-height:48px;flex-wrap:nowrap!important;padding:4px!important}
+ .studio-workspace #createWorkspace .transport{height:40px;max-height:40px;padding:4px}
+}
+
+@media(max-width:700px){.studio-workspace #createWorkspace .stage-toolbar>.row,.studio-workspace #createWorkspace .stage-toolbar>.row>.studio-group,.studio-workspace #createWorkspace .transport>.studio-group{flex:none;width:max-content;flex-wrap:nowrap}}

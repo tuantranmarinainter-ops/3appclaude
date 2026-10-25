@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
+import { ExportShotPicker } from './ExportShotPicker'
+import { EffectsOptions } from './EffectsOptions'
+import { WorldAnchorFields } from './WorldAnchorFields'
 import { BbsInstallPanel } from './BbsInstallPanel'
 
 export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
@@ -19,7 +22,9 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
     <>
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
       <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
+      <EffectsOptions value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
       <div className="wb-film-export-controls">
+        <WorldAnchorFields value={state.worldAnchor} onChange={state.setWorldAnchor} />
         <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
           <select value={state.exportMode} onChange={(event) => state.setExportMode(event.target.value as 'film' | 'series')} disabled={state.busy}>
             <option value="film">{vi ? 'Film hiện tại' : 'Current Film'}</option>
@@ -60,6 +65,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
             {state.sequences.map((sequence) => <option key={sequence.id} value={sequence.id}>{sequence.id}</option>)}
           </select>
         </label>
+        {state.exportMode === 'film' && <ExportShotPicker state={state} vi={vi} />}
         {state.exportMode === 'film' && <label>{vi ? 'Frame đầu' : 'Start frame'}<input type="number" value={state.startFrame} onChange={(event) => state.setStartFrame(Number(event.target.value))} disabled={state.busy} /></label>}
         {state.exportMode === 'film' && <label>{vi ? 'Frame cuối' : 'End frame'}<input type="number" value={state.endFrame} onChange={(event) => state.setEndFrame(Number(event.target.value))} disabled={state.busy} /></label>}
         {inOutNotice && state.exportMode === 'film' && <small role="status">{vi ? 'Khoảng mặc định từ In/Out của timeline (đã làm tròn về lưới 20 tick).' : 'Default range from the timeline In/Out (rounded to the 20-tick grid).'}</small>}
@@ -77,6 +83,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
               <span>{vi ? 'Chuỗi camera đang rỗng; shot Main Camera sẽ phủ đúng khoảng xuất hiện tại.' : 'The camera sequence is empty; a Main Camera shot will cover the current export range.'}</span>
             </div>
           : <p role="alert">{vi ? 'Chuỗi camera đang rỗng và dự án chưa có camera nào; hãy thêm một camera vào cảnh trước khi xuất.' : 'The camera sequence is empty and the project has no camera; add a camera to the scene before exporting.'}</p>)}
+        {state.canUndoCreateCameraShot && <button type="button" onClick={() => void state.undoCreateCameraShot()} disabled={state.busy || state.creatingShot}>{vi ? 'Hoàn tác sửa camera' : 'Undo camera repair'}</button>}
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : state.checkingPreflight ? (vi ? 'Đang kiểm tra…' : 'Checking…') : (vi ? 'Xuất gói' : 'Export package')}</button>
           {state.busy && state.activeJobId && <button type="button" onClick={() => void state.cancel()}>{vi ? 'Hủy' : 'Cancel'}</button>}

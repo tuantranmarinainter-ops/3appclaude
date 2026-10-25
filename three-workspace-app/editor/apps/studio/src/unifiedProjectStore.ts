@@ -36,7 +36,8 @@ import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction, libraryShot
 import { getAction, listCharacterActions, resolveCharacter, resolveLibraryPath } from '../../../packages/library/index'
 import { emptySceneReview, makeSceneReviewShot, planReviewFrames, reviewStatusForSequence, type SceneReviewStatus } from './sceneReview'
 import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCommandResult } from './cameraMotionCommand'
-import { filmPreflight, filmSeriesPreflight, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
+import { filmPreflight, filmSeriesPreflight, measureFilmFeet, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
+import { resolveFilmEffectsPolicy } from './filmEffectsPolicy'
 import { makeVfxCue, readVfxCueExtension, updateVfxCue, type VfxCue } from './vfxCues'
 import { makeAudioCue, readAudioCueExtension, updateAudioCue, type AudioCue } from './audioCues'
 
@@ -385,16 +386,9 @@ async function collectFilmPreflightEvidence(project: UnifiedProject, args: FilmP
         for (const skeleton of sample.skeletonSamples) {
           const character = Object.values(project.characters).find((item) => item.nodeId === skeleton.nodeId)
           if (!character) continue
-          const canonical = (name: string) => name.split(':').pop()!.replace(/^mixamorig[0-9]*/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase()
-          const sideFor = (name: string) => {
-            const value = canonical(name)
-            if (['leftfoot', 'footleft', 'lfoot', 'footl'].includes(value)) return 'left'
-            if (['rightfoot', 'footright', 'rfoot', 'footr'].includes(value)) return 'right'
-            return undefined
-          }
-          const feet = skeleton.bones.flatMap((bone) => { const side = sideFor(bone.name); return side ? [{ side, y: bone.worldMatrix[13]! }] : [] })
+          const feet = measureFilmFeet(skeleton, project.skeletons[character.skeletonId])
           const values = footSamples[character.id] ?? (footSamples[character.id] = [])
-          values.push({ frame: sample.frame, leftY: feet.find((foot) => foot.side === 'left')?.y, rightY: feet.find((foot) => foot.side === 'right')?.y,
+          values.push({ frame: sample.frame, ...feet,
             airborne: hasAirborneMotionAt(project, skeleton.nodeId, sample.frame), actorWorldMatrix: skeleton.actorWorldMatrix })
         }
       }
@@ -1257,11 +1251,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     return response
   }
   if (envelope.command === 'film.export') {
-    const { content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
+    const { worldAnchor, content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
         content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content)) ||
         propIds !== undefined && !Array.isArray(propIds) ||
         typeof filmName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) {
@@ -1274,6 +1268,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           content !== 'backdrops' && !Array.isArray(characterIds)) throw new TypeError('Film sampling arguments are invalid')
       const resolved = resolveSceneBbsFilmArgs(project, {
         ...(content === undefined ? {} : { content }),
+        ...(worldAnchor === undefined ? {} : { worldAnchor }),
         sequenceId,
         frameStart: range.startFrame as number,
         frameEnd: range.endFrame as number,
@@ -1281,6 +1276,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         ...(propIds === undefined ? {} : { propIds: propIds as string[] }),
         viewportAspect: effectiveAspect,
         name: filmName,
+        effectsPolicy: envelope.args.effectsPolicy,
       })
       normalizedFilm = resolved.film
       preflight = preflightProjectFilm(project, resolved.film)
@@ -1301,7 +1297,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'film.preflight') {
-    if (Object.keys(envelope.args).some((key) => !['mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
+    try { resolveFilmEffectsPolicy(envelope.args.effectsPolicy) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid effects policy', 400) }
+    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
         envelope.args.mode !== undefined && envelope.args.mode !== 'film' && envelope.args.mode !== 'series' ||
         envelope.args.content !== undefined && (typeof envelope.args.content !== 'string' || !['characters', 'backdrops', 'both'].includes(envelope.args.content)) ||
         envelope.args.mode === 'series' && envelope.args.characterIds !== undefined && envelope.args.characterIds !== 'auto' && !isUniqueStringIdList(envelope.args.characterIds) ||
@@ -1333,9 +1331,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       let plan: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>>
       try {
         const resolved = resolveSceneBbsFilmArgs(project, {
-          content: 'characters', sequenceId: envelope.args.sequenceId, characterIds: [], propIds: [],
+          content: 'characters', sequenceId: envelope.args.sequenceId, characterIds: [], propIds: [], worldAnchor: envelope.args.worldAnchor,
           viewportAspect: effectiveAspect,
           name: 'preflight-series',
+          effectsPolicy: envelope.args.effectsPolicy,
         })
         plan = await planFilmSeriesWithCameraSamples(project, { ...resolved.film, content,
           characterIds: content === 'backdrops' ? [] : rawCharacters as string[] | 'auto',
@@ -1367,8 +1366,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       characterIds: content === 'backdrops' && rawCharacterIds === undefined ? [] : rawCharacterIds,
       propIds: content === 'characters' ? (envelope.args.propIds ?? []) : (envelope.args.propIds ?? project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string').map((node) => node.id)),
       viewportAspect: effectiveAspect,
+      effectsPolicy: resolveFilmEffectsPolicy(envelope.args.effectsPolicy),
     } as {
-      content: string; characterIds: string[]; sequenceId: string; range: { startFrame: number; endFrame: number }; viewportAspect: number; propIds?: string[]
+      effectsPolicy: ReturnType<typeof resolveFilmEffectsPolicy>; content: string; characterIds: string[]; sequenceId: string; range: { startFrame: number; endFrame: number }; viewportAspect: number; propIds?: string[]
     }
     if (content !== 'backdrops' && !Array.isArray(args.characterIds)) {
       const preflight = { errors: [{ code: 'INVALID_ARGUMENT', message: { vi: 'Cần chọn nhân vật hợp lệ.', en: 'Valid Character selection is required.' } }], warnings: [] as FilmPreflightIssue[] }
@@ -1407,7 +1407,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film series snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
     const { content, ...sceneArgs } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
+    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
     }
     if (sceneArgs.characterIds !== undefined && sceneArgs.characterIds !== 'auto' && !isUniqueStringIdList(sceneArgs.characterIds) ||
