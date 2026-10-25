@@ -12,6 +12,7 @@ import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from '
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
 import { FILM_SERIES_ARCHIVE_SCRIPT, type FilmSeriesSegment } from './filmSeries'
+import { resolveFilmEffectsPolicy, filmRequiredMods, filmEffectsForExport } from './filmEffectsPolicy'
 import { buildVfxEffectsForFilm, readVfxCueExtension } from './vfxCues'
 import { listVfxPreviews, readVfxSheetImage } from './vfxPreviews'
 import { filmAudioPackage } from './audioMix'
@@ -366,7 +367,8 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     record.state = 'running'; record.progress = 0.03; record.updatedAt = new Date().toISOString(); await persist(record)
     const input = await sampleProjectFilm(snapshot, args, signal)
-    const effects = await buildVfxEffectsForFilm(snapshot, args, signal)
+    const effectsPolicy = resolveFilmEffectsPolicy(args.effectsPolicy)
+    const effects = await filmEffectsForExport(effectsPolicy, () => buildVfxEffectsForFilm(snapshot, args, signal))
     await mkdir(work, { recursive: false })
     const agent = await agentRoot(), python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
     const convertedRoot = path.join(work, 'converted'); await mkdir(convertedRoot)
@@ -436,7 +438,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks)
     // B15: VFX cues ride in the Film itself as AAA Particles replays (the effects must be installed in the game under
     // config/bbs/assets/<root>; W01_AAA_EFFECT_ROOT, default effeks/samples). effects.json stays as a sidecar.
-    Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks) })
+    if (effects.length) Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks) })
     const manifestPath = path.join(work, 'manifest.json')
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
     const outputRoot = path.join(work, 'package'); await mkdir(outputRoot)
@@ -449,7 +451,8 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     for (const [name, value] of Object.entries(options.extraFiles ?? {})) await writeFile(path.join(packagePath, name), `${JSON.stringify(value, null, 2)}
 `, { flag: 'wx' })
-    await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
+    await writeFile(path.join(packagePath, 'required-mods.json'), `${JSON.stringify(filmRequiredMods(effects.length), null, 2)}\n`, { flag: 'wx' })
+    if (effects.length) await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
     // B16: voices/SFX/music heard in this Film, their 20 Hz schedule and a ducked mix for video editing.
     const audio = await filmAudioPackage(snapshot, args.range.startFrame, args.range.endFrame, signal)
     if (audio) {
@@ -460,15 +463,15 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     await writeFile(path.join(packagePath, 'README.txt'), [
       'BBS FS 2.7 Film package. Copy films/*.dat into saves/<world>/bbs/films/ and assets/** into config/bbs/assets/, keeping the included directory layout.',
-      'effects.json is a project-side schedule with one transform per cue interval; startTick and endTick are relative to this Film at 20 Hz.',
+      effects.length ? 'Effects are UNVERIFIED in game. The target AAA renderer/addon was explicitly confirmed. effects.json is a project-side schedule with one transform per cue interval; startTick and endTick are relative to this Film at 20 Hz.' : 'Effects omitted: no AAA/VFX forms or replay actors are included. See required-mods.json.',
       'Attached VFX cues follow evaluated scene nodes or Character bones in App 2. Export currently accepts only attachments whose world transform stays constant for the exported interval; moving attachments are rejected because the available sidecar consumer cannot be verified to replay transform keys.',
       'Film structure was exported by the local worker. Playback in a BBS FS game was not tested by this package export.',
       '',
     ].join('\n'), { flag: 'w' })
     await writeFile(path.join(packagePath, 'REPORT.txt'), [
       'VFX export report',
-      `effects.json contains ${effects.length} cue interval(s).`,
-      'Moving node or bone attachments are evaluated in the project, but export rejects any interval whose transform changes. The sidecar stores one transform per interval and moving transform replay has not been established.',
+      `Effects policy: ${effectsPolicy.mode}; included cue intervals: ${effects.length}; in-game effect playback: ${effects.length ? 'UNVERIFIED' : 'OMITTED'}.`,
+      effectsPolicy.mode === 'include' ? 'Moving attachments are rejected: the sidecar stores one transform per interval and moving transform replay has not been established.' : 'Project VFX cues were not evaluated or changed; no effect replay, form, sidecar or asset was exported.',
       'Static cues and stationary attachments can be represented. BBS in-game playback was not tested.',
       '',
     ].join('\n'), { flag: 'w' })
@@ -555,7 +558,7 @@ async function runFilmSeriesExport(runtime: Runtime, snapshot: UnifiedProject, a
     }
     signal.throwIfAborted()
     const readme = path.join(work, 'README.txt')
-    await writeFile(readme, 'BBS FS 2.7 episode package. Copy films/*.dat into the selected world at saves/<world>/bbs/films/. Copy assets/** into config/bbs/assets/ and keep the included directory layout. effects.json maps each film path to its cue array; cue ticks start at zero for that film. This package has not been installed into a game.\n', { flag: 'wx' })
+    await writeFile(readme, 'BBS FS 2.7 episode package. Copy films/*.dat into the selected world at saves/<world>/bbs/films/. Copy assets/** into config/bbs/assets/ and keep the included directory layout. required-mods.json lists runtime requirements. When included, effects.json maps each film path to its cue array; cue ticks start at zero for that film. This package has not been installed into a game.\n', { flag: 'wx' })
     const series = args.segments.map((segment, index) => ({ order: index + 1, film: `films/${args.name}-${String(index + 1).padStart(2, '0')}.dat`,
       shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
     const specPath = path.join(work, 'series-input.json')
@@ -747,6 +750,7 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
       Object.keys(options.extraFiles ?? {}).some((name) => !/^[a-z0-9-]{1,40}\.json$/.test(name) || ['export-manifest.json', 'export-report.json'].includes(name))) {
     throw Object.assign(new TypeError('Film package names must be safe and must not replace worker files'), { code: 'VALIDATION_FAILED', status: 400 })
   }
+  resolveFilmEffectsPolicy(args.effectsPolicy)
   const preflight = preflightProjectFilm(project, args)
   const snapshot = structuredClone(project), exportArgs = structuredClone({ ...args,
     content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds }), jobId = randomUUID()

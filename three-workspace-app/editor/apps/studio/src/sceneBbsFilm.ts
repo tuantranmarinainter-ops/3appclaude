@@ -1,9 +1,11 @@
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import type { FilmSamplingArgs } from './unifiedFilmSampling'
+import { resolveFilmEffectsPolicy, type FilmEffectsPolicy } from './filmEffectsPolicy'
 import { resolveFilmFrameAspect } from './filmFrame'
 
 /** `scene.export.bbsFilm` arguments; every field is optional and defaults to "the whole scene". */
 export interface SceneBbsFilmArgs {
+  effectsPolicy?: FilmEffectsPolicy
   content?: 'characters' | 'backdrops' | 'both'
   sequenceId?: string
   frameStart?: number
@@ -38,7 +40,7 @@ export interface ResolvedSceneBbsFilm {
   }
 }
 
-const KEYS = ['content', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
+const KEYS = ['effectsPolicy', 'content', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode']
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 function fail(message: string): never { throw new TypeError(message) }
@@ -102,7 +104,7 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
   if (typeof filmName !== 'string' || !SAFE_NAME.test(filmName) || filmName.endsWith('.')) fail('name must use 1-64 safe ASCII characters')
   const range = { startFrame, endFrame }
   return {
-    film: { characterIds, content, propIds, sequenceId, range, viewportAspect, filmName },
+    film: { characterIds, content, propIds, sequenceId, range, viewportAspect, filmName, effectsPolicy: resolveFilmEffectsPolicy(args.effectsPolicy) },
     archiveName: `${filmName}.bbs-film.zip`,
     sceneExport: { schemaVersion: 1, command: 'scene.export.bbsFilm', sceneName: project.name, filmName, mode: 'editable', content, sequenceId, range, viewportAspect,
       characterIds, propIds, cameraNodeIds: sequence.clips.map((clip) => clip.cameraNodeId), rootMotion: { actorPath: 'replay-transform', actionRoot: 'pose-track' }, defaulted },

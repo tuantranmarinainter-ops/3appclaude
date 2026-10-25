@@ -293,3 +293,23 @@ test('scene.export.bbsFilm writes <scene>.bbs-film.zip with both actors, both ca
   assert.deepEqual(scene.cameraNodeIds, ['camera_1', 'camera_2'])
   console.log('scene.export.bbsFilm', JSON.stringify({ archiveBytes: archive.sizeBytes, names, actors: report.actors, cameras: report.cameras, poseTracks: report.poseTracks }))
 })
+
+test('all Film broker entrypoints reject unconfirmed effects and preserve source extensions', async () => {
+  const { projectId, characterIds } = await twoCharacterScene()
+  const project = await readUnifiedProject(projectId)
+  const before = JSON.stringify(project.extensions)
+  const common = { characterIds, sequenceId: 'seq', effectsPolicy: { mode: 'include' } }
+  for (const [command, args] of [
+    ['film.export', { ...common, filmName: 'effects-policy', range: { startFrame: 0, endFrame: 29 } }],
+    ['film.preflight', { ...common, range: { startFrame: 0, endFrame: 29 } }],
+    ['scene.export.bbsFilm', { ...common, name: 'effects-policy' }],
+    ['scene.export.bbsFilmSeries', { ...common, name: 'effects-policy' }],
+  ] as const) {
+    await assert.rejects(executeUnifiedCommand({ requestId: randomUUID(), projectId, dryRun: true, command, args }), /explicit confirmation/)
+  }
+  const defaulted = resolveSceneBbsFilmArgs(project, { characterIds, sequenceId: 'seq' })
+  assert.deepEqual(defaulted.film.effectsPolicy, { mode: 'omit' })
+  const after = await readUnifiedProject(projectId)
+  assert.equal(after.revision, project.revision)
+  assert.equal(JSON.stringify(after.extensions), before)
+})
