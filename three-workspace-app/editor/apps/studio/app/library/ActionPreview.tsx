@@ -84,5 +84,5 @@ export function ActionPreview({ uuid, animationIndex, characterUrl }: { uuid: st
     })()
     return () => { disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); removePointerListeners?.(); cleanup?.(); renderer?.dispose(); element.replaceChildren() }
   }, [animationIndex, characterUrl, uuid])
-  return <div ref={host} aria-label="Animation preview" style={{ width: '100%', height: 230, background: '#15191f', display: 'grid', placeItems: 'center' }}>{error && <span role="status">{error}</span>}</div>
+  return <div ref={host} aria-label="Animation preview" style={{ width: '100%', aspectRatio: '1 / 1', background: '#15191f', display: 'grid', placeItems: 'center' }}>{error && <span role="status">{error}</span>}</div>
 }
