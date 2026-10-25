@@ -217,7 +217,7 @@ test('canonical runs without original sidecars enable both Verity destination ca
   }
 })
 
-test('workspace navigation endpoint reads optional app URLs from the environment', async () => {
+test('workspace navigation endpoint prefers app URLs from the environment', async () => {
   const prior = [process.env.W01_STUDIO_URL, process.env.W01_ANIMATION_STUDIO_URL, process.env.W01_VFX_URL]
   process.env.W01_STUDIO_URL = 'http://127.0.0.1:3002'
   process.env.W01_ANIMATION_STUDIO_URL = 'http://127.0.0.1:3102'
@@ -225,7 +225,27 @@ test('workspace navigation endpoint reads optional app URLs from the environment
   try {
     const result = await call('/api/workspace-navigation')
     assert.equal(result.status, 200)
-    assert.deepEqual(result.json, { studioUrl: 'http://127.0.0.1:3002', animationUrl: 'http://127.0.0.1:3102', vfxUrl: null })
+    // W01_VFX_URL chưa đặt: VFX mặc định là chính Studio đã ghi đè, không còn null.
+    assert.deepEqual(result.json, { studioUrl: 'http://127.0.0.1:3002', animationUrl: 'http://127.0.0.1:3102', vfxUrl: 'http://127.0.0.1:3002' })
+  } finally {
+    const keys = ['W01_STUDIO_URL', 'W01_ANIMATION_STUDIO_URL', 'W01_VFX_URL'] as const
+    keys.forEach((key, index) => { if (prior[index] === undefined) delete process.env[key]; else process.env[key] = prior[index] })
+  }
+})
+
+test('workspace navigation endpoint defaults to the real Studio port when no env is set (E3)', async () => {
+  const prior = [process.env.W01_STUDIO_URL, process.env.W01_ANIMATION_STUDIO_URL, process.env.W01_VFX_URL]
+  delete process.env.W01_STUDIO_URL
+  delete process.env.W01_ANIMATION_STUDIO_URL
+  delete process.env.W01_VFX_URL
+  try {
+    const result = await call('/api/workspace-navigation')
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.json, {
+      studioUrl: 'http://127.0.0.1:3016',
+      animationUrl: 'http://127.0.0.1:3016/?workspace=animation',
+      vfxUrl: 'http://127.0.0.1:3016',
+    })
   } finally {
     const keys = ['W01_STUDIO_URL', 'W01_ANIMATION_STUDIO_URL', 'W01_VFX_URL'] as const
     keys.forEach((key, index) => { if (prior[index] === undefined) delete process.env[key]; else process.env[key] = prior[index] })

@@ -128,6 +128,27 @@ function selectBobjActions(text: string, names: Set<string>): string {
 
 export interface Workbench { server: Server; url: string; port: number; sessionDir: string; close(): Promise<void> }
 
+/** Studio (App 2) ở cổng người dùng chạy thật — xem cấu hình `app2-tap15v3` trong `docs/claude-memory/launch.json.example`. */
+export const DEFAULT_STUDIO_URL = 'http://127.0.0.1:3016'
+
+/**
+ * URL cho thanh 5 workspace (E3): biến môi trường luôn thắng; khi thiếu thì mặc định về Studio
+ * ở `127.0.0.1:3016` để các nút Dựng cảnh / Animation / VFX / Thư viện không bị mờ oan.
+ * Animation là cùng Studio với `?workspace=animation`; VFX là chính Studio (bảng Hiệu ứng của Studio).
+ */
+export function workspaceNavigationUrls(env: NodeJS.ProcessEnv = process.env): { studioUrl: string; animationUrl: string | null; vfxUrl: string } {
+  const studioUrl = env.W01_STUDIO_URL ?? DEFAULT_STUDIO_URL
+  let animationUrl = env.W01_ANIMATION_STUDIO_URL ?? null
+  if (animationUrl === null) {
+    try {
+      const url = new URL(studioUrl)
+      url.searchParams.set('workspace', 'animation')
+      animationUrl = url.toString()
+    } catch { animationUrl = null }
+  }
+  return { studioUrl, animationUrl, vfxUrl: env.W01_VFX_URL ?? studioUrl }
+}
+
 /** `three` resolved the same way the retarget package does, so the browser and the CLI use one version. */
 function threeRoot(): string {
   const require = createRequire(resolve(here, '../package.json'))
@@ -480,11 +501,7 @@ export async function startWorkbench(options: { port?: number; tempRoot?: string
       return json(res, 200, { sessionBytes: directorySize(sessionDir), sessionDir, retentionDays: keepDays,
         removedRuns, removedSessions: stale.removedSessions, freedBytes: freedBytes + stale.freedBytes })
     }
-    if (method === 'GET' && path === '/api/workspace-navigation') return json(res, 200, {
-      studioUrl: process.env.W01_STUDIO_URL ?? null,
-      animationUrl: process.env.W01_ANIMATION_STUDIO_URL ?? null,
-      vfxUrl: process.env.W01_VFX_URL ?? null,
-    })
+    if (method === 'GET' && path === '/api/workspace-navigation') return json(res, 200, workspaceNavigationUrls())
     if (method === 'GET' && path === '/api/targets') return json(res, 200, { targets: [...targets.values()].map(targetView), mc20: [...mc20.values()].map(({ id, name }) => ({ id, name })) })
     if (method === 'GET' && path === '/api/library/characters') {
       const characters = listLibraryCharacters().map((character) => {
