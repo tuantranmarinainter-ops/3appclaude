@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useHostControlsDock } from './hooks/useHostControlsDock'
 import { useSilhouetteSync } from './hooks/useSilhouetteSync'
 import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
@@ -16,6 +18,7 @@ type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { 
 export function AnimationCreationPanel({ projectId, project, active, onProject, onEditorDirty }: { projectId: string; project: UnifiedProject; active: boolean; onProject: (project: UnifiedProject) => void; onEditorDirty: (dirty: boolean) => void }) {
   const frame = useRef<HTMLIFrameElement>(null)
   useSilhouetteSync(frame)
+  const { controlsDock, attachControlsDock } = useHostControlsDock()
   const openedRevision = useRef<number | null>(null)
   const pending = useRef(new Map<string, { resolve: (value: BridgeReply['value']) => void; reject: (error: Error) => void }>())
   const [characterId, setCharacterId] = useState(Object.keys(project.characters)[0] ?? '')
@@ -253,7 +256,8 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     finally { setBusy(false) }
   }
 
-  return <section className="wb-animation-creation" aria-label="Animation Creation">
+  const controls = <details className="wb-animation-host-controls" open>
+    <summary>Dự án &amp; trao đổi với cảnh</summary>
     <header className="wb-animation-creation-toolbar">
       <label>Nhân vật<select value={characterId} onChange={(event) => setCharacterId(event.target.value)} disabled={busy || editorDirty || !characters.length}>
         {characters.map((character) => <option key={character.id} value={character.id}>{character.name}</option>)}
@@ -280,9 +284,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     {shotRangeFromInOut && <p className="wb-animation-creation-status" role="status">Khoảng shot đang dùng mặc định In/Out của timeline (đã làm tròn về lưới 20 tick).</p>}
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>
+  </details>
+
+  return <section className="wb-animation-creation" aria-label="Animation Creation">
+    {controlsDock ? createPortal(controls, controlsDock) : controls}
     <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.33.0" src={FRAME_URL} onLoad={() => {
       const doc = frame.current?.contentDocument
       if (!doc) return
+      attachControlsDock(doc)
       const hello = () => { void request('ping').then(() => setBridgeReady(true)).catch((cause: Error) => setError(cause.message)) }
       if (doc.querySelector('[data-bbs-host-bridge]')) { hello(); return }
       const script = doc.createElement('script'); script.src = BRIDGE_URL; script.dataset.bbsHostBridge = 'true'; script.onload = hello; doc.body.append(script)
