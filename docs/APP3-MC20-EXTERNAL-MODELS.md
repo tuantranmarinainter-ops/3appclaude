@@ -20,7 +20,7 @@ Use `--base-dir` instead of the environment variable, and `--variant slim` (or a
 
 Every Minecraft20 character requires its own `characters/<id>/skin.png` with a 64×64 PNG IHDR. Import preflights the entire character set. It checks the exact twenty names, parent relations and rest matrices against the existing V9.12 action skeleton, plus a metre-scale mesh near floor zero. Incompatible variants stop with an error instead of silently rescaling or remapping existing actions. Native model bytes stay unchanged. Each character registers its own owner-specific base model ID and receives its own `textures/<object>/default.png` skin copies. Character IDs, action references, original files and prior base models stay in the copied library; no original external paths are added to metadata. This migration is explicit and does not change the older generic legacy migration command.
 
-App3 detects the exact MC20 skeleton, exposes all twenty FK bone handles and four limb IK chains. Shin endpoints are editor-only Object3D nodes projected along the shin; they are not export bones or animation tracks. This preserves twenty-bone native exports and existing action channels. Hands use the existing `.end` bones. Leg IK changes thigh/shin rotations without adding a foot bone.
+App3 treats the anchor and three native misc_gbone roots as one logical MC20 armature while preserving all twenty physical bone parent records; exporting/selecting that armature retains all twenty bones. App3 detects the exact MC20 skeleton, exposes all twenty FK bone handles and four limb IK chains. Shin endpoints are editor-only Object3D nodes projected along the shin; they are not export bones or animation tracks. This preserves twenty-bone native exports and existing action channels. Hands use the existing `.end` bones. Leg IK changes thigh/shin rotations without adding a foot bone.
 
 Portable verification:
 
@@ -34,3 +34,15 @@ node --loader ./src/shot_test_loader.mjs src/minecraft20_controls.test.mjs
 The raw App3 BOBJ loader currently rejects the native action library’s SINE interpolation; use the existing baked GLB action pipeline for those clips. A9 leaves that existing interpolation limitation unchanged. Tests evaluate all 85 native actions at three ticks against both original and migrated skeletons, check finite matrices and exact pose parity, and decode the generated skin/material and GLB texture references.
 
 Setting W01_MC20_BASE_DIR enables optional real default-model validation. Before promoting a copy, separately verify Hero/Đen skins, all joints and arm/leg IK in App3, save/return through App2, and BBS FS 2.7 visibility/height beside the player. These real acceptance checks and real Samba are NOT_RUN here.
+
+Optional synthetic browser evidence (requires Playwright and a disposable synthetic native20 GLB):
+
+```powershell
+$env:MC20_BROWSER_FIXTURE = '<temporary-synthetic-native20.glb>'
+$env:MC20_BROWSER_SCREENSHOT = '<temporary-output.png>'
+$env:MC20_BROWSER_REPORT = '<temporary-report.json>'
+# Optional Linux/system browser: CHROMIUM_EXECUTABLE=/usr/bin/chromium
+node three-workspace-app/animation-studio/tools/test-mc20-controls-browser.mjs
+```
+
+This check covers twenty FK handles, four IK/pole pairs, numeric FK/IK edits, JSON project save/reload, and mesh+animation GLB export/reimport with twenty skeleton joints and no virtual helper nodes. Its screenshot is explicitly labelled synthetic, not Emoticons.

@@ -28,13 +28,15 @@ export function makeRig(root,name='Rig',asset=null){
  const iclone=names.includes('ccbaseboneroot')&&names.includes('ccbasehip');
  const mc20=['anchor','body','lowbody','head','leftarm','lowleftarm','lowleftarmend','rightarm','lowrightarm','lowrightarmend','rightleg','lowlegright','leftleg','lowleftleg','miscbone1','miscbone2','miscbone3','miscgbone1','miscgbone2','miscgbone3'];
  const profile=names.length===20&&mc20.every(n=>names.includes(n))?'Minecraft20':mix===major.length?'Mixamo':meta?'Metarig':iclone?'iClone':'Khác';
+ // MC20 global helper roots belong to the same logical armature; keep their physical parent records unchanged.
+ if(profile==='Minecraft20')roots.splice(0,roots.length,records.find(r=>canon(r.name)==='anchor'));
  const warnings=[];if(profile==='Mixamo'&&records.length!==65)warnings.push('Profile Mixamo theo khớp chính; '+records.length+' bone vật lý, chưa đúng 65.');
  const duplicates=records.filter((r,i)=>records.findIndex(x=>x.name===r.name)!==i);if(duplicates.length)warnings.push(duplicates.length+' tên trùng: '+duplicates.slice(0,6).map(r=>r.name).join(', ')+(duplicates.length>6?' … Chọn armature để phân biệt.':''));
  for(const r of records){if([...r.rest.p,...r.rest.q,...r.rest.s].some(v=>!Number.isFinite(v)))throw Error('Transform không hữu hạn tại '+r.name);if(r.rest.s.some(v=>v<=0)||Math.max(...r.rest.s)-Math.min(...r.rest.s)>1e-4)warnings.push('Scale âm / không đều: '+r.name);}
  const rig={root,name,asset,records,roots,mesh,height,profile,warnings,clips:root.animations||[],fingerprint:fingerprint(records),rootRest:snap(root),armatures:roots.map(r=>({id:r.id,name:r.name})),activeRoot:null,controls:{},chains:[]};
  return rig;
 }
-export function descendants(rig,id){return rig.records.filter(r=>{let p=r;while(p){if(p.id===id)return true;p=rig.records.find(x=>x.id===p.parent);}return false;});}
+export function descendants(rig,id){if(rig.profile==='Minecraft20'&&id===rig.roots[0].id)return rig.records;return rig.records.filter(r=>{let p=r;while(p){if(p.id===id)return true;p=rig.records.find(x=>x.id===p.parent);}return false;});}
 export function activeRecords(rig){return rig.activeRoot?descendants(rig,rig.activeRoot):rig.records;}
 export function resetRig(rig){apply(rig.root,rig.rootRest);for(const r of rig.records)apply(r.o,r.rest);rig.root.updateMatrixWorld(true);}
 export function capture(rig,scope='all',selected=null){const list=scope==='node'?rig.records.filter(r=>r.id===selected):scope==='branch'?descendants(rig,selected):activeRecords(rig);const p={};for(const r of list)p[r.id]=snap(r.o);if(scope==='all')p.root=snap(rig.root);return p;}

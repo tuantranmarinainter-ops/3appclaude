@@ -6,7 +6,7 @@ import * as B from './bobj_loader.js';
 const text=readFileSync(new URL('../../../../editor/apps/studio/public/retarget/v9.12/minecraft20-armature.bobj',import.meta.url),'utf8');
 test('exact MC20 profile provides four chains without adding export bones',()=>{
  const root=B.parse(new TextEncoder().encode('arm_name Minecraft20\n'+text)),rig=C.makeRig(root),before=rig.records.map(r=>r.name);
- assert.equal(rig.profile,'Minecraft20');const chains=C.chainSpecs(rig);assert.equal(chains.length,4);
+ assert.equal(rig.profile,'Minecraft20');assert.equal(rig.roots.length,1);assert.equal(rig.records.filter(r=>!r.parent).length,4);assert.equal(C.descendants(rig,rig.roots[0].id).length,20);const chains=C.chainSpecs(rig);assert.equal(chains.length,4);
  assert.equal(chains.filter(c=>c.virtualEnd).length,2);
  for(const c of chains){assert(c.a.o.getWorldPosition(c.a.o.position.clone()).distanceTo(c.b.o.getWorldPosition(c.b.o.position.clone()))>0);assert(c.b.o.getWorldPosition(c.b.o.position.clone()).distanceTo(c.c.o.getWorldPosition(c.c.o.position.clone()))>0);}
  const traversed=[];root.traverse(o=>traversed.push(o));assert(chains.filter(c=>c.virtualEnd).every(c=>!traversed.includes(c.c.o)),'Virtual tips must not enter exported scene graph');
