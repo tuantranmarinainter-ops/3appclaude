@@ -44,7 +44,7 @@ export function build(view, rig) {
   for (const chain of rig.chains) {
     const part = /left/i.test(chain.id) ? 'left' : 'right';
     const group = /arm/i.test(chain.id) ? 'arms' : 'legs';
-    for (const rec of [chain.a, chain.b, chain.c]) add(rec.id, rec.name, 'ring', group, rec.o, chain, part);
+    for (const rec of [chain.a, chain.b, chain.c].filter((r,i,a)=>!r.virtual&&a.findIndex(x=>x.id===r.id)===i)) add(rec.id, rec.name, 'ring', group, rec.o, chain, part);
     add('ik_' + chain.id, 'IK ' + chain.label, 'box', group, rig.controls['ik_' + chain.id].object, chain, part);
     add('pole_' + chain.id, 'Pole ' + chain.label, 'pole', group, rig.controls['pole_' + chain.id].object, chain, part);
   }
@@ -53,6 +53,9 @@ export function build(view, rig) {
     if (!/(thumb|index|middle|ring|pinky|little)/.test(n) || !/(1$|01$)/.test(n)) continue;
     if (defs.some(d => d.id === rec.id)) continue;
     add(rec.id, rec.name, 'ring', 'fingers', rec.o, null, side(rec.name));
+  }
+  if (rig.profile === 'Minecraft20') for (const rec of rig.records) {
+    if (!defs.some(d => d.id === rec.id)) add(rec.id, rec.name, 'ring', 'body', rec.o, null, side(rec.name));
   }
   view.widgets = defs;
   const leaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
