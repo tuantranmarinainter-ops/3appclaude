@@ -20,6 +20,7 @@ test('A5 real pointers: delete ten keys, resample and undo exactly in Classic an
  for(let i=1;i<=10;i++){await page.keyboard.down('Control');await page.mouse.click(point(i).x,point(i).y);await page.keyboard.up('Control');}
  // Input shortcuts must leave animation data intact.
  await page.evaluate(()=>{const input=document.createElement('input');input.id='a5-test-input';document.body.append(input);input.focus();});await page.keyboard.press('Delete');assert.deepEqual(await page.evaluate(()=>window.__studio.project()),before);await page.locator('#a5-test-input').evaluate(e=>e.remove());
+ await page.evaluate(()=>{const e=document.createElement('div');e.id='a5-test-editable';e.setAttribute('contenteditable','');e.textContent='text';document.body.append(e);e.focus();});await page.keyboard.press('Delete');assert.deepEqual(await page.evaluate(()=>window.__studio.project()),before);await page.locator('#a5-test-editable').evaluate(e=>e.remove());
  await page.locator('#timeline').focus();const index=await page.evaluate(()=>window.__studio.state.historyIndex);await page.keyboard.press('Delete');
  const after=await page.evaluate(()=>{const s=window.__studio,p=s.project();return{p,index:s.state.historyIndex,sample:s.core.sampleKeys(p.keys.root,1,{p:[0,0,0],q:[0,0,0,1],s:[1,1,1]}).p[0]};});
  assert.equal(after.p.keys.root.length,2);assert.equal(after.sample,11);assert.equal(after.index,index+1);if(lab)assert.deepEqual(after.p.lab.layers[0].keys,after.p.keys);
