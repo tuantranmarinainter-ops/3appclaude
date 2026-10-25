@@ -9,6 +9,7 @@ test('exact MC20 profile provides four chains without adding export bones',()=>{
  assert.equal(rig.profile,'Minecraft20');const chains=C.chainSpecs(rig);assert.equal(chains.length,4);
  assert.equal(chains.filter(c=>c.virtualEnd).length,2);
  for(const c of chains){assert(c.a.o.getWorldPosition(c.a.o.position.clone()).distanceTo(c.b.o.getWorldPosition(c.b.o.position.clone()))>0);assert(c.b.o.getWorldPosition(c.b.o.position.clone()).distanceTo(c.c.o.getWorldPosition(c.c.o.position.clone()))>0);}
+ const traversed=[];root.traverse(o=>traversed.push(o));assert(chains.filter(c=>c.virtualEnd).every(c=>!traversed.includes(c.c.o)),'Virtual tips must not enter exported scene graph');
  assert.deepEqual(C.makeRig(root).records.map(r=>r.name),before);assert.equal(C.chainSpecs(rig)[2].c.o,chains[2].c.o);
 });
 test('MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rotation',async()=>{

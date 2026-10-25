@@ -84,7 +84,7 @@ export function chainSpecs(rig){
   const find=name=>rig.records.find(r=>canon(r.name)===canon(name));
   return [['leftArm','left_arm','low_left_arm','low_left_arm.end'],['rightArm','right_arm','low_right_arm','low_right_arm.end'],['leftLeg','left_leg','low_left_leg'],['rightLeg','right_leg','low_leg_right']].map(([id,a,b,end])=>{
    const upper=find(a),lower=find(b);let tip=end?find(end):null;
-   if(!tip&&lower&&upper){const o=lower.o.mc20IKTip||new T.Object3D();o.name='MC20 IK endpoint';if(!o.parent){lower.o.add(o);const p=lower.o.getWorldPosition(new T.Vector3()).multiplyScalar(2).sub(upper.o.getWorldPosition(new T.Vector3()));o.position.copy(lower.o.worldToLocal(p));lower.o.mc20IKTip=o;}tip={id:lower.id,name:lower.name,o,parent:lower.id,virtual:true};}
+   if(!tip&&lower&&upper){const o=lower.o.mc20IKTip||new T.Object3D();o.name='MC20 IK endpoint';if(!o.parent){o.parent=lower.o;const p=lower.o.getWorldPosition(new T.Vector3()).multiplyScalar(2).sub(upper.o.getWorldPosition(new T.Vector3()));o.position.copy(lower.o.worldToLocal(p));lower.o.mc20IKTip=o;}tip={id:lower.id,name:lower.name,o,parent:lower.id,virtual:true};}
    return{id,label:id,root:rig.roots[0].id,a:upper,b:lower,c:tip,mode:'fk',virtualEnd:!end};
   }).filter(c=>c.a&&c.b&&c.c);
  }
