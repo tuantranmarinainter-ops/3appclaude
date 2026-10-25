@@ -18,7 +18,7 @@ try{
   const s=window.__studio,T=await import('three'),bytes=await(await fetch('/synthetic.glb')).arrayBuffer();
   await s.installAsset(bytes,'SYNTHETIC-native20.glb',true);s.setHostActive(false);
   const rig=s.rig(),C=s.core,widgets=s.view.widgets,physical=rig.records.map(r=>r.id);
-  const coverage={bones:physical.length,profile:rig.profile,fk:physical.filter(id=>widgets.some(w=>w.id===id)).length,ik:widgets.filter(w=>w.id.startsWith('ik_')).length,poles:widgets.filter(w=>w.id.startsWith('pole_')).length};
+  const coverage={bones:physical.length,profile:rig.profile,tree:physical.filter(id=>document.querySelector(`#boneList [data-bone="${id}"]`)).length,fk:physical.filter(id=>widgets.some(w=>w.id===id)).length,ik:widgets.filter(w=>w.id.startsWith('ik_')).length,poles:widgets.filter(w=>w.id.startsWith('pole_')).length};
   const arm=rig.records.find(r=>r.name==='left_arm'),leg=rig.chains.find(c=>c.id==='leftLeg'),project=s.serialized(false);
   const pose=C.snap(arm.o),expected=arm.o.quaternion.clone().multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0,0,1),.2));pose.q=expected.toArray();
   C.addKey(project,arm.id,0,pose,'linear');
@@ -36,6 +36,6 @@ try{
  await page.waitForTimeout(500);await page.evaluate(()=>window.__studio.setHostActive(false));
  if(process.env.MC20_BROWSER_SCREENSHOT)await page.screenshot({path:process.env.MC20_BROWSER_SCREENSHOT});
  console.log(JSON.stringify({result,errors},null,2));
- assert.deepEqual(result.coverage,{bones:20,profile:'Minecraft20',fk:20,ik:4,poles:4});assert(result.fkError<1e-5);assert(result.ikError<1e-4);assert(result.savedKeys>=2);assert.equal(result.exportBones,20);assert(result.exportJoints.every(n=>n===20));assert.equal(result.exportHelpers,0);assert.equal(result.reloadedBones,20);assert.equal(result.reloadedChains,4);assert(result.meshes>0);assert.deepEqual(errors,[]);
+ assert.deepEqual(result.coverage,{bones:20,profile:'Minecraft20',tree:20,fk:20,ik:4,poles:4});assert(result.fkError<1e-5);assert(result.ikError<1e-4);assert(result.savedKeys>=2);assert.equal(result.exportBones,20);assert(result.exportJoints.every(n=>n===20));assert.equal(result.exportHelpers,0);assert.equal(result.reloadedBones,20);assert.equal(result.reloadedChains,4);assert(result.meshes>0);assert.deepEqual(errors,[]);
  if(process.env.MC20_BROWSER_REPORT)await writeFile(process.env.MC20_BROWSER_REPORT,JSON.stringify({result,errors},null,2));
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
