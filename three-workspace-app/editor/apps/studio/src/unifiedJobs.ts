@@ -1,4 +1,5 @@
-import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
+import { filmSceneWorldMatrices } from './filmSceneWorld'
+import { Matrix4 } from 'three'
 import { applyFilmWorldAnchor, resolveFilmWorldAnchor } from './filmWorldAnchor'
 import { stageSceneConversion, type SceneConversionArgs } from './sceneConversion'
 import { createHash, randomUUID } from 'node:crypto'
@@ -208,8 +209,9 @@ export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: numbe
 }
 
 /** Add static backdrop actors after conversion; this pure step is shared by the job and manifest tests. */
-export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number): void {
+export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number, sourceFrame = project.scene.content.timeline.frameStart): void {
   if (!Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Backdrop Film duration must be a positive whole number of ticks')
+  const worldMatrix = filmSceneWorldMatrices(project, sourceFrame)
   for (const propId of propIds) {
     const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
     const assetId = node?.metadata?.assetId
@@ -221,12 +223,7 @@ export function appendFilmBackdropActors(manifest: FilmManifest, project: Unifie
     const prior = manifest.models.find((item) => item.id === profile.modelId)
     if (prior && JSON.stringify(prior) !== JSON.stringify(model)) throw new TypeError(`Converted backdrop model ID ${profile.modelId} has conflicting profiles`)
     if (!prior) manifest.models.push(model)
-    const { position, rotation, scale } = node.transform
-    const radians = Math.PI / 180
-    const matrix = new Matrix4().compose(new Vector3(position.x, position.y, position.z),
-      new Quaternion().setFromEuler(new Euler(rotation.x * radians, rotation.y * radians, rotation.z * radians)),
-      new Vector3(scale.x, scale.y, scale.z))
-    const inspected = inspectFilmActorTransform(matrix.toArray(), 0)
+    const inspected = inspectFilmActorTransform(worldMatrix(propId).toArray(), 0)
     if (!inspected.transform) throw new TypeError(`Backdrop ${node.name}: ${inspected.issues[0]?.message ?? 'invalid transform'}`)
     const pose = (tick: number) => ({ ...inspected.transform!, tick, yaw: inspected.transform!.yaw + FILM_MODEL_FACING_OFFSET })
     manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId: profile.modelId,
@@ -440,7 +437,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
         propProfiles.set(assetId, converted)
       }
     }
-    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks)
+    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks, args.range.startFrame)
     const source = manifest.actors[0]?.transformSamples[0] ?? manifest.cameras[0]!.keyframes[0]!
     const worldAnchor = resolveFilmWorldAnchor(args.worldAnchor, [source.x, source.y, source.z])
     applyFilmWorldAnchor(manifest, worldAnchor, effects)

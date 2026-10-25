@@ -5,7 +5,9 @@ This is a user-selected world coordinate, not a detected player position. The UI
 also offers `scene-origin` to preserve authored absolute world coordinates.
 
 The first selected actor/backdrop pivot is the source origin. A series pins one
-source pivot at its initial source frame before segmentation. All actor replay
+source pivot at its initial source frame before segmentation. Evaluated snapshots
+contain local TRS, so backdrop placement and the series pivot resolve the parent
+hierarchy using the same explicit XYZ Euler convention as scene GLB export. All actor replay
 positions, backdrop replay positions, camera positions and exported VFX positions
 receive exactly the same XYZ translation. One scene metre stays one block;
 +Y remains up and +Z remains forward. Bone/model local coordinates, model bytes,
