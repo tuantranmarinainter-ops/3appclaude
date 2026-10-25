@@ -4,6 +4,7 @@ import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../.
 import { chooseDirectory, saveJob } from '../../scene-render/utils'
 import { useStudioLocale } from '../../../../../src/devtools/localePreference'
 import { readFilmFrameAspect } from '../../../../../src/filmFrame'
+import { resolveTimelineInOutDefault, type FrameRange } from '../../../../../src/timelineInOut'
 import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src/filmPreflight'
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
@@ -20,8 +21,23 @@ export function useFilmExport(project: UnifiedProject) {
   const [seriesPropSelection, setSeriesPropSelection] = useState<'auto' | 'selected'>('auto')
   const [sequenceId, setSequenceId] = useState(project.scene.content.editorial?.activeSequenceId ?? sequences[0]?.id ?? '')
   const [exportMode, setExportMode] = useState<'film' | 'series'>('film')
-  const [startFrame, setStartFrame] = useState(project.scene.content.timeline.frameStart)
-  const [endFrame, setEndFrame] = useState(project.scene.content.timeline.frameEnd)
+  // N4: mặc định khoảng xuất = In/Out của timeline (đã làm tròn về lưới 20 tick) khi có;
+  // người dùng sửa tay một lần thì không tự ghi đè nữa.
+  const initialInOut = useRef<FrameRange | null | undefined>(undefined)
+  if (initialInOut.current === undefined) initialInOut.current = resolveTimelineInOutDefault(project.projectId, project.scene.content.timeline)
+  const [startFrame, setStartFrameRaw] = useState(initialInOut.current?.startFrame ?? project.scene.content.timeline.frameStart)
+  const [endFrame, setEndFrameRaw] = useState(initialInOut.current?.endFrame ?? project.scene.content.timeline.frameEnd)
+  const rangeEdited = useRef(false)
+  const setStartFrame = (value: number) => { rangeEdited.current = true; setStartFrameRaw(value) }
+  const setEndFrame = (value: number) => { rangeEdited.current = true; setEndFrameRaw(value) }
+  const applyInOutDefault = () => {
+    if (rangeEdited.current) return false
+    const resolved = resolveTimelineInOutDefault(project.projectId, project.scene.content.timeline)
+    if (!resolved) return false
+    setStartFrameRaw(resolved.startFrame)
+    setEndFrameRaw(resolved.endFrame)
+    return true
+  }
   const [viewportAspectOverride, setViewportAspectOverride] = useState<number | undefined>(undefined)
   const viewportAspect = viewportAspectOverride ?? readFilmFrameAspect(project.extensions)
   const [filmName, setFilmName] = useState(project.name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'project-film')
@@ -151,7 +167,7 @@ export function useFilmExport(project: UnifiedProject) {
   }
 
   return { characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
-    sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, exportMode, setExportMode,
+    sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport }
 }

@@ -1,4 +1,10 @@
 import { action, makeObservable, observable } from 'mobx'
+import {
+  browserInOutStorage,
+  normalizeInOutRange,
+  readTimelineInOut,
+  writeTimelineInOut,
+} from './inOutPreference'
 import type {
   ClipMovePreview,
   ClipResizePreview,
@@ -61,6 +67,9 @@ export class EditorStore {
   chainCameraMotion = false
   pxPerFrame = 1.5
   timelineUnit: TimelineUnit = 'frames'
+  /** Mốc In/Out kiểu DaVinci (N4): trạng thái phiên, mirror localStorage theo draft. */
+  inFrame: number | null = null
+  outFrame: number | null = null
   exporting = false
   libraryOpen = false
   libraryTab: LibraryTab = 'object'
@@ -125,6 +134,11 @@ export class EditorStore {
 
   constructor(initialDraftId: string) {
     this.draftId = initialDraftId
+    const savedInOut = readTimelineInOut(browserInOutStorage(), initialDraftId)
+    if (savedInOut) {
+      this.inFrame = savedInOut.start
+      this.outFrame = savedInOut.end
+    }
     makeObservable(this, {
       clipMovePreview: observable.ref,
       clipResizePreview: observable.ref,
@@ -142,6 +156,8 @@ export class EditorStore {
       chainCameraMotion: observable,
       pxPerFrame: observable,
       timelineUnit: observable,
+      inFrame: observable,
+      outFrame: observable,
       exporting: observable,
       libraryOpen: observable,
       libraryTab: observable,
@@ -218,6 +234,10 @@ export class EditorStore {
       select: action.bound,
       setPxPerFrame: action.bound,
       setTimelineUnit: action.bound,
+      setInFrame: action.bound,
+      setOutFrame: action.bound,
+      setInOutRange: action.bound,
+      clearInOut: action.bound,
       toggleUserKeys: action.bound,
       toggleAutoKeyframe: action.bound,
       toggleTimelineSnap: action.bound,
@@ -256,6 +276,9 @@ export class EditorStore {
 
   resetForDraft(id: string): void {
     this.draftId = id
+    const savedInOut = readTimelineInOut(browserInOutStorage(), id)
+    this.inFrame = savedInOut?.start ?? null
+    this.outFrame = savedInOut?.end ?? null
     this.ready = false
     this.playing = false
     this.activeCameraId = null
@@ -341,6 +364,41 @@ export class EditorStore {
 
   setTimelineUnit(unit: TimelineUnit): void {
     this.timelineUnit = unit
+  }
+
+  private persistInOut(): void {
+    writeTimelineInOut(
+      browserInOutStorage(),
+      this.draftId,
+      this.inFrame != null && this.outFrame != null ? { start: this.inFrame, end: this.outFrame } : null,
+    )
+  }
+
+  /** Đặt mốc In; kéo qua mốc Out thì Out đi theo (không bao giờ In > Out). */
+  setInFrame(frame: number | null): void {
+    this.inFrame = frame == null ? null : Math.round(frame)
+    if (this.inFrame != null && this.outFrame != null && this.outFrame < this.inFrame) this.outFrame = this.inFrame
+    this.persistInOut()
+  }
+
+  /** Đặt mốc Out; kéo qua mốc In thì In đi theo. */
+  setOutFrame(frame: number | null): void {
+    this.outFrame = frame == null ? null : Math.round(frame)
+    if (this.outFrame != null && this.inFrame != null && this.inFrame > this.outFrame) this.inFrame = this.outFrame
+    this.persistInOut()
+  }
+
+  setInOutRange(start: number, end: number): void {
+    const range = normalizeInOutRange(start, end)
+    this.inFrame = range?.start ?? null
+    this.outFrame = range?.end ?? null
+    this.persistInOut()
+  }
+
+  clearInOut(): void {
+    this.inFrame = null
+    this.outFrame = null
+    this.persistInOut()
   }
 
   toggleUserKeys(): void {

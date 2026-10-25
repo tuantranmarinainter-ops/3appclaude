@@ -20,6 +20,7 @@ import { isDerivedTransformPath } from '../../evaluate/path/deriveWalk'
 import { pathControlCentroid } from '../../evaluate/path/samplePath'
 import { PoseLibraryBank } from '../../data/poseLibraryBank'
 import { sceneFromDocument } from '../../evaluate/sceneFromDocument'
+import { advanceFrameWithinRange } from '../../evaluate/timecode'
 import {
   EDITOR_EXPORT_CAMERA_ID,
   type CaptureFrameInput,
@@ -144,6 +145,8 @@ export class Stage implements DirectorEngine, PathViewHost {
   ready = false
   currentFrame = 0
   playing = false
+  /** Khoảng phát lặp In/Out (N4); null = phát vòng toàn timeline như cũ. Chỉ là trạng thái xem. */
+  private playRange: { start: number; end: number } | null = null
   activeCameraId: string | null = null
   readonly stats = { renderFrames: 0, clockFrames: 0, throttled: 0 }
   fcurves: FCurveSet | null = null
@@ -810,6 +813,10 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.invalidate()
   }
 
+  setPlayRange(range: { start: number; end: number } | null): void {
+    this.playRange = range && range.end >= range.start ? { start: range.start, end: range.end } : null
+  }
+
   setEvalContext(ctx: EvalContext): void {
     this.evalUserKeys = ctx.userKeys
     this.evalUserKeysEnabled = ctx.userKeysEnabled
@@ -1442,7 +1449,12 @@ export class Stage implements DirectorEngine, PathViewHost {
     }
     this.stats.clockFrames += 1
     if (this.playing) {
-      this.currentFrame = wrap(this.currentFrame)
+      const range = this.playRange
+        ? { start: Math.max(tl.frameStart, this.playRange.start), end: Math.min(tl.frameEnd, this.playRange.end) }
+        : null
+      this.currentFrame = range && range.end >= range.start
+        ? advanceFrameWithinRange(this.currentFrame, adv, range.start, range.end)
+        : wrap(this.currentFrame)
       this.evaluateCurrent()
       this.emitFrame(now)
       this.invalidate()

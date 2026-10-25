@@ -33,6 +33,16 @@ export class DocumentSync {
 
     this.disposers.push(
       reaction(
+        () => [editor.inFrame, editor.outFrame] as const,
+        ([inFrame, outFrame]) => {
+          engine.setPlayRange(inFrame != null && outFrame != null ? { start: inFrame, end: outFrame } : null)
+        },
+        { fireImmediately: true },
+      ),
+    )
+
+    this.disposers.push(
+      reaction(
         () => docModel.fcurves,
         (fcurves) => {
           engine.setFcurves(fcurves)

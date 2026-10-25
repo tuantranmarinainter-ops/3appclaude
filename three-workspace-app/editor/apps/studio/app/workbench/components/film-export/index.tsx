@@ -1,13 +1,20 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 import { BbsInstallPanel } from './BbsInstallPanel'
 
-export function FilmExportPanel({ project }: { project: UnifiedProject }) {
+export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
   const vi = useStudioLocale() === 'vi'
   const state = useFilmExport(project)
+  const [inOutNotice, setInOutNotice] = useState(false)
+  // N4: mỗi lần mở panel Xuất, áp lại mặc định In/Out (trừ khi đã sửa tay).
+  useEffect(() => {
+    if (active) setInOutNotice(state.applyInOutDefault())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
   return (
     <>
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
@@ -55,6 +62,7 @@ export function FilmExportPanel({ project }: { project: UnifiedProject }) {
         </label>
         {state.exportMode === 'film' && <label>{vi ? 'Frame đầu' : 'Start frame'}<input type="number" value={state.startFrame} onChange={(event) => state.setStartFrame(Number(event.target.value))} disabled={state.busy} /></label>}
         {state.exportMode === 'film' && <label>{vi ? 'Frame cuối' : 'End frame'}<input type="number" value={state.endFrame} onChange={(event) => state.setEndFrame(Number(event.target.value))} disabled={state.busy} /></label>}
+        {inOutNotice && state.exportMode === 'film' && <small role="status">{vi ? 'Khoảng mặc định từ In/Out của timeline (đã làm tròn về lưới 20 tick).' : 'Default range from the timeline In/Out (rounded to the 20-tick grid).'}</small>}
         <label>Aspect<input type="number" min="0.01" step="0.01" value={state.viewportAspect} onChange={(event) => state.setViewportAspect(Number(event.target.value))} disabled={state.busy} /></label>
         <label>{vi ? 'Tên gói' : 'Package name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} disabled={state.busy} maxLength={state.exportMode === 'series' ? 56 : 64} /></label>
         <small>{vi ? 'Xuất Film editable cho BBS FS 2.7. Chế độ Cả tập tự chia theo giới hạn worker, chỉ cắt ở ranh giới cảnh.' : 'Exports editable Film for BBS FS 2.7. Entire episode splits at shot boundaries to fit worker limits.'}</small>

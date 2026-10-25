@@ -453,8 +453,11 @@ export function StudioOverlay({
   }, [captureReview, reviewImages])
   const playReviewClip = useCallback((clipId: string) => {
     const clip = reviewSequence?.clips.find((item) => item.id === clipId)
-    const stage = getLiveStudio()?.stage
+    const studio = getLiveStudio()
+    const stage = studio?.stage
     if (!clip || !stage) return
+    // N4: phát một shot trong Duyệt cảnh cũng đặt In/Out theo shot để timeline lặp đúng khoảng.
+    studio?.useStore.getState().setInOutRange(clip.sourceFrameStart, clip.sourceFrameEnd)
     stage.seek(clip.sourceFrameStart)
     stage.play()
   }, [reviewSequence])
@@ -567,7 +570,7 @@ export function StudioOverlay({
             </div>
           </HostDrawer>
           <HostDrawer open={drawer === 'export'} title={vi ? 'Xuất dự án' : 'Export project'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-export" onClose={() => setDrawer(null)}>
-            <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} /></details></div>
+            <div className="wb-export-groups"><details open><summary>{vi ? 'Ảnh PNG' : 'PNG images'}</summary><SceneRenderPanel project={project} /></details><details><summary>{vi ? 'Gói BBS FS' : 'BBS FS package'}</summary><FilmExportPanel project={project} active={drawer === 'export'} /></details></div>
           </HostDrawer>
           <HostDrawer open={drawer === 'review'} title={vi ? 'Duyệt cảnh' : 'Scene review'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             {reviewSequence ? <><p className="wb-review-capture"><button type="button" disabled={reviewCapturing !== null} onClick={() => void captureAllReview()}>{reviewCapturing ? (vi ? 'Đang chụp…' : 'Capturing…') : (vi ? 'Chụp tất cả cảnh chưa có ảnh (Xem như BBS)' : 'Capture all shots without stills (BBS look)')}</button></p><SceneReviewPanel clips={reviewClips} images={reviewImages} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} onCapture={(clipId, frames) => void captureReview(clipId, frames)} /></> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
