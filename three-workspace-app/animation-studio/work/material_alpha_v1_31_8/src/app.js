@@ -403,7 +403,9 @@ const timelinePresets={
  compact:{row:20,key:4,font:9,description:'Compact · Hàng thấp và key tròn nhỏ để xem nhiều khớp trong diện tích hẹp.'},
  touch:{row:44,key:10,font:12,description:'Touch · Hàng rộng và key lớn, dễ bấm trên màn hình cảm ứng.'}
 };
-let timelineHits=[];
+let timelineHits=[],timelineMarquee=null;
+function timelineHitRefs(hit){return hit.id.startsWith('labGroup_')?labGroupRefs(hit.id.slice(9),hit.time):hit.id==='allBody'||$('keySelectionScope').value==='body'?C.bodyKeyRefs(rig,project,hit.time):[{kind:'keys',id:hit.id,time:hit.time}];}
+function sameTimelineKey(a,b){return (a.kind||'keys')===(b.kind||'keys')&&a.id===b.id&&Math.abs(a.time-b.time)<1e-7;}
 function drawTimeline(){
  if(!project)return;
  const style=$('animationEditor').value==='dope'?'dope':$('timelineStyle').value,preset=timelinePresets[style],rows=$('animationEditor').value==='graph'?[]:timelineRows(),ticks=$('showMinecraftTicks').checked;
@@ -426,11 +428,13 @@ function drawTimeline(){
   const y=(i+.5)*preset.row;ctx.fillStyle=r.id===selected?accent:muted;ctx.fillText(r.name.slice(0,preset.font>10?16:19),7,y+4);
   ctx.save();ctx.beginPath();ctx.rect(left-11,0,span+23,height);ctx.clip();
   if(preset.band&&r.keys.length>1){const a=left+span*r.keys[0].time/project.duration,b=left+span*r.keys.at(-1).time/project.duration;ctx.fillStyle=accent;ctx.globalAlpha=.2;ctx.fillRect(a,y-7,b-a,14);ctx.globalAlpha=1;}
-  for(const key of r.keys){const groupSelected=r.id.startsWith('labGroup_')&&labGroupRefs(r.id.slice(9),key.time).some(ref=>selectionKeys.some(s=>(s.kind||'keys')===ref.kind&&s.id===ref.id&&Math.abs(s.time-ref.time)<1e-7));const preview=timelineKeyDrag?.active&&selectionKeys.some(s=>(r.id==='allBody'||groupSelected||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7)?timelineKeyDrag.delta:0;const x=left+span*(key.time+preview)/project.duration,k=preset.key,chosen=selectionKeys.some(s=>(r.id==='allBody'||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7);
+  for(const key of r.keys){const groupSelected=r.id.startsWith('labGroup_')&&labGroupRefs(r.id.slice(9),key.time).some(ref=>selectionKeys.some(s=>(s.kind||'keys')===ref.kind&&s.id===ref.id&&Math.abs(s.time-ref.time)<1e-7));const preview=timelineKeyDrag?.active&&selectionKeys.some(s=>(r.id==='allBody'||groupSelected||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7)?timelineKeyDrag.delta:0;const x=left+span*(key.time+preview)/project.duration,k=preset.key,chosen=groupSelected||selectionKeys.some(s=>(r.id==='allBody'||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7);
    ctx.fillStyle=chosen?'#eebc51':r.id===selected?accent:'#82a9e8';ctx.beginPath();
    if(style==='compact')ctx.arc(x,y,k,0,Math.PI*2);else{ctx.moveTo(x,y-k);ctx.lineTo(x+k,y);ctx.lineTo(x,y+k);ctx.lineTo(x-k,y);ctx.closePath();}ctx.fill();timelineHits.push({id:r.id,time:key.time,x,y,radius:k+4});
   }ctx.restore();
  });
+ if(timelineMarquee?.active){const m=timelineMarquee;ctx.fillStyle='#eebc5133';ctx.strokeStyle='#eebc51';ctx.fillRect(m.x,m.y,m.toX-m.x,m.toY-m.y);ctx.strokeRect(m.x,m.y,m.toX-m.x,m.toY-m.y);}
+ $('keySelectionCount').textContent=selectionKeys.length+' key đã chọn';
  const x=left+span*time/project.duration;for(const[c,h]of [[ctx,height],[rc,ticks?44:22]]){c.strokeStyle='#e78672';c.beginPath();c.moveTo(x,0);c.lineTo(x,h);c.stroke();}
  rc.fillStyle='#e78672';rc.beginPath();rc.moveTo(x-4,0);rc.lineTo(x+4,0);rc.lineTo(x,6);rc.closePath();rc.fill();
  $('timeline').dataset.rowHeight=preset.row;$('timeline').dataset.preset=style;
@@ -444,26 +448,27 @@ function flushTimelineScrub(){
 }
 function stopTimelineScrub(){
  const drag=timelineDrag;timelineDrag=null;timelinePending=null;if(!drag)return;
- timelineSuppressClick=drag.active;drag.element.classList.remove('is-scrubbing');if(drag.element.hasPointerCapture(drag.pointer))drag.element.releasePointerCapture(drag.pointer);
+ timelineSuppressClick=drag.active||!!timelineMarquee?.active;timelineMarquee=null;drawTimeline();drag.element.classList.remove('is-scrubbing');if(drag.element.hasPointerCapture(drag.pointer))drag.element.releasePointerCapture(drag.pointer);
 }
 for(const id of ['timelineRuler','timeline']){
  listen(id,'pointerdown',e=>{
   if(e.button!==0||!e.isPrimary||timelineDrag||!project)return;
   const el=$(id),rect=el.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
   timelineSuppressClick=false;if(x<130||id==='timeline'&&timelineHits.some(h=>Math.hypot(x-h.x,y-h.y)<h.radius))return;
-  const active=e.pointerType!=='touch';timelineDrag={element:el,pointer:e.pointerId,rate:id==='timelineRuler'&&$('showMinecraftTicks').checked&&y<22?20:timelineRate(),x:e.clientX,y:e.clientY,active};
+  const active=id==='timelineRuler'&&e.pointerType!=='touch';if(id==='timeline'&&e.pointerType!=='touch'&&mode!=='compare'&&!sourcePreview&&!sceneMode)timelineMarquee={x,y,toX:x,toY:y,selection:C.clone(selectionKeys),additive:e.ctrlKey||e.shiftKey,active:false};timelineDrag={element:el,pointer:e.pointerId,rate:id==='timelineRuler'&&$('showMinecraftTicks').checked&&y<22?20:timelineRate(),x:e.clientX,y:e.clientY,active};
   el.setPointerCapture(e.pointerId);if(active){playing=false;syncTime();timelinePending={x:e.clientX};el.classList.add('is-scrubbing');el.focus({preventScroll:true});e.preventDefault();}
  });
  listen(id,'pointermove',e=>{
   const drag=timelineDrag;if(!drag||drag.pointer!==e.pointerId)return;
+  if(timelineMarquee&&!drag.active){const m=timelineMarquee,rect=$('timeline').getBoundingClientRect();m.toX=e.clientX-rect.left;m.toY=e.clientY-rect.top;if(m.active||Math.abs(m.toY-m.y)>=5||Math.abs(m.toY-m.y)>=2&&Math.abs(m.toY-m.y)>=Math.abs(m.toX-m.x)*.05){if(!m.active)cancelEasingPreview();m.active=true;const refs=timelineHits.filter(h=>h.x>=Math.min(m.x,m.toX)&&h.x<=Math.max(m.x,m.toX)&&h.y>=Math.min(m.y,m.toY)&&h.y<=Math.max(m.y,m.toY)).flatMap(timelineHitRefs);selectionKeys=m.additive?C.clone(m.selection):[];for(const ref of refs)if(!selectionKeys.some(s=>sameTimelineKey(s,ref)))selectionKeys.push(ref);drawTimeline();e.preventDefault();return;}}
   if(!drag.active){const dx=Math.abs(e.clientX-drag.x),dy=Math.abs(e.clientY-drag.y);if(dx<5||dx<=dy)return;drag.active=true;playing=false;syncTime();drag.element.classList.add('is-scrubbing');}
   timelinePending={x:e.clientX};e.preventDefault();
  });
  listen(id,'pointerup',e=>{if(timelineDrag?.pointer!==e.pointerId)return;if(timelineDrag.active){timelinePending={x:e.clientX};flushTimelineScrub();}stopTimelineScrub();});
- for(const event of ['pointercancel','lostpointercapture'])listen(id,event,e=>{if(timelineDrag?.pointer===e.pointerId)stopTimelineScrub();});
- listen(id,'keydown',e=>{if(e.key==='Escape'&&timelineDrag){e.preventDefault();stopTimelineScrub();}});
+ for(const event of ['pointercancel','lostpointercapture'])listen(id,event,e=>{if(timelineDrag?.pointer===e.pointerId){if(timelineMarquee?.active)selectionKeys=timelineMarquee.selection;stopTimelineScrub();}});
+ listen(id,'keydown',e=>{if(e.key==='Escape'&&timelineDrag){e.preventDefault();if(timelineMarquee?.active)selectionKeys=timelineMarquee.selection;stopTimelineScrub();}});
 }
-window.addEventListener('blur',stopTimelineScrub);
+window.addEventListener('blur',()=>{if(timelineMarquee?.active)selectionKeys=timelineMarquee.selection;stopTimelineScrub();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopTimelineScrub();});
 function drawCurve(){graphEditor?.draw();}
 
@@ -477,7 +482,7 @@ function keyOperation(action,targetTime=Number($('keyFrame').value)/timelineRate
 }
 function selectTimelineHit(hit,additive=false){
  cancelEasingPreview();
- const grouped=hit.id.startsWith('labGroup_'),refs=grouped?labGroupRefs(hit.id.slice(9),hit.time):hit.id==='allBody'||$('keySelectionScope').value==='body'?C.bodyKeyRefs(rig,project,hit.time):[{kind:'keys',id:hit.id,time:hit.time}];
+ const grouped=hit.id.startsWith('labGroup_'),refs=timelineHitRefs(hit);
  if(!additive)selectionKeys=[];
  const chosen=refs.every(r=>selectionKeys.some(s=>(s.kind||'keys')===r.kind&&s.id===r.id&&Math.abs(s.time-r.time)<1e-7));
  if(chosen)selectionKeys=selectionKeys.filter(s=>!refs.some(r=>(s.kind||'keys')===r.kind&&s.id===r.id&&Math.abs(s.time-r.time)<1e-7));else for(const r of refs)if(!selectionKeys.some(s=>(s.kind||'keys')===r.kind&&s.id===r.id&&Math.abs(s.time-r.time)<1e-7))selectionKeys.push(r);
@@ -1427,7 +1432,7 @@ window.__studio={
  setHostActive(active){if(active&&!hostActive){hostActive=true;lastStamp=performance.now();requestAnimationFrame(frame);}else if(!active)hostActive=false;},
  graph:()=>graphEditor,graphAction,previewSourceClip,endSourcePreview,useQuickClip,
  dual:{enable:setDualEnabled,activate:activateEditorSlot,mode:setDualTimeline,slots:()=>({active:activeEditorSlot,enabled:dualEnabled,timeline:dualTimelineMode,A:editorSlots.A?.project.name,B:editorSlots.B?.project.name})},
- get state(){return{sourceClip:sourcePreview?{index:sourcePreview.index,time:sourcePreview.time,duration:sourcePreview.duration}:null,project:C.clone(project),time,selected,draft,dirty,mode,studioMode,errors:[...errors],bones:rig?.records.length,profile:rig?.profile,onionRevision,ik:rig?.chains.map(c=>({id:c.id,mode:c.mode,outOfReach:c.outOfReach})),historyIndex};},
+ get state(){return{sourceClip:sourcePreview?{index:sourcePreview.index,time:sourcePreview.time,duration:sourcePreview.duration}:null,project:C.clone(project),time,selected,draft,dirty,mode,studioMode,selectionKeys:C.clone(selectionKeys),errors:[...errors],bones:rig?.records.length,profile:rig?.profile,onionRevision,ik:rig?.chains.map(c=>({id:c.id,mode:c.mode,outOfReach:c.outOfReach})),historyIndex};},
  select,selectUser,seek,installAsset:loadModel,loadProject,switchStudioMode,project:()=>C.clone(project),pose:()=>C.capture(rig),controls:()=>Object.fromEntries(Object.entries(rig.controls).map(([id,c])=>[id,C.snap(c.object)])),recordNames:()=>rig.records.map(r=>({id:r.id,name:r.name,parent:r.parent,extraBone:ExtraBones.isExtraBoneName(r.name)})),extraBones:()=>ExtraBones.forExtendedRig(rig.records,rig.profile),buildGLB,
  onion:()=>onion,onionCore:O,report,loadCompare,retarget:C.retarget,core:C,rig:()=>rig,get view(){return editView;},editorViews:()=>editViews,widgetPick:W.pick,views:{get edit(){return editView;},A:compareA,B:compareB},
  compareDebug:{tick:tickCompare,sample:compareSamplePose,state:side=>({clip:comparison[side].clip,time:comparison[side].time,playing:comparison[side].playing})},
@@ -1484,7 +1489,7 @@ function setupMinimalDOM(){
  $('rigPresetMenu').querySelector('div').append(document.querySelector('.rig-stylebar'));
  const keyOptions=document.createElement('details');keyOptions.id='minimalKeyOptions';keyOptions.innerHTML='<summary>Keyframe · nội suy · tùy chọn ▾</summary>';keyOptions.append(document.querySelector('.timeline-controls'),document.querySelector('.key-editor'));$('animationBottom').prepend(keyOptions);
  const speed=document.createElement('details');speed.id='minimalSpeed';speed.className='minimal-menu';speed.innerHTML='<summary id="minimalSpeedLabel">1× ▾</summary><div></div>';for(const el of [...document.querySelectorAll('[data-speed]'),$('speedSlider'),$('speedInput')])speed.querySelector('div').append(el);document.querySelector('.transport').append(speed);
- const timelineRoot=$('animationArea').querySelector('.area-header');const keyQuick=document.createElement('span');keyQuick.className='minimal-key-quick';keyQuick.append($('keyBtn'),$('autoKey').closest('label'));timelineRoot.append(keyQuick);
+ const timelineRoot=$('animationArea').querySelector('.area-header');const keyQuick=document.createElement('span');keyQuick.className='minimal-key-quick';keyQuick.append($('keySelectionCount'),$('keyBtn'),$('autoKey').closest('label'));timelineRoot.append(keyQuick);
 }
 function applyMinimalTheme(settings){
  if(!settings.uiThemePreset&&settings.theme){$('uiThemePreset').value=settings.theme==='light'?'light-0':'dark-0';const old=minimalPalette(settings.theme==='light',0);if(settings.theme==='custom'&&/^#[0-9a-f]{6}$/i.test(settings.themeColor||''))old.uiMain=settings.themeColor;for(const[id]of minimalColorFields)$(id).value=old[id];}
