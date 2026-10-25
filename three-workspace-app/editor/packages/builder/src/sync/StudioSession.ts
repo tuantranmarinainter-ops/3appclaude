@@ -40,6 +40,7 @@ import type {
   LibraryTab,
   PendingKeyframe,
   Selection,
+  TimelineUnit,
   GizmoMode,
   PathDrawStyle,
   SaveOptions,
@@ -205,6 +206,9 @@ export class StudioSession implements StudioView {
   }
   get pxPerFrame(): number {
     return this.editor.pxPerFrame
+  }
+  get timelineUnit(): TimelineUnit {
+    return this.editor.timelineUnit
   }
   get fcurves(): FCurveSet | null {
     return this.docModel.fcurves
@@ -432,6 +436,7 @@ export class StudioSession implements StudioView {
     this.syncGizmoState()
   }
   setPxPerFrame = (v: number): void => this.editor.setPxPerFrame(v)
+  setTimelineUnit = (unit: TimelineUnit): void => this.editor.setTimelineUnit(unit)
   toggleUserKeys = (): void => this.editor.toggleUserKeys()
   toggleAutoKeyframe = (): void => this.editor.toggleAutoKeyframe()
 

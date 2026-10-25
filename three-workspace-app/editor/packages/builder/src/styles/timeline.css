@@ -215,6 +215,37 @@
   color: #111;
 }
 
+.t3d-timeline-unit-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--t3d-border, #3a4152);
+  border-radius: 8px;
+}
+
+.t3d-timeline-unit-btn {
+  height: 22px;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--t3d-btn-icon);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.t3d-timeline-unit-btn.is-active {
+  background: var(--t3d-accent, #4c8dff);
+  color: #fff;
+}
+
+.t3d-timeline-clip-duration {
+  opacity: 0.75;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .t3d-timeline-auto-key {
   display: inline-flex;
   align-items: center;

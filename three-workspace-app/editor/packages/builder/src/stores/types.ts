@@ -33,6 +33,9 @@ export interface FilmPlaybackSnapshot {
 }
 export type FilmSelection = { kind: 'edit-clip'; clipId: string }
 
+/** Đơn vị hiển thị của timeline cảnh: giây / frame / tick BBS 20 Hz (N3). */
+export type TimelineUnit = 'seconds' | 'frames' | 'ticks'
+
 export interface FilmAddDraft {
   cameraNodeId: string
   sourceFrameStart: number
@@ -210,6 +213,8 @@ export interface StudioView {
   pendingKeyframe: PendingKeyframe | null
   chainCameraMotion: boolean
   pxPerFrame: number
+  /** Đơn vị hiển thị thước / ô nhập frame / nhãn clip của timeline cảnh. */
+  timelineUnit: TimelineUnit
   fcurves: FCurveSet | null
   exporting: boolean
   libraryOpen: boolean
@@ -310,6 +315,7 @@ export interface StudioView {
   endTimelineRangeEdit: () => void
   select: (s: Selection | null) => void
   setPxPerFrame: (v: number) => void
+  setTimelineUnit: (unit: TimelineUnit) => void
   setFcurves: (f: FCurveSet | null) => void
   toggleUserKeys: () => void
   toggleAutoKeyframe: () => void
