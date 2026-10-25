@@ -1,0 +1,85 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app1-workbench",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--max-old-space-size=16384",
+        "--import",
+        "file:///S:/Claude/w01/three-workspace-app/editor/node_modules/.pnpm/tsx@4.23.15/node_modules/tsx/dist/loader.mjs",
+        "S:/Claude/w01/three-workspace-app/editor/packages/retarget/workbench/server.ts",
+        "--port",
+        "3101"
+      ],
+      "port": 3101
+    },
+    {
+      "name": "steve-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3102",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "C:/Users/ADMINI~1/AppData/Local/Temp/claude/C--w01/11be8693-7072-4bca-96c4-df2b88ac30aa/scratchpad/steve-assets"
+      ],
+      "port": 3102
+    },
+    {
+      "name": "app3-animation-studio",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3103",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "S:/Claude/w01/three-workspace-app/editor/apps/studio/public/animation-studio/v1.31.8"
+      ],
+      "port": 3103
+    },
+    {
+      "name": "app2-studio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "S:/Claude/w01/three-workspace-app/editor",
+        "--filter",
+        "@topview/3d-studio",
+        "dev"
+      ],
+      "port": 3002
+    },
+    {
+      "name": "studio-library",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.W01_LIBRARY='S:/Claude/w01-samples/lib-smoke';process.env.BBS_UNIFIED_PROJECTS_DIR='S:/Claude/w01-samples/lib-projects';require('child_process').spawn('pnpm',['--dir','S:/Claude/w01/three-workspace-app/editor','--filter','@topview/3d-studio','exec','next','dev','--hostname','127.0.0.1','--port','3014'],{stdio:'inherit',shell:true})"
+      ],
+      "port": 3014
+    },
+    {
+      "name": "app2-ep15v2",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.BBS_UNIFIED_PROJECTS_DIR='S:/Claude/w01-samples/ep15v2';require('child_process').spawn('pnpm',['--dir','S:/Claude/w01/three-workspace-app/editor','--filter','@topview/3d-studio','exec','next','dev','--hostname','127.0.0.1','--port','3015'],{stdio:'inherit',shell:true})"
+      ],
+      "port": 3015
+    },
+    {
+      "name": "app2-tap15v3",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.BBS_UNIFIED_PROJECTS_DIR='S:/Claude/w01-samples/tap15v3/projects';process.env.W01_VFX_PREVIEWS='S:/Claude/w01-samples/vfx-previews';process.env.BBS_JAVA_HOME='C:/Program Files/Microsoft/jdk-17.0.20.101-hotspot';require('child_process').spawn('pnpm',['--dir','S:/Claude/w01/three-workspace-app/editor','--filter','@topview/3d-studio','exec','next','dev','--hostname','127.0.0.1','--port','3016'],{stdio:'inherit',shell:true})"
+      ],
+      "port": 3016
+    }
+  ]
+}

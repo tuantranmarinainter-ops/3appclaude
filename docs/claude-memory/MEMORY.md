@@ -1,0 +1,14 @@
+- [Quy trình 3 app](three-app-pipeline.md) — App1 áp anim lên nhân vật đích, App2 xếp cảnh + ghép film + xuất BBS FS, App3 blocking rồi trả Action về App2; kho anim App4 dùng chung
+- [Quy tắc kiểm retarget](retarget-verify-rules.md) — PASS không đủ; đo số trên GLB, giữ nguyên Samba, đọc docs/RETARGET-LESSONS.md
+- [App 3 giữ Animation Studio](app3-keep-animation-studio.md) — không bỏ chức năng nào của Animation Studio 1.31.8; thêm qua bridge
+- [Typecheck sau khi thêm test](typecheck-after-tests.md) — vitest/tsx không kiểm kiểu; chạy pnpm typecheck toàn workspace trước push; test Chromium App 3 cần APP3_RUNTIME_BASE
+- [App 4 VFX MVP](app4-vfx-mvp-bbsfs.md) — mọi hiệu ứng xuất vào BBS FS phải chạy được trong BBS FS thật
+- [App 4 VFX runtime](app4-vfx-runtime.md) — code App 4 giao Codex; Claude chạy Effekseer/render/BBS trên Windows; env DOTNET_ROOT + EFFEKSEER_AI_BIN_DIR
+- [Duyệt trong App 2](review-in-app2.md) — duyệt bằng "Xem như BBS" trong App 2, không vào game trừ khi được yêu cầu; gửi video kèm bản 720p
+- [Nhân vật chính](main-characters.md) — nhóm Minecraft20 (Gà, Bí ẩn, Chi Chi, Đen, Hero) và nhóm Verity có Jaw (Gỗ Xưa, Tiểu Nhị, Chirity); quy ước textures/<object>/default.png
+- [Trả lời tiếng Việt](reply-vietnamese.md) — luôn trả lời tiếng Việt kể cả khi người dùng viết tiếng Anh
+- [Test video thư viện](library-video-test-limit.md) — quay video animation chỉ test 5 video, truyền actionUuids, không quay cả kho
+- [Subagent Sonnet/Haiku](subagents-sonnet-haiku.md) — khi lỗi: được dùng subagent, chỉ Sonnet medium hoặc Haiku, cấm Opus/Fable
+- [Base model riêng từng nhân vật](per-character-base-model.md) — mỗi nhân vật mesh/xương riêng, không chung dù file giống; làm từ App 1 nhập nv đích
+- [MVP 2026-10-24](mvp-2026-10-24-status.md) — tiến độ quy trình Hero/Gỗ Xưa/Đen; việc còn lại khi "làm tiếp MVP"
+- [UI mặc định tiếng Việt, nền tối](default-vietnamese-ui.md) — mọi app mặc định tiếng Việt (App 2 nhất là), Workbench luôn nền tối
