@@ -26,7 +26,7 @@ export function syntheticMixamoGlb(): Buffer {
   return Buffer.from(encodeGlb(decoded.json, decoded.bin))
 }
 export function fixture(root: string, temp: string) {
-  const armature = readFileSync(path.resolve('apps/studio/public/retarget/v9.12/minecraft20-armature.bobj'), 'utf8')
+  const armature = readFileSync(new URL('../public/retarget/v9.12/minecraft20-armature.bobj', import.meta.url), 'utf8')
   const bobj = `${armature}\no Body\no_arm minecraft20\nv 0 0 0\nvw body 1\nv 0 2 0\nvw head 1\nv 1 0 0\nvw body 1\nf 1 2 3\nan idle\nao body\nag location 0\nkf 0 0 LINEAR\nkf 20 0 LINEAR\n`
   const model = path.join(temp, 'mc20.bobj'); writeFileSync(model, bobj)
   const base = registerBaseModel({ name: 'B34 synthetic Minecraft', rig: 'minecraft20', modelFile: model })

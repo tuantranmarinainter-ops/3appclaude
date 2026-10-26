@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -85,7 +86,7 @@ test('B34 regenerated native Minecraft20 actions merge into the unchanged base a
   writeFileSync(path.join(temp, 'model.bobj'), merged)
   const manifestPath = path.join(temp, 'film-manifest.json'), output = path.join(temp, 'native-output')
   mkdirSync(output); writeFileSync(manifestPath, JSON.stringify(manifest))
-  const worker = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', 'import json,sys;from agent.film_worker import run_film_worker;print(json.dumps(run_film_worker(sys.argv[1],sys.argv[2])))', manifestPath, output], { cwd: path.resolve('..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
+  const worker = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', 'import json,sys;from agent.film_worker import run_film_worker;print(json.dumps(run_film_worker(sys.argv[1],sys.argv[2])))', manifestPath, output], { cwd: fileURLToPath(new URL('../../../../', import.meta.url)), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000 })
   assert.equal(worker.status, 0, worker.stdout + worker.stderr)
   const exported = JSON.parse(worker.stdout)
   assert.equal(exported.nativeReadback, true)
