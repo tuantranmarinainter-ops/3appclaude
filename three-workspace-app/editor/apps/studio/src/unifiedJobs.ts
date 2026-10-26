@@ -72,13 +72,32 @@ export function selectOriginalBobj(base: Buffer, appended?: Buffer): Buffer {
   return appended
 }
 
+/**
+ * Action text appended after the base model. Sidecars normally extend the exact base bytes; a sidecar saved
+ * against an earlier mesh of the same rest skeleton (Minecraft20 V9.12 -> Emoticons, B17) keeps only its actions.
+ */
+function originalActionSuffix(base: Buffer, sidecar: Buffer): string {
+  if (sidecar.length >= base.length && sidecar.subarray(0, base.length).equals(base)) return sidecar.subarray(base.length).toString('utf8')
+  const text = sidecar.toString('utf8')
+  let same = false
+  try {
+    const from = parseBobjArmature(text).bones, to = parseBobjArmature(base.toString('utf8')).bones
+    same = from.length === to.length && from.every((bone) => {
+      const target = to.find((item) => item.name === bone.name)
+      return !!target && target.parent === bone.parent && bone.restWorld.every((value, index) => Math.abs(value - target.restWorld[index]!) <= 1e-3)
+    })
+  } catch { same = false }
+  if (!same) throw new TypeError('Original action BOBJ changed its source prefix')
+  const first = text.search(/^an\s/m)
+  return first < 0 ? '' : text.slice(first)
+}
+
 export function mergeOriginalBobjActions(base: Buffer, sidecars: readonly Buffer[]): Buffer {
   const known = new Set(parseBobjActions(base.toString('utf8')).keys())
   const chunks = [base]
   const appended = new Map<string, string>()
   for (const sidecar of sidecars) {
-    selectOriginalBobj(base, sidecar)
-    const suffix = sidecar.subarray(base.length).toString('utf8')
+    const suffix = originalActionSuffix(base, sidecar)
     const starts = [...suffix.matchAll(/^an\s+(.+)$/gm)]
     for (const [index, match] of starts.entries()) {
       const name = match[1]!.replace(/\r$/, '')
