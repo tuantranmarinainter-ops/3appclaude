@@ -9,7 +9,7 @@ import { getLiveStudio, setLiveStudio, subscribeLiveStudio } from '../../../src/
 import { setStudioLocale, useStudioLocale } from '../../../src/devtools/localePreference'
 import { readFilmFrameAspect } from '../../../src/filmFrame'
 import { useStudioT } from '../../../src/locale'
-import { ensureUnifiedSession, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
+import { ensureUnifiedSession, invalidateUnifiedProjectReads, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
 import { FeatureNavigation } from './feature-navigation'
 import { WorkspaceNavigationSlot } from './feature-navigation/WorkspaceNavigation'
 import { usePanelNavigation } from './feature-navigation/hooks/usePanelNavigation'
@@ -133,11 +133,11 @@ export function StudioOverlay({
   const [drawer, setDrawer] = useState<HostDrawerId | null>(null)
   const [assignRequest, setAssignRequest] = useState<{ nodeId: string | null; nonce: number }>({ nodeId: null, nonce: 0 })
   const [historyBusy, setHistoryBusy] = useState(false)
+  const hostRefreshRef = useRef<Promise<void> | null>(null)
   const [shellError, setShellError] = useState<string | null>(null)
   const [assetMessage, setAssetMessage] = useState('')
   const [assetBusy, setAssetBusy] = useState(false)
   const [animationEditorDirty, setAnimationEditorDirty] = useState(false)
-  const [editorKey, setEditorKey] = useState(0)
   // Silhouette is a view mode only (never saved): App 2's Stage applies it; App 3 listens for the window event.
   const [silhouette, setSilhouette] = useState(false)
   useEffect(() => {
@@ -186,15 +186,19 @@ export function StudioOverlay({
     setHistoryBusy(true)
     setShellError(null)
     try {
-      const latest = await loadUnifiedProject(documentId)
+      const latest = projectState ?? await loadUnifiedProject(documentId)
       if (command === 'history.undo' ? !latest.history.canUndo : !latest.history.canRedo) return
       await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: documentId, expectedRevision: latest.project.revision, command, args: {} })
-      setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
-    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+      await hostRefreshRef.current
+    } catch (error) {
+      // The server rejects stale expectedRevision. Refresh before the next attempt.
+      notifyProjectCommit(documentId)
+      await hostRefreshRef.current
+      setShellError(error instanceof Error ? error.message : String(error))
+    }
     finally { setHistoryBusy(false) }
-  }, [documentId, historyBusy])
+  }, [documentId, historyBusy, projectState])
   const importAssets = useCallback(async (files: File[]) => {
     if (!files.length || assetBusy) return
     const totalBytes = files.reduce((total, file) => total + file.size, 0)
@@ -234,7 +238,6 @@ export function StudioOverlay({
       })
       setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
       setAssetMessage(vi ? `Đã thêm nhân vật “${name}” vào cảnh.` : `Added character “${name}” to the scene.`)
     } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
     finally { setAssetBusy(false) }
@@ -251,7 +254,6 @@ export function StudioOverlay({
       })
       setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
       setAssetMessage(vi ? `Đã thêm đạo cụ “${name}” vào cảnh.` : `Added prop “${name}” to the scene.`)
     } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
     finally { setAssetBusy(false) }
@@ -324,6 +326,11 @@ export function StudioOverlay({
   }, [activeWorkspace, documentId, mounted, projectState, source])
 
   useEffect(() => {
+    if (api && activeWorkspace !== 'scene') { api.stage.pause(); api.stage.stopAmbient() }
+    else if (api && !api.useStore.getState().timelineVisible) api.stage.startAmbient()
+  }, [activeWorkspace, api])
+
+  useEffect(() => {
     if (activeWorkspaceRef.current !== activeWorkspace) {
       activeWorkspaceRef.current = activeWorkspace
       if (openAnimationOnSwitch.current) {
@@ -369,19 +376,27 @@ export function StudioOverlay({
     const refresh = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail
       if (detail?.projectId !== documentId) return
-      void loadUnifiedProject(documentId).then(setProjectState).catch((error: unknown) => setShellError(error instanceof Error ? error.message : String(error)))
+      invalidateUnifiedProjectReads(documentId)
+      const reload = loadUnifiedProject(documentId).then(async (state) => {
+        setProjectState(state)
+        const studio = getLiveStudio()
+        if (studio?.documentId === documentId) await adapter.withProjectSnapshot(state.project, () => studio.session.reloadFromHost())
+      }).catch((error: unknown) => setShellError(error instanceof Error ? error.message : String(error)))
+      hostRefreshRef.current = reload
+      void reload.finally(() => { if (hostRefreshRef.current === reload) hostRefreshRef.current = null })
     }
     window.addEventListener('bbs-unified-project-commit', refresh)
     return () => window.removeEventListener('bbs-unified-project-commit', refresh)
-  }, [documentId, source])
+  }, [adapter, documentId, source])
 
   useEffect(() => {
-    if (source === 'unified' && activeWorkspace === 'retarget') clearDebugHooks()
-  }, [activeWorkspace, source])
+    if (source === 'unified' && activeWorkspace === 'scene' && getLiveStudio()) setApi(getLiveStudio())
+  }, [activeWorkspace, source, setApi])
 
   useEffect(() => {
     if (source !== 'unified') return
     const onKeyDown = (event: KeyboardEvent) => {
+      if (activeWorkspaceRef.current !== 'scene') return
       const target = event.target
       if (event.isComposing || target instanceof HTMLElement && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
@@ -591,7 +606,7 @@ export function StudioOverlay({
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
+          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>

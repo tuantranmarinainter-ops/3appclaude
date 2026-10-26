@@ -8,6 +8,7 @@ import { AutoPreviewVideo } from './AutoPreviewVideo'
 import { WorkspaceNavigationSlot } from '../workbench/components/feature-navigation/WorkspaceNavigation'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 import { formatBilingual } from '../../../../packages/library/actionNames'
+import { notifyCharacterProfileChanged } from '../workbench/components/character-height/utils'
 import { filterLibraryActions } from '../../src/libraryFilters'
 
 type Status = 'draft' | 'edited' | 'approved'
@@ -286,6 +287,7 @@ function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: {
     const personality = { summary: String(data.get('summary') ?? ''), traits: String(data.get('traits') ?? '').split(',').map(value => value.trim()).filter(Boolean) }
     const requiredActions = String(data.get('required') ?? '').split('\n').map(line => line.split(':', 2)).filter(parts => parts[0]?.trim() && parts[1]?.trim()).map(([key, label]) => ({ key: key!.trim(), label: label!.trim() }))
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'profile', charId: character.charId, personality, requiredActions, ...(String(data.get('heightBlocks') ?? '').trim() ? { heightBlocks: Number(data.get('heightBlocks')) } : {}) }) })
+    notifyCharacterProfileChanged(character.charId)
     await onSaved(); setMessage(`Đã lưu hồ sơ ${character.name}.`)
   }
   return <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>{characters.map(character => <form key={character.charId} onSubmit={event => { event.preventDefault(); void save(character, event.currentTarget).catch(error => setMessage(String(error))) }} style={{ padding: 14, background: '#20242c' }}>
