@@ -45,6 +45,16 @@ Người làm phim Minecraft (BBS FS) một mình, hay điều khiển từ đi�
 - Không sửa `packages/retarget`, không đổi golden, không commit binary/kho thật. Kho thật và project thật nằm ngoài repo:
   test bằng fixture tổng hợp; phần kiểm trên kho thật + trong game: NOT_RUN (Claude chạy trên Windows).
 
+## Phần 2 — B35 + B26: App 2 chậm khi Ctrl+Z và khi quay về từ App 3
+Người dùng báo: Ctrl+Z và tải lại dự án sau khi sửa animation ở App 3 quay về **rất chậm**. Project mẫu: "Tập 15 · Shot 01"
+(project.json 643 KB, 16 asset ~42 MB, 8 motion).
+1. **Đo trước** (thêm mốc thời gian/console hoặc test hiệu năng): Ctrl+Z có tải lại toàn bộ project/GLB, dựng lại scene từ đầu không;
+   "Trả kết quả về cảnh" có tải lại mọi model thay vì chỉ clip/motion đổi không; B26 — trang gọi `/api/library?characters=1`
+   liên tục ~3 s/lần (mỗi lần ~3 s) sau S1 (kiểm tra "nhân vật đã đổi chiều cao").
+2. Sửa: cache model/GLB theo hash nội dung, Undo/Redo chỉ áp phần đổi; quay về từ App 3 chỉ nạp motion mới; B26 chỉ gọi khi
+   mở project/đổi hồ sơ (cache theo fingerprint), bỏ polling.
+3. Mục tiêu đo được: Ctrl+Z < 0,3 s; quay về từ App 3 < 2 s; không còn polling. Ghi số trước/sau trong PR.
+
 ## Ranh giới
 Repo https://github.com/tuantranmarinainter-ops/3appclaude — nhánh gợi ý `codex/b34-mc20-auto-convert`, dựa trên `main`
 và gộp `claude/b19-stale-motion`. Báo cáo bằng số đo thật; ghi rõ phần NOT_RUN.
