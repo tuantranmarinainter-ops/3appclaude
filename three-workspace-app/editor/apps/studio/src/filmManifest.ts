@@ -203,7 +203,9 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const name = model.name
     if (typeof name !== 'string' || !name.trim() || name.length > 64) fail(`Film actor name must contain 1-64 characters: ${model.characterId}`)
     let previousYaw: number | undefined
-    const facingOffset = FILM_MODEL_FACING_OFFSET
+    // B30 in game: posed original Verity models faced away from their target (Gỗ Xưa cast away from Đen),
+    // so their replay yaw needs the opposite offset from Minecraft20/converted models.
+    const facingOffset = FILM_MODEL_FACING_OFFSET + (profile.originalRig && !profile.originalRig.nativeOnly ? 180 : 0)
     const transformSamples = input.frames.map((frame) => {
       const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
       if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
