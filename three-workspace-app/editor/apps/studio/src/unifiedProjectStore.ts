@@ -1825,12 +1825,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
       const bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), libraryCharacter?.baseModel?.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
       const sourceHash = createHash('sha256').update(bytes).digest('hex')
-      const existing = project.motions[action.uuid]
+      let existing: typeof project.motions[string] | undefined = project.motions[action.uuid]
       if (existing) {
         const asset = project.assets[existing.assetId]
         if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
-          throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
+          // B19: a stale copy whose clips were all deleted (the library Action was edited since) must not block
+          // re-assigning it; replace it. A copy still used by a clip keeps the conflict.
+          if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.motion.assetId === action.uuid)) {
+            throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
+          }
+          delete project.motions[action.uuid]
+          existing = undefined
         }
+      }
+      if (existing) {
         libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
         stagedAssetImports = []
       } else {
