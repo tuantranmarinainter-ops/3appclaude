@@ -123,7 +123,8 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     } finally { setBusy(false) }
   }
 
-  const exportFilm = async () => {
+  /** `install` (B27) skips the ZIP folder picker and hands the finished job to the game installer instead. */
+  const exportFilm = async (options: { install?: (job: UnifiedJobView) => Promise<string> } = {}) => {
     if (busy) return
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
@@ -139,9 +140,10 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     if (exportMode === 'film' && (!Number.isSafeInteger(effectiveRange.startFrame) || !Number.isSafeInteger(effectiveRange.endFrame) || effectiveRange.startFrame < project.scene.content.timeline.frameStart || effectiveRange.endFrame > project.scene.content.timeline.frameEnd || effectiveRange.endFrame < effectiveRange.startFrame)) { setError(vi ? 'Khoảng frame phải nằm trong timeline dự án.' : 'The frame range must fit within the project timeline.'); return }
     const maxNameLength = exportMode === 'series' ? 56 : 64
     if (!Number.isFinite(viewportAspect) || viewportAspect <= 0 || filmName.length > maxNameLength || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(filmName) || filmName.endsWith('.')) { setError(vi ? `Aspect phải dương; tên gói cần 1–${maxNameLength} ký tự ASCII an toàn và không kết thúc bằng dấu chấm.` : `Aspect must be positive; the package name needs 1–${maxNameLength} safe ASCII characters and cannot end with a period.`); return }
-    setBusy(true); setError(''); setCompletedJob(null); setStatus(vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…')
+    setBusy(true); setError(''); setCompletedJob(null)
+    setStatus(options.install ? (vi ? 'Đang bắt đầu xuất…' : 'Starting export…') : (vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…'))
     try {
-      const directory = await chooseDirectory()
+      const directory = options.install ? null : await chooseDirectory()
       if (latestKey.current !== exportKey || passedKey.current !== exportKey || project.revision !== sourceRevision) {
         throw new Error(vi ? 'Lựa chọn đã thay đổi trong lúc chọn thư mục; hãy đợi kiểm tra lại.' : 'The selection changed while choosing a folder; wait for preflight to finish again.')
       }
@@ -165,9 +167,15 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
         throw new Error(vi ? 'Film export quá thời gian chờ; đã yêu cầu hủy tác vụ.' : 'Film export timed out; cancellation was requested.')
       }
       if (job.state !== 'succeeded') throw new Error(job.error?.message ?? `Film export kết thúc với trạng thái ${job.state}.`)
-      setCompletedJob(job); setStatus(vi ? 'Xuất xong · đang lưu ZIP đã xác minh…' : 'Export complete · saving the verified ZIP…')
+      setCompletedJob(job)
+      if (options.install) {
+        setStatus(vi ? 'Xuất xong · đang cài vào game…' : 'Export complete · installing into the game…')
+        setStatus(await options.install(job))
+        return
+      }
+      setStatus(vi ? 'Xuất xong · đang lưu ZIP đã xác minh…' : 'Export complete · saving the verified ZIP…')
       const prefix = isSeriesJob(job) ? 'film-series' : 'film'
-      await saveJob(project.projectId, job, directory, prefix)
+      await saveJob(project.projectId, job, directory!, prefix)
       setStatus(vi ? `Đã lưu gói ${prefix === 'film-series' ? 'cả tập' : 'Film'} · revision ${job.sourceRevision}` : `Saved ${prefix === 'film-series' ? 'episode' : 'Film'} package · revision ${job.sourceRevision}`)
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === 'AbortError')) setError(cause instanceof Error ? cause.message : String(cause))
