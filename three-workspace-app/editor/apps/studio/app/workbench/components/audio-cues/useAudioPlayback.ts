@@ -60,7 +60,7 @@ export function useAudioPlayback(project: UnifiedProject | null): AudioCue | nul
           gain.gain.value = 10 ** (cue.gainDb / 20)
           node.connect(gain).connect(ctx.destination)
           node.onended = () => { if (playing.current.get(cue.id) === node) playing.current.delete(cue.id) }
-          node.start(0, offset)
+          node.start(0, offset, cue.frameEnd === undefined ? undefined : Math.max(0, (cue.frameEnd - frame + 1) / fps))
           playing.current.set(cue.id, node)
         }
       })

@@ -20,6 +20,16 @@ def request(method, params=None, request_id=1, version=unified_mcp.PROTOCOL_VERS
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_split_and_episode_advertised_and_require_revision(self):
+        self.assertIn("project.splitShots", unified_mcp.SUPPORTED_COMMANDS)
+        self.assertIn("episode.export", unified_mcp.SUPPORTED_COMMANDS)
+        for name in ("project.splitShots", "episode.export"):
+            args = {"command": name, "projectId": "p1", "args": {}}
+            if name == "episode.export":
+                args["args"]["outputDirectory"] = {"path": "/tmp"}
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "expectedRevision"):
+                unified_mcp._tool_call(args, lambda _: {})
+
     def test_discover_and_tools_list_advertise_the_supported_stateless_protocol(self):
         discovered = unified_mcp.handle_message(request("server/discover"))
         self.assertEqual(discovered["result"]["supportedVersions"], ["2026-07-28"])

@@ -18,6 +18,7 @@ import { AnimationWorkspace } from './AnimationWorkspace'
 import { AnimationAssignPanel } from './animation-assign'
 import { HostDrawer } from './HostDrawer'
 import { SceneRenderPanel } from './scene-render'
+import { SplitShotsPanel } from './split-shots'
 import { FilmExportPanel } from './film-export'
 import { SceneReviewPanel } from './scene-review'
 import { VfxCueHost } from './vfx-cues'
@@ -572,6 +573,7 @@ export function StudioOverlay({
             <button type="button" className="wb-host-secondary" onClick={() => setDrawer('assets')}>{vi ? 'Tài nguyên' : 'Assets'}</button>
             <button type="button" id="wb-silhouette-toggle" className={`wb-host-secondary${silhouette ? ' is-active' : ''}`} aria-pressed={silhouette} onClick={() => setSilhouette((value) => !value)} title={vi ? 'Xem silhouette: nhân vật tô đặc trên nền sáng (Shift+S)' : 'Silhouette view: solid characters on a light background (Shift+S)'}>{vi ? 'Silhouette' : 'Silhouette'} <kbd>Shift S</kbd></button>
             <button type="button" id="wb-bbs-look-toggle" className={`wb-host-secondary${bbsLook ? ' is-active' : ''}`} aria-pressed={bbsLook} onClick={() => setBbsLook((value) => !value)} title={vi ? 'Xem như BBS FS: ánh sáng, trời và sàn cỏ Minecraft (Shift+B)' : 'BBS look: Minecraft lighting, sky and grass as in BBS FS (Shift+B)'}>{vi ? 'Xem như BBS' : 'BBS look'} <kbd>Shift B</kbd></button>
+            {project && activeWorkspace === 'scene' && <SplitShotsPanel project={project} />}
             <button type="button" id="wb-scene-review-open" className="wb-host-secondary" onClick={() => setDrawer('review')}>{vi ? 'Duyệt cảnh' : 'Review shots'}</button>
             <button type="button" id="wb-vfx-cues-open" className="wb-host-secondary" onClick={() => setDrawer('vfx')}>{vi ? 'Hiệu ứng' : 'Effects'}</button>
             <button type="button" id="wb-audio-cues-open" className="wb-host-secondary" onClick={() => setDrawer('audio')}>{vi ? 'Âm thanh' : 'Audio'}</button>

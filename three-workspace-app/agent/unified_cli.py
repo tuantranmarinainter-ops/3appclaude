@@ -239,10 +239,10 @@ def render_scene_job(base: str, cookie: str, project_id: str, args: dict, output
 
 
 def export_project_film_job(base: str, cookie: str, project_id: str, args: dict, output_root: Path,
-                            request_id: str | None = None, expected_revision: int | None = None, dry_run: bool = False) -> dict:
+                            request_id: str | None = None, expected_revision: int | None = None, dry_run: bool = False, broker_command: str = "film.export") -> dict:
     if not output_root.is_dir():
         raise ValueError("Film output directory must already exist")
-    result = command(base, cookie, "film.export", project_id, args, expected_revision, request_id, dry_run)
+    result = command(base, cookie, broker_command, project_id, args, expected_revision, request_id, dry_run)
     job_id = result.get("result", {}).get("jobId")
     if dry_run or not isinstance(job_id, str):
         return result
@@ -384,6 +384,21 @@ def main() -> int:
     rig_save.add_argument("project_id")
     rig_save.add_argument("job_id")
     rig_save.add_argument("--expected-revision", type=int, required=True)
+    split = sub.add_parser("split-shots", help="create one lightweight project per selected shot; source unchanged")
+    split.add_argument("project_id")
+    split.add_argument("--expected-revision", type=int, required=True)
+    split.add_argument("--sequence-id")
+    split.add_argument("--shot-id", action="append")
+    split.add_argument("--episode-name")
+    split.add_argument("--request-id")
+    split.add_argument("--dry-run", action="store_true")
+    episode = sub.add_parser("episode-export", help="export ordered shot projects from an episode group")
+    episode.add_argument("project_id")
+    episode.add_argument("--expected-revision", type=int, required=True)
+    episode.add_argument("--name", default="episode")
+    episode.add_argument("--output", type=Path, default=Path.cwd(), help="existing directory for the verified series ZIP")
+    episode.add_argument("--request-id")
+    episode.add_argument("--dry-run", action="store_true")
     inspect = sub.add_parser("inspect", help="show a project manifest")
     inspect.add_argument("project_id")
     create = sub.add_parser("create", help="create a project from a Topview DirectorDocument JSON file")
@@ -621,6 +636,11 @@ def main() -> int:
                     payload["planSha256"] = args.plan_sha256
                     revision = args.expected_revision
                 result = command(base, cookie, f"rig.normalization.{args.rig_action}", args.project_id, payload, expected_revision=revision)
+        elif args.action == "split-shots":
+            payload = {key: value for key, value in {"sequenceId": args.sequence_id, "shotIds": args.shot_id, "episodeName": args.episode_name}.items() if value is not None}
+            result = command(base, cookie, "project.splitShots", args.project_id, payload, args.expected_revision, args.request_id, args.dry_run)
+        elif args.action == "episode-export":
+            result = export_project_film_job(base, cookie, args.project_id, {"name": args.name}, args.output, expected_revision=args.expected_revision, request_id=args.request_id, dry_run=args.dry_run, broker_command="episode.export")
         elif args.action == "inspect":
             result = call(base, cookie, f"/api/unified/projects/{urllib.parse.quote(args.project_id, safe='')}")["project"]
         elif args.action == "request-result":
