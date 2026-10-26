@@ -1,4 +1,5 @@
 import {transformKeyTimes} from './keyframe_time.js';
+import * as PoseClipboard from './pose_clipboard.js';
 import {SilhouetteView} from './silhouette_view.js';
 const silhouetteView=new SilhouetteView();
 const silhouetteControls=new Map();
@@ -1153,7 +1154,7 @@ function motionPanelState(){
  const visible=!!rig&&!!project?.lab&&studioMode==='lab'&&mode!=='compare'&&$('motionLayerFloating').checked;
  if(!visible)return{visible:false};
  const chain=labChain(),layer=C.motionLab.active(project);
- const map=motionMap();return{visible,armatures:rig.armatures,activeRoot:rig.activeRoot,readOnly:!!sourcePreview||mode==='compare',lockedReason:sourcePreview?'Đang xem clip gốc. Bấm Dùng để chỉnh sửa hoặc trở lại Bài đang chỉnh.':rig.roots.length>1&&!rig.activeRoot?'Chọn một Armature để chỉnh pose.':layer.muted||layer.weight<=0?'Bật lớp sửa và tăng mức ảnh hưởng trước khi chỉnh pose.':'',rigDiagnostic:map.rigDiagnostic,hands:Object.fromEntries(['left','right'].map(side=>[side,motionHandDrag?.side===side?{enabled:true,value:motionHandDrag.value}:motionHand(side)])),rig:rig.fingerprint+':'+rig.activeRoot,x:$('motionLayerX').value,y:$('motionLayerY').value,points:map.points,selected,chain,effector:chain?'ik_'+chain.id:null,pins:project.lab.pins.filter(p=>time>=p.start&&time<=p.end),scope:project.lab.bodyMode,space:$('space').value,transform:$('transformMode').value,controls:mode==='rig'&&$('rigVisible').checked,bones:mode==='rig'?$('rigShowBones').checked:$('showBones').checked,floor:project.lab.floorContact,layers:project.lab.layers,layer:project.lab.activeLayer,weight:layer.weight,poses:project.poses,canPaste:clipboard?.fingerprint===rig.fingerprint,label:currentObject()?.name?C.short(currentObject().name):'Root · Toàn nhân vật',frame:time*project.fps,values:Object.fromEntries(['px','py','pz','rx','ry','rz'].map(id=>[id,{value:$(id).value,disabled:$(id).disabled}])),moveDisabled:!!boneIKChain(),rotateDisabled:!!boneIKChain()||selected.startsWith('pole_')};
+ const map=motionMap();return{visible,armatures:rig.armatures,activeRoot:rig.activeRoot,readOnly:!!sourcePreview||mode==='compare',lockedReason:sourcePreview?'Đang xem clip gốc. Bấm Dùng để chỉnh sửa hoặc trở lại Bài đang chỉnh.':rig.roots.length>1&&!rig.activeRoot?'Chọn một Armature để chỉnh pose.':layer.muted||layer.weight<=0?'Bật lớp sửa và tăng mức ảnh hưởng trước khi chỉnh pose.':'',rigDiagnostic:map.rigDiagnostic,hands:Object.fromEntries(['left','right'].map(side=>[side,motionHandDrag?.side===side?{enabled:true,value:motionHandDrag.value}:motionHand(side)])),rig:rig.fingerprint+':'+rig.activeRoot,x:$('motionLayerX').value,y:$('motionLayerY').value,points:map.points,selected,chain,effector:chain?'ik_'+chain.id:null,pins:project.lab.pins.filter(p=>time>=p.start&&time<=p.end),scope:project.lab.bodyMode,space:$('space').value,transform:$('transformMode').value,controls:mode==='rig'&&$('rigVisible').checked,bones:mode==='rig'?$('rigShowBones').checked:$('showBones').checked,floor:project.lab.floorContact,layers:project.lab.layers,layer:project.lab.activeLayer,weight:layer.weight,poses:project.poses,canPaste:canPasteClipboard(),label:currentObject()?.name?C.short(currentObject().name):'Root · Toàn nhân vật',frame:time*project.fps,values:Object.fromEntries(['px','py','pz','rx','ry','rz'].map(id=>[id,{value:$(id).value,disabled:$(id).disabled}])),moveDisabled:!!boneIKChain(),rotateDisabled:!!boneIKChain()||selected.startsWith('pole_')};
 }
 function motionAffectedChains(ids){return rig.chains.filter(c=>(!rig.activeRoot||c.root===rig.activeRoot)&&[c.a.id,c.b.id,c.c.id,'ik_'+c.id,'pole_'+c.id].some(id=>ids.includes(id)));}
 function motionScopeIds({tab=motionPanel.tab,mask=[...motionPanel.mask]}={},all=false){
@@ -1172,25 +1173,25 @@ function motionApplyPose(data,ids){
  for(const id of applyIds){const o=id==='root'?rig.root:record(rig,id)?.o;if(o)C.apply(o,data[id]);}
  rig.root.updateMatrixWorld(true);markPose(applyIds);syncLabPanel();
 }
-function copyCurrentPose(ids=activeIds(),atTime=null){
- if(atTime!==null){const saved=snapshot();try{C.evaluate(rig,project,atTime);clipboard={fingerprint:rig.fingerprint,data:Object.fromEntries(Object.entries(C.capture(rig)).filter(([id])=>ids.includes(id)))};}finally{for(const[id,p]of Object.entries(saved.pose)){const o=id==='root'?rig.root:record(rig,id).o;C.apply(o,p);o.quaternion.fromArray(p.q);}for(const[id,p]of Object.entries(saved.controls)){C.apply(rig.controls[id].object,p);rig.controls[id].object.quaternion.fromArray(p.q);}for(const[id,m]of saved.modes)rig.chains.find(c=>c.id===id).mode=m;for(const[id,o]of saved.options)C.kinematics.configure(rig,rig.chains.find(c=>c.id===id),o,false);rig.root.updateMatrixWorld(true);}}
- else clipboard={fingerprint:rig.fingerprint,data:Object.fromEntries(Object.entries(C.capture(rig)).filter(([id])=>ids.includes(id)))};
- if(!Object.keys(clipboard.data).length)throw Error('Chọn xương trước khi sao chép pose.');
- syncMotionPanel();info('Đã sao chép pose · '+Object.keys(clipboard.data).length+' kênh.');
+function copyBlockingPose(ids=activeIds(),atTime=null){
+ let data;
+ if(atTime!==null){const saved=snapshot();try{C.evaluate(rig,project,atTime);data=C.capture(rig);}finally{for(const[id,p]of Object.entries(saved.pose)){const o=id==='root'?rig.root:record(rig,id).o;C.apply(o,p);o.quaternion.fromArray(p.q);}for(const[id,p]of Object.entries(saved.controls)){C.apply(rig.controls[id].object,p);rig.controls[id].object.quaternion.fromArray(p.q);}for(const[id,m]of saved.modes)rig.chains.find(c=>c.id===id).mode=m;for(const[id,o]of saved.options)C.kinematics.configure(rig,rig.chains.find(c=>c.id===id),o,false);rig.root.updateMatrixWorld(true);}}
+ else data=C.capture(rig);
+ clipboard=PoseClipboard.capturePose(rig,Object.fromEntries(Object.entries(data).filter(([id])=>ids.includes(id))));
+ syncMotionPanel();info('Đã sao chép pose · giữ trong phiên khi đổi animation.');$('blockingPoseStatus').textContent='Đã giữ pose · '+Object.keys(clipboard.data).length+' kênh';
 }
-function pasteCurrentPose(ids=Object.keys(clipboard?.data||{})){
- assertEditingAllowed();if(clipboard?.fingerprint!==rig.fingerprint)throw Error('Chưa có pose tương thích trong bộ nhớ tạm.');
- const data=clipboard.data,applyIds=ids.filter(id=>data[id]);if(!applyIds.length)throw Error('Không có pose cho phần đang chọn.');
- for(const id of applyIds)if(id!=='root'&&!record(rig,id)&&!rig.controls[id])throw Error('Xương đích không tương thích.');
- playing=false;for(const c of motionAffectedChains(applyIds))c.mode='fk';
- for(const id of applyIds)C.apply(id==='root'?rig.root:rig.controls[id]?.object||record(rig,id).o,data[id]);
- rig.root.updateMatrixWorld(true);writeKeys(applyIds,motionAffectedChains(applyIds));commit();refresh();info('Đã dán pose tại frame '+Math.round(time*project.fps)+'.');
+function mappedClipboardPose(){return PoseClipboard.mapPose(clipboard,rig,{keepHeight:$('poseKeepHeight').checked});}
+function canPasteClipboard(){try{mappedClipboardPose();return true;}catch{return false;}}
+function pasteBlockingPose(ids=null){
+ assertEditingAllowed();const data=mappedClipboardPose(),applyIds=Object.keys(data).filter(id=>!ids||ids.includes(id));if(!applyIds.length)throw Error('Không có pose cho phần đang chọn.');
+ playing=false;for(const c of motionAffectedChains(applyIds))c.mode='fk';for(const id of applyIds)C.apply(id==='root'?rig.root:record(rig,id).o,data[id]);
+ rig.root.updateMatrixWorld(true);writeKeys(applyIds,motionAffectedChains(applyIds));commit();refresh();info('Đã dán pose tại frame '+Math.round(time*project.fps)+'.');$('blockingPoseStatus').textContent='Đã dán tại frame '+Math.round(time*project.fps);
 }
 function setupPoseContextMenu(){
  const menu=document.querySelector('.timeline-key-menu')||document.createElement('div');menu.id='timelineKeyMenu';menu.classList.add('timeline-key-menu','interpolation-window');menu.style.width='290px';menu.style.gridTemplateColumns='1fr';menu.hidden=true;menu.setAttribute('role','menu');menu.setAttribute('aria-label','Pose tại keyframe');document.body.append(menu);
  let hit=null;const close=()=>{menu.hidden=true;};
- for(const[label,action]of [['Sao chép pose (Toàn thân)',()=>copyCurrentPose(activeIds('all'),hit.time)],['Sao chép pose (Phần đang chọn)',()=>copyCurrentPose(activeIds('branch'),hit.time)],['Dán pose',()=>{seek(hit.time);pasteCurrentPose();}]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('role','menuitem');button.addEventListener('click',guard(()=>{close();action();}));menu.append(button);}
- listen('timeline','contextmenu',event=>{event.preventDefault();const rect=$('timeline').getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;hit=timelineHits.find(h=>Math.hypot(x-h.x,y-h.y)<h.radius);if(!hit)return;if(mode==='compare'||sourcePreview||sceneMode&&!sceneEditing){close();return;}menu.lastElementChild.disabled=clipboard?.fingerprint!==rig.fingerprint;menu.hidden=false;menu.style.left=Math.max(8,Math.min(innerWidth-300,event.clientX))+'px';menu.style.top=Math.max(8,Math.min(innerHeight-160,event.clientY))+'px';menu.firstElementChild.focus({preventScroll:true});});
+ for(const[label,action]of [['Sao chép pose (Toàn thân)',()=>copyBlockingPose(activeIds('all'),hit.time)],['Sao chép pose (Phần đang chọn)',()=>copyBlockingPose(activeIds('branch'),hit.time)],['Dán pose',()=>{seek(hit.time);pasteBlockingPose();}]]){const button=document.createElement('button');button.type='button';button.textContent=label;button.setAttribute('role','menuitem');button.addEventListener('click',guard(()=>{close();action();}));menu.append(button);}
+ listen('timeline','contextmenu',event=>{event.preventDefault();const rect=$('timeline').getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;hit=timelineHits.find(h=>Math.hypot(x-h.x,y-h.y)<h.radius);if(!hit)return;if(mode==='compare'||sourcePreview||sceneMode&&!sceneEditing){close();return;}menu.lastElementChild.disabled=!canPasteClipboard();menu.hidden=false;menu.style.left=Math.max(8,Math.min(innerWidth-300,event.clientX))+'px';menu.style.top=Math.max(8,Math.min(innerHeight-160,event.clientY))+'px';menu.firstElementChild.focus({preventScroll:true});});
  document.addEventListener('pointerdown',event=>{if(!menu.contains(event.target))close();});window.addEventListener('keydown',event=>{if(event.key==='Escape')close();});window.addEventListener('blur',close);
 }
 function motionBaseline(){
@@ -1245,8 +1246,8 @@ function motionAction(action,args={}){assertEditingAllowed();
  else{
   const ids=motionScopeIds(args,action.endsWith('All'));if(!ids.length)throw Error('Chọn ít nhất một vùng trên Pose Mixer.');
   if(action==='key'){writeKeys(ids,motionAffectedChains(ids));commit();info('Đã ghi '+ids.length+' kênh pose tại frame '+Math.round(time*project.fps)+'.');}
-  else if(action==='copy'||action==='copyAll')copyCurrentPose(ids);
-  else if(action==='paste'||action==='pasteAll')pasteCurrentPose(ids);
+  else if(action==='copy'||action==='copyAll')copyBlockingPose(ids);
+  else if(action==='paste'||action==='pasteAll')pasteBlockingPose(ids);
   else if(action==='applyPose'){const pose=project.poses[args.pose];if(!pose||pose.fingerprint!==rig.fingerprint)throw Error('Pose thư viện không tương thích.');motionApplyPose(pose.data,ids);}
   else if(action==='reset')motionApplyPose(motionBaseline(),ids);
   else if(action.startsWith('mirror'))motionMirror(ids,action);
@@ -1279,8 +1280,10 @@ listen('ikMode','change',()=>{const c=rig.chains.find(c=>c.id===$('ikChain').val
 listen('ikTarget','click',()=>{const c=rig.chains.find(c=>c.id===$('ikChain').value);if(!c||c.mode!=='ik')throw Error('Bật IK của chuỗi này trước.');select('ik_'+c.id);});
 listen('ikPole','click',()=>{const c=rig.chains.find(c=>c.id===$('ikChain').value);if(c)selectUser('pole_'+c.id);});
 listen('capturePose','click',()=>{const name=$('poseName').value.trim()||'Pose';const data=C.capture(rig,$('poseScope').value,selected);project.poses.push({name,fingerprint:rig.fingerprint,data});commit();renderPoses();});
-listen('copyPose','click',()=>copyCurrentPose());
-listen('pastePose','click',()=>pasteCurrentPose());
+listen('copyPose','click',()=>copyBlockingPose());
+listen('pastePose','click',()=>pasteBlockingPose());
+listen('blockingCopyPose','click',()=>copyBlockingPose(activeIds('all')));
+listen('blockingPastePose','click',()=>pasteBlockingPose());
 listen('keyBtn','click',()=>{writeKeys(activeIds());commit();refresh();info('Đã ghi key tại frame '+Math.round(time*project.fps)+'.');});
 listen('undoBtn','click',()=>restoreHistory(historyIndex-1));listen('redoBtn','click',()=>restoreHistory(historyIndex+1));listen('saveBtn','click',saveProject);
 function playbackRange(){
