@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "minecraft": "1.20.1",
+  "java": 17,
+  "runtimeStatus": "NOT_RUN",
+  "artifacts": [
+    {
+      "name": "aaa_particles-forge-1.20.1-2.2.3.jar",
+      "version": "forge-1.20.1-2.2.3",
+      "url": "https://cdn.modrinth.com/data/En8uHTOK/versions/9cBh3Vh8/aaa_particles-forge-1.20.1-2.2.3.jar",
+      "sha256": "2d9e540e61feb5b7795c77014662f1556c73aee063391f1b0297ad60e62424fc",
+      "runtimeStatus": "NOT_RUN"
+    },
+    {
+      "name": "aaa_particles-fabric-1.20.1-2.2.3.jar",
+      "version": "fabric-1.20.1-2.2.3",
+      "url": "https://cdn.modrinth.com/data/En8uHTOK/versions/KPUjU5NL/aaa_particles-fabric-1.20.1-2.2.3.jar",
+      "sha256": "332c1237b555276aabdf3907379679ed978e7a4880b39ddbac997a33c58cde2f",
+      "runtimeStatus": "NOT_RUN"
+    },
+    {
+      "name": "fabric-loader",
+      "version": "0.16.14",
+      "url": "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.16.14/fabric-loader-0.16.14.jar",
+      "sha256": "9ed7b7f4197153ad97d71b4b9cd9148989e8f0c600934b035ce45f3ef003efc0",
+      "runtimeStatus": "NOT_RUN"
+    },
+    {
+      "name": "fabric-api",
+      "version": "0.92.6+1.20.1",
+      "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/UapVHwiP/fabric-api-0.92.6%2B1.20.1.jar",
+      "sha256": "0ece50476da3692111ab04b75945c5458e70d98cd069eefc044ab3e57977deeb",
+      "runtimeStatus": "NOT_RUN"
+    },
+    {
+      "name": "bbs-2.7-1.20.1.jar",
+      "version": "2.7-1.20.1",
+      "url": "https://mediafilez.forgecdn.net/files/8934/314/bbs-2.7-1.20.1.jar",
+      "sha256": "78ffc06eb3a546ef8616c23c1ae91615a120212a41b0e7384b17aa1b063168f8",
+      "runtimeStatus": "NOT_RUN",
+      "verifiedBy": "V2 official download"
+    }
+  ],
+  "unavailable": [
+    "BBS-AAAddon fs-2.7: fork release API contains no release assets; build and hash locally before use"
+  ],
+  "embeddedFabricDependencies": [
+    {
+      "name": "architectury-fabric-9.2.14.jar",
+      "sha256": "51df74fd4c4f8dbd8742fc76139d30c2b96e0c4181521d5d8e3b33a30ac93581",
+      "source": "Embedded in verified official AAA Fabric 2.2.3; no separate install",
+      "runtimeStatus": "NOT_RUN"
+    },
+    {
+      "name": "forgeconfigapiport-fabric-8.0.0.jar",
+      "sha256": "60c1c0c56398c6881791089866331b453d45e906467ac3cfb36a8b153c22ed7b",
+      "source": "Embedded in verified official AAA Fabric 2.2.3; no separate install",
+      "runtimeStatus": "NOT_RUN"
+    }
+  ]
+}
