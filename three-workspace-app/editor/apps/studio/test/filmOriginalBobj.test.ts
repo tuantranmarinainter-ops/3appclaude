@@ -60,8 +60,12 @@ test('stages library BOBJ behind a GLB asset, keeps bytes and blocks visible mis
   assert.ok(staged?.originalRig)
   assert.equal(staged.sourceSha256, sha(source))
   assert.equal(staged.bones.find((bone) => bone.name === 'COG')!.bobjRestMatrixRowMajor[7], 2, 'native rest-world translation stays row-major')
-  assert.deepEqual(readFileSync(staged.files[0]!.sourcePath), original)
-  assert.equal(staged.files[0]!.sha256, sha(original))
+  // B30: Verity keeps the original bytes and only appends the empty idle-slot rest action.
+  const stagedBytes = readFileSync(staged.files[0]!.sourcePath)
+  assert.deepEqual(stagedBytes.subarray(0, original.toString('utf8').replace(/\s*$/, '').length), Buffer.from(original.toString('utf8').replace(/\s*$/, '')))
+  assert.match(stagedBytes.toString('utf8'), /\nan w01_rest\nao Root\nag location 0\nkf 0 /)
+  assert.ok(staged.actions.includes('w01_rest'))
+  assert.equal(staged.files[0]!.sha256, sha(stagedBytes))
   assert.equal(staged.files[1]!.targetPath, 'textures/Body/default.png')
   const convertedSkinA = await stageConvertedLibrarySkinProfile(snapshot as never, model as never, { ...staged, originalRig: undefined, files: [staged.files[0]!] })
   writeFileSync(path.join(process.env.W01_LIBRARY!, 'skin-b.png'), 'skin-B')
@@ -87,7 +91,7 @@ test('stages library BOBJ behind a GLB asset, keeps bytes and blocks visible mis
   const animated = await stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'animated'))
   const animatedBytes = readFileSync(animated!.files[0]!.sourcePath)
   assert.deepEqual(animatedBytes.subarray(0, original.length), original)
-  assert.deepEqual(animated!.actions, ['idle', 'character_wave'])
+  assert.deepEqual(animated!.actions, ['idle', 'character_wave', 'w01_rest'])
   // Actual L3 convention: native base clips are project Motions, not library actions.
   const nativeGlb = Buffer.from(bobjModelToGlb(parseBobjModel(original.toString())).bytes)
   writeFileSync(path.join(folder, 'model.glb'), nativeGlb)
@@ -97,7 +101,8 @@ test('stages library BOBJ behind a GLB asset, keeps bytes and blocks visible mis
     extensions: { retargetMotionMetadata: { [nativeUuid]: { name: 'idle', clipIndex: 0 } } } })
   Object.assign(snapshot.scene.content.timeline.animation, { motionClips: [{ target: { nodeId: 'actor' }, motion: { assetId: nativeUuid, clipIndex: 0 } }] })
   const native = await stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'native-project-action'))
-  assert.deepEqual(readFileSync(native!.files[0]!.sourcePath), original, 'native project action needs no appended sidecar')
+  const nativeBytes = readFileSync(native!.files[0]!.sourcePath).toString('utf8')
+  assert.equal(nativeBytes.replace(/\nan w01_rest\n[\s\S]*$/, ''), original.toString('utf8').replace(/\s*$/, ''), 'native project action needs no appended sidecar, only the rest action')
   const nativeMetadata = (snapshot as unknown as { extensions: { retargetMotionMetadata: Record<string, { name: string; clipIndex: number }> } }).extensions.retargetMotionMetadata[nativeUuid]!
   nativeMetadata.clipIndex = 1
   await assert.rejects(stageOriginalLibraryBobjProfile(snapshot as never, model as never, path.join(temp, 'wrong-index')), /native action identity/)
