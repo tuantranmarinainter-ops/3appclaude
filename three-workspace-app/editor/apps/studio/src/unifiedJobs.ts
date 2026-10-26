@@ -1,3 +1,5 @@
+import { validateFilmEffectsDestination } from './filmEffectsDestination'
+import { collectFilmAaaAssets, writeFilmAaaAssets } from './filmAaaAssets'
 import { filmSceneWorldMatrices } from './filmSceneWorld'
 import { Matrix4 } from 'three'
 import { applyFilmWorldAnchor, resolveFilmWorldAnchor } from './filmWorldAnchor'
@@ -199,12 +201,13 @@ export async function stageConvertedLibrarySkinProfile(snapshot: UnifiedProject,
 type FilmInputModel = Awaited<ReturnType<typeof sampleProjectFilm>>['models'][number]
 
 /** B15: Film-worker entries for AAA Particles replays; ticks clamp into the Film and empty intervals are dropped. */
-export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number; play?: 'manual' }>, durationTicks: number) {
-  const root = (process.env.W01_AAA_EFFECT_ROOT?.trim() || 'effeks/samples').replace(/^\/+|\/+$/g, '')
+export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: number; y: number; z: number; yaw: number; scale: number; startTick: number; endTick: number; play?: 'manual' }>, durationTicks: number, effectPaths: ReadonlyMap<string, string>) {
   return effects.flatMap((item) => {
     const startTick = Math.max(0, Math.min(durationTicks - 1, Math.round(item.startTick)))
     const endTick = Math.max(startTick + 1, Math.min(durationTicks, Math.round(item.endTick)))
-    return [{ label: item.effect, effect: `${root}/${item.effect}.efkefc`, x: item.x, y: item.y, z: item.z, yaw: item.yaw, scale: item.scale, startTick, endTick,
+    const effectPath = effectPaths.get(item.effect)
+    if (!effectPath) throw new TypeError(`AAA asset was not packaged: ${item.effect}`)
+    return [{ label: item.effect, effect: effectPath, x: item.x, y: item.y, z: item.z, yaw: item.yaw, scale: item.scale, startTick, endTick,
       ...(item.play === 'manual' ? { manual: true } : {}) }]
   })
 }
@@ -371,8 +374,10 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     record.state = 'running'; record.progress = 0.03; record.updatedAt = new Date().toISOString(); await persist(record)
     const input = await sampleProjectFilm(snapshot, args, signal)
+    await validateFilmEffectsDestination(args.effectsPolicy)
     const effectsPolicy = resolveFilmEffectsPolicy(args.effectsPolicy)
     const effects = await filmEffectsForExport(effectsPolicy, () => buildVfxEffectsForFilm(snapshot, args, signal))
+    const aaaAssets = await collectFilmAaaAssets(record.projectId, effects, undefined, signal)
     await mkdir(work, { recursive: false })
     const agent = await agentRoot(), python = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
     const convertedRoot = path.join(work, 'converted'); await mkdir(convertedRoot)
@@ -443,9 +448,8 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     const source = manifest.actors[0]?.transformSamples[0] ?? manifest.cameras[0]!.keyframes[0]!
     const worldAnchor = resolveFilmWorldAnchor(args.worldAnchor, [source.x, source.y, source.z])
     applyFilmWorldAnchor(manifest, worldAnchor, effects)
-    // B15: VFX cues ride in the Film itself as AAA Particles replays (the effects must be installed in the game under
-    // config/bbs/assets/<root>; W01_AAA_EFFECT_ROOT, default effeks/samples). effects.json stays as a sidecar.
-    if (effects.length) Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks) })
+    // V4: Replay paths refer to the exact project-namespaced assets included in this archive.
+    if (effects.length) Object.assign(manifest, { aaaEffects: filmAaaEffects(effects, input.durationTicks, aaaAssets.effectPaths) })
     const manifestPath = path.join(work, 'manifest.json')
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
     const outputRoot = path.join(work, 'package'); await mkdir(outputRoot)
@@ -456,6 +460,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     const packagePath = await realpath(exported.packageDirectory), outputPath = await realpath(outputRoot)
     if (!packagePath.startsWith(`${outputPath}${path.sep}`)) throw new TypeError('Film worker package escaped its staging folder')
     signal.throwIfAborted()
+    await writeFilmAaaAssets(packagePath, aaaAssets)
     for (const [name, value] of Object.entries(options.extraFiles ?? {})) await writeFile(path.join(packagePath, name), `${JSON.stringify(value, null, 2)}
 `, { flag: 'wx' })
     await writeFile(path.join(packagePath, 'required-mods.json'), `${JSON.stringify(filmRequiredMods(effects.length), null, 2)}\n`, { flag: 'wx' })
@@ -759,7 +764,7 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
       Object.keys(options.extraFiles ?? {}).some((name) => !/^[a-z0-9-]{1,40}\.json$/.test(name) || ['export-manifest.json', 'export-report.json'].includes(name))) {
     throw Object.assign(new TypeError('Film package names must be safe and must not replace worker files'), { code: 'VALIDATION_FAILED', status: 400 })
   }
-  resolveFilmEffectsPolicy(args.effectsPolicy)
+  await validateFilmEffectsDestination(args.effectsPolicy)
   const preflight = preflightProjectFilm(project, args)
   const snapshot = structuredClone(project), exportArgs = structuredClone({ ...args,
     content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds }), jobId = randomUUID()
@@ -783,6 +788,7 @@ export async function startUnifiedFilmSeriesExport(project: UnifiedProject, args
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,55}$/.test(args.name) || args.name.endsWith('.') || !args.segments.length) {
     throw Object.assign(new TypeError('Film series name must use 1-56 safe ASCII characters and include at least one segment'), { code: 'VALIDATION_FAILED', status: 400 })
   }
+  for (const segment of args.segments) await validateFilmEffectsDestination(segment.exportArgs.effectsPolicy)
   const snapshot = structuredClone(project), inputs = structuredClone(args), jobId = randomUUID()
   const record: StoredJob = { jobId, projectId: project.projectId, type: 'film.series.export', state: 'queued', sourceRevision: project.revision,
     sourceSha256: digest(Buffer.from(JSON.stringify(project))), progress: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }

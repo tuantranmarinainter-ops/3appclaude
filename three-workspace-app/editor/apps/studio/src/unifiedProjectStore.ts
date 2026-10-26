@@ -1,3 +1,4 @@
+import { validateFilmEffectsDestination } from './filmEffectsDestination'
 import { App3BridgeError } from './app3Bridge'
 import { executeApp3Artifacts } from './app3Artifacts'
 import { previewCameraFraming } from './cameraFraming'
@@ -1250,6 +1251,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     await saveRequest(envelope, hash, response)
     return response
   }
+  if (['film.export', 'scene.export.bbsFilm', 'scene.export.bbsFilmSeries'].includes(envelope.command)) {
+    try { await validateFilmEffectsDestination(envelope.args.effectsPolicy) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid effects destination', 400) }
+  }
   if (envelope.command === 'film.export') {
     const { worldAnchor, content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
@@ -1297,7 +1302,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
   }
   if (envelope.command === 'film.preflight') {
-    try { resolveFilmEffectsPolicy(envelope.args.effectsPolicy) }
+    try { await validateFilmEffectsDestination(envelope.args.effectsPolicy) }
     catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid effects policy', 400) }
     if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'mode', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'propIds', 'content'].includes(key)) ||
         envelope.args.mode !== undefined && envelope.args.mode !== 'film' && envelope.args.mode !== 'series' ||
