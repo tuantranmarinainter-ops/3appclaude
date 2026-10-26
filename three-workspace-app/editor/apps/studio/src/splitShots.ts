@@ -19,14 +19,18 @@ export function planSplitShots(source: UnifiedProject, args: { sequenceId?: stri
   if (!sequence?.clips.length) throw new TypeError('Không tìm thấy danh sách shot trong dự án.')
   if (args.shotIds && (!args.shotIds.length || new Set(args.shotIds).size !== args.shotIds.length || args.shotIds.some((id) => !sequence.clips.some((shot) => shot.id === id)))) throw new TypeError('Danh sách shot không hợp lệ.')
   const episodeName = args.episodeName?.trim() || source.name
-  const selected = sequence.clips.filter((shot) => !args.shotIds || args.shotIds.includes(shot.id))
+  // Editorial lists can be out of time order (Tập 15 keeps shot_01 last): episode order follows the timeline and the
+  // shot number (name, set_NN/shotIndex matching) comes from the shot id, never from the list position.
+  const shotTimeline = [...sequence.clips].sort((a, b) => a.sourceFrameStart - b.sourceFrameStart)
+  const shotNumber = (shot: typeof sequence.clips[number]) => { const match = /(\d+)\s*$/.exec(shot.id); return match ? Number(match[1]) : shotTimeline.indexOf(shot) + 1 }
+  const selected = shotTimeline.filter((shot) => !args.shotIds || args.shotIds.includes(shot.id))
   const outputIds = selected.map((_, index) => ids[index] ?? randomUUID())
   const episodeId = outputIds[0]!
   const animation = source.scene.content.timeline.animation
   const raw = (source.extensions.topview?.fcurves ?? (animation.fcurves.length ? { version: 1, encoding: 'compact-v1', fcurves: animation.fcurves } : null)) as { fcurves?: Array<{ t: string | string[]; k: unknown[][]; [key: string]: unknown }>; userKeys?: Record<string, Record<string, Array<{ frame: number; [key: string]: unknown }>>> } | null
   const overlaps = (clip: { frameStart: number; frameEnd: number }, start: number, end: number) => clip.frameStart <= end && clip.frameEnd >= start
   return selected.map((shot, selectedIndex) => {
-    const start = shot.sourceFrameStart, end = shot.sourceFrameEnd, order = sequence.clips.indexOf(shot) + 1
+    const start = shot.sourceFrameStart, end = shot.sourceFrameEnd, order = shotNumber(shot), episodeOrder = shotTimeline.indexOf(shot) + 1
     const warnings: string[] = [], keep = new Set<string>([shot.cameraNodeId])
     const assignedElsewhere = (node: UnifiedProject['scene']['content']['nodes'][number]) => {
       const metadata = node.metadata ?? {}
@@ -67,7 +71,7 @@ export function planSplitShots(source: UnifiedProject, args: { sequenceId?: stri
     const project = structuredClone(source)
     project.projectId = outputIds[selectedIndex]!; project.revision = 0
     project.name = `${episodeName} · Shot ${String(order).padStart(2, '0')}`.slice(0, 120)
-    project.extensions.episode = { id: episodeId, name: episodeName, order, sourceProjectId: source.projectId, sourceShotId: shot.id } satisfies EpisodeMetadata
+    project.extensions.episode = { id: episodeId, name: episodeName, order: episodeOrder, sourceProjectId: source.projectId, sourceShotId: shot.id } satisfies EpisodeMetadata
     project.scene.content.nodes = project.scene.content.nodes.filter((node) => keep.has(node.id))
     for (const node of project.scene.content.nodes) if (node.children) node.children = node.children.filter((id) => keep.has(id))
     project.scene.content.activeShotCameraNodeId = shot.cameraNodeId

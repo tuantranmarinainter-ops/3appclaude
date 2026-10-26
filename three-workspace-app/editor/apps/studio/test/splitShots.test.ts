@@ -131,3 +131,14 @@ test('episode export plans ordered project snapshots on the 20 Hz grid and rejec
   writeFileSync(path.join(temp, invalid.projectId, 'project.json'), JSON.stringify(invalid))
   await assert.rejects(() => executeUnifiedCommand({ requestId: randomUUID(), projectId: ids[0], expectedRevision: 0, command: 'episode.export', args: { name: 'tap15' }, dryRun: true }), /20 Hz|20 Hz grid|20/)
 })
+
+test('editorial list out of time order: names keep the shot number, episode order and set_NN follow the shot', () => {
+  // Tập 15 stores shot_04…shot_20 first and shot_01 last; list position must not rename shots or move backdrops.
+  const source = fixture(), camera = source.scene.content.nodes[0]!
+  source.scene.content.editorial!.sequences[0]!.clips = [{ id: 'shot_04', cameraNodeId: camera.id, sourceFrameStart: 30, sourceFrameEnd: 59 }, { id: 'shot_01', cameraNodeId: camera.id, sourceFrameStart: 0, sourceFrameEnd: 29 }]
+  for (const n of [1, 4]) source.scene.content.nodes.push({ id: `set_0${n}`, name: `set_0${n}`, type: 'prop', visible: true, locked: false, transform: { position: { x: n, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, metadata: {} } as never)
+  const plans = planSplitShots(source, { episodeName: 'Tập 15' })
+  assert.deepEqual(plans.map((plan) => plan.project.name), ['Tập 15 · Shot 01', 'Tập 15 · Shot 04'])
+  assert.deepEqual(plans.map((plan) => (plan.project.extensions.episode as { order: number }).order), [1, 2])
+  assert.deepEqual(plans.map((plan) => plan.project.scene.content.nodes.filter((node) => node.id.startsWith('set_')).map((node) => node.id)), [['set_01'], ['set_04']])
+})
