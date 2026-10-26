@@ -1,6 +1,7 @@
 import { assignmentTargetRig } from '../../library/components/assignment/utils'
 import { UnifiedStoreError, readUnifiedProject } from '../../../src/unifiedProjectStore'
 import { resolveCharacter } from '../../../../../packages/library/index'
+import { readLibraryCharacterHeight } from '../../../src/libraryCharacterProfiles'
 import { libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
 import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, updateLibraryCharacterHeights, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
@@ -10,6 +11,8 @@ export const runtime = 'nodejs'
 export async function GET(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url)
+    const heightCharacter = url.searchParams.get('heightCharacter')
+    if (heightCharacter) return Response.json(await readLibraryCharacterHeight(heightCharacter), { headers: { 'Cache-Control': 'no-store' } })
     const modelCharacter = url.searchParams.get('modelCharacter')
     if (modelCharacter) {
       const fingerprint = url.searchParams.get('fingerprint')

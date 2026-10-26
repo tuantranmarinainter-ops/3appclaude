@@ -13,7 +13,7 @@ import { BbsInstallPanel } from './BbsInstallPanel'
 export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
   const vi = useStudioLocale() === 'vi'
   const install = useBbsInstall(vi)
-  const state = useFilmExport(project, install.capabilities)
+  const state = useFilmExport(project, install.capabilities, active)
   const [inOutNotice, setInOutNotice] = useState(false)
   // N4: mỗi lần mở panel Xuất, áp lại mặc định In/Out (trừ khi đã sửa tay).
   useEffect(() => {

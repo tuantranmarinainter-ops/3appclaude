@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   characterHeightBlocks,
@@ -38,8 +38,21 @@ function relativeLibraryPath(file: string): string {
   return relative.split(path.sep).join('/')
 }
 
+const textureHashes = new Map<string, { stamp: string; hash: Promise<string> }>()
 async function sha256(file: string): Promise<string> {
-  return createHash('sha256').update(await readFile(file)).digest('hex')
+  const info = await stat(file)
+  const stamp = `${info.mtimeMs}:${info.ctimeMs}:${info.size}`
+  const cached = textureHashes.get(file)
+  if (cached?.stamp === stamp) return cached.hash
+  const hash = readFile(file).then(bytes => createHash('sha256').update(bytes).digest('hex'))
+  if (textureHashes.size >= 4096) textureHashes.delete(textureHashes.keys().next().value!)
+  const entry = { stamp, hash }
+  textureHashes.set(file, entry)
+  try { return await hash }
+  catch (error) {
+    if (textureHashes.get(file) === entry) textureHashes.delete(file)
+    throw error
+  }
 }
 
 export async function describeLibraryCharacter(character: CharacterMetadata) {
@@ -141,6 +154,15 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
   const libraryCharacterId = typeof node.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : null
   if (!libraryCharacterId) throw new Error('Node chưa nối với nhân vật thư viện; hãy nối node này trước (C25) rồi gán lại')
   const action = getAction({ actionUuid: input.actionUuid })
+  // Reject occupied ranges before any copy or cross-rig conversion writes library files.
+  if (input.frameStart !== undefined) {
+    const duration = project.motions[action.uuid]?.durationSeconds ?? action.durationSeconds
+    const frameEnd = input.frameStart + Math.max(1, Math.round(duration * project.scene.content.timeline.fps)) - 1
+    if (!Number.isSafeInteger(input.frameStart) || input.frameStart < 0 || !Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
+    if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.target.nodeId === input.nodeId && clip.frameStart <= frameEnd && clip.frameEnd >= input.frameStart!)) {
+      throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
+    }
+  }
   const place = async (actionUuid: string, revision: number) => executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: revision,
     command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.reconvert ? { reconvert: true } : {}), ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}) } })
   try {
