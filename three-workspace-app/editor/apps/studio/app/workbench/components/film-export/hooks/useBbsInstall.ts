@@ -14,7 +14,8 @@ async function responseBody<T>(response: Response, vi: boolean): Promise<T> {
 }
 
 export function useBbsInstall(vi: boolean) {
-  const [gameDir, setGameDirState] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('topview-bbs-game-dir') ?? '')
+  // NEXT_PUBLIC_BBS_GAME_DIR pre-fills the game folder on a fresh browser; a folder the user picked (localStorage) wins.
+  const [gameDir, setGameDirState] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('topview-bbs-game-dir') ?? process.env.NEXT_PUBLIC_BBS_GAME_DIR ?? '')
   const [capabilities, setCapabilities] = useState<BbsGameCapabilities | null>(null)
   const [worlds, setWorlds] = useState<InstallWorld[]>([])
   const [installs, setInstalls] = useState<InstallRecord[]>([])
