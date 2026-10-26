@@ -130,13 +130,10 @@ export async function linkStoryboardNodesToLibrary(input: { projectId: string; e
 }
 
 /**
- * N1: place a library Action onto one specific scene node (the Library page's
- * "Gán cho <Tên vai · Shot NN>" flow). Direct placement is tried first; a same-rig
- * Action owned by another character is copied into the target's set first, and a
- * shared Action goes through the existing assignment pipeline. Cross-skeleton
- * conversion of character-owned Actions is N1b's extension of that pipeline.
+ * Place an Action on one scene node. MC20 uses project conversion recipes or
+ * direct same-rig placement; other rigs retain the existing library assignment flow.
  */
-export async function placeLibraryActionForNode(input: { projectId: string; actionUuid: string; nodeId: string; frameStart?: number }) {
+export async function placeLibraryActionForNode(input: { projectId: string; actionUuid: string; nodeId: string; frameStart?: number; reconvert?: boolean }) {
   const project = await readUnifiedProject(input.projectId)
   const character = Object.values(project.characters).find((item) => item.nodeId === input.nodeId)
   const node = project.scene.content.nodes.find((item) => item.id === input.nodeId)
@@ -145,13 +142,13 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
   if (!libraryCharacterId) throw new Error('Node chưa nối với nhân vật thư viện; hãy nối node này trước (C25) rồi gán lại')
   const action = getAction({ actionUuid: input.actionUuid })
   const place = async (actionUuid: string, revision: number) => executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: revision,
-    command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}) } })
+    command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.reconvert ? { reconvert: true } : {}), ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}) } })
   try {
     const placed = await place(input.actionUuid, project.revision)
-    const placement = placed.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number }
-    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: input.actionUuid, converted: false, ...placement }
+    const placement = placed.result.libraryPlacement as { motionId: string; clipId: string; frameStart: number; frameEnd: number }
+    return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: placement.motionId, converted: action.rig === 'mixamo65' && resolveCharacter(libraryCharacterId).character.rig === 'minecraft20', ...placement }
   } catch (error) {
-    if (!(error instanceof UnifiedStoreError) || error.code !== 'PROFILE_MISMATCH') throw error
+    if (!(error instanceof UnifiedStoreError) || error.code !== 'PROFILE_MISMATCH' || resolveCharacter(libraryCharacterId).character.rig === 'minecraft20') throw error
     const target = resolveCharacter(libraryCharacterId)
     let draftUuid: string
     let warning: string | undefined
@@ -176,7 +173,7 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
     } else throw error
     const latest = await readUnifiedProject(input.projectId)
     const placed = await place(draftUuid, latest.revision)
-    const placement = placed.result.libraryPlacement as { clipId: string; frameStart: number; frameEnd: number }
+    const placement = placed.result.libraryPlacement as { motionId: string; clipId: string; frameStart: number; frameEnd: number }
     return { projectId: input.projectId, revision: placed.revision, characterId: character.id, nodeId: input.nodeId, displayName: node.name, placedActionUuid: draftUuid, converted: true, ...(warning ? { warning } : {}), ...placement }
   }
 }

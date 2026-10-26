@@ -15,7 +15,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const file = await resolveUnifiedAssetFile(project, asset.id, variant)
     return new Response(file.bytes, { headers: { 'Content-Type': file.mediaType, 'Content-Length': String(file.bytes.byteLength), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } })
   } catch (error) {
-    const status = error instanceof UnifiedStoreError ? error.status : 404
-    return Response.json({ error: { code: error instanceof UnifiedStoreError ? error.code : 'NOT_FOUND', message: error instanceof Error ? error.message : 'Asset not found' } }, { status })
+    const conversionRequired = !!error && typeof error === 'object' && 'code' in error && error.code === 'CONVERSION_REQUIRED'
+    const status = error instanceof UnifiedStoreError ? error.status : conversionRequired ? 409 : 404
+    return Response.json({ error: { code: error instanceof UnifiedStoreError ? error.code : conversionRequired ? 'CONVERSION_REQUIRED' : 'NOT_FOUND', message: error instanceof Error ? error.message : 'Asset not found' } }, { status })
   }
 }
