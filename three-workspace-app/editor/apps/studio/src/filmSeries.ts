@@ -160,15 +160,17 @@ export function planFilmSeries(project: UnifiedProject, args: FilmSeriesContentA
   const content = args.content ?? (Array.isArray(args.propIds) && args.propIds.length ? 'both' : 'characters')
   args = { ...args, content }
   // Pin one source pivot before segmentation so separate Films keep the same world placement.
-  if ((args.worldAnchor?.mode ?? 'local-origin') === 'local-origin' && !args.worldAnchor?.sourceOrigin) {
+  if ((args.worldAnchor?.mode ?? 'local-origin') === 'local-origin' && !args.worldAnchor?.sourceOrigin && !args.worldAnchor?.pivot) {
     const sourceFrame = args.range?.startFrame ?? project.scene.content.editorial?.sequences.find((sequence) => sequence.id === args.sequenceId)?.clips[0]?.sourceFrameStart ?? project.scene.content.timeline.frameStart
     const worldMatrix = filmSceneWorldMatrices(project, sourceFrame)
     const anchorClips = project.scene.content.editorial?.sequences.find((sequence) => sequence.id === args.sequenceId)?.clips ?? []
-    const firstId = anchorClips.length ? selectedCharacterIds(project, anchorClips, args.characterIds)[0] : undefined
-    const nodeId = content === 'backdrops' || !firstId
+    const firstId = args.worldAnchor?.pivotCharacterId ?? (anchorClips.length ? selectedCharacterIds(project, anchorClips, args.characterIds)[0] : undefined)
+    const nodeId = !args.worldAnchor?.pivotCharacterId && (content === 'backdrops' || !firstId)
       ? (anchorClips.length ? selectedPropIds(project, anchorClips, args.propIds, cameraSamples)[0] : undefined)
       : firstId ? project.characters[firstId]?.nodeId : undefined
-    const point = nodeId ? new Vector3().setFromMatrixPosition(worldMatrix(nodeId)) : undefined
+    if (args.worldAnchor?.pivotCharacterId && !nodeId) throw new TypeError('Nhân vật làm điểm neo không còn trong dự án')
+    const cameraSource = cameraSamples.find((sample) => sample.sourceFrame === sourceFrame)?.position
+    const point = nodeId ? new Vector3().setFromMatrixPosition(worldMatrix(nodeId)) : cameraSource ? new Vector3().fromArray(cameraSource) : anchorClips[0] ? new Vector3().setFromMatrixPosition(worldMatrix(anchorClips[0].cameraNodeId)) : undefined
     if (point) args = { ...args, worldAnchor: { ...args.worldAnchor, mode: 'local-origin', sourceOrigin: [point.x, point.y, point.z] } }
   }
   const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)

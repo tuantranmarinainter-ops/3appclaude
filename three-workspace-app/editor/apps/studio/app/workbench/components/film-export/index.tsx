@@ -26,7 +26,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
       <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
       <EffectsOptions capabilities={install.capabilities} value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
       <div className="wb-film-export-controls">
-        <WorldAnchorFields value={state.worldAnchor} onChange={state.setWorldAnchor} />
+        <WorldAnchorFields project={project} value={state.worldAnchor} onChange={state.setWorldAnchor} onValidityChange={state.setWorldAnchorInputValid} />
         <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
           <select value={state.exportMode} onChange={(event) => state.setExportMode(event.target.value as 'film' | 'series')} disabled={state.busy}>
             <option value="film">{vi ? 'Film hiện tại' : 'Current Film'}</option>
@@ -94,6 +94,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
         </div>
         <div className="wb-film-preflight" aria-live="polite" aria-busy={state.checkingPreflight}>
           {state.checkingPreflight && <p>{vi ? 'Đang kiểm tra lựa chọn xuất…' : 'Checking the export selection…'}</p>}
+          {state.preflight?.placement && <p>{`Cảnh sẽ nằm từ X ${state.preflight.placement.min[0]!.toFixed(2)}…${state.preflight.placement.max[0]!.toFixed(2)}, Y ${state.preflight.placement.min[1]!.toFixed(2)}…${state.preflight.placement.max[1]!.toFixed(2)}, Z ${state.preflight.placement.min[2]!.toFixed(2)}…${state.preflight.placement.max[2]!.toFixed(2)} (ước lượng gốc actor/camera/VFX; chưa gồm mesh, root motion và camera bám nhân vật)`}{state.preflight.placement.nearestActorDistance !== undefined ? `; nhân vật gần nhất cách chỗ anh/chị đứng ${state.preflight.placement.nearestActorDistance.toFixed(2)} block` : ''}</p>}
           {state.preflight?.errors.map((item, index) => <p key={`error-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`} role="alert">
             {vi ? 'Lỗi' : 'Error'}{item.segment === undefined ? '' : ` · ${vi ? 'Đoạn' : 'Segment'} ${item.segment}`}{vi ? ': ' : ': '}{vi ? item.message.vi : item.message.en}
           </p>)}

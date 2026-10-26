@@ -9,6 +9,8 @@ import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 import { stageAssetUpload } from '../src/unifiedAssetFiles'
+import { projectFilmAnchor } from '../src/filmAnchorProject'
+import { applyFilmWorldAnchor } from '../src/filmWorldAnchor'
 import { FILM_SERIES_ARCHIVE_SCRIPT, planFilmSeries, planFilmSeriesWithCameraSamples } from '../src/filmSeries'
 import { cancelUnifiedJob, getUnifiedJob, startUnifiedFilmSeriesExport } from '../src/unifiedJobs'
 
@@ -360,4 +362,49 @@ test('series ZIP includes ordered films and series metadata, deduplicates identi
     assert.match(unsafeResult.stderr, /Unsafe cross-platform Film package path/)
     assert.equal(existsSync(unsafeArchive), false)
   }
+})
+
+
+test('S2 all series segments share the chosen translated character pivot and world yaw', async () => {
+  const { projectId, characterId } = await twentyShotProject()
+  const project = await readUnifiedProject(projectId)
+  const actor = project.scene.content.nodes.find((node) => node.id === project.characters[characterId]!.nodeId)!
+  actor.transform.position = { x: 12, y: 3, z: -8 }
+  const plan = planFilmSeries(project, { sequenceId: 'episode', characterIds: [characterId], viewportAspect: 16 / 9,
+    worldAnchor: { mode: 'local-origin', pivotCharacterId: characterId, destination: [107.08, -60, 207.13], yawDegrees: -64.47 } })
+  assert.ok(plan.length > 1)
+  for (const segment of plan) {
+    assert.deepEqual(segment.exportArgs.worldAnchor!.sourceOrigin, [12, 3, -8])
+    const anchor = projectFilmAnchor(segment.project, segment.exportArgs.worldAnchor, segment.range.startFrame, [characterId])
+    const point = { x: 12, y: 3, z: -8, yaw: 180 }
+    applyFilmWorldAnchor({ actors: [{ transformSamples: [point] }], cameras: [] }, anchor)
+    assert.deepEqual(point, { x: 107.08, y: -60, z: 207.13, yaw: 180 - 64.47 })
+  }
+})
+
+test('S2 selected character pivot resolves evaluated parent hierarchy', async () => {
+  const { projectId, characterId } = await twentyShotProject()
+  const project = await readUnifiedProject(projectId)
+  const actor = project.scene.content.nodes.find((node) => node.id === project.characters[characterId]!.nodeId)!
+  const parent = structuredClone(actor)
+  parent.id = 'pivot-parent'; parent.type = 'prop'; parent.parentId = undefined
+  parent.transform.position = { x: 30, y: 2, z: 40 }
+  parent.transform.rotation = { x: 0, y: 90, z: 0 }
+  actor.parentId = parent.id; actor.transform.position = { x: 0, y: 1, z: 2 }
+  project.scene.content.nodes.push(parent)
+  const anchor = projectFilmAnchor(project, { mode: 'local-origin', pivotCharacterId: characterId }, 0, [characterId])
+  assert.ok(Math.abs(anchor.sourceOrigin[0]! - 32) < 1e-10)
+  assert.equal(anchor.sourceOrigin[1], 3)
+  assert.ok(Math.abs(anchor.sourceOrigin[2]! - 40) < 1e-10)
+})
+
+
+test('S2 camera-only legacy destination keeps first-camera source rather than scene zero', async () => {
+  const { projectId } = await twentyShotProject()
+  const project = await readUnifiedProject(projectId)
+  const source = [12, 7, 19]
+  const anchor = projectFilmAnchor(project, { mode: 'local-origin', destination: [1, 2, 3] }, 0, [], [], source)
+  const point = { x: 12, y: 7, z: 19 }
+  applyFilmWorldAnchor({ actors: [], cameras: [{ keyframes: [point] }] }, anchor)
+  assert.deepEqual(point, { x: 1, y: 2, z: 3 })
 })

@@ -283,3 +283,19 @@ test('store preflight names grid and empty-sequence causes, then passes once a s
     command: 'film.preflight', args: { characterIds: built.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 } })
   assert.equal(passed.result.valid, true, JSON.stringify(passed.result.preflight))
 })
+
+
+test('S2 placement reports rotated world origins and warns relative to standing height/distance', async () => {
+  const clean = await validProject({ endFrame: 29, cameraCount: 1, characterCount: 1 })
+  const project = clean.project
+  const args = { characterIds: clean.characterIds, sequenceId: 'sequence-valid', range: { startFrame: 0, endFrame: 29 }, viewportAspect: 16 / 9 }
+  const actor = project.scene.content.nodes.find((node) => node.id === project.characters[clean.characterIds[0]!]!.nodeId)!
+  actor.transform.position = { x: 0, y: -2, z: 80 }
+  const measured = filmPreflight(project, { ...args, worldAnchor: { mode: 'local-origin', pivot: [0, 0, 0], destination: [107.08, -60, 207.13], yawDegrees: -64.47 } })
+  assert.ok(measured.warnings.some((issue) => issue.code === 'WORLD_ANCHOR_BELOW_FLOOR'))
+  assert.ok(measured.warnings.some((issue) => issue.code === 'WORLD_ANCHOR_FAR'))
+  assert.ok(Math.abs(measured.placement!.nearestActorDistance! - Math.hypot(80, 2)) < 1e-9)
+  assert.ok(measured.placement!.max[0]! > 107.08 + 70)
+  const anchored = filmPreflight(project, { ...args, worldAnchor: { mode: 'local-origin', pivotCharacterId: clean.characterIds[0], destination: [107.08, -60, 207.13], yawDegrees: -64.47 } })
+  assert.equal(anchored.placement!.nearestActorDistance, 0)
+})
