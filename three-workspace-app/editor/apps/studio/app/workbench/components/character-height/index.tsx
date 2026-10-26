@@ -1,43 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCharacterHeightNotice } from './hooks/useCharacterHeightNotice'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 export function CharacterHeightNotice({ project, selectedNodeId }: { project: UnifiedProject; selectedNodeId: string | null }) {
-  const [heights, setHeights] = useState<Record<string, number>>({})
-  const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    let alive = true
-    const refresh = async () => {
-      try {
-        const response = await fetch('/api/library?characters=1', { cache: 'no-store' })
-        if (!response.ok) return
-        const data = await response.json()
-        if (alive) setHeights(Object.fromEntries((data.characters ?? []).filter((c: { heightBlocks?: number }) => Number.isFinite(c.heightBlocks)).map((c: { charId: string; heightBlocks: number }) => [c.charId, c.heightBlocks])))
-      } catch { /* Library unavailable: scene keeps its saved scale. */ }
-    }
-    void refresh()
-    window.addEventListener('focus', refresh)
-    const timer = window.setInterval(refresh, 15000)
-    return () => { alive = false; window.removeEventListener('focus', refresh); window.clearInterval(timer) }
-  }, [project.projectId, project.revision])
-  const changed = project.scene.content.nodes.filter(node => typeof node.metadata?.libraryCharacterId === 'string' && heights[node.metadata.libraryCharacterId] !== undefined && heights[node.metadata.libraryCharacterId] !== node.metadata.libraryHeightBlocks)
-  const selected = project.scene.content.nodes.find(node => node.id === selectedNodeId && node.type === 'character')
-  const target = Number(selected?.metadata?.libraryHeightBlocks)
-  const factor = Number(selected?.metadata?.libraryHeightScale)
-  const displayed = target > 0 && factor > 0 && selected ? target * selected.transform.scale.y / factor : undefined
-  const update = async () => {
-    setBusy(true); setMessage('')
-    try {
-      const response = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'update-scene-heights', projectId: project.projectId, expectedRevision: project.revision }) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error)
-      window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
-      setMessage('Đã cập nhật chiều cao trong cảnh.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
-    finally { setBusy(false) }
-  }
+  const { changed, selected, displayed, update, busy, message } = useCharacterHeightNotice(project, selectedNodeId)
   return <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 5, background: '#20242cee', padding: 8, borderRadius: 6 }}>
     <small>Lưới: 1 ô = 1 block · vạch đậm mỗi 5 block</small>
     {displayed !== undefined && <div>{selected!.name} · {displayed.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} block</div>}

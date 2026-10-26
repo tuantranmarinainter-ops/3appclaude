@@ -1319,6 +1319,55 @@ export class StudioSession implements StudioView {
     return null
   }
 
+  private timelineClipboardDocument: DirectorDocument | null = null
+  private timelineClipboard: { kind: 'camera' | 'motion' | 'path'; clip: DirectorDocument['content']['timeline']['animation']['motionClips'][number] | DirectorDocument['content']['timeline']['animation']['cameraMotionClips'][number] | DirectorDocument['content']['timeline']['animation']['pathMotionClips'][number] } | null = null
+
+  copyTimelineClip = (kind: 'camera' | 'motion' | 'path', clipId: string): void => {
+    const animation = this.docModel.toContract()?.content.timeline.animation
+    const clips = kind === 'motion' ? animation?.motionClips : kind === 'camera' ? animation?.cameraMotionClips : animation?.pathMotionClips
+    const clip = clips?.find((item) => item.id === clipId)
+    this.timelineClipboard = clip ? { kind, clip: cloneJson(clip) } : null
+    this.timelineClipboardDocument = this.docModel.toContract()
+  }
+
+  pasteTimelineClip = (frame: number): string | null => {
+    const saved = this.timelineClipboard
+    const live = this.docModel.toContract()
+    if (this.writeLocked || !saved || !live || live !== this.timelineClipboardDocument || !Number.isFinite(frame)) return null
+    // Clipboard is a document-local clip snapshot, never an asset import.
+    if (!live.content.nodes.some((node) => node.id === saved.clip.target.nodeId)) return null
+    if (saved.kind === 'motion') {
+      const motion = (saved.clip as DirectorDocument['content']['timeline']['animation']['motionClips'][number]).motion
+      if (!live.content.asset.motionPath.some((entry) => entry.id === motion.assetId)) return null
+    }
+    if (saved.kind === 'path') {
+      const pathNodeId = (saved.clip as DirectorDocument['content']['timeline']['animation']['pathMotionClips'][number]).pathNodeId
+      if (!live.content.nodes.some((node) => node.id === pathNodeId)) return null
+    }
+    const start = Math.max(live.content.timeline.frameStart, Math.round(frame))
+    const clip = { ...cloneJson(saved.clip), id: crypto.randomUUID(), frameStart: start, frameEnd: start + saved.clip.frameEnd - saved.clip.frameStart }
+    const before = snapshotDocState(this.docModel)
+    if (!before) return null
+    const animation = live.content.timeline.animation
+    if (saved.kind === 'motion') animation.motionClips.push(clip as typeof animation.motionClips[number])
+    else if (saved.kind === 'camera') animation.cameraMotionClips.push(clip as typeof animation.cameraMotionClips[number])
+    else animation.pathMotionClips.push(clip as typeof animation.pathMotionClips[number])
+    this.docModel.touch()
+    this.pushDocSnapshot('Nhân bản clip', before)
+    this.select({ kind: 'clip', clipType: saved.kind, clipId: clip.id })
+    return clip.id
+  }
+
+  duplicateTimelineClip = (kind: 'camera' | 'motion' | 'path', clipId: string, frame: number): string | null => {
+    const previous = this.timelineClipboard
+    const previousDocument = this.timelineClipboardDocument
+    this.copyTimelineClip(kind, clipId)
+    const id = this.pasteTimelineClip(frame)
+    this.timelineClipboard = previous
+    this.timelineClipboardDocument = previousDocument
+    return id
+  }
+
   updateMotionClipConfig = (clipId: string, patch: Record<string, number | string | boolean>): void => {
     if (this.writeLocked) return
     const live = this.docModel.toContract()
@@ -1350,9 +1399,13 @@ export class StudioSession implements StudioView {
     }
     const playback = {
       ...old.playback,
-      ...(typeof patch.speed === 'number' ? { speed: Math.max(0.01, patch.speed) } : {}),
+      ...(typeof patch.speed === 'number' && Number.isFinite(patch.speed) ? { speed: Math.min(16, Math.max(0.01, patch.speed)) } : {}),
       ...(typeof patch.loop === 'boolean' ? { loop: patch.loop } : {}),
       ...(typeof patch.loopMode === 'string' ? { loopMode: patch.loopMode } : {}),
+    }
+    if (typeof patch.speed === 'number' && Number.isFinite(patch.speed) && playback.speed !== old.playback.speed) {
+      // Keep the same source span when changing speed; respect neighbouring clips and the shot range.
+      frameEnd = Math.min(nextStart, Math.max(frameStart + 1, frameStart + Math.round((old.frameEnd - old.frameStart) * old.playback.speed / playback.speed)))
     }
     const motion = {
       ...old.motion,
@@ -1688,9 +1741,20 @@ export class StudioSession implements StudioView {
       }
       if (seq !== this.loadSeq) return
       // loadDocument 不会清图，必须先 reset 再 setDoc/load，避免节点 reaction 往旧图加角色。
-      this.engine.reset()
-      this.setDoc(nextDoc, raw)
-      await this.engine.load(nextDoc)
+      const previous = this.docModel.toContract()
+      if (previous && this.engine.ready && this.engine.refreshDocument) {
+        // Preserve the document reference held by Stage and all unchanged model instances.
+        const before = { ...previous, content: previous.content }
+        const hydrated = hydrateSkyColor(nextDoc)
+        const editorial = pruneMissingCameraClips(hydrated)
+        this.docModel.applyContent(editorial ? { ...hydrated, content: { ...hydrated.content, editorial } } : hydrated)
+        this.history.clear()
+        await this.engine.refreshDocument(before)
+      } else {
+        this.engine.reset()
+        this.setDoc(nextDoc, raw)
+        await this.engine.load(nextDoc)
+      }
       if (seq !== this.loadSeq) return
       this.applyFcurvesRaw(raw)
       const nodeIds = new Set(nextDoc.content.nodes.map((node) => node.id))

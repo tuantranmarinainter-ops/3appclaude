@@ -427,6 +427,9 @@ export interface StudioView {
   updateCameraMotionConfig: (clipId: string, patch: Record<string, number | string>) => string | null
   resizeCameraMotionClip: (clipId: string, edge: 'start' | 'end', frame: number) => string | null
   resizePathMotionClip: (clipId: string, edge: 'start' | 'end', frame: number) => string | null
+  copyTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string) => void
+  pasteTimelineClip: (frame: number) => string | null
+  duplicateTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string, frame: number) => string | null
   updateMotionClipConfig: (clipId: string, patch: Record<string, number | string | boolean>) => void
   addCameraFromPreset: (presetId: string, name?: string) => string | null
   canSave: boolean

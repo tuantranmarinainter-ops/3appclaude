@@ -88,6 +88,18 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   private readonly base: string
   private readonly revisions = new Map<string, number>()
   private readonly projects = new Map<string, UnifiedProject>()
+  private readonly pendingSnapshots = new Map<string, UnifiedProject>()
+
+  /** One reload can consume this exact committed revision without fetching it a second time. */
+  async withProjectSnapshot(project: UnifiedProject, reload: () => Promise<void>): Promise<void> {
+    const documentId = project.projectId
+    const snapshot = structuredClone(project)
+    if ((this.revisions.get(documentId) ?? -1) > snapshot.revision) { await reload(); return }
+    this.pendingSnapshots.set(documentId, snapshot)
+    try { await reload() }
+    finally { if (this.pendingSnapshots.get(documentId) === snapshot) this.pendingSnapshots.delete(documentId) }
+  }
+
   saveDocumentState?: (documentId: string, doc: DirectorDocument, fcurves: unknown) => Promise<void>
 
   constructor(source: LocalDocumentSource = 'draft') {
@@ -116,11 +128,14 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   async loadDocument(documentId: string): Promise<DirectorDocument> {
     if (this.base === '/api/unified/projects') {
-      const { project } = await loadUnifiedProject(documentId)
+      const snapshot = this.pendingSnapshots.get(documentId)
+      this.pendingSnapshots.delete(documentId)
+      const project = snapshot && snapshot.revision >= (this.revisions.get(documentId) ?? -1)
+        ? snapshot : (await loadUnifiedProject(documentId)).project
       if (project.type !== 'three-workspace-project' || project.scene.type !== 'biz/scene3d-director-document') throw new Error('Unified project document is invalid')
       this.projects.set(documentId, project)
       this.revisions.set(documentId, project.revision)
-      return project.scene
+      return structuredClone(project.scene)
     }
     const doc = (await fetchJson(`${this.base}/${documentId}`)) as DirectorDocument
     if (doc.type !== 'biz/scene3d-director-document') throw new Error(translateStudio('未知草稿类型: {{type}}', { type: String(doc.type) }))
