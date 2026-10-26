@@ -153,3 +153,20 @@ test('GET exposes capabilities and corrected root without requiring an existing 
     assert.equal((await GET(new Request('http://localhost/api/unified/bbs-install'))).status, 401)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('Forge + Connector profile: official AAA Forge 2.2.3 with BBS 2.7 and addon 2.0 through Connector is eligible', async () => {
+  const root = await fixture()
+  try {
+    await rm(path.join(root, '.fabric'), { recursive: true }); await rm(path.join(root, 'versions/fabric'), { recursive: true })
+    await jar(root, 'bbs-2.7-1.20.1.jar', 'bbs', '2.7-1.20.1')
+    await jar(root, 'bbs-aaaddon-2.0-1.20.1.jar', 'bbs-aaaddon', '2.0-1.20.1')
+    await writeFile(path.join(root, 'mods', 'aaa_particles-forge-1.20.1-2.2.3.jar'), zipSync({ 'META-INF/mods.toml': strToU8('modLoader="javafml"\n[[mods]]\nmodId="aaa_particles"\nversion="2.2.3"\n') }))
+    await writeFile(path.join(root, 'mods', 'Connector-1.0.0-beta.46+1.20.1.jar'), zipSync({ 'META-INF/MANIFEST.MF': strToU8('Implementation-Title: Connector\n') }))
+    const scan = await scanBbsGameCapabilities(root)
+    assert.equal(scan.loader, 'forge-connector')
+    assert.equal(scan.aaa?.loader, 'forge')
+    assert.equal(scan.effectsCompatible, true, scan.issues.join(' | '))
+    await rename(path.join(root, 'mods', 'Connector-1.0.0-beta.46+1.20.1.jar'), path.join(root, 'mods', 'Connector-1.0.0-beta.46+1.20.1.jar.off'))
+    assert.equal((await scanBbsGameCapabilities(root)).effectsCompatible, false, 'plain Forge without Connector stays blocked')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

@@ -1,4 +1,4 @@
-import { realpath, stat } from 'node:fs/promises'
+import { readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 
@@ -94,7 +94,10 @@ export async function scanBbsGameCapabilities(gameDir: string): Promise<BbsGameC
   })
   const find = (ids: string[]) => scan.rows.find((mod) => ids.includes(mod.id)) ?? null
   const bbs = find(['bbs', 'bbs_mod']), aaa = find(['aaa_particles']), addon = find(['bbs-aaaddon'])
-  const connector = !!find(['connector'])
+  // Sinytra Connector's outer jar is a launch service without mods.toml (the mod is nested), so also accept the
+  // enabled jar by name.
+  const connectorJar = (await readdir(path.join(normalized.gameDir, 'mods')).catch(() => [] as string[])).some((name) => /^connector-.*\.jar$/i.test(name))
+  const connector = connectorJar || !!find(['connector', 'connectormod'])
   const forge = scan.forge || connector || !!find(['forge']) || scan.rows.some((mod) => mod.loader === 'forge')
   const loader = forge ? connector ? 'forge-connector' : 'forge' : scan.fabric || !!find(['fabricloader']) ? 'fabric' : 'unknown'
   const loaderVersion = scan.loaderVersions.length === 1 ? scan.loaderVersions[0]! : find(['fabricloader'])?.version ?? null
@@ -108,15 +111,19 @@ export async function scanBbsGameCapabilities(gameDir: string): Promise<BbsGameC
   if (!addon) issues.push('Game chưa có addon AAA tương thích — chặn xuất hiệu ứng để tránh game sập.')
   const conflict = forge && scan.rows.some((mod) => mod.loader === 'fabric' && ['forgeconfigapiport', 'forge_config_api_port'].includes(mod.id))
   if (conflict) issues.push('Forge xung đột forgeconfigapiport-fabric (kể cả jar gói kèm); game có thể không khởi động.')
-  const unsupported = loader !== 'fabric'
+  const versionsEarly = ['2.7', '2.7-1.20.1'].includes(bbs?.version ?? '') && aaa?.version === '2.2.3' && ['2.0', '2.0-1.20.1'].includes(addon?.version ?? '')
+  // User's Forge 47.4.10 + Sinytra Connector instance (2026-10-26): the official AAA Forge 2.2.3 jar-in-jars its own
+  // Architectury, BBS 2.7 and the addon run through Connector; the game boots and plays exported films with it.
+  const forgeProfile = loader === 'forge-connector' && versionsEarly && aaa?.loader === 'forge' && bbs?.loader === 'fabric' && addon?.loader === 'fabric'
+  const unsupported = loader !== 'fabric' && !forgeProfile
   if (unsupported) issues.push(loader === 'forge-connector' ? 'AAA qua Forge + Connector chưa được xác minh; tạm chặn kèm hiệu ứng.' : 'Chưa xác định môi trường Fabric tương thích cho AAA.')
   const versions = ['2.7', '2.7-1.20.1'].includes(bbs?.version ?? '') && aaa?.version === '2.2.3' && ['2.0', '2.0-1.20.1'].includes(addon?.version ?? '')
   const api = find(['fabric-api', 'fabric']), architectury = find(['architectury']), configApi = find(['forgeconfigapiport', 'forge_config_api_port'])
   const dependencies = api?.loader === 'fabric' && architectury?.loader === 'fabric' && architectury.version === '9.2.14' && configApi?.loader === 'fabric' && configApi.version === '8.0.0'
-  if (!dependencies) issues.push('Thiếu Fabric API, Architectury Fabric 9.2.14 hoặc Forge Config API Port Fabric 8.0.0 mà hồ sơ Fabric AAA cần.')
+  if (!dependencies && !forgeProfile) issues.push('Thiếu Fabric API, Architectury Fabric 9.2.14 hoặc Forge Config API Port Fabric 8.0.0 mà hồ sơ Fabric AAA cần.')
   const duplicates = [bbs, aaa, addon].some((mod) => mod && scan.rows.filter((row) => row.id === mod.id).length !== 1)
   if (duplicates) issues.push('Có nhiều bản mod trùng ID; cần giữ một bản tương thích.')
-  const effectsCompatible = !!bbs && /^2\.7(?:[.\-+]|$)/.test(bbs.version) && !!aaa && !!addon && versions && supportedLoader && dependencies && !duplicates && !conflict && !unsupported && scan.errors.length === 0 && [bbs, aaa, addon].every((mod) => mod.loader === 'fabric')
+  const effectsCompatible = !!bbs && /^2\.7(?:[.\-+]|$)/.test(bbs.version) && !!aaa && !!addon && versions && (forgeProfile || supportedLoader && dependencies) && !duplicates && !conflict && !unsupported && scan.errors.length === 0 && (forgeProfile || [bbs, aaa, addon].every((mod) => mod.loader === 'fabric'))
   if (!versions && bbs && aaa && addon) issues.push('Chỉ hỗ trợ hồ sơ BBS 2.7 + AAA 2.2.3 + addon 2.0; phiên bản khác chưa xác minh.')
   return { ...normalized, bbs, aaa, addon, loader, loaderVersion, issues, effectsCompatible }
 }
