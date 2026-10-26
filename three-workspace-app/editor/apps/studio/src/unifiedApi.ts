@@ -19,12 +19,37 @@ export function ensureUnifiedSession(force = false): Promise<void> {
   return sessionPromise
 }
 
-export async function loadUnifiedProject(projectId: string): Promise<{ project: UnifiedProject; history: HistorySummary }> {
+export interface UnifiedProjectState { project: UnifiedProject; history: HistorySummary }
+const projectLoads = new Map<string, { generation: number; promise: Promise<UnifiedProjectState> }>()
+const projectGenerations = new Map<string, number>()
+
+export function invalidateUnifiedProjectReads(projectId: string | undefined): void {
+  if (!projectId) return
+  projectGenerations.set(projectId, (projectGenerations.get(projectId) ?? 0) + 1)
+  projectLoads.delete(projectId)
+}
+
+/** Share only overlapping reads, never retain a completed snapshot. Local writes start a new generation. */
+export function loadUnifiedProject(projectId: string): Promise<UnifiedProjectState> {
+  const generation = projectGenerations.get(projectId) ?? 0
+  const pending = projectLoads.get(projectId)
+  if (pending?.generation === generation) return pending.promise.then((state) => structuredClone(state))
+  const promise = fetchUnifiedProject(projectId, generation).finally(() => {
+    if (projectLoads.get(projectId)?.promise === promise) projectLoads.delete(projectId)
+  })
+  projectLoads.set(projectId, { generation, promise })
+  return promise.then((state) => structuredClone(state))
+}
+
+async function fetchUnifiedProject(projectId: string, generation: number): Promise<UnifiedProjectState> {
   await ensureUnifiedSession()
+  if ((projectGenerations.get(projectId) ?? 0) !== generation) return loadUnifiedProject(projectId)
   let response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' })
   if (response.status === 401) { await ensureUnifiedSession(true); response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' }) }
   if (!response.ok) throw new Error(`Project load failed (${response.status})`)
   const body = await response.json() as { project: UnifiedProject; history: HistorySummary }
+  // A write completed while this read was in flight: do not publish its older snapshot.
+  if ((projectGenerations.get(projectId) ?? 0) !== generation) return loadUnifiedProject(projectId)
   publishApp3Project(body.project)
   return body
 }
@@ -38,20 +63,23 @@ export async function loadUnifiedProjects<T>(): Promise<T> {
 }
 
 export async function sendUnifiedCommand(envelope: CommandEnvelope): Promise<CommandSuccess> {
-  await ensureUnifiedSession()
-  const init: RequestInit = {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(envelope),
-  }
-  let response = await fetch('/api/unified/commands', init)
-  if (response.status === 401) { await ensureUnifiedSession(true); response = await fetch('/api/unified/commands', init) }
-  const body = await response.json() as CommandSuccess | { error?: { code?: string; message?: string } }
-  if (!response.ok || !('ok' in body) || body.ok !== true) {
-    const failure = body as { error?: { code?: string; message?: string } }
-    throw new Error(failure.error?.message ?? failure.error?.code ?? `Command failed (${response.status})`)
-  }
-  return body
+  invalidateUnifiedProjectReads(envelope.projectId)
+  try {
+    await ensureUnifiedSession()
+    const init: RequestInit = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(envelope),
+    }
+    let response = await fetch('/api/unified/commands', init)
+    if (response.status === 401) { await ensureUnifiedSession(true); response = await fetch('/api/unified/commands', init) }
+    const body = await response.json() as CommandSuccess | { error?: { code?: string; message?: string } }
+    if (!response.ok || !('ok' in body) || body.ok !== true) {
+      const failure = body as { error?: { code?: string; message?: string } }
+      throw new Error(failure.error?.message ?? failure.error?.code ?? `Command failed (${response.status})`)
+    }
+    return body
+  } finally { invalidateUnifiedProjectReads(envelope.projectId) }
 }
 
 export interface UnifiedJobFile { id: string; name: string; mimeType: string; sizeBytes: number; sha256: string }

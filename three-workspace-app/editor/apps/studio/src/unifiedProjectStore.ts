@@ -1,3 +1,4 @@
+import { cleanupUnusedProjectResources } from './unifiedProjectCleanup'
 import { planSplitShots, readEpisode } from './splitShots'
 import { linkSplitShotAssets } from './splitShotAssets'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
@@ -266,13 +267,13 @@ export async function listUnifiedProjects(): Promise<Array<{ id: string; name: s
 
 function requestHash(envelope: CommandEnvelope): string { return createHash('sha256').update(JSON.stringify(envelope)).digest('hex') }
 
-async function previousRequest(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess | null> {
+async function previousRequest(envelope: CommandEnvelope, hash: string, recover = true): Promise<CommandSuccess | null> {
   const previous = await readJson<RequestRecord>(requestPath(envelope.requestId))
   if (previous) {
     if (previous.hash !== hash) throw new UnifiedStoreError('REQUEST_ID_CONFLICT', 'Request ID was already used with a different payload', 409)
     if (previous.response) return previous.response
   }
-  if (envelope.projectId) {
+  if (recover && envelope.projectId) {
     const project = await readJson<UnifiedProject>(projectPath(envelope.projectId))
     const record = project && await readJson<HistoryRecord>(historyPath(envelope.projectId, project.revision))
     if (record?.requestId === envelope.requestId) {
@@ -946,7 +947,42 @@ export async function executeUnifiedCommand(raw: unknown): Promise<CommandSucces
   return withRequestLock(envelope.requestId, () => executeLockedCommand(envelope, hash))
 }
 
+async function executeHistoryCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  // Keep cached replay available even after later commands or deletion of the project.
+  const cached = await previousRequest(envelope, hash, false)
+  if (cached) return cached
+  if (!envelope.projectId) throw new UnifiedStoreError('VALIDATION_FAILED', 'projectId is required', 400)
+  const id = envelope.projectId
+  try {
+    return await withWriter(id, async () => {
+      // Recover a commit whose project was published before its request cache was saved.
+      const replay = await previousRequest(envelope, hash)
+      if (replay) return replay
+      const current = await readUnifiedProject(id)
+      if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'History commands do not accept arguments', 400)
+      const rootConflict = findRootMotionConflict(current.scene)
+      if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
+      if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
+      if (envelope.expectedRevision !== current.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed; reload before saving', 409, { expected: envelope.expectedRevision, actual: current.revision })
+      const index = await historyIndex(current)
+      const undo = envelope.command === 'history.undo'
+      if (undo ? index.cursor <= 0 : index.cursor >= index.entries.length) throw new UnifiedStoreError('VALIDATION_FAILED', undo ? 'Undo history is empty' : 'Redo history is empty', 400)
+      const item = await readJson<HistoryRecord>(historyPath(id, index.entries[undo ? index.cursor - 1 : index.cursor]!))
+      if (!item) throw new UnifiedStoreError('IO_FAILED', undo ? 'Undo snapshot is missing' : 'Redo snapshot is missing', 500)
+      const next = structuredClone(undo ? item.before.project : item.after.project)
+      next.revision = current.revision + 1
+      if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
+      const nextIndex = { revision: next.revision, entries: index.entries, cursor: index.cursor + (undo ? -1 : 1) }
+      return commit(envelope, hash, current, next, nextIndex, undo ? { undoneRequestId: item.requestId } : { redoneRequestId: item.requestId }, ['scene'])
+    })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new UnifiedStoreError('NOT_FOUND', 'Project not found or invalid', 404)
+    throw error
+  }
+}
+
 async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  if ((envelope.command === 'history.undo' || envelope.command === 'history.redo') && !envelope.dryRun) return executeHistoryCommand(envelope, hash)
   const replay = await previousRequest(envelope, hash)
   if (replay) return replay
   let sceneReplacement: { document: UnifiedProject['scene']; fcurves: unknown; characters: Record<string, Character>; bindings: Record<string, MotionBinding>; changedNodeIds: string[]; cloneMaps: Array<Record<string, Record<string, string>>> } | null = null
@@ -1664,7 +1700,8 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true,
       ...(audioCueChange.type === 'remove' ? { cueId: audioCueChange.id, removed: true } : { cue: audioCueChange.cue }) })
   }
-  if (!['film.anchor.location.set', 'film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'vfx.cue.add', 'vfx.cue.update', 'vfx.cue.remove', 'audio.cue.add', 'audio.cue.update', 'audio.cue.remove', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'library.link', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (envelope.command === 'project.cleanup' && (envelope.args.confirmed !== true || Object.keys(envelope.args).some((key) => key !== 'confirmed'))) throw new UnifiedStoreError('VALIDATION_FAILED', 'Cleanup requires explicit user confirmation', 400)
+  if (!['project.cleanup', 'film.anchor.location.set', 'film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'vfx.cue.add', 'vfx.cue.update', 'vfx.cue.remove', 'audio.cue.add', 'audio.cue.update', 'audio.cue.remove', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'library.link', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -2348,7 +2385,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'project.cleanup' || envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(cameraMotionChange?.type === 'add' ? { clipId: cameraMotionChange.clip.id } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -2365,8 +2402,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
-      if (envelope.command === 'film.anchor.location.set') {
+    if (envelope.command === 'project.cleanup' || envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+      if (envelope.command === 'project.cleanup') {
+        const cleanup = cleanupUnusedProjectResources(next)
+        changedIds = [...cleanup.removedMotionIds, ...cleanup.removedAssetIds, ...cleanup.removedConversionKeys]
+        result = { cleanup }
+      } else if (envelope.command === 'film.anchor.location.set') {
         if (!filmFrameExtensions) throw new UnifiedStoreError('VALIDATION_FAILED', 'Điểm neo chưa được kiểm tra', 400)
         next.extensions = filmFrameExtensions as UnifiedProject['extensions']
         changedIds = ['film-anchor-locations']
