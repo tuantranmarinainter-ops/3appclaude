@@ -104,3 +104,25 @@ Test Java xuất hai actor dùng chung một BOBJ rồi đọc lại `.dat` bằ
 ## Bàn giao khi dừng theo quota
 
 Code hiện có được mở PR nháp, chưa tự merge. Chi tiết file, quyết định, kết quả kiểm tra và việc còn dở: [S1-HANDOFF-2026-10-26.md](S1-HANDOFF-2026-10-26.md). Studio282PASS/7SKIP/1FAIL baseline Blender;31 test tập trung PASS; builder627PASS/1SKIP; Python CLI/MCP + native Java56PASS; build/typecheck/lint/offline PASS. Gate model thật, film đo, Samba và game còn NOT_RUN.
+
+## Đính chính và nghiệm thu S1 trên Windows (Claude, 2026-10-26, sau merge #166)
+
+**Đính chính:** mục "Bổ sung của Claude" ở trên đo Y min/max của đỉnh BOBJ **thô** (chưa áp armature rest), nên kết luận
+"Gỗ Xưa ≈ 2,86 block" là **sai**. Đo bằng `buildBobjModel(...).report` (chiều cao sau khi áp rest pose, cách BBS hiển thị):
+
+| Model | unitMeters | floor | Cao trong BBS ở form scale 1 |
+| --- | --- | --- | --- |
+| Gỗ Xưa (thư viện) | 0,4915394 | −0,030 | **3,865 block** |
+| Chirity (thư viện = bản trong game) | 0,4915394 | −0,020 | 4,985 block |
+| Đen MC20 Emoticons | 1 | −0,016 | 2,032 block |
+
+Con Verity tím trong ảnh đo của người dùng (≈ 3,56 block, dáng khom) cùng hình học với Gỗ Xưa (3,865 khi đứng thẳng) — khớp.
+Vì vậy mặc định Verity **3,6** ≈ cỡ gốc Gỗ Xưa, công thức `formScale = heightBlocks / (heightMeters/unitMeters)` của S1 đúng.
+
+**Nghiệm thu (bản sao Tập 15 + thư viện `lib-a9`, code main `13f031e`):**
+- `update-scene-heights`: Đen scale ×0,886 (2,0315 → 1,8), Gỗ Xưa ×1,895 (1,90 → 3,6).
+- `stage.worldAabb` trong App 2: Đen **1,800** (chân 0,000), Gỗ Xưa **3,600** — PASS. Gỗ Xưa không có clip (tư thế gốc) có minY −0,607 trong app (backlog B24).
+- Film đo `S1-do-chieu-cao` (T-pose, không động tác, đặt bằng F3+C 107.08 −60 207.13 yaw −64.47, hai nhân vật trước mặt 4 block),
+  đọc lại `.dat` bằng BbsCodec: Đen `form.transform.s=0,8860448`, `t.y=0,01396` → 1,800 block; Gỗ Xưa `s=0,9313379`,
+  `t.y=0,02799` → 3,600 block; cả hai Y = −60 (mặt đất). Đã cài vào world "Thế giới mới (1)" (install `2afa6e8b…`).
+- Gate trong game: **NOT_RUN** (chờ người dùng mở film `S1-do-chieu-cao`).
