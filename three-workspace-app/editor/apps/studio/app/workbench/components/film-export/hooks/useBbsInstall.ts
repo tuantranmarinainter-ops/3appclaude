@@ -117,6 +117,33 @@ export function useBbsInstall(vi: boolean) {
     finally { setBusy(false) }
   }
 
+  /** B27: install a finished export job directly (no ZIP picker); the button itself is the user's confirmation. */
+  const installJob = async (projectId: string, jobId: string): Promise<string> => {
+    const folder = gameDirRef.current, world = worldRef.current
+    if (!folder.trim() || !world) throw new Error(vi ? 'Chọn thư mục game và world trong mục Cài vào game.' : 'Choose a game folder and world under Install into game.')
+    setBusy(true); setError(''); setPlan(null); setStatus(vi ? 'Đang xem trước gói vừa xuất…' : 'Previewing the exported package…')
+    try {
+      await ensureUnifiedSession()
+      const post = (url: string, body: unknown) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const call = async (url: string, body: unknown) => { let response = await post(url, body); if (response.status === 401) { await ensureUnifiedSession(true); response = await post(url, body) } return response }
+      const planned = (await responseBody<{ plan: InstallPlan }>(await call('/api/unified/bbs-install/plan-job', { projectId, jobId, gameDir: folder, worldName: world }), vi)).plan
+      const count = planned.files.filter((file) => file.status === 'install').length
+      let message: string
+      if (!count) message = vi ? `Game đã có đủ ${planned.files.length} file của gói ${planned.packageName}; không cần cài thêm.` : `The game already has all ${planned.files.length} files of ${planned.packageName}.`
+      else {
+        setStatus(vi ? `Đang cài ${count} file…` : `Installing ${count} files…`)
+        const result = (await responseBody<{ result: { installed: string[]; skipped: string[]; conflicts: string[] } }>(await call('/api/unified/bbs-install/apply', { planId: planned.planId }), vi)).result
+        message = vi
+          ? `Đã cài vào world ${planned.worldName}: ${result.installed.length} file mới · bỏ qua ${result.skipped.length} · giữ nguyên ${result.conflicts.length} file khác nội dung`
+          : `Installed into ${planned.worldName}: ${result.installed.length} new · skipped ${result.skipped.length} · kept ${result.conflicts.length} different files`
+      }
+      setStatus(message)
+      await refresh(folder)
+      return message
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus(''); throw cause }
+    finally { setBusy(false) }
+  }
+
   const uninstall = async (installId: string) => {
     if (busy) return
     if (!window.confirm(vi ? 'Chỉ gỡ file không thay đổi trong nhật ký cài đặt? File đã sửa sẽ được giữ.' : 'Remove only unchanged files recorded by this install? Modified files will be preserved.')) return
@@ -133,5 +160,5 @@ export function useBbsInstall(vi: boolean) {
     finally { setBusy(false) }
   }
 
-  return { capabilities, gameDir, setGameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, uninstall }
+  return { capabilities, gameDir, setGameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, installJob, uninstall }
 }

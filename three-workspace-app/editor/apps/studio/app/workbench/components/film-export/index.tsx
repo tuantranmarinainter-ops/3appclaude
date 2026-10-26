@@ -88,6 +88,11 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
         {state.canUndoCreateCameraShot && <button type="button" onClick={() => void state.undoCreateCameraShot()} disabled={state.busy || state.creatingShot}>{vi ? 'Hoàn tác sửa camera' : 'Undo camera repair'}</button>}
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : state.checkingPreflight ? (vi ? 'Đang kiểm tra…' : 'Checking…') : (vi ? 'Xuất gói' : 'Export package')}</button>
+          <button type="button" className="primary" onClick={() => void state.exportFilm({ install: (job) => install.installJob(project.projectId, job.jobId) })}
+            disabled={!state.canExport || install.busy || !install.gameDir.trim() || !install.worldName}
+            title={!install.gameDir.trim() || !install.worldName ? (vi ? 'Chọn thư mục game và world ở mục "Cài vào game" bên dưới.' : 'Choose a game folder and world under "Install into game" below.') : undefined}>
+            {vi ? `Xuất và cài vào game${install.worldName ? ` · ${install.worldName}` : ''}` : `Export and install${install.worldName ? ` · ${install.worldName}` : ''}`}
+          </button>
           {state.busy && state.activeJobId && <button type="button" onClick={() => void state.cancel()}>{vi ? 'Hủy' : 'Cancel'}</button>}
           {!state.busy && state.completedJob?.state === 'succeeded' && <button type="button" onClick={() => void state.saveAgain(state.completedJob!)}>{vi ? 'Lưu lại…' : 'Save again…'}</button>}
           {state.status && <span role="status" aria-live="polite">{state.status}</span>}
