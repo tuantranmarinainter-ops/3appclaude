@@ -12,12 +12,13 @@ import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
 
-export function useFilmExport(project: UnifiedProject) {
+export function useFilmExport(project: UnifiedProject, capabilities: import('../../../../../src/bbsGameCapabilities').BbsGameCapabilities | null) {
   const vi = useStudioLocale() === 'vi'
   const characters = Object.values(project.characters)
   const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
   const sequences = project.scene.content.editorial?.sequences ?? []
   const [effectsPolicy, setEffectsPolicy] = useState<FilmEffectsPolicy>({ mode: 'omit' })
+  useEffect(() => { setEffectsPolicy({ mode: 'omit' }) }, [capabilities])
   const [worldAnchor, setWorldAnchor] = useState<FilmWorldAnchor>({ mode: 'local-origin', destination: [0, 64, 0] })
   const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
