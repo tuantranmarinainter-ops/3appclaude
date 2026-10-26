@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useHostControlsDock } from './hooks/useHostControlsDock'
 import { useSilhouetteSync } from './hooks/useSilhouetteSync'
+import { app3HeightHint } from '../../../../src/app3Height'
 import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
@@ -115,6 +116,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       const response = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(asset.id)}/source`)
       if (!response.ok) throw new Error(`Không tải được model nhân vật (HTTP ${response.status}).`)
       const bytes = await response.arrayBuffer()
+      const height = app3HeightHint(project.scene.content.nodes.find((node) => node.id === character.nodeId)?.metadata)
       let nativeProject: Record<string, unknown> | undefined
       let nextClipId = ''
       if (existingMotionId) {
@@ -126,7 +128,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         const motionBytes = await motionResponse.arrayBuffer()
         const clip = Object.values(project.bindings).find((binding) => binding.motionId === existingMotionId && binding.characterId === characterId)
         nextClipId = clip?.clipId ?? ''
-        const value: { bytes: ArrayBuffer; name: string; nativeProject?: Record<string, unknown> } = { bytes: motionBytes, name: `${motionAsset.displayName}.glb` }
+        const value: { bytes: ArrayBuffer; name: string; heightBlocks?: number; nativeProject?: Record<string, unknown> } = { heightBlocks: height?.heightBlocks, bytes: motionBytes, name: `${motionAsset.displayName}.glb` }
         if (motion.edit) {
           const editResponse = await fetch(`/api/unified/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(motionAsset.id)}/nativeEdit-${motion.edit.sha256}`)
           if (!editResponse.ok) throw new Error('Không tải lại được dữ liệu chỉnh sửa native.')
@@ -135,7 +137,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         await request('open', value)
       } else {
         const extension = asset.source.mediaType === 'application/vnd.autodesk.fbx' ? '.fbx' : '.glb'
-        await request('open', { bytes, name: `${asset.displayName}${extension}` })
+        await request('open', { bytes, name: `${asset.displayName}${extension}`, heightBlocks: height?.heightBlocks })
       }
       setMotionId(existingMotionId ?? '')
       setClipId(nextClipId)

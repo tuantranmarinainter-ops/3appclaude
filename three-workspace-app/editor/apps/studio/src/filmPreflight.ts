@@ -1,3 +1,4 @@
+import { filmCharacterHeight } from './filmCharacterHeight'
 import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
@@ -239,7 +240,7 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
     const seenTransformCodes = new Set<string>()
     for (const sample of samples) {
       if (!sample.actorWorldMatrix) continue
-      for (const transformIssue of inspectFilmActorTransform(sample.actorWorldMatrix, 0).issues) {
+      for (const transformIssue of inspectFilmActorTransform(sample.actorWorldMatrix, 0, undefined, filmCharacterHeight(project, character.nodeId, args.range.startFrame).actorScale).issues) {
         if (seenTransformCodes.has(transformIssue.code)) continue
         seenTransformCodes.add(transformIssue.code)
         const localized: Record<string, { code: string; vi: string; en: string }> = {

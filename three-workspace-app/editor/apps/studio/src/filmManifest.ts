@@ -15,7 +15,10 @@ export interface ConvertedFilmModelProfile {
   textureRequired: boolean
   files: Array<{ sourcePath: string; targetPath: string; sha256: string }>
   /** In-memory context for an original library BOBJ. Never serialized into the worker manifest. */
-  originalRig?: { bobj: string; wingAction?: string; nativeOnly?: boolean }
+  originalRig?: { bobj: string; wingAction?: string; nativeOnly?: boolean; sourcePositionScale?: number }
+  /** BBS FS 2.7 Form.transform.s/t; model bytes and native bone coordinates stay immutable. */
+  formScale?: number
+  formOffsetY?: number
 }
 
 const HASH = /^[a-f0-9]{64}$/
@@ -31,7 +34,7 @@ function fail(message: string): never { throw new TypeError(message) }
 export const FILM_MODEL_FACING_OFFSET = 180
 
 export interface FilmActorTransformIssue { code: string; message: string }
-export function inspectFilmActorTransform(matrixValues: number[], tick: number, priorYaw?: number): { issues: FilmActorTransformIssue[]; transform?: { tick: number; x: number; y: number; z: number; pitch: number; yaw: number } } {
+export function inspectFilmActorTransform(matrixValues: number[], tick: number, priorYaw?: number, expectedScale = 1): { issues: FilmActorTransformIssue[]; transform?: { tick: number; x: number; y: number; z: number; pitch: number; yaw: number } } {
   const issues: FilmActorTransformIssue[] = []
   const add = (code: string, message: string) => issues.push({ code, message })
   if (!Array.isArray(matrixValues) || matrixValues.length !== 16 || matrixValues.some((value) => !Number.isFinite(value))) {
@@ -43,7 +46,7 @@ export function inspectFilmActorTransform(matrixValues: number[], tick: number, 
   matrix.decompose(position, rotation, scale)
   const rebuilt = new Matrix4().compose(position, rotation, scale)
   if (!rebuilt.elements.every((value, index) => Math.abs(value - matrix.elements[index]!) <= 1e-6 * Math.max(1, Math.abs(value), Math.abs(matrix.elements[index]!)))) add('TRANSFORM_SHEAR', 'Film actor transform contains shear')
-  if (scale.toArray().some((value) => value <= 0 || Math.abs(value - 1) > 1e-6)) add('TRANSFORM_SCALE', 'Film export requires unit actor scale; bake actor scale into the converted model first')
+  if (scale.toArray().some((value) => value <= 0 || !Number.isFinite(expectedScale) || expectedScale <= 0 || Math.abs(value - expectedScale) > 1e-6 * Math.max(1, expectedScale))) add('TRANSFORM_SCALE', 'Film export requires unit actor scale; bake actor scale into the converted model first')
   const forward = new Vector3(0, 0, 1).applyQuaternion(rotation)
   const horizontal = Math.hypot(forward.x, forward.z)
   const yaw = horizontal < 1e-10 ? priorYaw ?? 0 : Math.atan2(-forward.x, forward.z) * 180 / Math.PI
@@ -56,8 +59,8 @@ export function inspectFilmActorTransform(matrixValues: number[], tick: number, 
   return { issues, ...(issues.length ? {} : { transform: { tick, x: values[0]!, y: values[1]!, z: values[2]!, pitch: values[3]!, yaw: values[4]! } }) }
 }
 
-function actorTransform(matrixValues: number[], tick: number, priorYaw?: number) {
-  const result = inspectFilmActorTransform(matrixValues, tick, priorYaw)
+function actorTransform(matrixValues: number[], tick: number, priorYaw?: number, expectedScale = 1) {
+  const result = inspectFilmActorTransform(matrixValues, tick, priorYaw, expectedScale)
   if (result.issues.length || !result.transform) fail(result.issues[0]?.message ?? 'Film actor matrix is invalid')
   return result.transform
 }
@@ -71,6 +74,7 @@ function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][n
   if ((!profile.originalRig && profile.bones.length !== model.sourceBones.length) || profile.bones.some((bone) => !bone || typeof bone.name !== 'string' ||
       !Array.isArray(bone.bobjRestMatrixRowMajor) || bone.bobjRestMatrixRowMajor.length !== 16 ||
       bone.bobjRestMatrixRowMajor.some((value) => !Number.isFinite(value)))) fail(`Converted BOBJ profile is incomplete for Character ${model.characterId}`)
+  if (profile.formScale !== undefined && (!Number.isFinite(profile.formScale) || profile.formScale <= 0 || profile.formScale > 1000) || profile.formOffsetY !== undefined && !Number.isFinite(profile.formOffsetY)) fail('Converted BOBJ height transform is invalid')
   const sourceNames = new Set(model.sourceBones.map((bone) => bone.name))
   if (!profile.originalRig && (profile.bones.some((bone) => bone.sourceName !== undefined && (typeof bone.sourceName !== 'string' || !sourceNames.has(bone.sourceName))) ||
       new Set(profile.bones.map((bone) => bone.sourceName ?? bone.name)).size !== profile.bones.length)) fail(`Converted BOBJ source bone mapping is invalid for Character ${model.characterId}`)
@@ -89,7 +93,7 @@ function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][n
 type PoseKey = { tick: number; t: [number, number, number]; s: [number, number, number]; r: [number, number, number]; r2: [0, 0, 0]; fix: 0; color: -1; lighting: 0 }
 
 /** Bake native BOBJ samples directly, or invert canonical Mixamo samples through the original Verity hierarchy. */
-export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean }) {
+export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean; sourcePositionScale?: number }) {
   const model = input.models[modelIndex]!
   const armature = parseBobjArmature(original.bobj)
   const modelReport = buildBobjModel(parseBobjModel(original.bobj)).report
@@ -114,6 +118,9 @@ export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: nu
     .multiply(new Matrix4().makeTranslation(0, groundUnits * modelReport.unitMeters, 0))
   let duration = 1
   for (const group of nativeAction?.groups.values() ?? []) for (const channel of group.channels) for (const key of channel.keys) duration = Math.max(duration, key.t)
+  const positionScale = original.sourcePositionScale ?? 1
+  if (!(positionScale > 0) || !Number.isFinite(positionScale)) fail('Original BOBJ source position scale must be positive')
+  const scaledPosition = (matrix: Matrix4) => { matrix.elements[12]! *= positionScale; matrix.elements[13]! *= positionScale; matrix.elements[14]! *= positionScale; return matrix }
   const projected = input.frames.map((frame) => {
     const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
     if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
@@ -123,12 +130,12 @@ export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: nu
       const worlds = new Map(armature.bones.map((bone) => {
         const value = sampled.get(bobjModelNodeName(bone.name))
         if (!value) fail(`Film sample is missing original bone ${bone.name}`)
-        return [bone.name, wrapperInverse.clone().multiply(actorInverse).multiply(new Matrix4().fromArray(value.worldMatrix))] as const
+        return [bone.name, wrapperInverse.clone().multiply(scaledPosition(actorInverse.clone().multiply(new Matrix4().fromArray(value.worldMatrix))))] as const
       }))
       return new Map(armature.bones.map((bone) => [bone.name, bone.name === 'Jaw' ? restLocal.get(bone.name)!.clone() :
         bone.parent ? worlds.get(bone.parent)!.clone().invert().multiply(worlds.get(bone.name)!) : worlds.get(bone.name)!]))
     }
-    const solverWorlds = new Map(sample.bones.map((bone) => [bone.name, actorInverse.clone().multiply(new Matrix4().fromArray(bone.worldMatrix))]))
+    const solverWorlds = new Map(sample.bones.map((bone) => [bone.name, scaledPosition(actorInverse.clone().multiply(new Matrix4().fromArray(bone.worldMatrix)))]))
     const native = new Map(evaluateBobjAction(armature, nativeAction!, frame.tick % duration).map((bone) => [bone.name, new Matrix4().fromArray([...bone.worldMatrix])]))
     const wingLocals = new Map<string, Matrix4>()
     for (const bone of armature.bones.filter((item) => item.name.startsWith('Wing'))) {
@@ -197,7 +204,7 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const transformSamples = input.frames.map((frame) => {
       const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
       if (!sample) fail(`Film sample is missing Character ${model.characterId}`)
-      const transform = actorTransform(sample.actorWorldMatrix, frame.tick, previousYaw)
+      const transform = actorTransform(sample.actorWorldMatrix, frame.tick, previousYaw, model.actorScale ?? 1)
       previousYaw = transform.yaw
       return { ...transform, yaw: transform.yaw + facingOffset }
     })
@@ -205,6 +212,7 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const nativeTopology = original && parseBobjArmature(original.bobj).bones.every((bone) => model.sourceBones.some((source) => source.name === bobjModelNodeName(bone.name)))
     const poseTracks = original ? projectOriginalVerityPoseTracks(input, modelIndex, original) : bakedByCharacter.get(model.characterId)!.poseTracks
     return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples, poseTracks,
+      ...((profile.formScale ?? model.actorScale ?? 1) !== 1 || profile.formOffsetY ? { formScale: profile.formScale ?? model.actorScale ?? 1, formOffsetY: profile.formOffsetY ?? 0 } : {}),
       ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] } : {}) }
   })
   return {

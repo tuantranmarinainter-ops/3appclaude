@@ -1,3 +1,4 @@
+import { app3HeightHint } from './app3Height'
 import { spawn } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -73,7 +74,8 @@ export async function executeApp3Artifacts(project:UnifiedProject,command:string
   const bytes=await readFile(action.glbPath),target=await resolveUnifiedAssetFile(project,characterAsset.id,'source')
   const glbSha256=createHash('sha256').update(bytes).digest('hex'),characterSha256=createHash('sha256').update(target.bytes).digest('hex')
   if(characterSha256!==characterAsset.source.sha256)fail('IDENTITY_MISMATCH')
-  const proof:App3LibraryActionProof={actionUuid:action.uuid,characterId:character.id,characterAssetId:characterAsset.id,characterSha256,packId:action.packId,glbSha256,glbAnimationIndex:action.glbAnimationIndex,name:formatBilingual(action.name,action.nameVi)}
+  const node=project.scene.content.nodes.find((item)=>item.id===character.nodeId),height=app3HeightHint(node?.metadata)
+  const proof:App3LibraryActionProof={...(height?{heightBlocks:height.heightBlocks}:{}),actionUuid:action.uuid,characterId:character.id,characterAssetId:characterAsset.id,characterSha256,packId:action.packId,glbSha256,glbAnimationIndex:action.glbAnimationIndex,name:formatBilingual(action.name,action.nameVi)}
   return executeApp3Bridge(await freshProject(project,fresh),command,args,requestId,dryRun,expectedRevision,proof)
  }
  if(command==='app3.command.submit'&&args.tool==='shotOpen'){

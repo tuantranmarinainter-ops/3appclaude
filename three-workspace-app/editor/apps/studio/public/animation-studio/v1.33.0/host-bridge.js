@@ -3,6 +3,24 @@
   let savedSnapshot = ''
   let lastDirty = null
   let localActive = true
+  let displayHeight = null
+  let displayRoot = null
+  function syncDisplayHeight() {
+    const studio = window.__studio, rig = studio?.rig?.()
+    if (!displayHeight || !rig || rig.root !== displayRoot || !(rig.height > 0)) return
+    for (const view of studio.editorViews?.() || [studio.view]) {
+      if (!view?.wrapper || view !== studio.view && view.rig !== rig) continue
+      view.wrapper.scale.setScalar(displayHeight / rig.height)
+      view.wrapper.updateMatrixWorld(true)
+      view.dirty = true
+    }
+  }
+  function setDisplayHeight(height) {
+    if (height !== undefined && (!Number.isFinite(height) || height <= 0)) throw Error('Chiều cao nhân vật không hợp lệ')
+    displayHeight = height ?? null
+    displayRoot = window.__studio?.rig?.()?.root ?? null
+    syncDisplayHeight()
+  }
   let loadedSha = null
   let loadedRig = null
   let localBinding = null
@@ -163,6 +181,7 @@
     if(!studio.shot?.openZip)throw Error('CONTRACT_UNSUPPORTED')
     if(studio.state.draft||studio.state.dirty&&JSON.stringify(studio.serialized(false))!==savedSnapshot&&savedSnapshot)throw Error('UNSAVED_CHANGES')
     if(await studio.shot.openZip(bytes,{interactive,blank})===false)throw Error('OPEN_CANCELLED')
+    setDisplayHeight(studio.shot.session?.character?.heightBlocks)
     savedSnapshot=JSON.stringify(studio.serialized(false))
     return shotIdentity()
   }
@@ -215,6 +234,7 @@
             await verify();assertClean()
             const combined=composeLibraryAction(characterBytes,actionBytes,proof.glbAnimationIndex)
             await window.__studio.installAsset(combined,`${proof.name}.glb`,true)
+            setDisplayHeight(proof.heightBlocks)
             loadedSha=await digest(combined);loadedRig=editorIdentity();savedSnapshot=JSON.stringify(window.__studio.serialized(false))
             await verify(true)
             return {result:{ok:true,value:{actionUuid:proof.actionUuid,characterId:proof.characterId,characterAssetId:proof.characterAssetId,glbAnimationIndex:proof.glbAnimationIndex,glbSha256:proof.glbSha256}}}
@@ -300,6 +320,7 @@
         await resetLocal(); loadedSha = null; loadedRig = null
         await studio.installAsset(value.bytes, value.name, true)
         if (value.nativeProject) await studio.loadProject(value.nativeProject)
+        setDisplayHeight(value.heightBlocks)
         savedSnapshot = JSON.stringify(studio.serialized(false))
         loadedSha = await digest(value.bytes); loadedRig = editorIdentity()
         await bindLocal().catch(e => { localError = e.message })
@@ -337,6 +358,7 @@
   setInterval(() => {
     const studio = window.__studio
     if (!studio?.ready) return
+    syncDisplayHeight()
     const current = JSON.stringify(studio.serialized(false))
     const dirty = !!studio.state.draft || !!studio.state.dirty && current !== savedSnapshot
     if (dirty !== lastDirty) {

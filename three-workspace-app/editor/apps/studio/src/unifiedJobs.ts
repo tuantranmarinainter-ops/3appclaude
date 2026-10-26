@@ -1,3 +1,4 @@
+import { originalFilmHeightTransform } from './filmCharacterHeight'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
 import { collectFilmAaaAssets, writeFilmAaaAssets } from './filmAaaAssets'
 import { filmSceneWorldMatrices } from './filmSceneWorld'
@@ -143,6 +144,10 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
   const hidden = new Set(Array.isArray(metadata.libraryHiddenObjects) ? metadata.libraryHiddenObjects.filter((item): item is string => typeof item === 'string') : [])
   const parsedModel = parseBobjModel(bobj)
   const modelReport = buildBobjModel(parsedModel).report
+  const heightCalibrated = typeof model.heightBlocks === 'number' && model.heightBlocks > 0 && Number.isFinite(model.heightBlocks)
+  if (heightCalibrated && !(modelReport.heightMeters > 0)) throw new TypeError('Original BOBJ has no measurable height')
+  const heightTransform = heightCalibrated ? originalFilmHeightTransform(modelReport.heightMeters, modelReport.unitMeters, modelReport.floorNative, model.heightBlocks!, model.actorScale ?? 1) : { formScale: 1, formOffsetY: 0, sourcePositionScale: 1 }
+  const { formScale, formOffsetY, sourcePositionScale } = heightTransform
   const objects = modelReport.objects
   const byObject = new Map(refs.map((item) => [item.object, item]))
   const helpers = new Set(modelReport.helperObjects)
@@ -171,7 +176,8 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
     bones: armature.bones.map((bone) => ({ name: bone.name, parent: bone.parent,
       bobjRestMatrixRowMajor: new Matrix4().fromArray([...bone.restWorld]).transpose().toArray() })),
     actions: actionNames, textureRequired: files.length > 1, files,
-    originalRig: { bobj, wingAction, ...(character.baseModel.rig !== 'verity' ? { nativeOnly: true } : {}) } }
+    ...(heightCalibrated ? { formScale, formOffsetY } : {}),
+    originalRig: { bobj, wingAction, ...(heightCalibrated ? { sourcePositionScale } : {}), ...(character.baseModel.rig !== 'verity' ? { nativeOnly: true } : {}) } }
 }
 
 /** Apply a library skin after the shared GLB conversion, keeping the converted BOBJ bytes shared. */

@@ -258,3 +258,35 @@ for (const constant of [false,true]) test(`Result round trip (${constant ? 'cons
   const bad={...files,'result.json':jsonBytes({...result,baseShotSha256:'0'.repeat(64)})}
   assert.ok(validateResult(bad,shotFiles).some(i=>i.code==='SHA256_MISMATCH'))
 })
+
+
+test('S1 shot keeps canonical GLB bytes while carrying calibrated display height', async () => {
+  const { createShotPackage } = await import('../src/shotExchange')
+  const { validateShot } = await import('../src/shotPackage')
+  const fixture = await shotFixture(),project=structuredClone(fixture.project),id=fixture.characters[0]!
+  const options={cameraNodeId:'camera_1',frameStart:0,frameEnd:fixture.frameEnd,editableCharacterIds:[id]}
+  const baseline=await createShotPackage(project,options)
+  const node=project.scene.content.nodes.find((item)=>item.id===project.characters[id]!.nodeId)!
+  node.metadata={...node.metadata,libraryHeightBlocks:3.6,librarySourceHeightMeters:1.8,libraryHeightScale:2}
+  node.transform.scale={x:2,y:2,z:2}
+  const calibrated=await createShotPackage(project,options)
+  const actor=calibrated.shot.characters.find((item)=>item.characterId===id)!
+  assert.equal(actor.heightBlocks,3.6);assert.ok(actor.heightScale!>0)
+  assert.deepEqual(calibrated.files[actor.glb],baseline.files[actor.glb])
+  assert.deepEqual(validateShot(calibrated.files),[])
+  const {saveShotExport}=await import('../src/shotExchange'),{prepareShotResult}=await import('../src/shotResult')
+  const {jsonBytes,zipPackage,sha256}=await import('../src/shotPackage')
+  await saveShotExport(project,calibrated)
+  const bytes=calibrated.files[actor.glb]!,actionId=randomUUID(),manifest=JSON.parse(Buffer.from(calibrated.files[actor.manifest]!).toString())
+  manifest.glbSha256=sha256(bytes);manifest.actions=[{...manifest.actions.find((a:any)=>a.uuid===actor.actionUuid),uuid:actionId,originalActionUuid:actor.actionUuid}]
+  const originalPosition=actor.placement.position,position=originalPosition.map((n,i)=>n+(i===0?1:0))
+  const result={version:'1.0.0',shotId:calibrated.shot.shotId,baseShotSha256:sha256(calibrated.files['shot.json']!),edits:[{characterId:id,originalActionUuid:actor.actionUuid,newActionUuid:actionId,glb:'edit.glb',manifest:'manifest.json',glbSha256:sha256(bytes),placementKeys:[{frame:0,position,yawDegrees:actor.placement.yawDegrees}]}]}
+  const zip=zipPackage({'result.json':jsonBytes(result),'edit.glb':bytes,'manifest.json':jsonBytes(manifest)})
+  for(let repeat=0;repeat<2;repeat++) {
+    const prepared=await prepareShotResult(project,{file:'draft',shotId:calibrated.shot.shotId},zip)
+    assert.ok(Math.abs(prepared.edits[0]!.edit.placementKeys[0]!.position[0]!-originalPosition[0]!-actor.heightScale!)<1e-8)
+    assert.deepEqual(prepared.edits[0]!.bytes,Buffer.from(bytes))
+  }
+  node.transform.scale.y=3
+  await assert.rejects(createShotPackage(project,options),/unit scale/)
+})
