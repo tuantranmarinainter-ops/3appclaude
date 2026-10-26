@@ -1,3 +1,4 @@
+import { assertBbsEffectsDestination, normalizeBbsGameDir } from './bbsGameCapabilities'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
@@ -8,9 +9,9 @@ import path from 'node:path'
 const MAX_ZIP_BYTES = 128 * 1024 * 1024
 const PLAN_TTL_MS = 30 * 60 * 1000
 const ZIP_SCAN_SCRIPT = String.raw`
-import hashlib,json,pathlib,stat,sys,unicodedata,zipfile
+import hashlib,json,pathlib,stat,sys,unicodedata,zipfile,zlib
 archive=pathlib.Path(sys.argv[1]); out=pathlib.Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=False)
-max_entries=4096; max_total=256*1024*1024; total=0; seen=set(); kinds={}; selected=[]
+max_entries=4096; max_total=256*1024*1024; total=0; seen=set(); kinds={}; selected=[]; requires_effects=False
 devices={'con','prn','aux','nul','conin$','conout$'}
 for info in zipfile.ZipFile(archive).infolist():
     raw=info.filename
@@ -41,6 +42,11 @@ for info in zipfile.ZipFile(archive).infolist():
     if kinds.get(name) and kinds[name] != kind: raise ValueError('ZIP path collides with a file and directory')
     kinds[name]=kind
     selected_file=(name.startswith('assets/') and not is_dir) or (name.startswith('films/') and len(parts)==2 and parts[0]=='films' and parts[1].endswith('.dat') and not is_dir)
+    if not is_dir and name=='required-mods.json':
+        if info.file_size>65536: raise ValueError('Mod requirements exceed limit')
+        requirements=json.loads(zipfile.ZipFile(archive).read(info))
+        if not isinstance(requirements,dict): raise ValueError('Invalid mod requirements')
+        requires_effects=requires_effects or bool(requirements.get('includedEffectCount',0)) or any('AAA' in str(item) for item in requirements.get('requiredMods',[]))
     if selected_file:
         target=out.joinpath(*parts)
         target.parent.mkdir(parents=True,exist_ok=True)
@@ -52,15 +58,23 @@ for info in zipfile.ZipFile(archive).infolist():
                 size+=len(block); h.update(block); destination.write(block)
                 if size>info.file_size or size>max_total: raise ValueError('ZIP member expands beyond its declared size')
         if size != info.file_size: raise ValueError('ZIP member size changed during extraction')
+        if name.startswith('assets/effeks/'): requires_effects=True
+        if name.startswith('films/'):
+            payload=target.read_bytes()
+            # BBS films may be gzip/zlib compressed. Bound decompression independently of ZIP size.
+            if payload[:2]==b'\x1f\x8b' or (len(payload)>1 and payload[0]==0x78):
+                decoder=zlib.decompressobj(47); payload=decoder.decompress(payload,max_total+1)
+                if len(payload)>max_total or decoder.unconsumed_tail: raise ValueError('Film expands beyond inspection limit')
+            if b'bbs:aaa_particle' in payload: requires_effects=True
         selected.append({'name':name,'sizeBytes':size,'sha256':h.hexdigest()})
 if not selected: raise ValueError('ZIP contains no assets/** or films/*.dat files')
-print(json.dumps(selected,separators=(',',':')))
+print(json.dumps({'files':selected,'requiresEffects':requires_effects},separators=(',',':')))
 `
 
 export interface InstallWorld { name: string }
 export interface InstallPlanFile { source: string; target: string; sizeBytes: number; sha256: string; status: 'install' | 'skip' | 'conflict' }
 export interface InstallPlan { planId: string; packageName: string; packageSha256: string; gameDir: string; worldName: string; files: InstallPlanFile[]; expiresAt: string }
-interface InternalPlan extends InstallPlan { stagingRoot: string; expiresMs: number }
+interface InternalPlan extends InstallPlan { requiresEffects: boolean; stagingRoot: string; expiresMs: number }
 interface LogFile { path: string; sha256: string }
 interface InstallLogEntry { installId: string; installedAt: string; packageName: string; packageSha256: string; ownedFiles: LogFile[]; uninstalledAt?: string; preservedFiles?: string[] }
 interface InstallLog { version: 1; installs: InstallLogEntry[] }
@@ -99,6 +113,7 @@ function validWorldName(value: string): boolean {
 }
 
 async function canonicalGameDir(gameDir: string): Promise<string> {
+  gameDir = (await normalizeBbsGameDir(gameDir)).gameDir
   if (typeof gameDir !== 'string' || !gameDir.trim() || gameDir.includes('\0')) throw new TypeError('Enter the BBS FS game folder')
   const root = await realpath(path.resolve(gameDir.trim()))
   if (!(await stat(root)).isDirectory()) throw new TypeError('The game folder is not a directory')
@@ -158,7 +173,8 @@ async function worldDir(root: string, worldName: string): Promise<string> {
 export async function listInstallWorlds(gameDir: string): Promise<InstallWorld[]> {
   const root = await canonicalGameDir(gameDir)
   const saves = path.join(root, 'saves')
-  await assertSafePath(root, saves, false)
+  try { await assertSafePath(root, saves, false) }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error }
   const rows: InstallWorld[] = []
   for (const entry of await readdir(saves, { withFileTypes: true })) {
     if (!entry.isDirectory() || !validWorldName(entry.name)) continue
@@ -191,7 +207,9 @@ export async function planInstall(packageZip: string, gameDir: string, worldName
     const stagedZip = path.join(stagingRoot, 'archive.zip')
     await writeFile(stagedZip, zipBytes, { flag: 'wx' })
     const extracted = path.join(stagingRoot, 'extracted')
-    const manifest = JSON.parse(await runPython(ZIP_SCAN_SCRIPT, [stagedZip, extracted])) as Array<{ name: string; sizeBytes: number; sha256: string }>
+    const scanned = JSON.parse(await runPython(ZIP_SCAN_SCRIPT, [stagedZip, extracted])) as { files: Array<{ name: string; sizeBytes: number; sha256: string }>; requiresEffects: boolean }
+    const manifest = scanned.files
+    if (scanned.requiresEffects) await assertBbsEffectsDestination(root)
     const files: InstallPlanFile[] = []
     for (const item of manifest) {
       const destinationRoot = item.name.startsWith('assets/') ? path.join(root, 'config', 'bbs', 'assets') : path.join(world, 'bbs', 'films')
@@ -210,7 +228,7 @@ export async function planInstall(packageZip: string, gameDir: string, worldName
       files.push({ source: item.name, target: path.relative(root, target).split(path.sep).join('/'), sizeBytes: item.sizeBytes, sha256: item.sha256, status })
     }
     const planId = randomUUID(), expiresMs = Date.now() + PLAN_TTL_MS
-    const plan: InternalPlan = { planId, packageName: safePackageName(originalPackageName, path.basename(zipPath)), packageSha256, gameDir: root, worldName, files, stagingRoot, expiresMs,
+    const plan: InternalPlan = { requiresEffects: scanned.requiresEffects, planId, packageName: safePackageName(originalPackageName, path.basename(zipPath)), packageSha256, gameDir: root, worldName, files, stagingRoot, expiresMs,
       expiresAt: new Date(expiresMs).toISOString() }
     plans.set(planId, plan)
     return publicPlan(plan)
@@ -218,7 +236,7 @@ export async function planInstall(packageZip: string, gameDir: string, worldName
 }
 
 function publicPlan(plan: InternalPlan): InstallPlan {
-  const { stagingRoot: _stagingRoot, expiresMs: _expiresMs, ...value } = plan
+  const { requiresEffects: _requiresEffects, stagingRoot: _stagingRoot, expiresMs: _expiresMs, ...value } = plan
   return structuredClone(value)
 }
 
@@ -294,6 +312,7 @@ export async function applyInstall(planId: string): Promise<{ installId: string;
       if (plan.expiresMs <= Date.now()) throw Object.assign(new Error('Install preview expired; create a new preview'), { status: 410 })
       if (await canonicalGameDir(plan.gameDir) !== root) throw new TypeError('Game folder changed after preview')
       await worldDir(root, plan.worldName)
+      if (plan.requiresEffects) await assertBbsEffectsDestination(root)
       const log = await readInstallLog(root)
       for (const file of plan.files) {
         const target = path.resolve(root, ...file.target.split('/'))

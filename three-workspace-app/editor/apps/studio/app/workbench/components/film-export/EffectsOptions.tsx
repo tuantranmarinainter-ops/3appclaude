@@ -1,9 +1,12 @@
 import type { FilmEffectsPolicy } from '../../../../src/filmEffectsPolicy'
+import type { BbsGameCapabilities } from '../../../../src/bbsGameCapabilities'
 
-export function EffectsOptions({ value, onChange, disabled, vi }: { value: FilmEffectsPolicy; onChange: (value: FilmEffectsPolicy) => void; disabled: boolean; vi: boolean }) {
+export function EffectsOptions({ value, onChange, disabled, vi, capabilities }: { value: FilmEffectsPolicy; onChange: (value: FilmEffectsPolicy) => void; disabled: boolean; vi: boolean; capabilities: BbsGameCapabilities | null }) {
   return <fieldset disabled={disabled}>
     <legend>{vi ? 'Hiệu ứng BBS' : 'BBS effects'}</legend>
-    <label><input type="checkbox" checked={value.mode === 'omit'} onChange={(event) => onChange(event.target.checked ? { mode: 'omit' } : { mode: 'include' })} />{vi ? 'Không kèm hiệu ứng (mặc định an toàn khi thiếu addon)' : 'Omit effects (safe default without addon)'}</label>
-    {value.mode === 'include' && <label><input type="checkbox" checked={!!value.target} onChange={(event) => onChange(event.target.checked ? { mode: 'include', target: { runtime: 'bbs-fs-2.7', aaaRendererAvailable: true, compatibleAddonConfirmed: true } } : { mode: 'include' })} />{vi ? 'Tôi xác nhận đích BBS FS 2.7 có renderer AAA và addon tương thích. Hiệu ứng (vd aura01) chưa được xác minh trong game.' : 'I confirm the BBS FS 2.7 target has an AAA renderer and compatible addon. Effects (e.g. aura01) remain unverified in game.'}</label>}
+    <label><input type="checkbox" disabled={!capabilities?.effectsCompatible} checked={value.mode === 'include'} onChange={(event) => onChange(event.target.checked && capabilities?.effectsCompatible ? { mode: 'include', target: { runtime: 'bbs-fs-2.7', aaaRendererAvailable: true, compatibleAddonConfirmed: true, gameDir: capabilities.gameDir } } : { mode: 'omit' })} />{vi ? 'Kèm hiệu ứng' : 'Include effects'}</label>
+    {!capabilities && <p>Chọn thư mục game và bấm Đọc world để kiểm tra AAA trước khi kèm hiệu ứng.</p>}
+    {capabilities?.issues.map((issue) => <p key={issue}>{issue}</p>)}
+    {capabilities?.effectsCompatible && <p>Đã phát hiện bộ mod AAA. Phát hiệu ứng trong game: chưa kiểm (NOT_RUN).</p>}
   </fieldset>
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
+import { useBbsInstall } from './hooks/useBbsInstall'
 import { useFilmExport } from './hooks/useFilmExport'
 import { useStudioLocale } from '../../../../src/devtools/localePreference'
 import { ExportShotPicker } from './ExportShotPicker'
@@ -11,7 +12,8 @@ import { BbsInstallPanel } from './BbsInstallPanel'
 
 export function FilmExportPanel({ project, active }: { project: UnifiedProject; active?: boolean }) {
   const vi = useStudioLocale() === 'vi'
-  const state = useFilmExport(project)
+  const install = useBbsInstall(vi)
+  const state = useFilmExport(project, install.capabilities)
   const [inOutNotice, setInOutNotice] = useState(false)
   // N4: mỗi lần mở panel Xuất, áp lại mặc định In/Out (trừ khi đã sửa tay).
   useEffect(() => {
@@ -22,7 +24,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
     <>
     <section className="wb-film-export" aria-labelledby="wb-film-export-title">
       <h2 id="wb-film-export-title">{vi ? 'Xuất Film BBS FS 2.7' : 'BBS FS 2.7 Film export'}</h2>
-      <EffectsOptions value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
+      <EffectsOptions capabilities={install.capabilities} value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
       <div className="wb-film-export-controls">
         <WorldAnchorFields project={project} value={state.worldAnchor} onChange={state.setWorldAnchor} onValidityChange={state.setWorldAnchorInputValid} />
         <label>{vi ? 'Phạm vi xuất' : 'Export scope'}
@@ -105,7 +107,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
         {state.error && <p className="wb-scene-render-error" role="alert">{state.error}</p>}
       </div>
     </section>
-    <BbsInstallPanel />
+    <BbsInstallPanel state={install} />
     </>
   )
 }

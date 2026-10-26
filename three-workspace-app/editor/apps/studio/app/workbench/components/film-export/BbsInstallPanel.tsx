@@ -5,9 +5,8 @@ import { useBbsInstall } from './hooks/useBbsInstall'
 
 const formatBytes = (bytes: number) => bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KiB` : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 
-export function BbsInstallPanel() {
+export function BbsInstallPanel({ state }: { state: ReturnType<typeof useBbsInstall> }) {
   const vi = useStudioLocale() === 'vi'
-  const state = useBbsInstall(vi)
   const count = (status: 'install' | 'skip' | 'conflict') => state.plan?.files.filter((file) => file.status === status).length ?? 0
   return (
     <section className="wb-film-export" aria-labelledby="wb-bbs-install-title">
