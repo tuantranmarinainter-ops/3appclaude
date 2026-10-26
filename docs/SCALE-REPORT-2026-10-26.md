@@ -54,3 +54,30 @@ Nhánh chỉ thêm tài liệu; code giữ nguyên `main` tại `164c4e1`. Các 
 | Đo model thật, film đo, game | NOT_RUN — thiếu dữ liệu ngoài repo và môi trường Minecraft |
 
 Môi trường dùng pnpm 11: thêm `--config.verify-deps-before-run=false` khi chạy script để tránh pnpm tự cài lại vào home chỉ đọc. Test Studio dùng Node 22.23.4 vì Node 24 của môi trường gặp native async assertion. Không sửa code để che lỗi baseline hoặc thay golden.
+
+## Bổ sung của Claude trên máy Windows (2026-10-26, dữ liệu thật)
+
+Đo trực tiếp (Y min/max của mọi `v` trong BOBJ; không đọc `motion_scale`):
+
+| Model | Nơi | Chiều cao thô (đơn vị BOBJ) |
+| --- | --- | --- |
+| Gỗ Xưa `original/model.bbs.bobj` (thư viện bản sao `lib-a9`) | thư viện | **5,828** (min −1,993) |
+| Tiểu Nhị `original/model.bbs.bobj` | thư viện | 5,828 |
+| Chirity `original/model.bbs.bobj` | thư viện | **6,947** (min −1,982) |
+| Gỗ Xưa đã xuất vào game `config/bbs/assets/models/unified/61ccc9ce…/model.bobj` | game | 5,828 — **cùng hình học với bản gốc** |
+| Chirity `config/bbs/assets/models/3 MODEL DUA VAO APP/CHIRITY` (bản người dùng đo) | game | 6,947 |
+| Gỗ Xưa trong App 2 (`model.glb` Mixamo65 của thư viện, `stage.worldAabb`) | app | **1,90 m** |
+| Đen MC20 Emoticons trong App 2 | app | 2,03 m (game ≈ 1,8 block) |
+
+Kết luận:
+1. Trong game Chirity đo được ≈ 3,56 block; 3,56 / 6,947 = **0,512**, khớp preset `unitMeters = 0,4915394` của
+   `verity.mdl` trong vòng ~4% (sai số đo ảnh). **Preset retarget không phải lỗi** — nó đúng với cách BBS hiển thị.
+2. Lỗi nằm ở **model hiển thị trong app**: nhân vật nhóm Verity trong thư viện dùng `model.glb` Mixamo65 đã chuẩn hoá
+   về ~1,9 m (đường App 1 `--mode model`), không theo kích thước BOBJ gốc mà game dùng. Đáng lẽ Gỗ Xưa ≈ 5,828 × 0,4915
+   = **2,86 m** (≈ 2,9–3,0 block trong game), Chirity ≈ 3,41–3,56.
+3. Vì vậy **Gỗ Xưa không cao 3,6 block như Chirity**: hình học nhỏ hơn Chirity 16%. Mặc định `heightBlocks` cho nhóm
+   Verity không nên là một hằng 3,6 mà tính từ BOBJ gốc: `heightBlocks = chiều cao thô BOBJ gốc × 0,4915394`
+   (Gỗ Xưa/Tiểu Nhị 2,86; Chirity 3,41), người dùng chỉnh được.
+4. Sửa được ở `packages/library` + `apps/studio` (scale đều GLB khi đưa vào cảnh/App 3 và khớp lúc xuất), **không cần sửa
+   `packages/retarget`**. Chỉ còn câu hỏi phụ: MC20 Emoticons app 2,03 vs game ≈ 1,8 (nghi BBS/scale form người chơi 0,9375
+   hoặc mesh lớp ngoài) — đo lại bằng film đo khi có S1.
