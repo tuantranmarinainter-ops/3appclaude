@@ -91,7 +91,8 @@ function checkedRead(path: string, root: string): Buffer {
   return readFileSync(path)
 }
 function inputs(actionUuid: string, charId: string, options: LibraryMotionConversionOptions, recipe?: LibraryMotionConversionRecipe) {
-  const root = resolveLibraryPath({ root: options.libraryRoot })
+  // The configured root may itself be a junction (C:\w01-library -> S:\...); only links inside the library are rejected.
+  const root = realpathSync(resolveLibraryPath({ root: options.libraryRoot }))
   noSymlinks(root)
   const source = getAction({ root, actionUuid })
   const target = resolveCharacter({ root, charId })
