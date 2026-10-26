@@ -17,14 +17,14 @@ SERVER_INFO = {"name": "bbs-unified-project", "title": "BBS Unified Project", "v
 SERVER_META = {"io.modelcontextprotocol/serverInfo": SERVER_INFO}
 # shortcut: expose commands only after their shared broker implementation exists; add file handles and legacy protocols with their adapters.
 SUPPORTED_COMMANDS = (
-    "project.create", "project.inspect", "project.save", "scene.apply", "scene.layout.read", "scene.layout.preview", "scene.layout.apply", "camera.framing.preview", "camera.framing.apply", "scene.evaluate", "scene.render", "film.export", "shot.export", "shot.result.import", "job.get", "job.cancel",
+    "project.create", "project.inspect", "project.save", "project.splitShots", "episode.export", "scene.apply", "scene.layout.read", "scene.layout.preview", "scene.layout.apply", "camera.framing.preview", "camera.framing.apply", "scene.evaluate", "scene.render", "film.export", "shot.export", "shot.result.import", "job.get", "job.cancel",
     "character.add", "prop.add", "camera.shot.set", "camera.motion.add", "camera.motion.remove", "vfx.cue.list", "vfx.cue.add", "vfx.cue.update", "vfx.cue.remove", "audio.cue.list", "audio.cue.add", "audio.cue.update", "audio.cue.remove", "motion.edit", "motion.place", "library.place", "motion.binding.set", "history.undo", "history.redo", "retarget.session.set",
     "rig.inspect", "rig.normalization.plan", "rig.normalization.run", "animation.assignment.plan", "animation.assignment.run", "animation.assignment.commit",
 )
 TOOL = {
     "name": "bbs_unified_command",
     "title": "BBS unified project command",
-    "description": "Run a supported command through the local Studio broker. scene.layout.read accepts an optional frame and returns compact read-only character placements, hip heights, placed clips, cameras and timeline bounds, without meshes or raw keys. scene.layout.preview/apply take args.placements: characterId and optional position{x,z}, or relativeTo/relation(left,right,front,behind)/distanceMeters, plus lookAt{characterId|cameraId|point{x,z}}. World axes left=-X, front=+Z; distances are horizontal centers in meters; feet are grounded and overlaps rejected. Preview returns transforms without writes; apply requires expectedRevision and creates one undo step. camera.framing.preview/apply take cameraId, characterIds (1-2), shot(wide/medium/close), angle(eye/high/low), optional frame/viewportAspect/fovYDegrees/follow; fit full skeleton bounds with decreasing headroom, preserving all selected subjects; apply requires expectedRevision. Writes share project revision and undo history. scene.render and film.export require outputDirectory.path to be an existing local folder; the MCP client passes only an opaque handle for scene.render and removes the path for film.export, shot.export also requires outputDirectory.path and saves a verified shot ZIP through job.get. shot.result.import takes args.file as an existing local ZIP path, args.shotId and expectedRevision; it stages the file before calling the broker. Then job.get saves verified artifacts into a new render-<jobId> or film-<jobId> subfolder after success. Poll job.get with a fresh requestId each time; retry an uncertain request with its original requestId. motion.edit stores a native Animation Studio 1.31.8 project and validated GLB derivative under exact revision/history; include characterId and derivativeBase64, with optional source motionId/clipId. Motion placement requires a Character with matching skeleton fingerprint/unit; root-motion/alignment/fades keep their existing capability limits. rig.inspect and rig.normalization.plan inspect verified imported assets and saved mappings; optional rootTranslationScale in [0.01, 20] calibrates preserved root travel (1 keeps source meters). rig.normalization.run requires expectedRevision and a ready planSha256, returning a cancellable staged job; save through CLI rig save. animation.assignment.plan preflights Motion/Character; animation.assignment.run requires expectedRevision and planSha256, and stages GLB/report. animation.assignment.commit takes jobId plus optional frameStart and atomically saves the derived Motion, timeline clip and Binding through shared history. Legacy V9.12 snapshots retain their existing behavior.",
+    "description": "Run a supported command through the local Studio broker. project.splitShots requires expectedRevision, accepts optional sequenceId/shotIds/episodeName, creates shot projects while preserving the source, and returns node/clip/size/frame reports. episode.export exports the ordered episode group at exact 20 Hz joins, requires expectedRevision and outputDirectory.path, and downloads through job.get. scene.layout.read accepts an optional frame and returns compact read-only character placements, hip heights, placed clips, cameras and timeline bounds, without meshes or raw keys. scene.layout.preview/apply take args.placements: characterId and optional position{x,z}, or relativeTo/relation(left,right,front,behind)/distanceMeters, plus lookAt{characterId|cameraId|point{x,z}}. World axes left=-X, front=+Z; distances are horizontal centers in meters; feet are grounded and overlaps rejected. Preview returns transforms without writes; apply requires expectedRevision and creates one undo step. camera.framing.preview/apply take cameraId, characterIds (1-2), shot(wide/medium/close), angle(eye/high/low), optional frame/viewportAspect/fovYDegrees/follow; fit full skeleton bounds with decreasing headroom, preserving all selected subjects; apply requires expectedRevision. Writes share project revision and undo history. scene.render and film.export require outputDirectory.path to be an existing local folder; the MCP client passes only an opaque handle for scene.render and removes the path for film.export, shot.export also requires outputDirectory.path and saves a verified shot ZIP through job.get. shot.result.import takes args.file as an existing local ZIP path, args.shotId and expectedRevision; it stages the file before calling the broker. Then job.get saves verified artifacts into a new render-<jobId> or film-<jobId> subfolder after success. Poll job.get with a fresh requestId each time; retry an uncertain request with its original requestId. motion.edit stores a native Animation Studio 1.31.8 project and validated GLB derivative under exact revision/history; include characterId and derivativeBase64, with optional source motionId/clipId. Motion placement requires a Character with matching skeleton fingerprint/unit; root-motion/alignment/fades keep their existing capability limits. rig.inspect and rig.normalization.plan inspect verified imported assets and saved mappings; optional rootTranslationScale in [0.01, 20] calibrates preserved root travel (1 keeps source meters). rig.normalization.run requires expectedRevision and a ready planSha256, returning a cancellable staged job; save through CLI rig save. animation.assignment.plan preflights Motion/Character; animation.assignment.run requires expectedRevision and planSha256, and stages GLB/report. animation.assignment.commit takes jobId plus optional frameStart and atomically saves the derived Motion, timeline clip and Binding through shared history. Legacy V9.12 snapshots retain their existing behavior.",
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -110,7 +110,7 @@ def run_unified_command(arguments: dict[str, Any]) -> dict[str, Any]:
     name = arguments["command"]
     project_id = arguments.get("projectId")
     args = arguments["args"]
-    if name in {"scene.render", "film.export", "shot.export"}:
+    if name in {"scene.render", "film.export", "shot.export", "episode.export"}:
         directory = args.get("outputDirectory")
         if not isinstance(project_id, str) or not isinstance(directory, dict) or set(directory) != {"path"} or not isinstance(directory["path"], str):
             raise ValueError(f"{name} requires outputDirectory.path")
@@ -125,7 +125,7 @@ def run_unified_command(arguments: dict[str, Any]) -> dict[str, Any]:
                            request_id, arguments["dryRun"])
         job_id = response.get("result", {}).get("jobId")
         if isinstance(job_id, str) and not arguments["dryRun"]:
-            MCP_RENDER_DIRS[job_id] = (project_id, output_root.resolve(), {"film.export": "film", "shot.export": "shot"}.get(name, "render"))
+            MCP_RENDER_DIRS[job_id] = (project_id, output_root.resolve(), {"film.export": "film", "episode.export": "film", "shot.export": "shot"}.get(name, "render"))
         return response
 
     if name == "shot.result.import":
@@ -182,7 +182,7 @@ def _tool_call(arguments: Any, invoke: Callable[[dict[str, Any]], dict[str, Any]
         native_project = args.get("nativeProject")
         if not isinstance(native_project, dict) or len(json.dumps(native_project, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")) > 12 * 1024 * 1024:
             raise ValueError("retarget.session.set requires a JSON object no larger than 12 MiB")
-    if name in {"scene.render", "film.export", "shot.export"}:
+    if name in {"scene.render", "film.export", "shot.export", "episode.export"}:
         output_directory = args.get("outputDirectory")
         if not isinstance(output_directory, dict) or set(output_directory) != {"path"} or not isinstance(output_directory["path"], str) or not output_directory["path"].strip():
             raise ValueError(f"{name} requires outputDirectory.path")
@@ -196,7 +196,7 @@ def _tool_call(arguments: Any, invoke: Callable[[dict[str, Any]], dict[str, Any]
         raise ValueError("projectId is required for this command")
     if revision is not None and (isinstance(revision, bool) or not isinstance(revision, int) or revision < 0):
         raise ValueError("expectedRevision must be a non-negative integer")
-    if name in {'camera.framing.apply', 'scene.layout.apply', 'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit', 'shot.result.import'} and revision is None:
+    if name in {'project.splitShots', 'episode.export', 'camera.framing.apply', 'scene.layout.apply', 'motion.binding.set', 'rig.normalization.run', 'animation.assignment.run', 'animation.assignment.commit', 'shot.result.import'} and revision is None:
         raise ValueError(f'{name} requires expectedRevision from the edited snapshot')
     if request_id is not None:
         try:

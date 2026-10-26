@@ -6,7 +6,7 @@ import { slugify } from '../utils'
 import { LocalHostAdapter } from '../../../src/LocalHostAdapter'
 import { ensureUnifiedSession, loadUnifiedProjects, sendUnifiedCommand } from '../../../src/unifiedApi'
 
-export interface UnifiedProjectRow extends DraftRow { revision: number; updatedAt: string }
+export interface UnifiedProjectRow extends DraftRow { revision: number; updatedAt: string; episode?: { id: string; name: string; order: number } }
 
 async function createLocalDraft(id: string, doc: DirectorDocument): Promise<string> {
   const res = await fetch('/api/drafts', {
@@ -42,6 +42,8 @@ export function useWorkbenchDrafts() {
 
   useEffect(() => {
     void reload()
+    window.addEventListener('bbs-project-list-changed', reload)
+    return () => window.removeEventListener('bbs-project-list-changed', reload)
   }, [reload])
 
   const createDraft = async (input: {
