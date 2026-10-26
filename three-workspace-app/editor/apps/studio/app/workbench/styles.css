@@ -881,6 +881,7 @@
 .wb-host-more { position: relative; }
 .wb-host-more > summary { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid var(--wb-border); border-radius: 7px; color: var(--wb-text); cursor: pointer; font-size: 19px; list-style: none; }
 .wb-host-more > summary::-webkit-details-marker { display: none; }
+.wb-host-more > summary.wb-host-more-text { width: auto; padding: 0 10px; font-size: 13px; white-space: nowrap; }
 .wb-host-more-menu { position: absolute; z-index: 5; top: calc(100% + 8px); right: 0; display: flex; min-width: 210px; flex-direction: column; gap: 7px; padding: 10px; border: 1px solid var(--wb-border); border-radius: 8px; background: #1a1c21; box-shadow: 0 8px 24px #0008; }
 .wb-host-more-menu button,.wb-host-more-menu details,.wb-host-more-menu .wb-language { min-height: 34px; padding: 7px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--wb-text); font: inherit; text-align: left; cursor: pointer; }
 .wb-host-more-menu button:hover,.wb-host-more-menu details:hover { background: #282a31; }

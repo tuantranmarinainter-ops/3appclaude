@@ -7,7 +7,8 @@ interface Report { projectId: string; name: string; nodeCount: number; clipCount
 export function useSplitShots(project: UnifiedProject) {
   const editorial = project.scene.content.editorial
   const sequence = editorial?.sequences.find((item) => item.id === editorial.activeSequenceId) ?? editorial?.sequences[0]
-  const shots = sequence?.clips ?? []
+  // Editorial lists may be out of time order (Tập 15 keeps shot_01 last); show shots in timeline order.
+  const shots = [...(sequence?.clips ?? [])].sort((a, b) => a.sourceFrameStart - b.sourceFrameStart)
   const [selected, setSelected] = useState<string[]>(shots.map((shot) => shot.id))
   const [episodeName, setEpisodeName] = useState(project.name)
   const [busy, setBusy] = useState(false)
