@@ -12,7 +12,7 @@ import { filterLibraryActions } from '../../src/libraryFilters'
 
 type Status = 'draft' | 'edited' | 'approved'
 type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; favorite?: boolean; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
-type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
+type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; heightBlocks?: number; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
 const MISSING_PREVIEW_CAP = 20
@@ -285,11 +285,12 @@ function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: {
     const data = new FormData(form)
     const personality = { summary: String(data.get('summary') ?? ''), traits: String(data.get('traits') ?? '').split(',').map(value => value.trim()).filter(Boolean) }
     const requiredActions = String(data.get('required') ?? '').split('\n').map(line => line.split(':', 2)).filter(parts => parts[0]?.trim() && parts[1]?.trim()).map(([key, label]) => ({ key: key!.trim(), label: label!.trim() }))
-    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'profile', charId: character.charId, personality, requiredActions }) })
+    await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'profile', charId: character.charId, personality, requiredActions, ...(String(data.get('heightBlocks') ?? '').trim() ? { heightBlocks: Number(data.get('heightBlocks')) } : {}) }) })
     await onSaved(); setMessage(`Đã lưu hồ sơ ${character.name}.`)
   }
   return <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>{characters.map(character => <form key={character.charId} onSubmit={event => { event.preventDefault(); void save(character, event.currentTarget).catch(error => setMessage(String(error))) }} style={{ padding: 14, background: '#20242c' }}>
     <h2>{character.name}</h2><p>{character.rig} · mô hình {character.baseModelId}</p>
+    <label>Chiều cao (block)<input name="heightBlocks" type="number" min="0" step="any" defaultValue={character.heightBlocks ?? ''} /></label>
     <label>Tính cách<textarea name="summary" defaultValue={character.personality?.summary} style={{ width: '100%' }} /></label>
     <label>Đặc điểm (cách nhau bằng dấu phẩy)<input name="traits" defaultValue={character.personality?.traits.join(', ')} style={{ width: '100%' }} /></label>
     <label>Động tác cần có (key: nhãn)<textarea name="required" defaultValue={character.requiredActions?.map(item => `${item.key}: ${item.label}`).join('\n')} style={{ width: '100%', minHeight: 130 }} /></label><button type="submit">Lưu hồ sơ</button>

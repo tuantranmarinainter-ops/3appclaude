@@ -4,6 +4,7 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'three/addons/libs/fflate
 export interface Issue { code: string; path: string; message: string }
 export type PackageFiles = Record<string, Uint8Array>
 export interface ShotCharacter {
+  heightBlocks?: number; heightScale?: number
   characterId: string; glb: string; manifest: string; glbSha256: string; actionUuid: string
   clip: { sourceStartSeconds: number; sourceEndSeconds: number; speed: number; loop: boolean; reverse: boolean }
   placement: { position: number[]; yawDegrees: number }; rootPolicy: 'skeletal' | 'in-place'; editable: boolean
@@ -106,6 +107,8 @@ class Validator {
     for(const [c,q] of this.rows(s,'characters',p)) {
       const id=this.field(c,'characterId','string',q);if(ids.has(id))this.issue('DUPLICATE_CHARACTER_ID',q+'.characterId','Duplicate character');ids.add(id)
       if(this.field(c,'editable','boolean',q)===true)editable=true
+      for (const key of ['heightBlocks', 'heightScale']) if (key in c && (!finite(c[key]) || (c[key] as number) <= 0)) this.issue('INVALID_HEIGHT', q+'.'+key, 'Expected positive finite height')
+      if (('heightBlocks' in c) !== ('heightScale' in c)) this.issue('INVALID_HEIGHT', q, 'Height and scale must be supplied together')
       this.asset(c,q,'actionUuid')
       const clip=this.field(c,'clip','object',q)
       if(object(clip)){const start=this.field(clip,'sourceStartSeconds','number',q+'.clip'),end=this.field(clip,'sourceEndSeconds','number',q+'.clip'),speed=this.field(clip,'speed','number',q+'.clip');this.field(clip,'loop','boolean',q+'.clip');this.field(clip,'reverse','boolean',q+'.clip');if(typeof start==='number'&&start<0||typeof end==='number'&&end<0||typeof start==='number'&&typeof end==='number'&&end<start||typeof speed==='number'&&speed<=0)this.issue('INVALID_CLIP',q+'.clip','Invalid source range or speed')}

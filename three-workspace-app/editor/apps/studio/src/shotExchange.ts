@@ -1,3 +1,5 @@
+import { libraryCharacterBoundingBoxHeight } from './libraryCharacterSpacing'
+import { app3HeightHint } from './app3Height'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -69,11 +71,18 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     const prefix=`characters/${character.id}`,glb=prefix+'.glb',manifestPath=prefix+'.manifest.json'
     files[glb]=packagedSource;files[manifestPath]=jsonBytes(packagedManifest)
     const t=snapshot.transforms.get(character.nodeId);if(!t)throw new TypeError('Character placement is unavailable')
-    if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-1)>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
+    const height = app3HeightHint(node?.metadata)
+    if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-(height?.heightScale??1))>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
     const offset=(args.frameStart-clip.frameStart)/30*clip.playback.speed
     if(clip.playback.loop&&offset!==0)throw new TypeError('MVP loop shots must begin at the source clip boundary')
     const start=binding.sourceStartSeconds+(binding.reverse?0:offset),end=binding.sourceStartSeconds+binding.sourceLengthSeconds-(binding.reverse?offset:0)
-    shot.characters.push({characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(packagedSource),actionUuid:motion.id,clip:{sourceStartSeconds:start,sourceEndSeconds:end,speed:clip.playback.speed,loop:clip.playback.loop,reverse:binding.reverse},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:binding.rootPolicy==='in-place'?'in-place':'skeletal',editable:args.editableCharacterIds.includes(character.id)})
+    let shotHeight=height
+    if(height) {
+      // Native-library shots can recompose a different canonical model from the source project GLB.
+      // Root edit deltas must use the exact packaged model's units, rather than the scene's source scale.
+      try { shotHeight={...height,heightScale:height.heightBlocks/libraryCharacterBoundingBoxHeight(Buffer.from(packagedSource))} } catch { /* Animation-only GLB retains the source model's canonical units. */ }
+    }
+    shot.characters.push({...shotHeight,characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(packagedSource),actionUuid:motion.id,clip:{sourceStartSeconds:start,sourceEndSeconds:end,speed:clip.playback.speed,loop:clip.playback.loop,reverse:binding.reverse},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:binding.rootPolicy==='in-place'?'in-place':'skeletal',editable:args.editableCharacterIds.includes(character.id)})
     clips[character.id]={clipId:clip.id,motionId:motion.id}
   }
   for(const node of project.scene.content.nodes.filter(n=>n.type==='prop')) {

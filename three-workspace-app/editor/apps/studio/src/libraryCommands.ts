@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  characterHeightBlocks,
   copyActionToCharacter,
   coverageMatrix,
   getAction,
@@ -20,6 +21,7 @@ import { UnifiedStoreError } from './unifiedProjectStore'
 import { executeUnifiedCommand, readUnifiedProject } from './unifiedProjectStore'
 import { stageAssetUpload } from './unifiedAssetFiles'
 import { libraryBaseGlb, libraryCharacterModel, libraryNativeAction } from './libraryModels'
+import { libraryHeightSnapshot, scaleHeightCurvePayload } from './libraryHeight'
 import { libraryCharacterBoundingBoxWidth, nextLibraryCharacterX } from './libraryCharacterSpacing'
 
 export type LibraryTextureRef = {
@@ -50,6 +52,7 @@ export async function describeLibraryCharacter(character: CharacterMetadata) {
   })))
   return {
     ...character,
+    heightBlocks: characterHeightBlocks(character),
     personality: character.personality ?? { summary: '', traits: [] },
     requiredActions: character.requiredActions ?? [],
     model: resolved.baseModel ? {
@@ -92,8 +95,8 @@ export function copyCharacterAction(actionUuid: string, toCharId: string) {
   return copyActionToCharacter({ actionUuid, toCharId })
 }
 
-export function updateCharacterProfile(charId: string, personality: { summary: string; traits: string[] }, requiredActions: RequiredAction[]) {
-  return setCharacterProfile({ charId, personality, requiredActions })
+export function updateCharacterProfile(charId: string, personality: { summary: string; traits: string[] } | undefined, requiredActions: RequiredAction[] | undefined, heightBlocks?: number) {
+  return setCharacterProfile({ charId, personality, requiredActions, heightBlocks })
 }
 
 export function libraryCoverage() { return coverageMatrix() }
@@ -203,9 +206,10 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
     await libraryNativeAction(character.charId, path.join(path.dirname(action.glbPath), resolved.baseModel.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj'))
   }
   const bytes = await libraryBaseGlb(character.charId)
+  const height = libraryHeightSnapshot(character, bytes)
   const positionX = nextLibraryCharacterX(
     project.scene.content.nodes.filter((node) => node.type === 'character').map((node) => node.transform.position.x),
-    libraryCharacterBoundingBoxWidth(bytes),
+    libraryCharacterBoundingBoxWidth(bytes) * height.libraryHeightScale,
   )
   const preview = await libraryCharacterModel(character.charId)
   const staged = await stageAssetUpload(`${resolved.baseModel.modelId}.glb`, new ReadableStream<Uint8Array>({
@@ -217,6 +221,7 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
   const skeletonId = String((imported.result.skeletonIds as unknown[])[0])
   const details = await describeLibraryCharacter(character)
   const library = {
+    ...height,
     libraryCharacterId: character.charId,
     libraryModelFingerprint: preview.fingerprint,
     libraryBaseModelId: resolved.baseModel.modelId,
@@ -225,7 +230,7 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
     ...(character.defaultAction ? { libraryDefaultAction: character.defaultAction } : {}),
   }
   const added = await executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: imported.revision,
-    command: 'character.add', args: { assetId, skeletonId, name: character.name, transform: { position: { x: positionX, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }, library } })
+    command: 'character.add', args: { assetId, skeletonId, name: character.name, transform: { position: { x: positionX, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: height.libraryHeightScale, y: height.libraryHeightScale, z: height.libraryHeightScale } }, library } })
   const nodeId = String(added.result.nodeId)
   let revision = added.revision
   if (character.defaultAction) {
@@ -234,4 +239,30 @@ export async function addLibraryCharacterToProject(input: { projectId: string; e
     revision = placed.revision
   }
   return { projectId: input.projectId, revision, characterId: added.result.characterId, nodeId, assetId, modelId: resolved.baseModel.modelId }
+}
+
+/** Explicit opt-in only: profile writes never mutate a project. One undoable scene transaction. */
+export async function updateLibraryCharacterHeights(projectId: string, expectedRevision: number) {
+  const project = await readUnifiedProject(projectId)
+  if (project.revision !== expectedRevision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Cảnh đã thay đổi; hãy tải lại trước khi cập nhật chiều cao', 409)
+  const document = structuredClone(project.scene)
+  const ratios = new Map<string, number>()
+  for (const node of document.content.nodes) {
+    const id = node.metadata?.libraryCharacterId
+    if (typeof id !== 'string') continue
+    const resolved = resolveCharacter(id)
+    const height = libraryHeightSnapshot(resolved.character, await libraryBaseGlb(id))
+    if (height.libraryHeightBlocks === node.metadata?.libraryHeightBlocks) continue
+    if (node.locked) throw new Error(`Nhân vật ${node.name} đang khóa; hãy mở khóa trước khi cập nhật chiều cao`)
+    const previous = Number(node.metadata?.libraryHeightScale ?? 1)
+    if (!(previous > 0) || !Number.isFinite(previous)) throw new Error('Hệ số chiều cao cũ không hợp lệ')
+    const ratio = height.libraryHeightScale / previous
+    ratios.set(node.id, ratio)
+    for (const axis of ['x', 'y', 'z'] as const) node.transform.scale[axis] *= ratio
+    node.metadata = { ...node.metadata, ...height }
+  }
+  const fcurves = scaleHeightCurvePayload(project.extensions.topview?.fcurves ?? null, ratios)
+  const embedded = scaleHeightCurvePayload({ fcurves: document.content.timeline.animation.fcurves }, ratios) as { fcurves: typeof document.content.timeline.animation.fcurves }
+  document.content.timeline.animation.fcurves = embedded.fcurves
+  return executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision, command: 'scene.apply', args: { operations: [{ type: 'document.replace', document, fcurves }] } })
 }

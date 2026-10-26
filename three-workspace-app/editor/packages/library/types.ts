@@ -131,6 +131,8 @@ export interface CharacterMetadata {
   actions?: string[]
   actionCount?: number
   defaultAction?: string
+  /** Desired displayed/exported height; one block is one metre. */
+  heightBlocks?: number
   personality?: CharacterPersonality
   requiredActions?: RequiredAction[]
 }

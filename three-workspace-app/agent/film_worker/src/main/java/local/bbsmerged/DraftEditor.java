@@ -165,6 +165,13 @@ public final class DraftEditor {
             case "set_model_form" -> {
                 Node form=group(actor(root,p),"form"); if (!text(form,"id","").equals("bbs:model")) throw new IllegalArgumentException("Requires ModelForm; refusing to destroy another form");
                 map(form).put("model",string(str(p,"modelId")));
+                if(p.has("formScale") || p.has("formOffsetY")) {
+                    double scale=num(p,"formScale",1), offset=num(p,"formOffsetY",0);
+                    if(!(scale>0 && scale<=1000)) throw new IllegalArgumentException("Model form scale must be in (0,1000]");
+                    Node transform=group(form,"transform"), size=BbsCodec.list(), translation=BbsCodec.list();
+                    for(int axis=0;axis<3;axis++) { list(size).add(floating((float)scale)); list(translation).add(floating((float)(axis==1?offset:0))); }
+                    map(transform).put("s",size); map(transform).put("t",translation);
+                }
             }
             case "set_pose_transform_keyframes" -> {
                 String bone=str(p,"boneName");

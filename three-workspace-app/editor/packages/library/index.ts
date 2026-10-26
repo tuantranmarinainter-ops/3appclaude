@@ -20,3 +20,5 @@ export {
   addConvertedDraftToCharacter, addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction,
   saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile,
 } from './characterActions'
+
+export { characterHeightBlocks } from './characterHeight'

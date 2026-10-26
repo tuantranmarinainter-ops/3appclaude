@@ -345,12 +345,16 @@ export function removeCharacterAction(options: LibraryOptions & { charId: string
 }
 
 export function setCharacterProfile(options: LibraryOptions & {
-  charId: string; personality?: CharacterPersonality; requiredActions?: RequiredAction[]
+  charId: string; personality?: CharacterPersonality; requiredActions?: RequiredAction[]; heightBlocks?: number
 }): CharacterMetadata {
   const root = resolveLibraryPath(options)
   return withLibraryLock(root, () => {
     initializeLibrary(root)
     const character = characterAt(root, options.charId)
+    if (options.heightBlocks !== undefined) {
+      if (!Number.isFinite(options.heightBlocks) || options.heightBlocks <= 0) throw new TypeError('Chiều cao (block) phải là số dương hữu hạn')
+      character.heightBlocks = options.heightBlocks
+    }
     if (options.personality) {
       if (typeof options.personality.summary !== 'string' || !Array.isArray(options.personality.traits) || options.personality.traits.some((trait) => typeof trait !== 'string' || !trait.trim())) throw new Error('Invalid personality')
       character.personality = { summary: options.personality.summary.trim(), traits: [...new Set(options.personality.traits.map((trait) => trait.trim()))] }

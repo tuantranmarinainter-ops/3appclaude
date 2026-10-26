@@ -4,7 +4,7 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 // Process generation is part of every lease/ticket: a restarted broker never replays a dispatched command.
 export const APP3_EXPORT_TOOLS = ['export_animation', 'shotOpen', 'shotExport', 'libraryActionOpen'] as const
 export interface App3ShotProof { shotId: string; baseShotSha256: string; characterId: string; actionUuid: string; glbSha256: string; zipSha256: string; frameRange: [number, number]; fps: number; sourceRevision: number; jobId: string; fileId: string }
-export interface App3LibraryActionProof { actionUuid: string; characterId: string; characterAssetId: string; characterSha256: string; packId: string; glbSha256: string; glbAnimationIndex: number; name: string }
+export interface App3LibraryActionProof { heightBlocks?: number; actionUuid: string; characterId: string; characterAssetId: string; characterSha256: string; packId: string; glbSha256: string; glbAnimationIndex: number; name: string }
 export const APP3_READ_TOOLS = ['read_keyframes', 'analyze_motion', 'get_scene_context', 'get_animation_context'] as const
 export const LOCAL_EDIT_TOOLS=['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
 export function validateApp3Edit(tool: unknown,value: unknown): asserts value is Record<string, unknown> {

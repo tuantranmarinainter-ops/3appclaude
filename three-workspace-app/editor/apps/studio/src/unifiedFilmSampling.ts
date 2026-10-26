@@ -1,3 +1,4 @@
+import { filmCharacterHeight } from './filmCharacterHeight'
 import { resolveFilmWorldAnchor } from './filmWorldAnchor'
 import { createHash } from 'node:crypto'
 import { Euler, Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
@@ -41,6 +42,7 @@ export interface FilmSamplingInspection {
     characterId: string; nodeId: string; name: string; assetId: string; skeletonId: string
     source: UnifiedProject['assets'][keyof UnifiedProject['assets']]['source']; metersPerUnit: number; basisToScene: number[]; skeletonFingerprint: string
     sourceBones: ReturnType<typeof filmSourceBones>
+    actorScale?: number; heightBlocks?: number
   }>
 }
 
@@ -189,7 +191,7 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
     if (profile.metersPerUnit !== node.metadata?.modelUnitMeters) { add('MODEL_UNITS_INVALID', 'Film Character units disagree with its Skeleton Profile', id); modelValid = false }
     boneCount += profile.bones.length
     if (modelValid) models.push({ characterId: id, nodeId: character.nodeId, name: node.name, assetId: character.assetId, skeletonId: profile.id,
-      source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint, sourceBones })
+      source: asset.source, metersPerUnit: profile.metersPerUnit, basisToScene: profile.basisToScene, skeletonFingerprint: profile.fingerprint, sourceBones, ...filmCharacterHeight(project, node.id, range?.startFrame ?? timeline.frameStart) })
   }
   const selectedPropIds = selection?.propIds ?? (Array.isArray(args.propIds) ? args.propIds : [])
   for (const propId of selectedPropIds) {
