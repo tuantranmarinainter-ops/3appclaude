@@ -203,7 +203,9 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const name = model.name
     if (typeof name !== 'string' || !name.trim() || name.length > 64) fail(`Film actor name must contain 1-64 characters: ${model.characterId}`)
     let previousYaw: number | undefined
-    const facingOffset = FILM_MODEL_FACING_OFFSET
+    // B30 in game: actors posed from an original library BOBJ (Verity and Minecraft20 Emoticons) faced 180 degrees
+    // away from App 2 (Gỗ Xưa cast away from Đen, Đen turned his back), so they take the opposite offset.
+    const facingOffset = FILM_MODEL_FACING_OFFSET + (profile.originalRig ? 180 : 0)
     const transformSamples = input.frames.map((frame) => {
       const sample = frame.skeletons.find((item) => item.nodeId === model.nodeId)
       if (!sample) fail(`Film sample is missing Character ${model.characterId}`)

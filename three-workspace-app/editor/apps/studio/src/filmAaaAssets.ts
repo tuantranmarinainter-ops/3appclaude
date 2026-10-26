@@ -18,8 +18,10 @@ export function aaaEffectDependencies(bytes: Buffer): string[] {
     if (cursor + 8 > bytes.length) throw new TypeError('AAA: chunk .efkefc bị cắt')
     const name = bytes.toString('ascii', cursor, cursor + 4), size = bytes.readUInt32LE(cursor + 4)
     cursor += 8
-    if (size > bytes.length - cursor || chunks.has(name)) throw new TypeError('AAA: chunk .efkefc không hợp lệ')
-    chunks.set(name, bytes.subarray(cursor, cursor + size)); cursor += size
+    // Official Effekseer 1.80 samples (Aura01) carry two BIN_ chunks, one per runtime version; only INFO must be unique.
+    if (size > bytes.length - cursor || name === 'INFO' && chunks.has(name)) throw new TypeError('AAA: chunk .efkefc không hợp lệ')
+    if (!chunks.has(name)) chunks.set(name, bytes.subarray(cursor, cursor + size))
+    cursor += size
   }
   const info = chunks.get('INFO')
   if (!info || !chunks.get('EDIT')?.length || !chunks.get('BIN_')?.length) throw new TypeError('AAA: thiếu INFO/EDIT/BIN_ trong .efkefc')

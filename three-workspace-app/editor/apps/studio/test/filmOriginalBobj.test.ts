@@ -116,3 +116,16 @@ test('rejects different selected actions that would overwrite the same original 
   const b = Buffer.concat([base, Buffer.from('an wave\nao COG\nag location 0\nkf 0 2\n')])
   assert.throws(() => mergeOriginalBobjActions(base, [a, b]), /actions conflict: wave/)
 })
+
+test('B17: an action saved against an older mesh of the same rest skeleton rebases onto the new base', () => {
+  const matrix = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1'
+  const armature = `arm_name minecraft20\narm_bone anchor  0 0 0 ${matrix}\narm_bone body anchor 0 1 0 1 0 0 0 0 1 0 1 0 0 1 0 0 0 0 1\n`
+  const emoticons = Buffer.from(`${armature}o body\nv 0 0 0\nv 0 2 0\nvw body 1\n`)
+  const oldSidecar = Buffer.from(`# Retarget V9.12 Minecraft20 rest armature\n${armature}o Body\nv 1 1 1\nvw body 1\nan app3_stun\nao body\nag rotation 0\nkf 0 0.5 LINEAR\n`)
+  const merged = mergeOriginalBobjActions(emoticons, [oldSidecar]).toString('utf8')
+  assert.ok(merged.startsWith(emoticons.toString('utf8')))
+  assert.match(merged, /an app3_stun\nao body\nag rotation 0\nkf 0 0.5 LINEAR/)
+  assert.equal(merged.match(/^v /gm)!.length, 2, 'old mesh vertices are not copied')
+  const otherRest = Buffer.from(oldSidecar.toString('utf8').replace('arm_bone body anchor', 'arm_bone torso anchor'))
+  assert.throws(() => mergeOriginalBobjActions(emoticons, [otherRest]), /changed its source prefix/)
+})
