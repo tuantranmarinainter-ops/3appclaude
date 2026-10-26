@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -20,7 +21,8 @@ import { parseBobjActions, parseBobjArmature } from '@bbs/retarget'
 import { rebuildLibraryIndex } from '../../../packages/library/index'
 import { fixture, sha } from './b34Fixtures'
 
-test('B34 regenerated native Minecraft20 actions merge into the unchanged base and retain PR173 actor facing', { timeout: 180000 }, async (t) => {
+const javaReady = !!process.env.BBS_JAVA_HOME && existsSync(process.env.BBS_JAVA_HOME)
+test('B34 regenerated native Minecraft20 actions merge into the unchanged base and retain PR173 actor facing', { timeout: 180000, skip: javaReady ? false : 'Set BBS_JAVA_HOME (JDK 17) to run the native Film readback' }, async (t) => {
   const temp = mkdtempSync(path.join(tmpdir(), 'b34-film-')), previous = process.env.W01_LIBRARY
   const previousProjects = process.env.BBS_UNIFIED_PROJECTS_DIR
   process.env.BBS_UNIFIED_PROJECTS_DIR = path.join(temp, 'projects')
