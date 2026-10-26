@@ -11,3 +11,17 @@ The separate `python -m agent.unified_cli film convert-model SOURCE.fbx|SOURCE.g
 The Film exporter can consume these file paths through an explicit manifest, but project-to-manifest sampling, pose-delta baking from shared skeleton samples, project-bound jobs, browser UI, API/MCP tracking, game playback parity and Film Editor save/reopen acceptance are not implemented. Action names and bone names must come from the verified imported Skeleton Profile; worker validation does not replace runtime loading in BBS FS.
 
 The bridge JAR and BbsCodec are pinned by SHA-256 in `agent/film_worker.py`. Their licenses, plus the reused DraftEditor source license and origin hash, are included under `vendor/` and `NOTICE.md`.
+
+
+Height-calibrated actors may also supply `formScale` (positive uniform scale, at most 1000) and `formOffsetY`.
+The worker writes BBS FS 2.7 `form.transform.s` and `form.transform.t` as float vectors and verifies them after native
+read-back. Replay positions remain in world blocks; skeletal pose channels retain native model units. Canonical model
+files remain unchanged and shared between differently sized actors. Fresh unified models use the BBS ModelConfig default
+scale of one. Original BOBJ grounding uses `formOffsetY = -nativeFloor * formScale`; calibrated height is native mesh height
+multiplied by `formScale`. The export report includes the transform read back from the native film, while game playback
+acceptance remains NOT_RUN.
+
+Wire evidence, pinned BBS FS 2.7 source:
+- [`Transform.toData/fromData`](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/main/java/mchorse/bbs_mod/utils/pose/Transform.java#L485) stores `t` and `s`.
+- [`ModelConfig.scale`](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/client/java/mchorse/bbs_mod/cubic/model/config/ModelConfig.java#L49) defaults to `(1,1,1)`.
+- [`BOBJLoader`](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/main/java/mchorse/bbs_mod/bobj/BOBJLoader.java#L264) retains native vertex coordinates.

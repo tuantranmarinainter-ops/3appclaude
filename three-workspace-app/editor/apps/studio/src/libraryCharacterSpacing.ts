@@ -26,7 +26,11 @@ function localMatrix(node: JsonObject): Matrix4 {
 }
 
 /** Returns the model-space X width of the visible mesh bounds in a library GLB. */
-export function libraryCharacterBoundingBoxWidth(bytes: Buffer): number {
+export function libraryCharacterBoundingBoxWidth(bytes: Buffer): number { return libraryCharacterBoundingBoxSize(bytes, 'x') }
+
+export function libraryCharacterBoundingBoxHeight(bytes: Buffer): number { return libraryCharacterBoundingBoxSize(bytes, 'y') }
+
+function libraryCharacterBoundingBoxSize(bytes: Buffer, axis: 'x' | 'y'): number {
   const { json } = unpackLibraryGlb(bytes)
   const nodes: Array<JsonObject | null> = Array.isArray(json.nodes) ? (json.nodes as unknown[]).map(object) : []
   const meshes: Array<JsonObject | null> = Array.isArray(json.meshes) ? (json.meshes as unknown[]).map(object) : []
@@ -55,7 +59,7 @@ export function libraryCharacterBoundingBoxWidth(bytes: Buffer): number {
   }
   for (const id of rootIds) visit(id, new Matrix4())
   for (let id = 0; id < nodes.length; id++) visit(id, new Matrix4())
-  const width = bounds.max.x - bounds.min.x
+  const width = bounds.max[axis] - bounds.min[axis]
   if (!(width > 0) || !Number.isFinite(width)) throw new TypeError('Library character model has no measurable mesh bounds')
   return width
 }

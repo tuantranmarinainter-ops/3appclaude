@@ -143,10 +143,13 @@ public final class FilmExportWorker {
                 JsonObject added = draftEditor.invoke("add_actor", add).getAsJsonObject();
                 String replayId = require(added, "replayId").getAsString();
                 String modelId = actor.has("modelId") ? actor.get("modelId").getAsString() : "";
+                if(modelId.isEmpty() && (actor.has("formScale") || actor.has("formOffsetY"))) throw new IllegalArgumentException("Height form transforms require a model actor");
                 if (!modelId.isEmpty()) {
                     JsonObject model = modelById.get(modelId);
                     if (model == null) throw new IllegalArgumentException("Actor references an unknown modelId");
                     JsonObject bind = new JsonObject(); bind.addProperty("filmId", draft); bind.addProperty("replayId", replayId); bind.addProperty("modelId", modelId);
+                    if(actor.has("formScale")) { double formScale=finite(actor,"formScale"); if(!(formScale>0 && formScale<=1000)) throw new IllegalArgumentException("Model form scale must be in (0,1000]"); bind.addProperty("formScale",formScale); }
+                    if(actor.has("formOffsetY")) bind.addProperty("formOffsetY",finite(actor,"formOffsetY"));
                     draftEditor.invoke("set_model_form", bind);
                 }
                 JsonArray transformFrames = new JsonArray();
@@ -229,13 +232,21 @@ public final class FilmExportWorker {
             long emittedCameras = array(decodedJson, "camera", 0, 4096).asList().stream().filter(c -> c.isJsonObject() && c.getAsJsonObject().has("mcp_id") && c.getAsJsonObject().has("title") && cameraIds.contains(c.getAsJsonObject().get("title").getAsString())).count();
             if (emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
             int actualPoseTracks = 0;
-            JsonArray readActors = decodedJson.getAsJsonArray("replays");
+            JsonArray readActors = decodedJson.getAsJsonArray("replays"), modelFormTransforms = new JsonArray();
             for (int i=0;i<actors.size();i++) {
                 JsonObject sourceActor=actors.get(i).getAsJsonObject(); JsonObject tracks=new JsonObject();
                 if(sourceActor.has("poseTracks")) for(JsonElement poseElement:sourceActor.getAsJsonArray("poseTracks")) {
                     JsonObject pose=poseElement.getAsJsonObject(); String bone=text(pose,"boneName");
                     if(tracks.has(bone)) throw new IOException("Duplicate pose-track bone after validation: "+bone);
                     tracks.add(bone,pose);
+                }
+                if(sourceActor.has("formScale") || sourceActor.has("formOffsetY")) {
+                    JsonObject formTransform=readActors.get(i).getAsJsonObject().getAsJsonObject("form").getAsJsonObject("transform");
+                    double expectedScale=sourceActor.has("formScale")?finite(sourceActor,"formScale"):1;
+                    double expectedOffset=sourceActor.has("formOffsetY")?finite(sourceActor,"formOffsetY"):0;
+                    if(formTransform==null || !formTransform.has("s") || !formTransform.has("t")) throw new IOException("Model form height transform missing after native read-back");
+                    JsonObject readHeight=new JsonObject(); readHeight.addProperty("characterId",text(sourceActor,"characterId")); readHeight.add("transform",formTransform.deepCopy()); modelFormTransforms.add(readHeight);
+                    for(int axis=0;axis<3;axis++) if(Math.abs(formTransform.getAsJsonArray("s").get(axis).getAsDouble()-expectedScale)>1e-6*Math.max(1,expectedScale) || Math.abs(formTransform.getAsJsonArray("t").get(axis).getAsDouble()-(axis==1?expectedOffset:0))>1e-6*Math.max(1,Math.abs(expectedOffset))) throw new IOException("Model form height transform changed during native read-back");
                 }
                 if(tracks.size()==0) continue;
                 JsonObject properties=readActors.get(i).getAsJsonObject().getAsJsonObject("properties");
@@ -250,7 +261,7 @@ public final class FilmExportWorker {
             JsonObject exportManifest = new JsonObject(); exportManifest.addProperty("schemaVersion", 1); exportManifest.addProperty("targetVersion", "2.4"); exportManifest.addProperty("mode", mode); exportManifest.addProperty("filmName", filmName); exportManifest.addProperty("projectId", projectId); exportManifest.addProperty("sourceRevision", revision); exportManifest.add("film", filmFile); exportManifest.add("assets", exportedAssets); exportManifest.add("actors", actorMap); exportManifest.add("cameras", cameraMap);
             if (manifest.has("sourceHashes")) exportManifest.add("sourceHashes", manifest.get("sourceHashes").deepCopy());
             Files.writeString(stage.resolve("export-manifest.json"), JSON.toJson(exportManifest), StandardOpenOption.CREATE_NEW);
-            JsonObject report = new JsonObject(); report.addProperty("status", "success"); report.addProperty("nativeReadback", true); report.addProperty("actors", actors.size()); report.addProperty("cameras", cameras.size()); report.addProperty("poseTracks", actualPoseTracks); report.addProperty("mode", mode); report.addProperty("runtimeAcceptance", "not-run");
+            JsonObject report = new JsonObject(); report.addProperty("status", "success"); report.addProperty("nativeReadback", true); report.add("modelFormTransforms",modelFormTransforms); report.addProperty("actors", actors.size()); report.addProperty("cameras", cameras.size()); report.addProperty("poseTracks", actualPoseTracks); report.addProperty("mode", mode); report.addProperty("runtimeAcceptance", "not-run");
             Files.writeString(stage.resolve("export-report.json"), JSON.toJson(report), StandardOpenOption.CREATE_NEW);
             Files.writeString(stage.resolve("README.txt"), "BBS FS 2.4 local Film export. Copy films/ and assets/ into the matching BBS FS asset roots manually. This package was not installed or tested in a game.\n", StandardOpenOption.CREATE_NEW);
             try (var files = Files.list(filmsDir)) {

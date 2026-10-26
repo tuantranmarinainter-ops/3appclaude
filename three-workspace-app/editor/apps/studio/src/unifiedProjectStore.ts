@@ -1,6 +1,7 @@
 import { planSplitShots, readEpisode } from './splitShots'
 import { linkSplitShotAssets } from './splitShotAssets'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
+import { libraryHeightSnapshot, type LibraryHeightSnapshot } from './libraryHeight'
 import { App3BridgeError } from './app3Bridge'
 import { executeApp3Artifacts } from './app3Artifacts'
 import { previewCameraFraming } from './cameraFraming'
@@ -64,7 +65,7 @@ interface LibraryLinkNodePlan {
 interface LibraryLinkPlan {
   modelImported: ImportedAsset
   actionImports: Map<string, { upload: StagedAssetUpload; imported: ImportedAsset }>
-  library: { libraryCharacterId: string; libraryModelFingerprint: string; libraryBaseModelId: string; librarySkin: Array<{ object: string; path: string; sha256: string; source: 'skin' | 'base' }> }
+  library: LibraryHeightSnapshot & { libraryCharacterId: string; libraryModelFingerprint: string; libraryBaseModelId: string; librarySkin: Array<{ object: string; path: string; sha256: string; source: 'skin' | 'base' }> }
   nodes: LibraryLinkNodePlan[]
 }
 
@@ -1951,9 +1952,11 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         }
         linkNodes.push({ nodeId, characterId: existingCharacter?.id ?? null, displayName, replacements, unconverted })
       }
+      // Linking replaces the model but preserves authored transforms. Profile height is opt-in.
+      const measuredHeight = libraryHeightSnapshot(resolved.character, modelBytes).librarySourceHeightMeters
       libraryLink = {
         modelImported, actionImports,
-        library: { libraryCharacterId, libraryModelFingerprint: modelFingerprint, libraryBaseModelId: resolved.baseModel.modelId, librarySkin },
+        library: { libraryHeightBlocks: measuredHeight, librarySourceHeightMeters: measuredHeight, libraryHeightScale: 1, libraryCharacterId, libraryModelFingerprint: modelFingerprint, libraryBaseModelId: resolved.baseModel.modelId, librarySkin },
         nodes: linkNodes,
       }
       stagedAssetImports = [{ upload: modelUpload, imported: modelImported }, ...actionImports.values()]
@@ -1986,6 +1989,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (library !== undefined && (!isRecord(library) || typeof library.libraryCharacterId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(library.libraryCharacterId) ||
       typeof library.libraryModelFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(library.libraryModelFingerprint) ||
       typeof library.libraryBaseModelId !== 'string' || !/^[a-f0-9]{16}$/.test(library.libraryBaseModelId) ||
+      ['libraryHeightBlocks', 'librarySourceHeightMeters', 'libraryHeightScale'].some((key) => library[key] !== undefined && (typeof library[key] !== 'number' || !Number.isFinite(library[key]) || Number(library[key]) <= 0)) ||
       !Array.isArray(library.librarySkin) || library.librarySkin.some((item) => !isRecord(item) || typeof item.object !== 'string' || typeof item.path !== 'string' ||
         !item.object || item.object.startsWith('/') || item.object.split('/').some((part) => !part || part === '.' || part === '..') ||
         !/^(characters|models)\/[A-Za-z0-9_-]+\/(?:[A-Za-z0-9_. -]+\/)*default\.png$/.test(item.path) ||
@@ -2576,6 +2580,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
             modelUrl: `/api/library?modelCharacter=${encodeURIComponent(link.library.libraryCharacterId)}&fingerprint=${link.library.libraryModelFingerprint}`,
             assetId: modelRegistration.assetId,
             libraryCharacterId: link.library.libraryCharacterId, libraryModelFingerprint: link.library.libraryModelFingerprint,
+            libraryHeightBlocks: link.library.libraryHeightBlocks, librarySourceHeightMeters: link.library.librarySourceHeightMeters, libraryHeightScale: link.library.libraryHeightScale,
             libraryBaseModelId: link.library.libraryBaseModelId, librarySkin: link.library.librarySkin, libraryHiddenObjects: [],
             storyboardName }
           delete node.character?.animation.posePresetId

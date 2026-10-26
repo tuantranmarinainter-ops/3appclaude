@@ -23,6 +23,43 @@ JAVA_AVAILABLE = bool(JAVA_HOME and (Path(JAVA_HOME) / "bin/javac.exe").is_file(
 
 
 @unittest.skipUnless(JAVA_AVAILABLE, "Set BBS_JAVA_HOME to a Java 17 JDK to run Film worker integration tests")
+class NativeHeightFormTests(unittest.TestCase):
+    def test_native_form_height_and_floor_read_back_without_changing_model_or_pose_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = root / "model.bobj"
+            raw = b"arm_name height.mdl\narm_bone root 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1\no Body\nv 0 -1.993 0\nv 0 3.835 0\n"
+            model.write_bytes(raw)
+            factor = 3.6 / 5.828
+            manifest = {"schemaVersion": 1, "targetVersion": "2.4", "projectId": "height-test", "sourceRevision": 0, "mode": "editable", "filmName": "height-test", "durationTicks": 1,
+                "models": [{"id": "unified/height-test", "bones": ["root"], "actions": [], "textureRequired": False, "files": [{"sourcePath": str(model), "targetPath": "model.bobj", "sha256": hashlib.sha256(raw).hexdigest()}]}],
+                "actors": [{"characterId": "actor", "name": "Actor", "modelId": "unified/height-test", "formScale": factor, "formOffsetY": 1.993 * factor, "transformSamples": [{"tick": tick, "x": 2 * tick, "y": 0, "z": 0, "pitch": 0, "yaw": 0} for tick in (0, 1)], "poseTracks": []}],
+                "cameras": [{"id": "camera", "startTick": 0, "durationTicks": 1, "keyframes": [{"tick": tick, "x": 0, "y": 2, "z": 5, "pitch": 0, "yaw": 0, "roll": 0, "verticalFovDegrees": 60} for tick in (0, 1)]}]}
+            second = {**manifest["actors"][0], "characterId": "actor-1.8", "name": "Actor 1.8", "formScale": 1.8 / 5.828, "formOffsetY": 1.993 * 1.8 / 5.828}
+            manifest["actors"].append(second)
+            spec = root / "manifest.json"
+            spec.write_text(json.dumps(manifest), encoding="utf-8")
+            output = root / "exports"
+            output.mkdir()
+            result = run_film_worker(spec, output)
+            package = Path(result["packageDirectory"])
+            report = json.loads((package / "export-report.json").read_text(encoding="utf-8"))
+            transform = report["modelFormTransforms"][0]["transform"]
+            self.assertTrue(report["nativeReadback"])
+            self.assertEqual(len(transform["s"]), 3)
+            for value in transform["s"]:
+                self.assertAlmostEqual(value, factor, places=6)
+            foot = -1.993 * transform["s"][1] + transform["t"][1]
+            head = 3.835 * transform["s"][1] + transform["t"][1]
+            self.assertAlmostEqual(foot, 0, places=6)
+            self.assertAlmostEqual(head - foot, 3.6, places=6)
+            small = report["modelFormTransforms"][1]["transform"]
+            self.assertAlmostEqual(5.828 * small["s"][1], 1.8, places=6)
+            self.assertAlmostEqual(-1.993 * small["s"][1] + small["t"][1], 0, places=6)
+            self.assertEqual((package / "assets/models/unified/height-test/model.bobj").read_bytes(), raw)
+
+
+@unittest.skipUnless(JAVA_AVAILABLE, "Set BBS_JAVA_HOME to a Java 17 JDK to run Film worker integration tests")
 class FilmWorkerIntegrationTests(unittest.TestCase):
     def manifest(self, target_path: str = "model.bobj", *, valid_hash: bool = True) -> dict:
         raw = MODEL.read_bytes()

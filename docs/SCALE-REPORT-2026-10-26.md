@@ -1,6 +1,6 @@
 # Báo cáo điều tra tỷ lệ nhân vật S1 — 2026-10-26
 
-Trạng thái: đã điều tra trước khi sửa; **dừng theo ranh giới người dùng yêu cầu** vì tìm thấy phép đổi tỷ lệ đáng nghi trong `packages/retarget`. Chưa triển khai tính năng chiều cao.
+Trạng thái hiện tại: đã tiếp tục triển khai `heightBlocks` sau khi có số đo Windows và kiểm tra mã renderer BBS. Giữ nguyên `packages/retarget`; hiệu chỉnh ở thư viện, scene, phần trình bày App 3 và form xuất film. Phần điều tra ban đầu dưới đây được giữ lại để phân biệt nghi vấn với bằng chứng mới. Các phép đo model/project thật còn thiếu và kiểm trong game vẫn `NOT_RUN`.
 
 ## Dữ liệu thật còn thiếu
 
@@ -31,7 +31,7 @@ Preset Verity **0,4915394** là **ứng viên nguyên nhân** phù hợp với b
 
 Chưa sửa `packages/retarget`, chưa đổi golden, chưa ghi binary. Theo yêu cầu S1, khi điều tra chạm nguyên nhân nghi vấn trong `packages/retarget` phải dừng và báo trước; báo cáo này ghi nhận việc dừng, **không phải sự cho phép thay đổi retarget**.
 
-## Phần chưa triển khai và kiểm chứng
+## Trạng thái tại bước điều tra ban đầu
 
 Các phần S1 còn chờ: hồ sơ/API/UI `heightBlocks`, mặc định MC20 1,8 và Verity 3,6 block, cùng hệ số giữa App 2/App 3 và bản xuất, xác nhận rõ trước khi cập nhật nhân vật đã có trong project, lưới block, nhãn chiều cao, film đo cạnh cột 5 block và kiểm sai số trong game. Không có code triển khai trong thay đổi báo cáo này.
 
@@ -81,3 +81,26 @@ Kết luận:
 4. Sửa được ở `packages/library` + `apps/studio` (scale đều GLB khi đưa vào cảnh/App 3 và khớp lúc xuất), **không cần sửa
    `packages/retarget`**. Chỉ còn câu hỏi phụ: MC20 Emoticons app 2,03 vs game ≈ 1,8 (nghi BBS/scale form người chơi 0,9375
    hoặc mesh lớp ngoài) — đo lại bằng film đo khi có S1.
+
+## Hiệu chỉnh sau số đo Windows và kiểm tra renderer BBS
+
+Appendix Windows xác định GLB chuẩn hóa trong app khác kích thước BOBJ gốc. Tuy nhiên không dùng preset nhập BOBJ `0.4915394` làm hệ số hiển thị mặc định của mọi model BBS. Kiểm mã FS 2.7 tại commit `998c9d585427b4cf0061940496ae1f6a7df1bb03` cho thấy:
+
+- [ModelConfig.java dòng 49](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/client/java/mchorse/bbs_mod/cubic/model/config/ModelConfig.java#L49): config scale mặc định là `[1,1,1]`.
+- [BOBJLoader.java dòng 264](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/main/java/mchorse/bbs_mod/bobj/BOBJLoader.java#L264): tọa độ vertex được đưa trực tiếp vào buffer, không tự nhân preset nhập của app.
+- [ModelFormRenderer.java dòng 113](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/client/java/mchorse/bbs_mod/forms/renderers/ModelFormRenderer.java#L113): áp transform form rồi scale config model.
+- [Form.java dòng 75](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/main/java/mchorse/bbs_mod/forms/forms/Form.java#L75) và [Transform.java dòng 485](https://github.com/Wemppy4/bbs-fs/blob/998c9d585427b4cf0061940496ae1f6a7df1bb03/src/main/java/mchorse/bbs_mod/utils/pose/Transform.java#L485) xác nhận wire `form.transform.s` và `.t` là float3.
+
+Gói original unified hiện không xuất config scale riêng. Vì vậy tính hệ số form từ chiều cao mesh **thô**, độc lập với preset nhập app: `formScale = heightBlocks / rawHeight`, `formOffsetY = -rawMinY * formScale`. Không suy ngược config của model Chirity đang có trong game từ ảnh; model đó ở thư mục khác và có thể có config riêng.
+
+Theo yêu cầu trực tiếp của người dùng, mặc định vẫn là Minecraft20 **1,8 block**, nhóm Verity **3,6 block**, thay vì tự áp đề xuất 2,86/3,41 ở appendix. Hồ sơ sửa được. Scene lưu snapshot `libraryHeightBlocks`, `librarySourceHeightMeters`, `libraryHeightScale`; hệ số đều của node là đích / chiều cao GLB thực tế. Đổi hồ sơ không tự sửa project; thao tác đồng ý mới cập nhật node và các scale key, trong một bước Undo. Liên kết thư viện vào node cũ giữ transform đã dựng và yêu cầu đồng ý riêng khi chiều cao khác.
+
+App 3 giữ GLB, action và fingerprint chuẩn; chỉ đổi wrapper hiển thị và quy đổi delta vị trí trả về đúng một lần. Film giữ mesh/xương BOBJ nguyên vẹn, áp scale form đã xác minh và bù sàn; root motion được quy đổi độc lập để không nhân hai lần. Thay đổi worker Java chỉ thêm trường form scale/offset tùy chọn, không sửa solver retarget.
+
+Kiểm số tổng hợp dùng biên Y có sàn khác 0: fixture 2,03 → 1,8 block; fixture Verity có raw height 5,828, raw min Y −1,993, GLB height 1,90 → 3,6 block. Với fixture Verity, `formScale = 3.6/5.828`, `formOffsetY = 1.993 * formScale`; kiểm ma trận cho chân Y=0 và chiều cao đúng đích. Số 5,828/−1,993 lấy từ báo cáo Windows; đây vẫn là test dựng lại bằng dữ liệu tổng hợp, không phải đo lại model Gỗ Xưa thật trong Linux. Riêng raw height 2,03 trong fixture Minecraft chỉ là dữ liệu test, không khẳng định raw BOBJ Đen có chiều cao đó.
+
+Test Java xuất hai actor dùng chung một BOBJ rồi đọc lại `.dat` bằng BbsCodec, kiểm `s`/`t` và byte/hash model giữ nguyên. Đây là kiểm cấu trúc/số học; chưa phải nghiệm thu renderer trong game. Model Đen/Gỗ Xưa thật, film cột 5 block, SHA Samba `68fcdb75d373…` và ảnh game chưa có trong workspace: các gate này vẫn **NOT_RUN**; không đổi golden hay ghi đè dữ liệu mẫu Windows.
+
+## Bàn giao khi dừng theo quota
+
+Code hiện có được mở PR nháp, chưa tự merge. Chi tiết file, quyết định, kết quả kiểm tra và việc còn dở: [S1-HANDOFF-2026-10-26.md](S1-HANDOFF-2026-10-26.md). Studio282PASS/7SKIP/1FAIL baseline Blender;31 test tập trung PASS; builder627PASS/1SKIP; Python CLI/MCP + native Java56PASS; build/typecheck/lint/offline PASS. Gate model thật, film đo, Samba và game còn NOT_RUN.

@@ -199,3 +199,36 @@ test('Minecraft20 native BOBJ removes the GLB wrapper and exports exactly 20 mov
   assert.equal(manifest.actors[0]!.poseTracks.length, 20)
   assert.equal(manifest.actors[0]!.animationKeyframes, undefined)
 })
+
+test('calibrated forms scale mesh and skeletal root once while replay positions retain sampled world metres', () => {
+  const scaled = structuredClone(input) as any
+  scaled.models[0].actorScale = 3.6 / 1.9
+  const size = scaled.models[0].actorScale
+  for (const frame of scaled.frames) {
+    const actor = new Matrix4().makeScale(size, size, size)
+    actor.setPosition(frame.tick * size * 2, 0, 0)
+    frame.skeletons[0].actorWorldMatrix = actor.toArray()
+    frame.skeletons[0].bones[0].worldMatrix = actor.clone().multiply(new Matrix4().makeTranslation(frame.tick * 0.25, 0, 0)).toArray()
+  }
+  const manifest = buildFilmExportManifest(scaled, new Map([['asset', profile]]), 'height-calibrated')
+  const actor = manifest.actors[0]!
+  assert.equal(actor.formScale, size)
+  assert.equal(actor.transformSamples[1]!.x, size * 2, 'world trajectory already includes scale')
+  assert.ok(Math.abs(actor.poseTracks[0]!.keyframes[1]!.t[0] * actor.formScale! - 0.25 * size) < 1e-12)
+  assert.equal(manifest.models[0]!.files[0]!.sha256, profile.files[0]!.sha256, 'canonical model bytes are unchanged')
+})
+
+test('one canonical model supports different calibrated actor heights without cache identity collisions', () => {
+  const source = structuredClone(input) as any
+  source.models[0].actorScale = 1.8
+  source.models.push({ ...structuredClone(source.models[0]), characterId: 'second', nodeId: 'second', name: 'Second', actorScale: 3.6 })
+  for (const frame of source.frames) {
+    frame.skeletons = source.models.map((model: { nodeId: string; actorScale: number }) => {
+      const actor = new Matrix4().makeScale(model.actorScale, model.actorScale, model.actorScale)
+      return { ...structuredClone(frame.skeletons[0]), nodeId: model.nodeId, actorWorldMatrix: actor.toArray(), bones: [{ ...structuredClone(frame.skeletons[0].bones[0]), worldMatrix: actor.toArray() }] }
+    })
+  }
+  const manifest = buildFilmExportManifest(source, new Map([['asset', profile]]), 'shared-height')
+  assert.equal(manifest.models.length, 1)
+  assert.deepEqual(manifest.actors.map((actor) => actor.formScale), [1.8, 3.6])
+})

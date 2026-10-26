@@ -1,3 +1,4 @@
+import { shotPlacementAtHeight } from './app3Height'
 import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -22,6 +23,11 @@ export async function prepareShotResult(project: UnifiedProject,args: Record<str
   const upload=draftBytes?{id:'draft',bytes:draftBytes}:await readStagedAssetUpload(args.file),files=unzipPackage(upload.bytes),issues=validateResult(files,base.files)
   if(issues.length)throw new TypeError(JSON.stringify(issues))
   const result=readPackageJson<ShotResult>(files,'result.json')
+  // Only the native editor's actor displacement is scaled. Base world coordinates and Action bones stay canonical.
+  for (const edit of result.edits) {
+    const character = base.shot.characters.find((item) => item.characterId === edit.characterId)
+    if (character?.heightScale !== undefined) edit.placementKeys = shotPlacementAtHeight(edit.placementKeys, character.placement.position, character.heightScale)
+  }
   const edits=await Promise.all(result.edits.map(async edit=>{
     const binding=base.saved.clips[edit.characterId],character=project.characters[edit.characterId],original=project.motions[edit.originalActionUuid]
     if(!binding||!character||!original||binding.motionId!==original.id||project.bindings[binding.clipId]?.motionId!==original.id)throw new TypeError('Shot clip or original Motion changed')

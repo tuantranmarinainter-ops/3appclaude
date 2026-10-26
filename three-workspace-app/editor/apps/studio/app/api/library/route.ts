@@ -1,6 +1,6 @@
 import { libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
-import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
+import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, updateLibraryCharacterHeights, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
 
 export const runtime = 'nodejs'
 
@@ -47,14 +47,14 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function PATCH(request: Request): Promise<Response> {
   try {
-    const body = await request.json() as { operation?: string; charId?: string; actionUuid?: string; category?: string; tags?: string[]; name?: string; nameVi?: string; sourceName?: string; favorite?: boolean; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
+    const body = await request.json() as { operation?: string; charId?: string; actionUuid?: string; category?: string; tags?: string[]; name?: string; nameVi?: string; sourceName?: string; favorite?: boolean; heightBlocks?: number; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
     if (body.operation === 'approve') {
       if (!body.charId || !body.actionUuid) return Response.json({ error: 'charId and actionUuid are required' }, { status: 400 })
       return Response.json({ action: approveCharacterAction(body.charId, body.actionUuid) })
     }
     if (body.operation === 'profile') {
-      if (!body.charId || !body.personality || !body.requiredActions) return Response.json({ error: 'Character profile is required' }, { status: 400 })
-      return Response.json({ character: updateCharacterProfile(body.charId, body.personality, body.requiredActions) })
+      if (!body.charId || body.heightBlocks === undefined && !body.personality && !body.requiredActions) return Response.json({ error: 'Character profile is required' }, { status: 400 })
+      return Response.json({ character: updateCharacterProfile(body.charId, body.personality, body.requiredActions, body.heightBlocks) })
     }
     if (!body.actionUuid) return Response.json({ error: 'actionUuid is required' }, { status: 400 })
     if (body.category !== undefined && !ACTION_CATEGORIES.includes(body.category as ActionCategory)) return Response.json({ error: 'Unknown category' }, { status: 400 })
@@ -66,6 +66,10 @@ export async function PATCH(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number }
+    if (body.operation === 'update-scene-heights') {
+      if (!body.projectId || !Number.isSafeInteger(body.expectedRevision)) return Response.json({ error: 'projectId và expectedRevision là bắt buộc' }, { status: 400 })
+      return Response.json(await updateLibraryCharacterHeights(body.projectId, body.expectedRevision!))
+    }
     if (body.operation === 'copy') {
       if (!body.actionUuid || !body.toCharId) return Response.json({ error: 'actionUuid and toCharId are required' }, { status: 400 })
       return Response.json({ action: copyCharacterAction(body.actionUuid, body.toCharId) })

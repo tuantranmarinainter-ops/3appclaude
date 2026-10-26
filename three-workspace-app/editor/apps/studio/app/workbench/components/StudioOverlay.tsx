@@ -17,6 +17,7 @@ import { RetargetWorkspace } from './RetargetWorkspace'
 import { AnimationWorkspace } from './AnimationWorkspace'
 import { AnimationAssignPanel } from './animation-assign'
 import { HostDrawer } from './HostDrawer'
+import { CharacterHeightNotice } from './character-height'
 import { SceneRenderPanel } from './scene-render'
 import { SplitShotsPanel } from './split-shots'
 import { FilmExportPanel } from './film-export'
@@ -590,7 +591,7 @@ export function StudioOverlay({
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} /></div>}
+          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>
