@@ -1,6 +1,7 @@
 import { filmSceneWorldMatrices } from './filmSceneWorld'
 import { Matrix4 } from 'three'
-import { applyFilmWorldAnchor, resolveFilmWorldAnchor } from './filmWorldAnchor'
+import { applyFilmWorldAnchor } from './filmWorldAnchor'
+import { projectFilmAnchor } from './filmAnchorProject'
 import { stageSceneConversion, type SceneConversionArgs } from './sceneConversion'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -441,7 +442,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks, args.range.startFrame)
     const source = manifest.actors[0]?.transformSamples[0] ?? manifest.cameras[0]!.keyframes[0]!
-    const worldAnchor = resolveFilmWorldAnchor(args.worldAnchor, [source.x, source.y, source.z])
+    const worldAnchor = projectFilmAnchor(snapshot, args.worldAnchor, args.range.startFrame, args.characterIds, args.propIds, [source.x, source.y, source.z])
     applyFilmWorldAnchor(manifest, worldAnchor, effects)
     // B15: VFX cues ride in the Film itself as AAA Particles replays (the effects must be installed in the game under
     // config/bbs/assets/<root>; W01_AAA_EFFECT_ROOT, default effeks/samples). effects.json stays as a sidecar.
