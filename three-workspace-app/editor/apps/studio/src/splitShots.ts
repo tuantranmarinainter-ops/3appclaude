@@ -133,10 +133,11 @@ export function planSplitShots(source: UnifiedProject, args: { sequenceId?: stri
         evaluateFrame(evaluation, frame, snapshot)
         const transform = snapshot.transforms.get(nodeId)
         if (!transform) continue
-        for (const property of ['position', 'rotation', 'scale'] as const) (tracks[property] ??= []).push({ frame: frame - start, value: [transform[property].x, transform[property].y, transform[property].z], interpolation: 'linear' })
-        if (transform.lookAt) (tracks.lookAt ??= []).push({ frame: frame - start, value: [transform.lookAt.x, transform.lookAt.y, transform.lookAt.z], interpolation: 'linear' })
-        if (transform.fov !== undefined) (tracks.fov ??= []).push({ frame: frame - start, value: [transform.fov], interpolation: 'linear' })
+        for (const property of ['position', 'rotation', 'scale'] as const) (tracks[property] ??= []).push({ id: `${nodeId}:${property}:${frame - start}`, frame: frame - start, value: [transform[property].x, transform[property].y, transform[property].z], interpolation: 'linear' })
+        if (transform.lookAt) (tracks.lookAt ??= []).push({ id: `${nodeId}:lookAt:${frame - start}`, frame: frame - start, value: [transform.lookAt.x, transform.lookAt.y, transform.lookAt.z], interpolation: 'linear' })
+        if (transform.fov !== undefined) (tracks.fov ??= []).push({ id: `${nodeId}:fov:${frame - start}`, frame: frame - start, value: [transform.fov], interpolation: 'linear' })
       }
+      // Baked keys need stable unique ids: the timeline keys React rows and selections by id (empty ids collided).
       userKeys[nodeId] = tracks
       const camera = project.scene.content.nodes.find((node) => node.id === nodeId)?.camera
       if (camera) { if (camera.subject) camera.subject.follow = false; delete camera.lookAtTarget }
