@@ -1,3 +1,4 @@
+import { filmAnchorPlacement, type FilmAnchorPlacement } from './filmAnchorPreflight'
 import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
@@ -67,7 +68,7 @@ export interface FilmPreflightArgs extends FilmSamplingArgs {
   samplingError?: string
 }
 
-export interface FilmPreflightResult { errors: FilmPreflightIssue[]; warnings: FilmPreflightIssue[] }
+export interface FilmPreflightResult { placement?: FilmAnchorPlacement; errors: FilmPreflightIssue[]; warnings: FilmPreflightIssue[] }
 
 /** Runs the same preflight independently for each planned series segment and annotates every issue. */
 export function filmSeriesPreflight(segments: readonly FilmSeriesSegment[], evidence: ReadonlyMap<number, Pick<FilmPreflightArgs, 'assetAvailability' | 'propBoneCounts' | 'footSamples' | 'samplingBlockers' | 'samplingError'>> = new Map()): FilmPreflightResult {
@@ -81,6 +82,15 @@ export function filmSeriesPreflight(segments: readonly FilmSeriesSegment[], evid
       for (const value of values) {
         const tagged = { ...value, segment: segment.order }
         if (!target.some((prior) => prior.segment === tagged.segment && prior.code === tagged.code && prior.nodeId === tagged.nodeId && prior.clipId === tagged.clipId && prior.frame === tagged.frame)) target.push(tagged)
+      }
+    }
+    if (entry.placement) {
+      if (!result.placement) result.placement = structuredClone(entry.placement)
+      else {
+        result.placement.min = result.placement.min.map((n, axis) => Math.min(n, entry.placement!.min[axis]!))
+        result.placement.max = result.placement.max.map((n, axis) => Math.max(n, entry.placement!.max[axis]!))
+        const distances = [result.placement.nearestActorDistance, entry.placement.nearestActorDistance].filter((n): n is number => n !== undefined)
+        result.placement.nearestActorDistance = distances.length ? Math.min(...distances) : undefined
       }
     }
     append(result.errors, entry.errors)
@@ -131,6 +141,16 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
   }
   const addError = (entry: FilmPreflightIssue) => {
     if (!result.errors.some((prior) => prior.code === entry.code && prior.nodeId === entry.nodeId && prior.clipId === entry.clipId && prior.frame === entry.frame)) result.errors.push(entry)
+  }
+  try {
+    const measured = filmAnchorPlacement(project, args)
+    if (measured) {
+      result.placement = measured.placement
+      if (measured.below) result.warnings.push(issue('WORLD_ANCHOR_BELOW_FLOOR', 'Có actor dưới vị trí đứng hơn 1 block; kiểm tra lại điểm gốc và mặt đất.', 'An actor is over one block below the standing position; check the pivot and floor.'))
+      if (measured.far) result.warnings.push(issue('WORLD_ANCHOR_FAR', 'Có actor cách vị trí đứng hơn 64 block.', 'An actor is over 64 blocks from the standing position.'))
+    }
+  } catch (error) {
+    result.errors.push(issue('WORLD_ANCHOR_INVALID', error instanceof Error ? error.message : 'Không đo được điểm neo', 'Could not evaluate the world anchor.'))
   }
   const inspection = inspectProjectFilm(project, args, { includePropBudget: true, propBoneCounts: args.propBoneCounts })
   for (const validation of inspection.issues) {

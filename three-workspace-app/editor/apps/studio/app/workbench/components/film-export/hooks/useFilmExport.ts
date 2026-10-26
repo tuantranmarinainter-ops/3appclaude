@@ -19,6 +19,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
   const sequences = project.scene.content.editorial?.sequences ?? []
   const [effectsPolicy, setEffectsPolicy] = useState<FilmEffectsPolicy>({ mode: 'omit' })
   useEffect(() => { setEffectsPolicy({ mode: 'omit' }) }, [capabilities])
+  const [worldAnchorInputValid, setWorldAnchorInputValid] = useState(true)
   const [worldAnchor, setWorldAnchor] = useState<FilmWorldAnchor>({ mode: 'local-origin', destination: [0, 64, 0] })
   const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
   const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
@@ -108,7 +109,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     return () => { clearTimeout(timer); cancelled = true }
   }, [project.projectId, project.revision, exportMode, selectionArgs, currentKey])
 
-  const canExport = !busy && !checkingPreflight && preflightRevision === project.revision &&
+  const canExport = worldAnchorInputValid && !busy && !checkingPreflight && preflightRevision === project.revision &&
     preflightKey === currentKey && passedKey.current === currentKey && !!preflight && preflight.errors.length === 0
 
   const saveAgain = async (job: UnifiedJobView) => {
@@ -241,7 +242,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
-  return { effectsPolicy, setEffectsPolicy, worldAnchor, setWorldAnchor, characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
+  return { setWorldAnchorInputValid, effectsPolicy, setEffectsPolicy, worldAnchor, setWorldAnchor, characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
     sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot, shotSelection, chooseShot, shotRepairs, applyShotRepair,
