@@ -1,3 +1,4 @@
+import {transformKeyTimes} from './keyframe_time.js';
 import {SilhouetteView} from './silhouette_view.js';
 const silhouetteView=new SilhouetteView();
 const silhouetteControls=new Map();
@@ -426,11 +427,12 @@ function drawTimeline(){
   const y=(i+.5)*preset.row;ctx.fillStyle=r.id===selected?accent:muted;ctx.fillText(r.name.slice(0,preset.font>10?16:19),7,y+4);
   ctx.save();ctx.beginPath();ctx.rect(left-11,0,span+23,height);ctx.clip();
   if(preset.band&&r.keys.length>1){const a=left+span*r.keys[0].time/project.duration,b=left+span*r.keys.at(-1).time/project.duration;ctx.fillStyle=accent;ctx.globalAlpha=.2;ctx.fillRect(a,y-7,b-a,14);ctx.globalAlpha=1;}
-  for(const key of r.keys){const groupSelected=r.id.startsWith('labGroup_')&&labGroupRefs(r.id.slice(9),key.time).some(ref=>selectionKeys.some(s=>(s.kind||'keys')===ref.kind&&s.id===ref.id&&Math.abs(s.time-ref.time)<1e-7));const preview=timelineKeyDrag?.active&&selectionKeys.some(s=>(r.id==='allBody'||groupSelected||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7)?timelineKeyDrag.delta:0;const x=left+span*(key.time+preview)/project.duration,k=preset.key,chosen=selectionKeys.some(s=>(r.id==='allBody'||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7);
+  for(const key of r.keys){const groupSelected=r.id.startsWith('labGroup_')&&labGroupRefs(r.id.slice(9),key.time).some(ref=>selectionKeys.some(s=>(s.kind||'keys')===ref.kind&&s.id===ref.id&&Math.abs(s.time-ref.time)<1e-7));const preview=timelineKeyDrag?.active&&selectionKeys.some(s=>(r.id==='allBody'||groupSelected||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7)?timelineKeyDrag.delta:0;const previewTime=preview&&timelineKeyDrag.edge?transformKeyTimePreview(key.time,timelineKeyDrag):key.time+preview;const x=left+span*previewTime/project.duration,k=preset.key,chosen=selectionKeys.some(s=>(r.id==='allBody'||(s.kind||'keys')==='keys'&&s.id===r.id)&&Math.abs(s.time-key.time)<1e-7);
    ctx.fillStyle=chosen?'#eebc51':r.id===selected?accent:'#82a9e8';ctx.beginPath();
    if(style==='compact')ctx.arc(x,y,k,0,Math.PI*2);else{ctx.moveTo(x,y-k);ctx.lineTo(x+k,y);ctx.lineTo(x,y+k);ctx.lineTo(x-k,y);ctx.closePath();}ctx.fill();timelineHits.push({id:r.id,time:key.time,x,y,radius:k+4});
   }ctx.restore();
  });
+ const range=keySelectionRange();if(range&&range.end>range.start){const a=left+span*range.start/project.duration,b=left+span*range.end/project.duration;ctx.fillStyle='#eebc5144';ctx.fillRect(a,0,b-a,8);ctx.fillStyle='#eebc51';ctx.fillRect(a-4,0,8,10);ctx.fillRect(b-4,0,8,10);}
  const x=left+span*time/project.duration;for(const[c,h]of [[ctx,height],[rc,ticks?44:22]]){c.strokeStyle='#e78672';c.beginPath();c.moveTo(x,0);c.lineTo(x,h);c.stroke();}
  rc.fillStyle='#e78672';rc.beginPath();rc.moveTo(x-4,0);rc.lineTo(x+4,0);rc.lineTo(x,6);rc.closePath();rc.fill();
  $('timeline').dataset.rowHeight=preset.row;$('timeline').dataset.preset=style;
@@ -450,7 +452,7 @@ for(const id of ['timelineRuler','timeline']){
  listen(id,'pointerdown',e=>{
   if(e.button!==0||!e.isPrimary||timelineDrag||!project)return;
   const el=$(id),rect=el.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;
-  timelineSuppressClick=false;if(x<130||id==='timeline'&&timelineHits.some(h=>Math.hypot(x-h.x,y-h.y)<h.radius))return;
+  timelineSuppressClick=false;if(x<130||id==='timeline'&&(timelineKeyEdge(x,y,rect.width)||timelineHits.some(h=>Math.hypot(x-h.x,y-h.y)<h.radius)))return;
   const active=e.pointerType!=='touch';timelineDrag={element:el,pointer:e.pointerId,rate:id==='timelineRuler'&&$('showMinecraftTicks').checked&&y<22?20:timelineRate(),x:e.clientX,y:e.clientY,active};
   el.setPointerCapture(e.pointerId);if(active){playing=false;syncTime();timelinePending={x:e.clientX};el.classList.add('is-scrubbing');el.focus({preventScroll:true});e.preventDefault();}
  });
@@ -471,8 +473,12 @@ function drawCurve(){graphEditor?.draw();}
 function mirror(){assertEditingAllowed();const data=new Map(rig.records.map(r=>[r.id,{q:r.o.getWorldQuaternion(new T.Quaternion()),p:C.snap(r.o)}]));const swap=n=>/Left|Right/.test(n)?n.replace(/Left|Right/g,x=>x==='Left'?'Right':'Left'):/\.[LR]$/.test(n)?n.slice(0,-1)+(n.endsWith('L')?'R':'L'):n;
  for(const dst of rig.records){const source=rig.records.find(r=>r.name===swap(dst.name));if(!source)continue;const delta=data.get(source.id).q.clone().multiply(new T.Quaternion().fromArray(source.worldQ).invert());delta.set(delta.x,-delta.y,-delta.z,delta.w);const desired=delta.multiply(new T.Quaternion().fromArray(dst.worldQ));C.setWorldQ(dst.o,desired);const p=data.get(source.id).p.p,rest=source.rest.p;dst.o.position.fromArray(dst.rest.p).add(new T.Vector3(-(p[0]-rest[0]),p[1]-rest[1],p[2]-rest[2]));}
  rig.root.updateMatrixWorld(true);markPose(null,C.activeRecords(rig).map(r=>r.id));info('Đã mirror theo cặp trái/phải và hướng rest; kiểm tra pose trước khi ghi key.');}
+function timelineKeyEdge(x,y,width){const r=keySelectionRange();if(!r||r.end<=r.start||y>10)return null;return Math.abs(x-(130+(width-142)*r.start/project.duration))<=7?'scaleStart':Math.abs(x-(130+(width-142)*r.end/project.duration))<=7?'scaleEnd':null;}
+function keySelectionRange(){if(!selectionKeys.length)return null;return{start:Math.min(...selectionKeys.map(k=>k.time)),end:Math.max(...selectionKeys.map(k=>k.time))};}
+const keyRippleLabel=document.createElement('label');keyRippleLabel.innerHTML='<input type="checkbox" id="keyTimeRipple"> Đẩy phần sau (ripple)';$('moveKey').before(keyRippleLabel);
 function keyOperation(action,targetTime=Number($('keyFrame').value)/timelineRate()){assertEditingAllowed();
- const result=C.editKeyframes(project,selectionKeys,action,targetTime,$('interpolation').value,Number($('easingStrength').value)/100);
+ const range=keySelectionRange(),ripple=$('keyTimeRipple').checked;
+ const result=['move','scaleStart','scaleEnd'].includes(action)&&range?transformKeyTimes(project,selectionKeys,action==='scaleEnd'?range.start:targetTime,action==='scaleStart'?range.end:action==='scaleEnd'?targetTime:targetTime+range.end-range.start,ripple):C.editKeyframes(project,selectionKeys,action,targetTime,$('interpolation').value,Number($('easingStrength').value)/100);
  project=result.project;selectionKeys=result.selection;playing=false;draft=false;C.evaluate(rig,project,time);commit();refresh();
 }
 function deleteTimelineKeys(){
@@ -504,6 +510,7 @@ function selectTimelineHit(hit,additive=false){
  if(hit.id!=='allBody'&&!grouped)select(hit.id);$('keyFrame').value=+(hit.time*timelineRate()).toFixed(3);
  const key=project.keys[hit.id]?.find(k=>Math.abs(k.time-hit.time)<1e-7);if(key){$('interpolation').value=key.interp;$('easingStrength').value=Math.round((key.easingStrength??1)*100);}drawTimeline();easingPanel?.sync();
 }
+function transformKeyTimePreview(t,d){const {start,end}=d.range,a=d.edge==='scaleStart'?start+d.delta:start,b=d.edge==='scaleEnd'?end+d.delta:end;return a+(t-start)*(b-a)/(end-start);}
 let timelineKeyDrag=null;
 function endTimelineKeyDrag(cancel=false){
  const drag=timelineKeyDrag;if(!drag)return;timelineKeyDrag=null;
@@ -513,18 +520,18 @@ function endTimelineKeyDrag(cancel=false){
 }
 listen('timeline','pointerdown',e=>{
  if(e.button!==0||!e.isPrimary||timelineKeyDrag||!project)return;
- const rect=$('timeline').getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top,hit=timelineHits.find(h=>Math.hypot(x-h.x,y-h.y)<h.radius);if(!hit)return;
- timelineKeyDrag={pointer:e.pointerId,start:e.clientX,hit,selection:C.clone(selectionKeys),frame:$('keyFrame').value,active:false,delta:0,paint:false,additive:e.ctrlKey||e.shiftKey};$('timeline').setPointerCapture(e.pointerId);e.preventDefault();
+ const rect=$('timeline').getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top,range=keySelectionRange(),edge=timelineKeyEdge(x,y,rect.width),hit=timelineHits.find(h=>Math.hypot(x-h.x,y-h.y)<h.radius);if(!hit&&!edge)return;
+ timelineKeyDrag={pointer:e.pointerId,start:e.clientX,hit,edge,range,selection:C.clone(selectionKeys),frame:$('keyFrame').value,active:false,delta:0,paint:false,additive:e.ctrlKey||e.shiftKey};$('timeline').setPointerCapture(e.pointerId);e.preventDefault();
 });
 listen('timeline','pointermove',e=>{
  const d=timelineKeyDrag;if(!d||d.pointer!==e.pointerId)return;
- if(!d.active){if(Math.abs(e.clientX-d.start)<4)return;const contains=selectionKeys.some(s=>(d.hit.id==='allBody'||d.hit.id.startsWith('labGroup_')&&labGroupRefs(d.hit.id.slice(9),d.hit.time).some(r=>r.id===s.id&&r.kind===(s.kind||'keys'))||s.id===d.hit.id)&&Math.abs(s.time-d.hit.time)<1e-7);if(!contains)selectTimelineHit(d.hit,d.additive);d.active=true;playing=false;$('timeline').classList.add('is-key-dragging');}
- d.delta=Math.round((e.clientX-d.start)/Math.max(1,$('timeline').clientWidth-142)*project.duration*timelineRate())/timelineRate();d.paint=true;$('keyFrame').value=+((Math.min(...selectionKeys.map(k=>k.time))+d.delta)*timelineRate()).toFixed(3);e.preventDefault();
+ if(!d.active){if(Math.abs(e.clientX-d.start)<4)return;const contains=d.edge||selectionKeys.some(s=>(d.hit.id==='allBody'||d.hit.id.startsWith('labGroup_')&&labGroupRefs(d.hit.id.slice(9),d.hit.time).some(r=>r.id===s.id&&r.kind===(s.kind||'keys'))||s.id===d.hit.id)&&Math.abs(s.time-d.hit.time)<1e-7);if(!contains)selectTimelineHit(d.hit,d.additive);d.range=keySelectionRange();d.active=true;playing=false;$('timeline').classList.add('is-key-dragging');}
+ d.delta=Math.round((e.clientX-d.start)/Math.max(1,$('timeline').clientWidth-142)*project.duration*timelineRate())/timelineRate();d.paint=true;$('keyFrame').value=+(((d.edge==='scaleEnd'?d.range.end:d.range.start)+d.delta)*timelineRate()).toFixed(3);e.preventDefault();
 });
 listen('timeline','pointerup',e=>{
  const d=timelineKeyDrag;if(!d||d.pointer!==e.pointerId)return;if(!d.active){endTimelineKeyDrag();return;}
- const target=Math.min(...selectionKeys.map(k=>k.time))+d.delta;endTimelineKeyDrag();
- try{if(Math.abs(d.delta)>1e-7)keyOperation('move',target);}catch(error){selectionKeys=d.selection;drawTimeline();throw error;}
+ const target=(d.edge==='scaleEnd'?d.range.end:d.range.start)+d.delta;endTimelineKeyDrag();
+ try{if(Math.abs(d.delta)>1e-7)keyOperation(d.edge||'move',target);}catch(error){selectionKeys=d.selection;drawTimeline();throw error;}
 });
 for(const event of ['pointercancel','lostpointercapture'])listen('timeline',event,()=>endTimelineKeyDrag(true));
 window.addEventListener('blur',()=>endTimelineKeyDrag(true));
