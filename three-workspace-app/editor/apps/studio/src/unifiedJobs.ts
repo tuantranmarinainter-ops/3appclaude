@@ -14,7 +14,7 @@ import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { renderFrames } from '@topview/3d-director-cli/render.mjs'
 import { resolveUnifiedAssetFile } from './unifiedAssetFiles'
-import { FILM_MODEL_FACING_OFFSET, inspectFilmActorTransform, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
+import { FILM_MODEL_FACING_OFFSET, FILM_REST_ACTION, inspectFilmActorTransform, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
 import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
@@ -141,6 +141,11 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; if (character.baseModel.rig === 'verity') throw new TypeError(`Character ${model.characterId} action lacks its original-rig BOBJ: ${actionUuid}`) }
   }
   if (sidecars.length) bobj = mergeOriginalBobjActions(baseBytes, sidecars).toString('utf8')
+  // B30: BBS adds Film pose tracks on top of the action in the form's idle slot (the model's own 'idle' by
+  // default), which tipped Verity over in game. An empty rest action lets the exported absolute poses stand alone.
+  if (character.baseModel.rig === 'verity' && !parseBobjActions(bobj).has(FILM_REST_ACTION)) {
+    bobj = `${bobj.replace(/\s*$/, '')}\nan ${FILM_REST_ACTION}\nao Root\nag location 0\nkf 0 0.000000 LINEAR -1 0.000000 1 0.000000\n`
+  }
   const refs = Array.isArray(metadata.librarySkin) ? metadata.librarySkin as LibraryTextureRef[] : []
   const hidden = new Set(Array.isArray(metadata.libraryHiddenObjects) ? metadata.libraryHiddenObjects.filter((item): item is string => typeof item === 'string') : [])
   const parsedModel = parseBobjModel(bobj)

@@ -93,6 +93,9 @@ function validateConvertedProfile(input: FilmInput, model: FilmInput['models'][n
 type PoseKey = { tick: number; t: [number, number, number]; s: [number, number, number]; r: [number, number, number]; r2: [0, 0, 0]; fix: 0; color: -1; lighting: 0 }
 
 /** Bake native BOBJ samples directly, or invert canonical Mixamo samples through the original Verity hierarchy. */
+/** Empty BOBJ action mapped to the idle slot so BBS does not add the model's own idle under Film pose tracks (B30). */
+export const FILM_REST_ACTION = 'w01_rest'
+
 export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean; sourcePositionScale?: number }) {
   const model = input.models[modelIndex]!
   const armature = parseBobjArmature(original.bobj)
@@ -213,7 +216,8 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     const poseTracks = original ? projectOriginalVerityPoseTracks(input, modelIndex, original) : bakedByCharacter.get(model.characterId)!.poseTracks
     return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples, poseTracks,
       ...((profile.formScale ?? model.actorScale ?? 1) !== 1 || profile.formOffsetY ? { formScale: profile.formScale ?? model.actorScale ?? 1, formOffsetY: profile.formOffsetY ?? 0 } : {}),
-      ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] } : {}) }
+      ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] }
+        : original && parseBobjActions(original.bobj).has(FILM_REST_ACTION) ? { animationKeyframes: [{ tick: 0, animationName: FILM_REST_ACTION, actionTick: 0, slot: 'idle' }] } : {}) }
   })
   return {
     schemaVersion: 1 as const, targetVersion: '2.4' as const, projectId: input.projectId,
