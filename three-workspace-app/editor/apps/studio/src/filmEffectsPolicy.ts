@@ -1,7 +1,7 @@
 /** Target runtime acknowledgement; this does not certify an effect's in-game playback. */
 export interface FilmEffectsPolicy {
   mode: 'omit' | 'include'
-  target?: { runtime: 'bbs-fs-2.7'; aaaRendererAvailable: true; compatibleAddonConfirmed: true }
+  target?: { runtime: 'bbs-fs-2.7'; aaaRendererAvailable: true; compatibleAddonConfirmed: true; gameDir?: string }
 }
 export function resolveFilmEffectsPolicy(raw: unknown): FilmEffectsPolicy {
   if (raw === undefined) return { mode: 'omit' }
@@ -13,10 +13,10 @@ export function resolveFilmEffectsPolicy(raw: unknown): FilmEffectsPolicy {
     return { mode: 'omit' }
   }
   const target = value.target as Record<string, unknown> | undefined
-  if (!target || Array.isArray(target) || Object.keys(target).some((key) => !['runtime', 'aaaRendererAvailable', 'compatibleAddonConfirmed'].includes(key)) || target.runtime !== 'bbs-fs-2.7' || target.aaaRendererAvailable !== true || target.compatibleAddonConfirmed !== true) {
+  if (!target || Array.isArray(target) || Object.keys(target).some((key) => !['runtime', 'aaaRendererAvailable', 'compatibleAddonConfirmed', 'gameDir'].includes(key)) || (target.gameDir !== undefined && (typeof target.gameDir !== 'string' || !target.gameDir.trim())) || target.runtime !== 'bbs-fs-2.7' || target.aaaRendererAvailable !== true || target.compatibleAddonConfirmed !== true) {
     throw new TypeError('Including unverified effects requires explicit confirmation of a compatible BBS FS 2.7 runtime and installed AAA form renderer/addon')
   }
-  return { mode: 'include', target: { runtime: 'bbs-fs-2.7', aaaRendererAvailable: true, compatibleAddonConfirmed: true } }
+  return { mode: 'include', target: { runtime: 'bbs-fs-2.7', aaaRendererAvailable: true, compatibleAddonConfirmed: true, ...(typeof target.gameDir === 'string' ? { gameDir: target.gameDir } : {}) } }
 }
 export function filmRequiredMods(effectCount: number) {
   return { schemaVersion: 1, requiredMods: ['BBS FS 2.7', ...(effectCount > 0 ? ['AAA Particles with compatible BBS AAA form renderer/addon'] : [])],

@@ -1,3 +1,4 @@
+import { validateFilmEffectsDestination } from './filmEffectsDestination'
 import { filmSceneWorldMatrices } from './filmSceneWorld'
 import { Matrix4 } from 'three'
 import { applyFilmWorldAnchor, resolveFilmWorldAnchor } from './filmWorldAnchor'
@@ -371,6 +372,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     record.state = 'running'; record.progress = 0.03; record.updatedAt = new Date().toISOString(); await persist(record)
     const input = await sampleProjectFilm(snapshot, args, signal)
+    await validateFilmEffectsDestination(args.effectsPolicy)
     const effectsPolicy = resolveFilmEffectsPolicy(args.effectsPolicy)
     const effects = await filmEffectsForExport(effectsPolicy, () => buildVfxEffectsForFilm(snapshot, args, signal))
     await mkdir(work, { recursive: false })
@@ -759,7 +761,7 @@ export async function startUnifiedFilmExport(project: UnifiedProject, args: Film
       Object.keys(options.extraFiles ?? {}).some((name) => !/^[a-z0-9-]{1,40}\.json$/.test(name) || ['export-manifest.json', 'export-report.json'].includes(name))) {
     throw Object.assign(new TypeError('Film package names must be safe and must not replace worker files'), { code: 'VALIDATION_FAILED', status: 400 })
   }
-  resolveFilmEffectsPolicy(args.effectsPolicy)
+  await validateFilmEffectsDestination(args.effectsPolicy)
   const preflight = preflightProjectFilm(project, args)
   const snapshot = structuredClone(project), exportArgs = structuredClone({ ...args,
     content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds }), jobId = randomUUID()
@@ -783,6 +785,7 @@ export async function startUnifiedFilmSeriesExport(project: UnifiedProject, args
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,55}$/.test(args.name) || args.name.endsWith('.') || !args.segments.length) {
     throw Object.assign(new TypeError('Film series name must use 1-56 safe ASCII characters and include at least one segment'), { code: 'VALIDATION_FAILED', status: 400 })
   }
+  for (const segment of args.segments) await validateFilmEffectsDestination(segment.exportArgs.effectsPolicy)
   const snapshot = structuredClone(project), inputs = structuredClone(args), jobId = randomUUID()
   const record: StoredJob = { jobId, projectId: project.projectId, type: 'film.series.export', state: 'queued', sourceRevision: project.revision,
     sourceSha256: digest(Buffer.from(JSON.stringify(project))), progress: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }

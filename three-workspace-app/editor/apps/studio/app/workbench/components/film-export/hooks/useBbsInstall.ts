@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ensureUnifiedSession } from '../../../../../src/unifiedApi'
 import type { InstallPlan } from '../../../../../src/bbsInstall'
 
+import type { BbsGameCapabilities } from '../../../../../src/bbsGameCapabilities'
+
 interface InstallWorld { name: string }
 interface InstallRecord { installId: string; installedAt: string; packageName: string; files: number }
 
@@ -13,6 +15,7 @@ async function responseBody<T>(response: Response, vi: boolean): Promise<T> {
 
 export function useBbsInstall(vi: boolean) {
   const [gameDir, setGameDirState] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('topview-bbs-game-dir') ?? '')
+  const [capabilities, setCapabilities] = useState<BbsGameCapabilities | null>(null)
   const [worlds, setWorlds] = useState<InstallWorld[]>([])
   const [installs, setInstalls] = useState<InstallRecord[]>([])
   const [worldName, setWorldName] = useState('')
@@ -29,7 +32,7 @@ export function useBbsInstall(vi: boolean) {
   const setGameDir = (value: string) => {
     gameDirRef.current = value; refreshRevision.current++
     invalidatePreview()
-    setGameDirState(value)
+    setGameDirState(value); setCapabilities(null)
     if (typeof window !== 'undefined') localStorage.setItem('topview-bbs-game-dir', value)
     setWorlds([]); setInstalls([]); worldRef.current = ''; setWorldName('')
   }
@@ -44,8 +47,13 @@ export function useBbsInstall(vi: boolean) {
     const send = () => fetch(`/api/unified/bbs-install?gameDir=${encodeURIComponent(folder)}`, { cache: 'no-store' })
     let response = await send()
     if (response.status === 401) { await ensureUnifiedSession(true); response = await send() }
-    const body = await responseBody<{ worlds: InstallWorld[]; installs: InstallRecord[] }>(response, vi)
+    const body = await responseBody<{ worlds: InstallWorld[]; installs: InstallRecord[]; capabilities: BbsGameCapabilities }>(response, vi)
     if (revision !== refreshRevision.current || gameDirRef.current !== folder) return
+    setCapabilities(body.capabilities)
+    if (body.capabilities.corrected) {
+      gameDirRef.current = body.capabilities.gameDir; setGameDirState(body.capabilities.gameDir)
+      localStorage.setItem('topview-bbs-game-dir', body.capabilities.gameDir)
+    }
     setWorlds(body.worlds); setInstalls(body.installs)
     const nextWorld = body.worlds.some((world) => world.name === worldRef.current) ? worldRef.current : body.worlds[0]?.name ?? ''
     worldRef.current = nextWorld; setWorldName(nextWorld)
@@ -125,5 +133,5 @@ export function useBbsInstall(vi: boolean) {
     finally { setBusy(false) }
   }
 
-  return { gameDir, setGameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, uninstall }
+  return { capabilities, gameDir, setGameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, uninstall }
 }
