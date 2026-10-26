@@ -1,3 +1,4 @@
+import type { LibraryMotionConversionRecipe } from './libraryMotionConversion'
 import { planSplitShots, readEpisode } from './splitShots'
 import { linkSplitShotAssets } from './splitShotAssets'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
@@ -953,6 +954,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   let shotReplacement: { sequenceId: string; clip: EditSequenceClip } | null = null
   let stagedAssetImports: Array<{ upload: StagedAssetUpload; imported: ImportedAsset }> | null = null
   let assignmentPlacement: { characterId: string; frameStart: number | null; jobId: string; provenance: Record<string, unknown> } | null = null
+  let conversionImport: { assetId: string; recipe: LibraryMotionConversionRecipe } | null = null
   let libraryPlacement: { characterId: string; motionId: string; frameStart: number; name: string; duration: number; nativeValidated?: boolean } | null = null
   let libraryLink: LibraryLinkPlan | null = null
   let stagedAssetRelink: { upload: StagedAssetUpload; asset: UnifiedProject['assets'][keyof UnifiedProject['assets']] } | null = null
@@ -1807,9 +1809,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     }
   } else if (envelope.command === 'library.place') {
-    const { actionUuid, characterId, frameStart: requestedFrameStart } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
-      requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
+    const { actionUuid, characterId, frameStart: requestedFrameStart, reconvert } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart', 'reconvert'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
+      reconvert !== undefined && typeof reconvert !== 'boolean' || requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID, Character UUID and an optional nonnegative frameStart', 400)
     }
     const character = project.characters[characterId]
@@ -1819,42 +1821,87 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     try {
       const action = getAction({ actionUuid })
       const libraryCharacter = typeof node.metadata?.libraryCharacterId === 'string' ? resolveCharacter(node.metadata.libraryCharacterId) : null
-      const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.baseModel.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
-      const libraryTopology = !!libraryCharacter && (libraryCharacter.baseModel?.rig ?? libraryCharacter.character.rig) === 'minecraft20' && action.rig === 'minecraft20'
-      const rigMatches = !!nativeCharacter || libraryTopology || action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
-      if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
-      const bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), libraryCharacter?.baseModel?.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
-      const sourceHash = createHash('sha256').update(bytes).digest('hex')
-      const existing = project.motions[action.uuid]
-      if (existing) {
-        const asset = project.assets[existing.assetId]
-        if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
-          throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
-        }
-        libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
-        stagedAssetImports = []
+      const convertToMc20 = libraryCharacter?.character.rig === 'minecraft20' && action.rig === 'mixamo65'
+      if (convertToMc20) {
+        const { createLibraryMotionConversion, materializeLibraryMotionConversion } = await import('./libraryMotionConversion')
+        const recipes = project.extensions.libraryMotionConversions as Record<string, LibraryMotionConversionRecipe> | undefined
+        const priorRecipe = Object.values(recipes ?? {}).reverse().find((recipe) => recipe.sourceActionUuid === actionUuid && recipe.targetCharId === libraryCharacter.character.charId)
+        const recipe = priorRecipe && reconvert !== true ? priorRecipe : await createLibraryMotionConversion({ actionUuid, targetCharId: libraryCharacter.character.charId })
+        const generated = await materializeLibraryMotionConversion(recipe)
+        const bytes = Buffer.from(generated.glb), sourceHash = createHash('sha256').update(bytes).digest('hex')
+        const recipeHash = createHash('sha256').update(canonicalJsonExact(recipe)).digest('hex')
+        const motionId = `${recipeHash.slice(0, 8)}-${recipeHash.slice(8, 12)}-4${recipeHash.slice(13, 16)}-a${recipeHash.slice(17, 20)}-${recipeHash.slice(20, 32)}`
+        const upload: StagedAssetUpload = { id: randomUUID(), name: `conversion-${recipeHash}.glb`, bytes, byteLength: bytes.length, sha256: sourceHash }
+        const imported = buildImportedAsset(upload, 'glb')
+        if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile) || imported.motions.length !== 1) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Kết quả chuyển không khớp khung xương Minecraft20 của nhân vật', 422)
+        const selected = imported.motions[0]!
+        selected.motion.id = motionId
+        selected.name = generated.actionName
+        const recipeBytes = Buffer.from(canonicalJsonExact(recipe))
+        imported.asset.provenance = { sourceKey: 'library-motion-conversion', sourceVersion: recipe.converterVersion, sourceHash: recipeHash,
+          original: { path: `originals/${recipeHash}/conversion.json`, sha256: recipeHash, byteLength: recipeBytes.length, mediaType: 'application/json' } }
+        conversionImport = { assetId: imported.asset.id, recipe }
+        stagedAssetImports = project.motions[motionId] ? [] : [{ upload, imported }]
+        libraryPlacement = { characterId, motionId, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: generated.durationSeconds, nativeValidated: true }
       } else {
-        const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
-        let imported: ImportedAsset
-        try {
-          imported = buildImportedAsset(upload, 'glb')
-          if (nativeCharacter) {
-            if (imported.motions.length !== 1) throw new Error('Native Action clip is missing')
-            imported.motions[0]!.motion.id = action.uuid
-            imported.motions[0]!.name = action.name
-          } else attachApp1Manifest(imported, bytes, JSON.parse(await readFile(action.manifestPath, 'utf8')))
-        } catch (error) { throw new UnifiedStoreError('PROFILE_MISMATCH', error instanceof Error ? error.message : 'Library Action pack is invalid', 422) }
-        if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile)) {
-          throw new UnifiedStoreError('PROFILE_MISMATCH', 'Library Action does not use the selected Character rig and rest skeleton', 422)
+        const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.baseModel.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
+        const libraryTopology = !!libraryCharacter && (libraryCharacter.baseModel?.rig ?? libraryCharacter.character.rig) === 'minecraft20' && action.rig === 'minecraft20'
+        const rigMatches = !!nativeCharacter || libraryTopology || action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
+        if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
+        let nativeMc20 = false
+        let bytes: Buffer
+        if (libraryTopology) {
+          try {
+            bytes = await libraryNativeAction(action.ownerCharId ?? String(node.metadata!.libraryCharacterId), path.join(path.dirname(action.glbPath), 'anim.bobj'))
+            nativeMc20 = true
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            bytes = await readFile(action.glbPath)
+          }
+        } else bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
+        const sourceHash = createHash('sha256').update(bytes).digest('hex')
+        let existing: typeof project.motions[string] | undefined = project.motions[action.uuid]
+        if (existing) {
+          const asset = project.assets[existing.assetId]
+          if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
+            // B19: a stale copy whose clips were all deleted (the library Action was edited since) must not block
+            // re-assigning it; replace it. A copy still used by a clip keeps the conflict.
+            if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.motion.assetId === action.uuid)) {
+              throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
+            }
+            delete project.motions[action.uuid]
+            existing = undefined
+          }
         }
-        const selected = imported.motions.find((item) => item.motion.id.toLowerCase() === action.uuid.toLowerCase())
-        if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
-        imported.motions = [selected]
-        stagedAssetImports = [{ upload, imported }]
-        libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        if (existing) {
+          libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+          stagedAssetImports = []
+        } else {
+          const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
+          let imported: ImportedAsset
+          try {
+            imported = buildImportedAsset(upload, 'glb')
+            if (nativeCharacter || libraryTopology) {
+              const selected = imported.motions.find((item) => item.clipIndex === (nativeCharacter || nativeMc20 ? 0 : action.glbAnimationIndex))
+              if (!selected) throw new Error('Native Action clip is missing')
+              selected.motion.id = action.uuid
+              selected.name = action.name
+              imported.motions = [selected]
+            } else attachApp1Manifest(imported, bytes, JSON.parse(await readFile(action.manifestPath, 'utf8')))
+          } catch (error) { throw new UnifiedStoreError('PROFILE_MISMATCH', error instanceof Error ? error.message : 'Library Action pack is invalid', 422) }
+          if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile)) {
+            throw new UnifiedStoreError('PROFILE_MISMATCH', 'Library Action does not use the selected Character rig and rest skeleton', 422)
+          }
+          const selected = imported.motions.find((item) => item.motion.id.toLowerCase() === action.uuid.toLowerCase())
+          if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
+          imported.motions = [selected]
+          stagedAssetImports = [{ upload, imported }]
+          libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        }
       }
     } catch (error) {
       if (error instanceof UnifiedStoreError) throw error
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'CONVERSION_REQUIRED') throw new UnifiedStoreError('CONVERSION_REQUIRED', error instanceof Error ? error.message : 'Cần chuyển lại động tác', 409)
       throw new UnifiedStoreError('ASSET_MISSING', error instanceof Error ? error.message : 'Could not load Action from the library', 404)
     }
   } else if (envelope.command === 'library.link') {
@@ -2634,6 +2681,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         const issues: Array<{ code: string; message: string; actionIndex?: number }> = []
         const modelRebindReports: Array<{ assetId: string; variant: string; sha256: string }> = []
         changedIds = []
+        if (conversionImport) next.extensions.libraryMotionConversions = { ...(next.extensions.libraryMotionConversions ?? {}), [conversionImport.assetId]: conversionImport.recipe }
         const motionMetadata = { ...(isRecord(next.extensions.retargetMotionMetadata) ? next.extensions.retargetMotionMetadata : {}) }
         const modelMetadata = { ...(isRecord(next.extensions.assetImportModels) ? next.extensions.assetImportModels : {}) }
         for (const { imported } of stagedAssetImports) {
@@ -2827,7 +2875,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
     if (envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link') {
       if (!stagedAssetImports) throw new UnifiedStoreError('VALIDATION_FAILED', 'Asset upload handles are unavailable', 400)
-      for (const { upload, imported } of stagedAssetImports) if (!current.assets[imported.asset.id] || imported.normalizationReport || imported.modelRebindReport) await persistImportedAssetFiles(id, imported, upload.bytes)
+      for (const { upload, imported } of stagedAssetImports) if (!current.assets[imported.asset.id] || imported.normalizationReport || imported.modelRebindReport) await persistImportedAssetFiles(id, imported, upload.bytes, conversionImport?.assetId === imported.asset.id ? conversionImport.recipe : undefined)
     }
     const response = await commit(envelope, hash, current, next, nextIndex, result, changedIds)
     if (envelope.command === 'asset.import' || envelope.command === 'asset.relink') await removeStagedAssetUploads(importedUploadIds).catch(() => undefined)
