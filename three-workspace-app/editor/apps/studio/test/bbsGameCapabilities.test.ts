@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtemp, mkdir, writeFile, rm, rename, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, rename, readFile, realpath } from 'node:fs/promises'
 import os from 'node:os'
 import { gzipSync, deflateSync } from 'node:zlib'
 import path from 'node:path'
@@ -11,7 +11,8 @@ import { planInstall, applyInstall } from '../src/bbsInstall'
 
 const metadata = (id: string, version: string) => strToU8(JSON.stringify({ id, version }))
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'aaa-scan-'))
+  // realpath: Windows tmpdir may be an 8.3 short path (ADMINI~1) while the scanner reports the long path.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aaa-scan-')))
   await mkdir(path.join(root, 'mods')); await mkdir(path.join(root, '.fabric'))
   await mkdir(path.join(root, 'versions/fabric'), { recursive: true })
   await writeFile(path.join(root, 'versions/fabric/fabric.json'), JSON.stringify({ libraries: [{ name: 'net.fabricmc:fabric-loader:0.19.5' }] }))

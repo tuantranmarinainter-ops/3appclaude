@@ -78,7 +78,8 @@ test('escaping, absolute, linked dependencies and portable case collisions rejec
     await assert.rejects(collectFilmAaaAssets('p', [{ effect: 'laser' }], f.source), /liên kết/)
     await put(f.source, 'effects/laser.efkefc', effect([[1, '../textures/Shared.png'], [1, '../textures/shared.png']]))
     await put(f.source, 'textures/Shared.png', 'a'); await put(f.source, 'textures/shared.png', 'b')
-    await assert.rejects(collectFilmAaaAssets('p', [{ effect: 'laser' }], f.source), /trùng/)
+    // Case-insensitive file systems (Windows/macOS) cannot hold both names; the realpath case check rejects it instead.
+    await assert.rejects(collectFilmAaaAssets('p', [{ effect: 'laser' }], f.source), /trùng|không phải file an toàn/)
   } finally { await rm(f.root, { recursive: true, force: true }) }
 })
 
@@ -102,7 +103,7 @@ test('uppercase parents and ../../ references resolve; film series preserves sha
     }
     const spec = path.join(f.root, 'spec.json'), readme = path.join(f.root, 'readme.txt'), output = path.join(f.root, 'series'), archive = path.join(f.root, 'series.zip')
     await writeFile(spec, JSON.stringify({ segments, series: [] })); await writeFile(readme, 'synthetic series')
-    const result = spawnSync(process.env.BBS_PYTHON || 'python3', ['-c', FILM_SERIES_ARCHIVE_SCRIPT, spec, output, readme, archive], { encoding: 'utf8' })
+    const result = spawnSync(process.env.BBS_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), ['-c', FILM_SERIES_ARCHIVE_SCRIPT, spec, output, readme, archive], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
     for (const file of assets.files) assert.deepEqual(await readFile(path.join(output, file.path)), file.bytes)
     assert.equal((JSON.parse(await readFile(path.join(output, 'required-mods.json'), 'utf8'))).includedEffectCount, 2)
