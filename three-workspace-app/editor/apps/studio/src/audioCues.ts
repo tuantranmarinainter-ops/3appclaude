@@ -8,7 +8,7 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
  */
 
 export type AudioCueKind = 'voice' | 'sfx' | 'music'
-export interface AudioCue { id: string; kind: AudioCueKind; assetId: string; frameStart: number; gainDb: number; speaker?: string; text?: string }
+export interface AudioCue { id: string; kind: AudioCueKind; assetId: string; frameStart: number; gainDb: number; offsetSeconds?: number; frameEnd?: number; speaker?: string; text?: string }
 export interface AudioCueExtension { version: 1; cues: AudioCue[] }
 
 export const AUDIO_FORMATS: Record<string, string> = { wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg' }
@@ -26,12 +26,14 @@ export function isAudioAsset(project: Pick<UnifiedProject, 'assets'>, assetId: s
 }
 
 function validCue(value: unknown, project: Pick<UnifiedProject, 'assets' | 'scene'>): value is AudioCue {
-  if (!record(value) || Object.keys(value).some((key) => !['id', 'kind', 'assetId', 'frameStart', 'gainDb', 'speaker', 'text'].includes(key))) return false
+  if (!record(value) || Object.keys(value).some((key) => !['id', 'kind', 'assetId', 'frameStart', 'gainDb', 'offsetSeconds', 'frameEnd', 'speaker', 'text'].includes(key))) return false
   const { frameStart, frameEnd } = project.scene.content.timeline
   return typeof value.id === 'string' && CUE_ID.test(value.id) && KINDS.includes(value.kind as AudioCueKind) &&
     typeof value.assetId === 'string' && isAudioAsset(project, value.assetId) &&
     Number.isSafeInteger(value.frameStart) && (value.frameStart as number) >= frameStart && (value.frameStart as number) <= frameEnd &&
     typeof value.gainDb === 'number' && Number.isFinite(value.gainDb) && value.gainDb >= -60 && value.gainDb <= 24 &&
+    (value.offsetSeconds === undefined || typeof value.offsetSeconds === 'number' && Number.isFinite(value.offsetSeconds) && value.offsetSeconds >= 0) &&
+    (value.frameEnd === undefined || Number.isSafeInteger(value.frameEnd) && (value.frameEnd as number) >= (value.frameStart as number) && (value.frameEnd as number) <= frameEnd) &&
     (value.speaker === undefined || typeof value.speaker === 'string' && value.speaker.length <= 64) &&
     (value.text === undefined || typeof value.text === 'string' && value.text.length <= 2000)
 }
@@ -47,14 +49,14 @@ export function readAudioCueExtension(project: Pick<UnifiedProject, 'extensions'
 }
 
 export function makeAudioCue(project: UnifiedProject, input: unknown, id: string): AudioCue {
-  if (!record(input) || Object.keys(input).some((key) => !['kind', 'assetId', 'frameStart', 'gainDb', 'speaker', 'text'].includes(key))) throw new TypeError('Audio cue fields are invalid')
+  if (!record(input) || Object.keys(input).some((key) => !['kind', 'assetId', 'frameStart', 'gainDb', 'offsetSeconds', 'frameEnd', 'speaker', 'text'].includes(key))) throw new TypeError('Audio cue fields are invalid')
   const cue = { gainDb: 0, ...input, id }
   if (!validCue(cue, project)) throw new TypeError('Audio cue values are invalid: kind voice|sfx|music, an imported audio asset, a frame inside the timeline, gainDb -60..24')
   return structuredClone(cue as AudioCue)
 }
 
 export function updateAudioCue(project: UnifiedProject, current: AudioCue, patch: unknown): AudioCue {
-  if (!record(patch) || !Object.keys(patch).length || Object.keys(patch).some((key) => !['kind', 'assetId', 'frameStart', 'gainDb', 'speaker', 'text'].includes(key))) {
+  if (!record(patch) || !Object.keys(patch).length || Object.keys(patch).some((key) => !['kind', 'assetId', 'frameStart', 'gainDb', 'offsetSeconds', 'frameEnd', 'speaker', 'text'].includes(key))) {
     throw new TypeError('Audio cue update requires one or more editable fields')
   }
   const next = { ...current, ...patch, id: current.id }
@@ -67,11 +69,11 @@ export function updateAudioCue(project: UnifiedProject, current: AudioCue, patch
 export function audibleAudioCues(cues: readonly AudioCue[], durations: ReadonlyMap<string, number>, frame: number, fps: number): AudioCue[] {
   return cues.filter((cue) => {
     const duration = durations.get(cue.assetId)
-    return duration !== undefined && frame >= cue.frameStart && (frame - cue.frameStart) / fps < duration
+    return duration !== undefined && frame >= cue.frameStart && (frame - cue.frameStart) / fps + (cue.offsetSeconds ?? 0) < duration && frame <= (cue.frameEnd ?? Infinity)
   })
 }
 
-export interface FilmAudioEntry { source: string; kind: AudioCueKind; startTick: number; offsetSeconds: number; gainDb: number; speaker?: string; text?: string }
+export interface FilmAudioEntry { source: string; kind: AudioCueKind; startTick: number; offsetSeconds: number; gainDb: number; frameEnd?: number; speaker?: string; text?: string }
 
 /** Film sidecar: cues heard inside [startFrame, endFrame], ticks at 20 Hz from the Film start; earlier starts get an offset. */
 export function filmAudioSchedule(cues: readonly AudioCue[], durations: ReadonlyMap<string, number>, startFrame: number, endFrame: number, fps: number,
@@ -79,9 +81,9 @@ export function filmAudioSchedule(cues: readonly AudioCue[], durations: Readonly
   const out: FilmAudioEntry[] = []
   for (const cue of cues) {
     const duration = durations.get(cue.assetId) ?? 0
-    const cueEnd = cue.frameStart + duration * fps
+    const cueEnd = Math.min((cue.frameEnd ?? Infinity) + 1, cue.frameStart + (duration - (cue.offsetSeconds ?? 0)) * fps)
     if (cue.frameStart > endFrame || cueEnd <= startFrame) continue
-    const offsetSeconds = Math.max(0, (startFrame - cue.frameStart) / fps)
+    const offsetSeconds = (cue.offsetSeconds ?? 0) + Math.max(0, (startFrame - cue.frameStart) / fps)
     out.push({ source: sourceOf(cue.assetId), kind: cue.kind, startTick: Math.max(0, Math.round((cue.frameStart - startFrame) * 20 / fps)), offsetSeconds,
       gainDb: cue.gainDb, ...(cue.speaker ? { speaker: cue.speaker } : {}), ...(cue.text ? { text: cue.text } : {}) })
   }
@@ -158,8 +160,14 @@ export function mixAudio(cues: readonly AudioCue[], decoded: ReadonlyMap<string,
     if (!samples) continue
     const bus = cue.kind === 'voice' ? voice : cue.kind === 'music' ? music : effects
     const gain = 10 ** (cue.gainDb / 20)
-    const at = Math.round((cue.frameStart - startFrame) / fps * MIX_RATE)
-    for (let i = Math.max(0, -at); i < samples.length && at + i < length; i++) bus[at + i]! += samples[i]! * gain
+    const outputStart = Math.round((cue.frameStart - startFrame) / fps * MIX_RATE)
+    const sourceOffset = Math.round((cue.offsetSeconds ?? 0) * MIX_RATE)
+    const cueEnd = Math.round(((cue.frameEnd ?? endFrame) - startFrame + 1) / fps * MIX_RATE)
+    for (let output = Math.max(0, outputStart); output < Math.min(length, cueEnd); output++) {
+      const input = sourceOffset + output - outputStart
+      if (input >= samples.length) break
+      bus[output]! += samples[input]! * gain
+    }
   }
   // Ducking: a 100 ms voice envelope pulls the music down by up to 55 % (about -7 dB), smoothed over 50 ms.
   const window = Math.round(MIX_RATE / 10), smooth = Math.round(MIX_RATE / 20)

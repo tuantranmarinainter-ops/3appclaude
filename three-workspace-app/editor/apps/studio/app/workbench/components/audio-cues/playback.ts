@@ -5,8 +5,8 @@ export function audioCuesToStart(cues: readonly AudioCue[], durations: ReadonlyM
   const out: Array<{ cue: AudioCue; offset: number }> = []
   for (const cue of cues) {
     const duration = durations.get(cue.assetId)
-    const offset = (frame - cue.frameStart) / fps
-    if (duration !== undefined && offset >= 0 && offset < duration) out.push({ cue, offset })
+    const offset = (cue.offsetSeconds ?? 0) + (frame - cue.frameStart) / fps
+    if (duration !== undefined && frame >= cue.frameStart && frame <= (cue.frameEnd ?? Infinity) && offset >= 0 && offset < duration) out.push({ cue, offset })
   }
   return out
 }

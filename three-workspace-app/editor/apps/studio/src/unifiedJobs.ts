@@ -573,8 +573,9 @@ async function runFilmSeriesExport(runtime: Runtime, snapshot: UnifiedProject, a
     signal.throwIfAborted()
     const readme = path.join(work, 'README.txt')
     await writeFile(readme, 'BBS FS 2.7 episode package. Copy films/*.dat into the selected world at saves/<world>/bbs/films/. Copy assets/** into config/bbs/assets/ and keep the included directory layout. required-mods.json lists runtime requirements. When included, effects.json maps each film path to its cue array; cue ticks start at zero for that film. This package has not been installed into a game.\n', { flag: 'wx' })
-    const series = args.segments.map((segment, index) => ({ order: index + 1, film: `films/${args.name}-${String(index + 1).padStart(2, '0')}.dat`,
-      shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }))
+    let timelineTick = 0
+    const series = args.segments.map((segment, index) => { const startTick = timelineTick; timelineTick += segment.ticks; return ({ projectId: segment.project.projectId, sourceRevision: segment.project.revision, startTick, endTick: timelineTick, order: index + 1, film: `films/${args.name}-${String(index + 1).padStart(2, '0')}.dat`,
+      shots: segment.shots.map((shot) => shot.id), startFrame: segment.range.startFrame, endFrame: segment.range.endFrame, ticks: segment.ticks }) })
     const specPath = path.join(work, 'series-input.json')
     await writeFile(specPath, JSON.stringify({ series, segments: specs }, null, 2), { flag: 'wx' })
     const outputRoot = path.join(work, 'package'), archiveName = `${args.name}.bbs-film-series.zip`, archive = path.join(work, archiveName)

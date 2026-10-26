@@ -13,6 +13,16 @@ from .unified_cli import CliError, command, exit_code_for, export_project_film_j
 
 
 class LocalBaseTests(unittest.TestCase):
+    def test_split_and_episode_commands_forward_exact_revision_and_selection(self):
+        cases = [
+            (["split-shots", "p1", "--expected-revision", "7", "--shot-id", "shot-2", "--episode-name", "Tập 15", "--dry-run"], "project.splitShots", {"shotIds": ["shot-2"], "episodeName": "Tập 15"}, True),
+            (["episode-export", "p1", "--expected-revision", "7", "--name", "tap15"], "episode.export", {"name": "tap15"}, False),
+        ]
+        for argv, name, payload, dry_run in cases:
+            with self.subTest(name=name), patch("agent.unified_cli.sys.argv", ["unified_cli.py", *argv]), patch("agent.unified_cli.open_session", return_value="cookie"), patch("agent.unified_cli.command", return_value={"ok": True}) as send, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(), 0)
+                self.assertEqual(send.call_args.args[2:], (name, "p1", payload, 7, None, dry_run))
+
     def test_rig_commands_forward_shared_payloads_and_exact_revision(self):
         common = {"sourceAssetId": "source", "targetAssetId": "target", "mappingId": "mapping", "actionIndex": 2, "fps": 24.0, "rootTranslationScale": 1.0}
         cases = [

@@ -1,3 +1,5 @@
+import { planSplitShots, readEpisode } from './splitShots'
+import { linkSplitShotAssets } from './splitShotAssets'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
 import { App3BridgeError } from './app3Bridge'
 import { executeApp3Artifacts } from './app3Artifacts'
@@ -40,7 +42,7 @@ import { prepareCameraMotionAdd, prepareCameraMotionRemove, type CameraMotionCom
 import { filmPreflight, filmSeriesPreflight, measureFilmFeet, type FilmPreflightArgs, type FilmPreflightIssue } from './filmPreflight'
 import { resolveFilmEffectsPolicy } from './filmEffectsPolicy'
 import { makeVfxCue, readVfxCueExtension, updateVfxCue, type VfxCue } from './vfxCues'
-import { makeAudioCue, readAudioCueExtension, updateAudioCue, type AudioCue } from './audioCues'
+import { decodeAudio, MIX_RATE, makeAudioCue, readAudioCueExtension, updateAudioCue, type AudioCue } from './audioCues'
 
 const MAX_HISTORY = 100
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -76,7 +78,7 @@ interface HistoryRecord {
   changedIds: string[]
   response: CommandSuccess
 }
-interface RequestRecord { hash: string; response?: CommandSuccess; projectId?: string }
+interface RequestRecord { hash: string; response?: CommandSuccess; projectId?: string; splitProjectIds?: string[] }
 type MappingDraft = Omit<SkeletonMapping, 'calibration' | 'referencePose' | 'confirmed'>
 
 function root(): string {
@@ -247,7 +249,7 @@ export async function readUnifiedProjectState(id: string): Promise<{ project: Un
   return { project, history: { canUndo: index.cursor > 0, canRedo: index.cursor < index.entries.length } }
 }
 
-export async function listUnifiedProjects(): Promise<Array<{ id: string; name: string; revision: number; updatedAt: string; nodeCount: number; fps: number }>> {
+export async function listUnifiedProjects(): Promise<Array<{ id: string; name: string; revision: number; updatedAt: string; nodeCount: number; fps: number; episode?: ReturnType<typeof readEpisode> }>> {
   await mkdir(root(), { recursive: true })
   const rows = []
   for (const id of await readdir(root())) {
@@ -255,7 +257,7 @@ export async function listUnifiedProjects(): Promise<Array<{ id: string; name: s
     const project = await readJson<UnifiedProject>(projectPath(id))
     if (!project || !validateProject(project)) continue
     const fileInfo = await stat(projectPath(id))
-    rows.push({ id, name: project.name, revision: project.revision, updatedAt: fileInfo.mtime.toISOString(), nodeCount: project.scene.content.nodes.length, fps: project.scene.content.timeline.fps })
+    rows.push({ id, name: project.name, revision: project.revision, updatedAt: fileInfo.mtime.toISOString(), nodeCount: project.scene.content.nodes.length, fps: project.scene.content.timeline.fps, ...(readEpisode(project) ? { episode: readEpisode(project) } : {}) })
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
@@ -999,6 +1001,74 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       if (error instanceof App3BridgeError) throw new UnifiedStoreError(error.code, error.message, error.status)
       throw error
     }
+  }
+  if (envelope.command === 'episode.export') {
+    try { await validateFilmEffectsDestination(envelope.args.effectsPolicy) }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid effects destination', 400) }
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Dự án đã thay đổi — tải lại trước khi xuất tập.', 409)
+    const episode = readEpisode(project)
+    if (!episode) throw new UnifiedStoreError('VALIDATION_FAILED', 'Dự án chưa thuộc nhóm tập.', 400)
+    if (Object.keys(envelope.args).some((key) => !['name', 'worldAnchor', 'effectsPolicy', 'viewportAspect'].includes(key))) throw new UnifiedStoreError('VALIDATION_FAILED', 'Tùy chọn xuất tập không hợp lệ.', 400)
+    const rows = (await listUnifiedProjects()).filter((row) => row.episode?.id === episode.id).sort((a, b) => a.episode!.order - b.episode!.order)
+    if (new Set(rows.map((row) => row.episode!.order)).size !== rows.length) throw new UnifiedStoreError('VALIDATION_FAILED', 'Nhóm tập có số thứ tự shot trùng nhau.', 400)
+    const segments: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>> = []
+    let name = '', anchor = envelope.args.worldAnchor
+    for (const row of rows) {
+      const member = await readUnifiedProject(row.id)
+      const sequenceId = member.scene.content.editorial?.activeSequenceId
+      try {
+        const resolved = resolveSceneBbsFilmArgs(member, { ...envelope.args, ...(anchor ? { worldAnchor: anchor } : {}), name: envelope.args.name ?? 'episode', sequenceId, characterIds: [], propIds: [], content: 'characters' })
+        name = resolved.film.filmName
+        const planned = await planFilmSeriesWithCameraSamples(member, { ...resolved.film, characterIds: Object.keys(member.characters), propIds: member.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string').map((node) => node.id), content: Object.keys(member.characters).length ? 'both' : 'backdrops' })
+        anchor = planned[0]?.exportArgs.worldAnchor ?? anchor
+        for (const segment of planned) { segment.order = segments.length + 1; segments.push(segment) }
+      } catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', `${member.name}: ${error instanceof Error ? error.message : 'Không thể xuất.'}`, 400) }
+    }
+    const blocked = segments.flatMap((segment) => segment.planningIssues.map((issue) => issue.message))
+    if (blocked.length) throw new UnifiedStoreError('VALIDATION_FAILED', blocked.join('\n'), 422)
+    if (name.length > 56) throw new UnifiedStoreError('VALIDATION_FAILED', 'Tên file tập tối đa 56 ký tự ASCII.', 400)
+    let tick = 0
+    const series = segments.map((segment) => { const startTick = tick; tick += segment.ticks; return { projectId: segment.project.projectId, order: segment.order, ticks: segment.ticks, startTick, endTick: tick } })
+    if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, episode, series })
+    const job = await startUnifiedFilmSeriesExport(project, { name, segments })
+    const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, state: job.state, sourceRevision: project.revision, episode, series })
+    await saveRequest(envelope, hash, response)
+    return response
+  }
+  if (envelope.command === 'project.splitShots') {
+    const args = envelope.args
+    if (Object.keys(args).some((key) => !['sequenceId', 'shotIds', 'episodeName'].includes(key)) || args.sequenceId !== undefined && typeof args.sequenceId !== 'string' || args.shotIds !== undefined && !isUniqueStringIdList(args.shotIds) || args.episodeName !== undefined && (typeof args.episodeName !== 'string' || !args.episodeName.trim() || args.episodeName.length > 100)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Thông tin tách shot không hợp lệ.', 400)
+    if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Dự án đã thay đổi — tải lại trước khi tách shot.', 409)
+    const pending = await readJson<RequestRecord>(requestPath(envelope.requestId))
+    let plans: ReturnType<typeof planSplitShots>
+    try {
+      const audioDurations = new Map<string, number>()
+      for (const cue of readAudioCueExtension(project).cues) if (!audioDurations.has(cue.assetId)) {
+        const audio = await resolveUnifiedAssetFile(project, cue.assetId, 'source')
+        audioDurations.set(cue.assetId, (await decodeAudio(audio.bytes)).length / MIX_RATE)
+      }
+      plans = planSplitShots(project, args as Parameters<typeof planSplitShots>[1], pending?.splitProjectIds, audioDurations)
+    }
+    catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Không thể tách shot.', 400) }
+    for (const plan of plans) if (!validateProject(plan.project)) throw new UnifiedStoreError('VALIDATION_FAILED', `Shot ${plan.shotId}: dữ liệu dự án không hợp lệ.`, 400)
+    const reports: Record<string, unknown>[] = []
+    if (!envelope.dryRun) await atomicJson(requestPath(envelope.requestId), { hash, splitProjectIds: plans.map((plan) => plan.project.projectId) } satisfies RequestRecord)
+    try {
+      for (const plan of plans) {
+        const next = plan.project
+        const shared = envelope.dryRun ? { assetBytes: 0, sharedBlobCount: 0 } : await linkSplitShotAssets(root(), id, next)
+        const manifestBytes = Buffer.byteLength(JSON.stringify(next, null, 2) + '\n')
+        if (!envelope.dryRun) await atomicJson(projectPath(next.projectId), next)
+        reports.push({ projectId: next.projectId, name: next.name, shotId: plan.shotId, nodeCount: next.scene.content.nodes.length, clipCount: next.scene.content.timeline.animation.motionClips.length, manifestBytes, ...shared, newAssetBytes: 0, range: { startFrame: 0, endFrame: next.scene.content.timeline.frameEnd }, sourceRange: plan.sourceRange, warnings: plan.warnings })
+      }
+    } catch (error) {
+      for (const plan of plans) await rm(path.join(root(), plan.project.projectId), { recursive: true, force: true })
+      throw error
+    }
+    const response = success(envelope.requestId, id, project.revision, { projects: reports, sourceUnchanged: true })
+    response.warnings = plans.flatMap((plan) => plan.warnings.map((message) => ({ code: 'SHOT_TRIMMED', path: plan.shotId, message })))
+    if (!envelope.dryRun) await saveRequest(envelope, hash, response)
+    return response
   }
   if (envelope.command === 'project.inspect') {
     if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'project.inspect does not accept arguments in this phase', 400)

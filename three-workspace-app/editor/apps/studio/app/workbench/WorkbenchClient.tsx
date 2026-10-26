@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CreateDialog } from './components/CreateDialog'
 import { DraftCard } from './components/DraftCard'
+import { EpisodeProjects } from './components/episode-projects'
 import { PlusIcon } from './components/icons'
 import { StudioOverlay } from './components/StudioOverlay'
 import { DEFAULT_FPS, DEFAULT_FRAMES, DRAFT_QUERY_KEY, PROJECT_QUERY_KEY, UNIFIED_QUERY_KEY } from './constants'
@@ -96,7 +97,7 @@ export function WorkbenchClient() {
 
         <section className="wb-section wb-recent-projects">
           <div className="wb-section-head"><h2>{vi ? 'Dự án gần đây' : 'Recent projects'}</h2><span className="wb-count">{unifiedProjects.length}</span></div>
-          {unifiedProjects.length > 0 ? <div className="wb-grid">{unifiedProjects.map((project) => <DraftCard key={project.id} draft={project} deletable={false} onOpen={openUnified} />)}</div> : <div className="wb-project-empty"><strong>{vi ? 'Chưa có dự án nào' : 'No projects yet'}</strong><span>{vi ? 'Tạo dự án đầu tiên để bắt đầu chuẩn hóa model và dựng cảnh.' : 'Create your first project to standardize a model and build a scene.'}</span><button type="button" className="wb-cta" onClick={() => openCreate()} disabled={busy}><PlusIcon />{vi ? 'Tạo dự án' : 'Create project'}</button></div>}
+          {unifiedProjects.length > 0 ? <EpisodeProjects projects={unifiedProjects} onOpen={openUnified} /> : <div className="wb-project-empty"><strong>{vi ? 'Chưa có dự án nào' : 'No projects yet'}</strong><span>{vi ? 'Tạo dự án đầu tiên để bắt đầu chuẩn hóa model và dựng cảnh.' : 'Create your first project to standardize a model and build a scene.'}</span><button type="button" className="wb-cta" onClick={() => openCreate()} disabled={busy}><PlusIcon />{vi ? 'Tạo dự án' : 'Create project'}</button></div>}
         </section>
 
         {projects.length > 0 && <details className="wb-other-projects"><summary>{vi ? 'Dự án khác' : 'Other projects'} <span className="wb-count">{projects.length}</span></summary>
