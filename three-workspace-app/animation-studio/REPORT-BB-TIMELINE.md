@@ -70,3 +70,9 @@ Cùng thư mục có `browser-result.json`, `export-result.json`, các GLB/BOBJ/
 
 **NOT_RUN:** Windows/GPU thật; kiểm game; các test cần `APP3_RUNTIME_BASE`/`SHOT_TEST_ASSET`/`APP3_RESIZE_BROWSER=1` bên ngoài không được cấp. Các bài đó giữ SKIP đúng điều kiện, không tạo dữ liệu giả để gọi là mẫu thật.
 Gói 2 chưa bắt đầu trước khi PR này được mở. Bản nhúng App 2 chỉ cập nhật riêng sau merge, kèm LICENSE GPL cạnh index.html.
+
+## Rà soát PR #178 — lượt full sạch
+
+Build lại PASS. Một lượt toàn bộ 24 file/137 case: **132 PASS / 0 FAIL / 5 SKIP**, 466,69 s. Không ghép kết quả retry để thành 0 FAIL. Dùng Node22 native strip-types, concurrency 1 và preload chỉ chọn Chromium hệ thống với SwiftShader; không đổi assertion hay logic sản phẩm. Log nguyên lượt PASS: `reports/g1-suite-0-fail.tap.txt`.
+
+Năm SKIP giữ nguyên điều kiện runtime/mẫu ngoài repo của suite. Lượt mới không có lỗi mạng. Source tree Gói1 giữ nguyên; chưa thể rebase bỏ parent Prettier vì API GitHub vẫn báo #179 OPEN/chưa merged và main còn ec98f88. Không tự merge #179.

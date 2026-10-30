@@ -1,0 +1,983 @@
+TAP version 13
+# (node:865178) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A8 Blocking clipboard across animations, ABC, root policy, atomic Undo, reopen and real library preview
+ok 1 - A8 Blocking clipboard across animations, ABC, root policy, atomic Undo, reopen and real library preview
+  ---
+  duration_ms: 18754.343953
+  type: 'test'
+  ...
+# (node:865463) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 2 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 61.421956
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 3 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 14.841855
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 4 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 4.831497
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 5 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 60.92051
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 6 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.524978
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 7 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.628458
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 8 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.430069
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 9 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 1.820545
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 10 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.160108
+  type: 'test'
+  ...
+# Subtest: broker exact identity, readiness, source rebind and process generation
+ok 11 - broker exact identity, readiness, source rebind and process generation
+  ---
+  duration_ms: 2.194249
+  type: 'test'
+  ...
+# Subtest: two characters sharing asset remain ambiguous, explicit registration validates exact pair
+ok 12 - two characters sharing asset remain ambiguous, explicit registration validates exact pair
+  ---
+  duration_ms: 0.479584
+  type: 'test'
+  ...
+# Subtest: broker serialized ticket retry, result dedupe and stale reply rejection
+ok 13 - broker serialized ticket retry, result dedupe and stale reply rejection
+  ---
+  duration_ms: 1.658311
+  type: 'test'
+  ...
+# Subtest: schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+ok 14 - schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+  ---
+  duration_ms: 0.739966
+  type: 'test'
+  ...
+# Subtest: receiver cache shares in-flight promise, preserves errors and never touches Sites
+ok 15 - receiver cache shares in-flight promise, preserves errors and never touches Sites
+  ---
+  duration_ms: 0.424711
+  type: 'test'
+  ...
+# Subtest: host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+ok 16 - host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+  ---
+  duration_ms: 8.87211
+  type: 'test'
+  ...
+# Subtest: host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+ok 17 - host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+  ---
+  duration_ms: 2.238827
+  type: 'test'
+  ...
+# Subtest: host refuses requested SHA when actual installed asset differs
+ok 18 - host refuses requested SHA when actual installed asset differs
+  ---
+  duration_ms: 2.07544
+  type: 'test'
+  ...
+# Subtest: queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+ok 19 - queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+  ---
+  duration_ms: 0.487915
+  type: 'test'
+  ...
+# Subtest: Python App3 MCP suite is part of the existing App3 test:all entry
+ok 20 - Python App3 MCP suite is part of the existing App3 test:all entry
+  ---
+  duration_ms: 162.105485
+  type: 'test'
+  ...
+# Subtest: mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+ok 21 - mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+  ---
+  duration_ms: 1.622948
+  type: 'test'
+  ...
+# Subtest: E3 both JS schemas reject unsafe parameters and accept the same five tools
+ok 22 - E3 both JS schemas reject unsafe parameters and accept the same five tools
+  ---
+  duration_ms: 1.30623
+  type: 'test'
+  ...
+# Subtest: App 3 host composition selects only the requested second library clip and binds it to the chosen character
+ok 23 - App 3 host composition selects only the requested second library clip and binds it to the chosen character
+  ---
+  duration_ms: 1.268103
+  type: 'test'
+  ...
+# Subtest: library Action open requires a verified compatible Action proof and queues an explicit broker command
+ok 24 - library Action open requires a verified compatible Action proof and queues an explicit broker command
+  ---
+  duration_ms: 0.821299
+  type: 'test'
+  ...
+# Subtest: shot transition retires original lease, keeps result readable and private token only in receiver ack
+ok 25 - shot transition retires original lease, keeps result readable and private token only in receiver ack
+  ---
+  duration_ms: 1.097005
+  type: 'test'
+  ...
+# Subtest: export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+ok 26 - export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+  ---
+  duration_ms: 0.461916
+  type: 'test'
+  ...
+# Subtest: artifact broker Node regressions including actual Python validate-result
+ok 27 - artifact broker Node regressions including actual Python validate-result
+  ---
+  duration_ms: 707.995615
+  type: 'test'
+  ...
+# Subtest: expired shot-open retires uncertain dispatched lease but preserves only result reads
+ok 28 - expired shot-open retires uncertain dispatched lease but preserves only result reads
+  ---
+  duration_ms: 1.096794
+  type: 'test'
+  ...
+# Subtest: receiver completes definite artifact validation failures and releases the native lock
+ok 29 - receiver completes definite artifact validation failures and releases the native lock
+  ---
+  duration_ms: 11.512889
+  type: 'test'
+  ...
+# (node:865501) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Chromium: real Python MCP → authenticated broker → host bridge → Director reads
+ok 30 - Chromium: real Python MCP → authenticated broker → host bridge → Director reads # SKIP
+  ---
+  duration_ms: 0.59679
+  type: 'test'
+  ...
+# (node:865513) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 31 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 56.24663
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 32 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 10.267596
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 33 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 4.204131
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 34 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 59.90677
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 35 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.249193
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 36 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.788569
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 37 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.400133
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 38 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 1.937321
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 39 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.518568
+  type: 'test'
+  ...
+# (node:865525) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# E5 reviewing candidate 0
+# E5 reviewing candidate 1
+# E5 reviewing candidate 2
+# E5 reviewing candidate 3
+# E5 reviewing candidate 4
+# E5 reviewing candidate 5
+# E5 reviewing candidate 6
+# E5 reviewing candidate 7
+# E5 reviewing candidate 8
+# E5 reviewing candidate 9
+# E5 reviewing candidate 10
+# E5 reviewing candidate 11
+# E5 reviewing candidate 12
+# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-app3-bb/three-workspace-app/editor/.test-results/e5-app3-demo
+# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+ok 40 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+  ---
+  duration_ms: 115647.784563
+  type: 'test'
+  ...
+# (node:866434) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# TAP version 13
+# \# E5 reviewing candidate 0
+# \# E5 reviewing candidate 1
+# \# E5 reviewing candidate 2
+# \# E5 reviewing candidate 3
+# \# E5 reviewing candidate 4
+# \# E5 reviewing candidate 5
+# \# E5 reviewing candidate 6
+# \# E5 reviewing candidate 7
+# \# E5 reviewing candidate 8
+# \# E5 reviewing candidate 9
+# \# E5 reviewing candidate 10
+# \# E5 reviewing candidate 11
+# \# E5 reviewing candidate 12
+# \# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-app3-bb/three-workspace-app/editor/.test-results/e5-app3-demo
+# \# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+# ok 1 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+#   ---
+#   duration_ms: 116183.820157
+#   type: 'test'
+#   ...
+# 1..1
+# \# tests 1
+# \# suites 0
+# \# pass 1
+# \# fail 0
+# \# cancelled 0
+# \# skipped 0
+# \# todo 0
+# \# duration_ms 121348.323985
+# Subtest: E5 default real browser demo executes without skips
+ok 41 - E5 default real browser demo executes without skips
+  ---
+  duration_ms: 121467.409979
+  type: 'test'
+  ...
+# (node:867489) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A7 evaluated key capture, whole/selected paste, exact Undo and saved round-trip
+ok 42 - A7 evaluated key capture, whole/selected paste, exact Undo and saved round-trip
+  ---
+  duration_ms: 10137.98969
+  type: 'test'
+  ...
+# (node:867628) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: App3 silhouette: two-color pixels, exact off restoration, view-only shortcut and real App2 synchronization
+ok 43 - App3 silhouette: two-color pixels, exact off restoration, view-only shortcut and real App2 synchronization # SKIP
+  ---
+  duration_ms: 0.531892
+  type: 'test'
+  ...
+# (node:867640) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: F1 workflow keeps baseline controls and switches Blocking, Tinh chỉnh, and Xuất
+ok 44 - F1 workflow keeps baseline controls and switches Blocking, Tinh chỉnh, and Xuất
+  ---
+  duration_ms: 4804.057393
+  type: 'test'
+  ...
+# (node:867788) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: recognizes and describes v1.1 extra-bone chains with local rest transforms
+ok 45 - recognizes and describes v1.1 extra-bone chains with local rest transforms
+  ---
+  duration_ms: 2.368531
+  type: 'test'
+  ...
+# Subtest: rejects an extra whose named core attachment is not an ancestor
+ok 46 - rejects an extra whose named core attachment is not an ancestor
+  ---
+  duration_ms: 0.490259
+  type: 'test'
+  ...
+# Subtest: rejects malformed names, duplicate names, and non-finite rest values
+ok 47 - rejects malformed names, duplicate names, and non-finite rest values
+  ---
+  duration_ms: 0.229396
+  type: 'test'
+  ...
+# Subtest: keeps ordinary rigs on the v1.0 path and rejects non-Mixamo extras
+ok 48 - keeps ordinary rigs on the v1.0 path and rejects non-Mixamo extras
+  ---
+  duration_ms: 0.15275
+  type: 'test'
+  ...
+# (node:867800) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+ok 49 - A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+  ---
+  duration_ms: 9444.245943
+  type: 'test'
+  ...
+# (node:867935) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A6 real pointers move/scale group, ripple, cancel, collision and exact undo
+ok 50 - A6 real pointers move/scale group, ripple, cancel, collision and exact undo
+  ---
+  duration_ms: 20514.796784
+  type: 'test'
+  ...
+# (node:868098) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A4 real pointers: rectangle, modifiers, cancel and unchanged data/history
+ok 51 - A4 real pointers: rectangle, modifiers, cancel and unchanged data/history
+  ---
+  duration_ms: 13567.021258
+  type: 'test'
+  ...
+# (node:868380) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: 30-60 compressed to 30-45 doubles speed and ripple moves later tracks -15 frames
+ok 52 - 30-60 compressed to 30-45 doubles speed and ripple moves later tracks -15 frames
+  ---
+  duration_ms: 1.770661
+  type: 'test'
+  ...
+# Subtest: move, expand, left edge and single key preserve values
+ok 53 - move, expand, left edge and single key preserve values
+  ---
+  duration_ms: 0.766316
+  type: 'test'
+  ...
+# Subtest: collision, stale selection, collapsed/reversed range and out of bounds reject atomically
+ok 54 - collision, stale selection, collapsed/reversed range and out of bounds reject atomically
+  ---
+  duration_ms: 0.427245
+  type: 'test'
+  ...
+# (node:868392) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: exact MC20 profile provides four chains without adding export bones
+ok 55 - exact MC20 profile provides four chains without adding export bones
+  ---
+  duration_ms: 7.913035
+  type: 'test'
+  ...
+# Subtest: MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rotation
+ok 56 - MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rotation
+  ---
+  duration_ms: 6.454014
+  type: 'test'
+  ...
+# Subtest: MC20 display has every physical FK joint plus four IK/pole pairs
+ok 57 - MC20 display has every physical FK joint plus four IK/pole pairs
+  ---
+  duration_ms: 16.57496
+  type: 'test'
+  ...
+# (node:868404) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:868404) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# Subtest: correct 60 degree twist, lock hands, preserve bend and match App1
+ok 58 - correct 60 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 4.034826
+  type: 'test'
+  ...
+# Subtest: correct 120 degree twist, lock hands, preserve bend and match App1
+ok 59 - correct 120 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 1.463408
+  type: 'test'
+  ...
+# Subtest: correct 179 degree twist, lock hands, preserve bend and match App1
+ok 60 - correct 179 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 0.993128
+  type: 'test'
+  ...
+# Subtest: real normalized GLB: written BOBJ at every tick stays untwisted, hands rest, matches App1
+ok 61 - real normalized GLB: written BOBJ at every tick stays untwisted, hands rest, matches App1 # SKIP Set SHOT_TEST_ASSET to App1 normalized GLB.
+  ---
+  duration_ms: 0.067763
+  type: 'test'
+  ...
+# (node:868416) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: maps by names and hierarchy across reordered IDs; keeps root place by default and copies XYZ on request
+ok 62 - maps by names and hierarchy across reordered IDs; keeps root place by default and copies XYZ on request
+  ---
+  duration_ms: 2.130554
+  type: 'test'
+  ...
+# Subtest: missing, ambiguous, changed hierarchy, orientation and non-finite poses reject without mutation
+ok 63 - missing, ambiguous, changed hierarchy, orientation and non-finite poses reject without mutation
+  ---
+  duration_ms: 0.74251
+  type: 'test'
+  ...
+# (node:868428) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:868428) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# Subtest: real App1 GLB → edited GLB → App1 loader and Python validate-result
+ok 64 - real App1 GLB → edited GLB → App1 loader and Python validate-result # SKIP Set SHOT_TEST_ASSET to an App1-normalized GLB.
+  ---
+  duration_ms: 0.559814
+  type: 'test'
+  ...
+# (node:868440) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: shot export bakes weighted Motion Lab layers and clip timing without losing edits or doubling actor travel
+ok 65 - shot export bakes weighted Motion Lab layers and clip timing without losing edits or doubling actor travel
+  ---
+  duration_ms: 3122.779333
+  type: 'test'
+  ...
+# (node:868620) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# TAP version 13
+# \# E5 reviewing candidate 0
+# \# E5 reviewing candidate 1
+# \# E5 reviewing candidate 2
+# \# E5 reviewing candidate 3
+# \# E5 reviewing candidate 4
+# \# E5 reviewing candidate 5
+# \# E5 reviewing candidate 6
+# \# E5 reviewing candidate 7
+# \# E5 reviewing candidate 8
+# \# E5 reviewing candidate 9
+# \# E5 reviewing candidate 10
+# \# E5 reviewing candidate 11
+# \# E5 reviewing candidate 12
+# \# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-app3-bb/three-workspace-app/editor/.test-results/e5-app3-demo
+# \# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+# ok 1 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+#   ---
+#   duration_ms: 108977.583564
+#   type: 'test'
+#   ...
+# 1..1
+# \# tests 1
+# \# suites 0
+# \# pass 1
+# \# fail 0
+# \# cancelled 0
+# \# skipped 0
+# \# todo 0
+# \# duration_ms 114133.008663
+# Subtest: E5 default real browser demo executes without skips
+ok 66 - E5 default real browser demo executes without skips
+  ---
+  duration_ms: 114256.225278
+  type: 'test'
+  ...
+# Subtest: silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+ok 67 - silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+  ---
+  duration_ms: 3.762601
+  type: 'test'
+  ...
+# Subtest: silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+ok 68 - silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+  ---
+  duration_ms: 0.541599
+  type: 'test'
+  ...
+# Subtest: silhouette keeps separate caches across views sharing a rig and disposes both
+ok 69 - silhouette keeps separate caches across views sharing a rig and disposes both
+  ---
+  duration_ms: 0.416951
+  type: 'test'
+  ...
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 70 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 455.432016
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 71 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 10.124914
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 72 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 5.3019
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 73 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 60.167147
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 74 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.42661
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 75 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.906952
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 76 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.360466
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 77 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 2.213288
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 78 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.231865
+  type: 'test'
+  ...
+# Subtest: broker exact identity, readiness, source rebind and process generation
+ok 79 - broker exact identity, readiness, source rebind and process generation
+  ---
+  duration_ms: 2.671521
+  type: 'test'
+  ...
+# Subtest: two characters sharing asset remain ambiguous, explicit registration validates exact pair
+ok 80 - two characters sharing asset remain ambiguous, explicit registration validates exact pair
+  ---
+  duration_ms: 0.399555
+  type: 'test'
+  ...
+# Subtest: broker serialized ticket retry, result dedupe and stale reply rejection
+ok 81 - broker serialized ticket retry, result dedupe and stale reply rejection
+  ---
+  duration_ms: 1.317403
+  type: 'test'
+  ...
+# Subtest: schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+ok 82 - schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+  ---
+  duration_ms: 0.790886
+  type: 'test'
+  ...
+# Subtest: receiver cache shares in-flight promise, preserves errors and never touches Sites
+ok 83 - receiver cache shares in-flight promise, preserves errors and never touches Sites
+  ---
+  duration_ms: 0.401367
+  type: 'test'
+  ...
+# Subtest: host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+ok 84 - host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+  ---
+  duration_ms: 7.363849
+  type: 'test'
+  ...
+# Subtest: host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+ok 85 - host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+  ---
+  duration_ms: 2.119946
+  type: 'test'
+  ...
+# Subtest: host refuses requested SHA when actual installed asset differs
+ok 86 - host refuses requested SHA when actual installed asset differs
+  ---
+  duration_ms: 1.832642
+  type: 'test'
+  ...
+# Subtest: queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+ok 87 - queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+  ---
+  duration_ms: 0.442209
+  type: 'test'
+  ...
+# Subtest: Python App3 MCP suite is part of the existing App3 test:all entry
+ok 88 - Python App3 MCP suite is part of the existing App3 test:all entry
+  ---
+  duration_ms: 178.170496
+  type: 'test'
+  ...
+# Subtest: mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+ok 89 - mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+  ---
+  duration_ms: 1.540059
+  type: 'test'
+  ...
+# Subtest: E3 both JS schemas reject unsafe parameters and accept the same five tools
+ok 90 - E3 both JS schemas reject unsafe parameters and accept the same five tools
+  ---
+  duration_ms: 1.201277
+  type: 'test'
+  ...
+# Subtest: App 3 host composition selects only the requested second library clip and binds it to the chosen character
+ok 91 - App 3 host composition selects only the requested second library clip and binds it to the chosen character
+  ---
+  duration_ms: 1.205623
+  type: 'test'
+  ...
+# Subtest: library Action open requires a verified compatible Action proof and queues an explicit broker command
+ok 92 - library Action open requires a verified compatible Action proof and queues an explicit broker command
+  ---
+  duration_ms: 0.814182
+  type: 'test'
+  ...
+# Subtest: shot transition retires original lease, keeps result readable and private token only in receiver ack
+ok 93 - shot transition retires original lease, keeps result readable and private token only in receiver ack
+  ---
+  duration_ms: 1.153645
+  type: 'test'
+  ...
+# Subtest: export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+ok 94 - export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+  ---
+  duration_ms: 0.722723
+  type: 'test'
+  ...
+# Subtest: artifact broker Node regressions including actual Python validate-result
+ok 95 - artifact broker Node regressions including actual Python validate-result
+  ---
+  duration_ms: 727.802139
+  type: 'test'
+  ...
+# Subtest: expired shot-open retires uncertain dispatched lease but preserves only result reads
+ok 96 - expired shot-open retires uncertain dispatched lease but preserves only result reads
+  ---
+  duration_ms: 0.627842
+  type: 'test'
+  ...
+# Subtest: receiver completes definite artifact validation failures and releases the native lock
+ok 97 - receiver completes definite artifact validation failures and releases the native lock
+  ---
+  duration_ms: 10.752106
+  type: 'test'
+  ...
+# Subtest: contract example valid
+ok 98 - contract example valid
+  ---
+  duration_ms: 3.069995
+  type: 'test'
+  ...
+# Subtest: MISSING_FIELD (s) => delete s.sceneId
+ok 99 - MISSING_FIELD (s) => delete s.sceneId
+  ---
+  duration_ms: 1.248143
+  type: 'test'
+  ...
+# Subtest: INVALID_TYPE (s) => (s.fps = true)
+ok 100 - INVALID_TYPE (s) => (s.fps = true)
+  ---
+  duration_ms: 1.30583
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE (s) => (s.sceneId = '')
+ok 101 - INVALID_VALUE (s) => (s.sceneId = '')
+  ---
+  duration_ms: 1.61554
+  type: 'test'
+  ...
+# Subtest: UNSUPPORTED_VERSION (s) => (s.version = '2.0.0')
+ok 102 - UNSUPPORTED_VERSION (s) => (s.version = '2.0.0')
+  ---
+  duration_ms: 1.538132
+  type: 'test'
+  ...
+# Subtest: INVALID_FPS (s) => (s.fps = 24)
+ok 103 - INVALID_FPS (s) => (s.fps = 24)
+  ---
+  duration_ms: 0.933907
+  type: 'test'
+  ...
+# Subtest: INVALID_FRAME_RANGE (s) => (s.frameRange = [60, 0])
+ok 104 - INVALID_FRAME_RANGE (s) => (s.frameRange = [60, 0])
+  ---
+  duration_ms: 0.977592
+  type: 'test'
+  ...
+# Subtest: INVALID_FRAME_RANGE (s) => (s.frameRange = [-1, 10])
+ok 105 - INVALID_FRAME_RANGE (s) => (s.frameRange = [-1, 10])
+  ---
+  duration_ms: 0.978233
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH (s) => (s.characters[0].glb = '../hero.glb')
+ok 106 - UNSAFE_PATH (s) => (s.characters[0].glb = '../hero.glb')
+  ---
+  duration_ms: 0.810669
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH (s) => (s.characters[0].glb = '/hero.glb')
+ok 107 - UNSAFE_PATH (s) => (s.characters[0].glb = '/hero.glb')
+  ---
+  duration_ms: 0.770609
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH (s) => (s.characters[0].glb = 'C:hero.glb')
+ok 108 - UNSAFE_PATH (s) => (s.characters[0].glb = 'C:hero.glb')
+  ---
+  duration_ms: 1.071585
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH (s) => (s.characters[0].glb = 'a\\\\b')
+ok 109 - UNSAFE_PATH (s) => (s.characters[0].glb = 'a\\\\b')
+  ---
+  duration_ms: 0.715856
+  type: 'test'
+  ...
+# Subtest: FILE_NOT_FOUND (s) => (s.characters[0].glb = 'absent.glb')
+ok 110 - FILE_NOT_FOUND (s) => (s.characters[0].glb = 'absent.glb')
+  ---
+  duration_ms: 3.649565
+  type: 'test'
+  ...
+# Subtest: INVALID_JSON (_, f) => (f['characters/hero.manifest.json'] = new TextEncoder().encode('{'))
+ok 111 - INVALID_JSON (_, f) => (f['characters/hero.manifest.json'] = new TextEncoder().encode('{'))
+  ---
+  duration_ms: 1.449829
+  type: 'test'
+  ...
+# Subtest: INVALID_SHA256 (s) => (s.characters[0].glbSha256 = 'bad')
+ok 112 - INVALID_SHA256 (s) => (s.characters[0].glbSha256 = 'bad')
+  ---
+  duration_ms: 0.879794
+  type: 'test'
+  ...
+# Subtest: SHA256_MISMATCH (s) => (s.characters[0].glbSha256 = '0'.repeat(64))
+ok 113 - SHA256_MISMATCH (s) => (s.characters[0].glbSha256 = '0'.repeat(64))
+  ---
+  duration_ms: 1.223575
+  type: 'test'
+  ...
+# Subtest: INVALID_UUID (s) => (s.characters[0].actionUuid = 'bad')
+ok 114 - INVALID_UUID (s) => (s.characters[0].actionUuid = 'bad')
+  ---
+  duration_ms: 1.20642
+  type: 'test'
+  ...
+# Subtest: ACTION_NOT_IN_MANIFEST (s) => (s.characters[0].actionUuid = '22222222-2222-4222-8222-222222222222')
+ok 115 - ACTION_NOT_IN_MANIFEST (s) => (s.characters[0].actionUuid = '22222222-2222-4222-8222-222222222222')
+  ---
+  duration_ms: 1.87589
+  type: 'test'
+  ...
+# Subtest: DUPLICATE_ACTION_UUID (_, f) => {\\n      const m = JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));\\n      m.actions.push(m.actions[0]);\\n      f['characters/hero.manifest.json'] = enc(m);\\n    }
+ok 116 - DUPLICATE_ACTION_UUID (_, f) => {\\n      const m = JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));\\n      m.actions.push(m.actions[0]);\\n      f['characters/hero.manifest.json'] = enc(m);\\n    }
+  ---
+  duration_ms: 1.129092
+  type: 'test'
+  ...
+# Subtest: NO_EDITABLE_CHARACTER (s) => s.characters.forEach((c) => (c.editable = false))
+ok 117 - NO_EDITABLE_CHARACTER (s) => s.characters.forEach((c) => (c.editable = false))
+  ---
+  duration_ms: 1.581518
+  type: 'test'
+  ...
+# Subtest: DUPLICATE_CHARACTER_ID (s) => (s.characters[1].characterId = 'hero')
+ok 118 - DUPLICATE_CHARACTER_ID (s) => (s.characters[1].characterId = 'hero')
+  ---
+  duration_ms: 1.163004
+  type: 'test'
+  ...
+# Subtest: INVALID_CLIP (s) => (s.characters[0].clip.speed = 0)
+ok 119 - INVALID_CLIP (s) => (s.characters[0].clip.speed = 0)
+  ---
+  duration_ms: 1.716443
+  type: 'test'
+  ...
+# Subtest: INVALID_CLIP (s) => (s.characters[0].clip.sourceEndSeconds = -1)
+ok 120 - INVALID_CLIP (s) => (s.characters[0].clip.sourceEndSeconds = -1)
+  ---
+  duration_ms: 1.029551
+  type: 'test'
+  ...
+# Subtest: INVALID_ROOT_POLICY (s) => (s.characters[0].rootPolicy = 'bad')
+ok 121 - INVALID_ROOT_POLICY (s) => (s.characters[0].rootPolicy = 'bad')
+  ---
+  duration_ms: 1.024694
+  type: 'test'
+  ...
+# Subtest: FRAME_OUT_OF_RANGE (s) => (s.camera.keys[0].frame = 90)
+ok 122 - FRAME_OUT_OF_RANGE (s) => (s.camera.keys[0].frame = 90)
+  ---
+  duration_ms: 1.448857
+  type: 'test'
+  ...
+# Subtest: KEYS_NOT_INCREASING (s) => (s.camera.keys[1].frame = 0)
+ok 123 - KEYS_NOT_INCREASING (s) => (s.camera.keys[1].frame = 0)
+  ---
+  duration_ms: 1.110575
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE (s) => (s.camera.keys[0].position = [1, 2])
+ok 124 - INVALID_VALUE (s) => (s.camera.keys[0].position = [1, 2])
+  ---
+  duration_ms: 1.029672
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE (s) => (s.camera.keys[0].fovYDegrees = 180)
+ok 125 - INVALID_VALUE (s) => (s.camera.keys[0].fovYDegrees = 180)
+  ---
+  duration_ms: 1.090013
+  type: 'test'
+  ...
+# Subtest: missing shot, malformed JSON, wrong object type and unsafe zip entries
+ok 126 - missing shot, malformed JSON, wrong object type and unsafe zip entries
+  ---
+  duration_ms: 1.405692
+  type: 'test'
+  ...
+# Subtest: hash actual bytes and clip speed/reverse/loop/zero length
+ok 127 - hash actual bytes and clip speed/reverse/loop/zero length
+  ---
+  duration_ms: 0.57369
+  type: 'test'
+  ...
+# (node:869632) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+ok 128 - silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+  ---
+  duration_ms: 3.431894
+  type: 'test'
+  ...
+# Subtest: silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+ok 129 - silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+  ---
+  duration_ms: 0.359275
+  type: 'test'
+  ...
+# Subtest: silhouette keeps separate caches across views sharing a rig and disposes both
+ok 130 - silhouette keeps separate caches across views sharing a rig and disposes both
+  ---
+  duration_ms: 0.414649
+  type: 'test'
+  ...
+# (node:869644) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Gói1: sample + GLB ready
+# Gói1: navigation/color/settings UndoRedo PASS
+# Gói1: reopen PASS
+# Subtest: Gói 1: real HTML navigation, multi-color, modes/delays, Undo/Redo/reopen and export capture
+ok 131 - Gói 1: real HTML navigation, multi-color, modes/delays, Undo/Redo/reopen and export capture
+  ---
+  duration_ms: 18058.204544
+  type: 'test'
+  ...
+# (node:869795) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: key navigation deduplicates equal times, respects selected bone and boundaries
+ok 132 - key navigation deduplicates equal times, respects selected bone and boundaries
+  ---
+  duration_ms: 0.78492
+  type: 'test'
+  ...
+# Subtest: color survives JSON, applies to all selected keys and clears without changing samples
+ok 133 - color survives JSON, applies to all selected keys and clears without changing samples
+  ---
+  duration_ms: 1.109671
+  type: 'test'
+  ...
+# Subtest: legacy preview defaults to loop; once resets and hold retains last frame
+ok 134 - legacy preview defaults to loop; once resets and hold retains last frame
+  ---
+  duration_ms: 0.360086
+  type: 'test'
+  ...
+# Subtest: start and loop waits hold poses and preserve overshoot over many cycles
+ok 135 - start and loop waits hold poses and preserve overshoot over many cycles
+  ---
+  duration_ms: 0.16502
+  type: 'test'
+  ...
+# Subtest: new fields are optional, invalid mode/delay/color rejected without mutating old project
+ok 136 - new fields are optional, invalid mode/delay/color rejected without mutating old project
+  ---
+  duration_ms: 0.267235
+  type: 'test'
+  ...
+# (node:869807) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: pane dividers resize, reload, clamp and leave project/history unchanged
+ok 137 - pane dividers resize, reload, clamp and leave project/history unchanged # SKIP
+  ---
+  duration_ms: 0.549993
+  type: 'test'
+  ...
+1..137
+# tests 137
+# suites 0
+# pass 132
+# fail 0
+# cancelled 0
+# skipped 5
+# todo 0
+# duration_ms 466687.276331
