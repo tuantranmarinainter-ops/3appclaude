@@ -262,6 +262,37 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.invalidate()
   }
 
+  async refreshDocument(previous: DirectorDocument): Promise<void> {
+    const doc = this.doc
+    if (!doc) return
+    const before = new Map(previous.content.nodes.map((node) => [node.id, node]))
+    const after = new Map(doc.content.nodes.map((node) => [node.id, node]))
+    // Transform, name and visibility are evaluated on existing instances. Model/rig,
+    // primitive geometry and node-type changes require a new instance only for that node.
+    const shape = (node: DraftNode) => {
+      const { transform: _transform, name: _name, visible: _visible, locked: _locked, ...rest } = node
+      return JSON.stringify(rest)
+    }
+    for (const [id, node] of before) {
+      const next = after.get(id)
+      if (!next || shape(node) !== shape(next)) this.removeNode(id)
+    }
+    for (const node of doc.content.nodes) {
+      if (!this.hasNode(node.id)) await this.addRuntimeNode(node)
+    }
+    const previousPaths = new Map(previous.content.asset.motionPath.map((entry) => [entry.id, entry.path]))
+    const previousClips = new Set(previous.content.timeline.animation.motionClips.map((clip) => `${clip.motion.assetId}\0${clip.motion.clipIndex ?? 0}`))
+    const changed = doc.content.timeline.animation.motionClips.filter((clip) =>
+      !previousClips.has(`${clip.motion.assetId}\0${clip.motion.clipIndex ?? 0}`)
+      || previousPaths.get(clip.motion.assetId) !== doc.content.asset.motionPath.find((entry) => entry.id === clip.motion.assetId)?.path)
+    await this.loader.preloadMotions({ ...doc, content: { ...doc.content, timeline: { ...doc.content.timeline,
+      animation: { ...doc.content.timeline.animation, motionClips: changed },
+    } } }, (id, url, index) => this.motionPlayer.load(id, url, index))
+    this.syncPathNodes()
+    this.evaluateCurrent()
+    this.invalidate()
+  }
+
   on<E extends EngineEventName>(event: E, fn: (payload: EngineEventMap[E]) => void): () => void {
     return this.events.on(event, fn)
   }

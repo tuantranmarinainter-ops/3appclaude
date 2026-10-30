@@ -12,7 +12,7 @@ import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
 
-export function useFilmExport(project: UnifiedProject, capabilities: import('../../../../../src/bbsGameCapabilities').BbsGameCapabilities | null) {
+export function useFilmExport(project: UnifiedProject, capabilities: import('../../../../../src/bbsGameCapabilities').BbsGameCapabilities | null, active = true) {
   const vi = useStudioLocale() === 'vi'
   const characters = Object.values(project.characters)
   const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
@@ -86,7 +86,9 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     let cancelled = false
     const args = { ...selectionArgs, ...(exportMode === 'series' ? { mode: 'series' } : { mode: 'film' }) }
     const requestKey = currentKey
-    setPreflight(null); setPreflightRevision(null); setPreflightKey(null); passedKey.current = null; setCheckingPreflight(true)
+    setPreflight(null); setPreflightRevision(null); setPreflightKey(null); passedKey.current = null
+    if (!active) { setCheckingPreflight(false); return }
+    setCheckingPreflight(true)
     const timer = setTimeout(() => {
       void sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: revision,
         command: 'film.preflight', args }).then((response) => {
@@ -107,9 +109,9 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
       })
     }, 250)
     return () => { clearTimeout(timer); cancelled = true }
-  }, [project.projectId, project.revision, exportMode, selectionArgs, currentKey])
+  }, [active, project.projectId, project.revision, exportMode, selectionArgs, currentKey])
 
-  const canExport = worldAnchorInputValid && !busy && !checkingPreflight && preflightRevision === project.revision &&
+  const canExport = active && worldAnchorInputValid && !busy && !checkingPreflight && preflightRevision === project.revision &&
     preflightKey === currentKey && passedKey.current === currentKey && !!preflight && preflight.errors.length === 0
 
   const saveAgain = async (job: UnifiedJobView) => {

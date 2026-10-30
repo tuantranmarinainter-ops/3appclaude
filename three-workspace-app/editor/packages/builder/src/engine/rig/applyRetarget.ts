@@ -43,6 +43,8 @@ export class Ual1Retargeter {
   private pelvisNodeIdx = -1
   private pelvisRestLocalPos = new THREE.Vector3()
   private activeClipId: string | null = null
+  private activeSourceClip: THREE.AnimationClip | null = null
+  private activeSourceGroup: THREE.Object3D | null = null
 
   constructor(dstRoot: THREE.Object3D) {
     this.dstRoot = dstRoot
@@ -64,8 +66,10 @@ export class Ual1Retargeter {
 
   /** 切换/设置当前 clip：克隆 FBX 骨架（rest 状态），建立映射对。 */
   setClip(clipId: string, fbxGroup: THREE.Object3D, clip: THREE.AnimationClip): void {
-    if (this.activeClipId === clipId) return
+    if (this.activeClipId === clipId && this.activeSourceClip === clip && this.activeSourceGroup === fbxGroup) return
     this.activeClipId = clipId
+    this.activeSourceClip = clip
+    this.activeSourceGroup = fbxGroup
 
     this.srcRoot = skeletonClone(fbxGroup)
     this.srcRoot.updateMatrixWorld(true)
@@ -118,6 +122,8 @@ export class Ual1Retargeter {
   resetToRest(): void {
     this.srcAction?.stop()
     this.activeClipId = null
+    this.activeSourceClip = null
+    this.activeSourceGroup = null
     for (let i = 0; i < this.nodes.length; i++) {
       const rest = this.dstRestLocalPos.get(i)
       if (rest) this.nodes[i].position.copy(rest)

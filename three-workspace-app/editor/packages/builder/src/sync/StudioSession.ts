@@ -1687,10 +1687,20 @@ export class StudioSession implements StudioView {
         console.warn('[fcurves] 加载失败，继续用派生路径', e)
       }
       if (seq !== this.loadSeq) return
-      // loadDocument 不会清图，必须先 reset 再 setDoc/load，避免节点 reaction 往旧图加角色。
-      this.engine.reset()
-      this.setDoc(nextDoc, raw)
-      await this.engine.load(nextDoc)
+      const previous = this.docModel.toContract()
+      if (previous && this.engine.ready && this.engine.refreshDocument) {
+        // Preserve the document reference held by Stage and all unchanged model instances.
+        const before = { ...previous, content: previous.content }
+        const hydrated = hydrateSkyColor(nextDoc)
+        const editorial = pruneMissingCameraClips(hydrated)
+        this.docModel.applyContent(editorial ? { ...hydrated, content: { ...hydrated.content, editorial } } : hydrated)
+        this.history.clear()
+        await this.engine.refreshDocument(before)
+      } else {
+        this.engine.reset()
+        this.setDoc(nextDoc, raw)
+        await this.engine.load(nextDoc)
+      }
       if (seq !== this.loadSeq) return
       this.applyFcurvesRaw(raw)
       const nodeIds = new Set(nextDoc.content.nodes.map((node) => node.id))

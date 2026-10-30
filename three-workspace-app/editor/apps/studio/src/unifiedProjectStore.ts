@@ -266,13 +266,13 @@ export async function listUnifiedProjects(): Promise<Array<{ id: string; name: s
 
 function requestHash(envelope: CommandEnvelope): string { return createHash('sha256').update(JSON.stringify(envelope)).digest('hex') }
 
-async function previousRequest(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess | null> {
+async function previousRequest(envelope: CommandEnvelope, hash: string, recover = true): Promise<CommandSuccess | null> {
   const previous = await readJson<RequestRecord>(requestPath(envelope.requestId))
   if (previous) {
     if (previous.hash !== hash) throw new UnifiedStoreError('REQUEST_ID_CONFLICT', 'Request ID was already used with a different payload', 409)
     if (previous.response) return previous.response
   }
-  if (envelope.projectId) {
+  if (recover && envelope.projectId) {
     const project = await readJson<UnifiedProject>(projectPath(envelope.projectId))
     const record = project && await readJson<HistoryRecord>(historyPath(envelope.projectId, project.revision))
     if (record?.requestId === envelope.requestId) {
@@ -946,7 +946,42 @@ export async function executeUnifiedCommand(raw: unknown): Promise<CommandSucces
   return withRequestLock(envelope.requestId, () => executeLockedCommand(envelope, hash))
 }
 
+async function executeHistoryCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  // Keep cached replay available even after later commands or deletion of the project.
+  const cached = await previousRequest(envelope, hash, false)
+  if (cached) return cached
+  if (!envelope.projectId) throw new UnifiedStoreError('VALIDATION_FAILED', 'projectId is required', 400)
+  const id = envelope.projectId
+  try {
+    return await withWriter(id, async () => {
+      // Recover a commit whose project was published before its request cache was saved.
+      const replay = await previousRequest(envelope, hash)
+      if (replay) return replay
+      const current = await readUnifiedProject(id)
+      if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'History commands do not accept arguments', 400)
+      const rootConflict = findRootMotionConflict(current.scene)
+      if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
+      if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
+      if (envelope.expectedRevision !== current.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed; reload before saving', 409, { expected: envelope.expectedRevision, actual: current.revision })
+      const index = await historyIndex(current)
+      const undo = envelope.command === 'history.undo'
+      if (undo ? index.cursor <= 0 : index.cursor >= index.entries.length) throw new UnifiedStoreError('VALIDATION_FAILED', undo ? 'Undo history is empty' : 'Redo history is empty', 400)
+      const item = await readJson<HistoryRecord>(historyPath(id, index.entries[undo ? index.cursor - 1 : index.cursor]!))
+      if (!item) throw new UnifiedStoreError('IO_FAILED', undo ? 'Undo snapshot is missing' : 'Redo snapshot is missing', 500)
+      const next = structuredClone(undo ? item.before.project : item.after.project)
+      next.revision = current.revision + 1
+      if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
+      const nextIndex = { revision: next.revision, entries: index.entries, cursor: index.cursor + (undo ? -1 : 1) }
+      return commit(envelope, hash, current, next, nextIndex, undo ? { undoneRequestId: item.requestId } : { redoneRequestId: item.requestId }, ['scene'])
+    })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new UnifiedStoreError('NOT_FOUND', 'Project not found or invalid', 404)
+    throw error
+  }
+}
+
 async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  if ((envelope.command === 'history.undo' || envelope.command === 'history.redo') && !envelope.dryRun) return executeHistoryCommand(envelope, hash)
   const replay = await previousRequest(envelope, hash)
   if (replay) return replay
   let sceneReplacement: { document: UnifiedProject['scene']; fcurves: unknown; characters: Record<string, Character>; bindings: Record<string, MotionBinding>; changedNodeIds: string[]; cloneMaps: Array<Record<string, Record<string, string>>> } | null = null

@@ -153,6 +153,7 @@ export class MotionPlayer {
   private loader = new FBXLoader()
   private gltfLoader = new GLTFLoader()
   private raw = new Map<string, RawMotion>()
+  private sourceUrls = new Map<string, string>()
   private pending = new Map<string, Promise<RawMotion>>()
   private bakedDirectBind = new Map<string, THREE.AnimationClip>()
   private mixamorigTemplate: THREE.Object3D | null = null
@@ -165,6 +166,13 @@ export class MotionPlayer {
   load(assetId: string, url: string, clipIndex = 0): Promise<RawMotion> {
     if (!Number.isInteger(clipIndex) || clipIndex < 0) return Promise.reject(new RangeError('Motion clip index must be a non-negative integer'))
     const key = motionKey(assetId, clipIndex)
+    const previousUrl = this.sourceUrls.get(key)
+    if (previousUrl && previousUrl !== url) {
+      this.raw.delete(key)
+      this.pending.delete(key)
+      this.bakedDirectBind.clear()
+    }
+    this.sourceUrls.set(key, url)
     const cached = this.raw.get(key)
     if (cached) return Promise.resolve(cached)
     const libraryKey = libraryAssetCacheKey(url)
@@ -182,12 +190,12 @@ export class MotionPlayer {
           const clip = group.animations[clipIndex]
           if (!clip) throw new Error(`FBX animation ${clipIndex} was not found: ${url}`)
           const entry: RawMotion = { clip, group, bind: captureBind(group) }
-          this.raw.set(key, entry)
+          if (this.sourceUrls.get(key) === url) this.raw.set(key, entry)
           rememberLibraryMotion(url, clipIndex, entry)
           return entry
         })
         .finally(() => {
-          this.pending.delete(key)
+          if (this.sourceUrls.get(key) === url) this.pending.delete(key)
         })
       this.pending.set(key, p)
     }
@@ -271,6 +279,7 @@ export class CharacterAnimator {
       action.stop()
       this.mixer.uncacheAction(action.getClip(), this.root)
       this.actions.delete(clipId)
+      if (this.activeClipId === clipId) this.activeClipId = null
       action = undefined
     }
     if (!action) {
