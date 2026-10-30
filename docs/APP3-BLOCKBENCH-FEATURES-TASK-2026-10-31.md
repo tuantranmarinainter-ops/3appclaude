@@ -160,9 +160,19 @@ mũi tên, `e.code === 'Space'`…), không xem hay đổi được; bảng `#mo
       `js/copy_paste.js`, `js/preview/preview.ts`…) và 3 bộ `keymaps/blender.bbkeymap`, `maya.bbkeymap`, `cinema4d.bbkeymap`.
       Viết script nhỏ trích tự động từ mã nguồn ra `src/keymaps/blockbench*.json` (ghi commit, SPDX, PROVENANCE) thay vì gõ tay.
     - Chỉ ánh xạ hành động **App 3 có tương đương**; hành động Blockbench không có (UV, vẽ texture, lưới mesh…) bỏ qua và liệt
-      kê trong PROVENANCE. Phím Blockbench trùng với hành động riêng của App 3 → giữ phím cho hành động tương đương Blockbench,
-      hành động App 3 bị trùng chuyển sang phím trống và ghi chú.
-    - Bảng tối thiểu phải khớp khi chọn `Kiểu Blockbench` (đã đọc từ mã Blockbench `ec0b282`):
+      kê trong PROVENANCE.
+    - **Trùng phím (người dùng chốt 2026-10-31): mặc định ưu tiên App 3.** Khi chọn `Kiểu Blockbench` (hoặc Blender/Maya/
+      Cinema 4D) mà phím của preset đang được một hành động App 3 dùng (kể cả hành động riêng của App 3 không có trong
+      Blockbench), **hành động App 3 giữ phím đó**; hành động bên preset bị trùng chuyển sang phím trống gần nhất hoặc để
+      trống, và được đánh dấu "trùng" trong bảng Phím tắt.
+    - **Tuỳ chọn trong ⚙ Cài đặt → Phím tắt**: "Khi trùng phím, ưu tiên: `App 3` (mặc định) / `Bộ phím đã chọn`". Đổi lựa
+      chọn áp dụng ngay và tính lại toàn bộ bảng; người dùng vẫn gán tay từng phím được, phím gán tay luôn thắng cả hai.
+      Lưu cùng bộ phím (localStorage + xuất/nhập `.json`).
+    - Bảng Phím tắt có bộ lọc "Chỉ hiện phím trùng" và cột ghi rõ phím này đang theo App 3 hay theo preset.
+    - Test: chọn `Kiểu Blockbench` → mọi phím App 3 cũ vẫn chạy như trước; đổi sang "ưu tiên bộ phím đã chọn" → phím trùng
+      theo bảng Blockbench bên dưới; phím gán tay không bị ghi đè khi đổi lựa chọn.
+    - Bảng tối thiểu phải khớp khi chọn `Kiểu Blockbench` + "ưu tiên bộ phím đã chọn" (khi "ưu tiên App 3", các dòng
+      trùng với phím App 3 giữ phím App 3) — đã đọc từ mã Blockbench `ec0b282`:
 
       | Hành động App 3 | Blockbench (id) | Phím |
       | --- | --- | --- |
