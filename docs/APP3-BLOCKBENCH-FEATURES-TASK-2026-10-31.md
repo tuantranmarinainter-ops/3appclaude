@@ -1,7 +1,7 @@
 # Task App 3: bổ sung tính năng kiểu Blockbench (2026-10-31)
 
 > Người dùng giao 2026-10-31, **cho phép sửa App 3** (Animation Studio). Giao Codex.
-> **4 gói = 4 nhánh + 4 PR** vào `main`, làm theo thứ tự, **không tự merge**.
+> **5 gói = 5 nhánh + 5 PR** vào `main`, thứ tự **1 → 5 → 2 → 3 → 4**, **không tự merge**.
 > Phần hiệu ứng (particle/sound) **không** thuộc task này: hiệu ứng đi qua App 4 + làn VFX của App 2.
 
 ## Bối cảnh
@@ -46,7 +46,7 @@ Thư mục: `three-workspace-app/animation-studio/work/material_alpha_v1_31_8/sr
 **Trước khi bắt đầu:** nhánh `app3-prettier` (chỉ định dạng lại `src/` bằng Prettier, giữ CRLF) nên được merge trước.
 Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đột toàn file.
 
-## Quy tắc chung cho cả 4 gói
+## Quy tắc chung cho cả 5 gói
 - Tương thích ngược: project cũ (`version: 1`) mở được y như trước; trường mới đều **tuỳ chọn**, có giá trị mặc định.
   Nếu phải đổi cấu trúc thì nâng `version` và viết hàm chuyển đổi + test.
 - Giao diện **tiếng Việt**, theo phong cách hiện có. Mọi thao tác mới **Hoàn tác/Làm lại** được.
@@ -100,6 +100,42 @@ Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đ
     thấy chuyển idle → walk trong khung 3D).
 17. Xuất `*.animation_controllers.json` (Bedrock, `format_version` "1.10.0") cùng file animation của gói 3.
 - Test: chuyển trạng thái đúng theo biến, blend trong khoảng thời gian, xuất JSON đúng cấu trúc.
+
+## Gói 5 — Bố cục giao diện kiểu Blockbench, giữ bố cục cũ trong ⚙ (nhánh `codex/app3-bb-layout`)
+> Người dùng thêm 2026-10-31: "Mức 1" = học **phong cách bố cục** của Blockbench, vẫn dùng HTML/JS hiện có của App 3,
+> **không** chuyển sang Vue/jQuery. Làm **ngay sau Gói 1** (trước Gói 2–4) để các gói sau đặt panel mới vào bố cục mới.
+
+Mục tiêu: người quen Blockbench dùng App 3 ngay; màn hình bớt rối (hiện ~120 nút, ~140 ô nhập, 30+ panel cùng lúc);
+**giữ nguyên mọi công cụ riêng** của App 3 (thanh quy trình, IK, thư viện pose, onion skin, so sánh, silhouette…).
+
+18. **Tuỳ chọn trong ⚙ Cài đặt** (`#settingsBtn` → `dialog#settings`): mục mới **"Giao diện"** với lựa chọn
+    - `Bố cục theo chế độ` (mới, mặc định cho người dùng mới),
+    - `Bố cục cổ điển` (giao diện hiện tại, **giữ nguyên 100%** như trước Gói 5).
+    Lưu trong `localStorage['animation-studio-settings']` (cùng chỗ cài đặt khác, đọc/ghi trong try/catch). Đổi lựa chọn
+    **áp dụng ngay, không mất dữ liệu đang sửa, không tải lại trang**; người dùng cũ đã có bố cục lưu
+    (`animation-studio-layout-v2`) thì mặc định vẫn là `Bố cục cổ điển`. Lưu preset cài đặt (`#saveSettingsPreset`) mang theo lựa chọn này.
+19. **Bố cục theo chế độ**:
+    - Hàng **tab chế độ** trên cùng: `Pose` · `Animate` · `Xuất` (thêm `So sánh` nếu đang dùng `#compareWorkspace`).
+      Mỗi tab chỉ hiện panel liên quan; thanh quy trình hiện có (`#workflowSteps`) nối với tab (chọn bước → sang tab tương ứng).
+    - **Panel hai bên** kiểu thanh bên: trái = cây xương/điều khiển (`#controlTree`), thư viện pose, thông tin project;
+      phải = transform, IK, tuỳ chọn tay/chân; dưới = timeline + Graph Editor. Panel thu gọn/mở được, kéo rộng hẹp được
+      (dùng lại cơ chế kéo giãn hiện có), nhớ trạng thái theo từng tab.
+    - **Thanh công cụ chính** trên khung 3D: chỉ các công cụ của tab hiện tại (vd Animate: chọn, xoay, dời, pivot, nhảy key,
+      play), menu "…" chứa phần còn lại.
+    - **Theme tối** mặc định cho bố cục mới, màu định nghĩa bằng biến CSS (một chỗ), đủ tương phản; bố cục cổ điển giữ màu cũ.
+20. **Phím tắt chế độ**: `Ctrl+1/2/3` đổi tab; hiện phím tắt trong tooltip. Không đổi phím tắt đang có.
+21. **Màn hình nhỏ** (≤ 1024 px, máy tính bảng): bố cục mới thu panel thành ngăn kéo; nếu đủ dùng cho xem + chỉnh keyframe
+    cơ bản thì chỉ hiện `#pcOnlyNotice` khi màn hình quá nhỏ cho thao tác đó, kèm nút "Vẫn mở". Bố cục cổ điển giữ như cũ.
+22. **Không** dùng tên, logo, biểu tượng thương hiệu hay ảnh chụp giao diện của Blockbench trong App 3. Có thể chuyển thể
+    CSS/bố cục từ mã Blockbench theo mục **Bản quyền** (ghi nguồn, SPDX, PROVENANCE). Icon: dùng bộ icon App 3 đang có hoặc
+    bộ có giấy phép MIT/Apache (ghi vào `vendor/`).
+23. Cấu trúc mã: phần bố cục mới đặt trong file riêng (vd `src/layout_modes.js` + `src/layout_modes.css`), bật/tắt bằng
+    một lớp CSS trên `<body>` (vd `layout-modes` / `layout-classic`); **không nhân đôi** panel — cùng một phần tử DOM được
+    sắp xếp lại theo bố cục, để mọi tính năng chạy giống nhau ở cả hai bố cục.
+- Test: đổi qua lại 2 bố cục 10 lần giữa lúc đang sửa (project không đổi, undo/redo còn nguyên); lựa chọn được nhớ sau
+  tải lại; người dùng cũ mặc định cổ điển; mỗi tab chỉ hiện đúng panel; `Ctrl+1/2/3`; bố cục cổ điển so ảnh chụp trước/sau
+  Gói 5 không khác (ảnh chụp ở cùng kích thước cửa sổ).
+- Ảnh chụp hoặc GIF cả hai bố cục ở 1920×1080 và 1024×768 đưa vào mô tả PR.
 
 ## Kiểm mỗi PR (ghi kết quả trong mô tả PR)
 - `node --test` toàn bộ `src/*.test.mjs` (sau khi build bản HTML), liệt kê pass/fail/skip trước và sau.
