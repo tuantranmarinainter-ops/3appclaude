@@ -206,6 +206,8 @@ export interface DirectorEngine {
   groundPoint(ndcX: number, ndcY: number, y: number): [number, number, number] | null
   groundDrawPoint(ndcX: number, ndcY: number): [number, number, number] | null
   setOrbitEnabled(enabled: boolean): void
+  /** Khoá khung 3D: phím tắt/lăn/kéo không đổi camera khung nhìn. */
+  setViewLocked(locked: boolean): void
   /** 路径绘制占用左键时为 true。导航本身保持开启。 */
   setLeftPointerReserved(reserved: boolean): void
   setNavPickHandlers(handlers: ViewportNavPickHandlers | null): void

@@ -355,6 +355,8 @@ export const zhTW: LocaleDict = {
     "autoKeyframe": "自動關鍵影格",
     "snap": "吸附",
     "snapTitle": "拖曳時吸附到關鍵影格和片段邊緣。",
+    "lockView": "鎖定3D視圖",
+    "lockViewTitle": "鎖定3D視圖相機：快捷鍵、滾輪和拖曳不會移動它，仍可選取物件。",
     "frame": "目前影格",
     "zoom": "縮放",
     "inPoint": "入點",

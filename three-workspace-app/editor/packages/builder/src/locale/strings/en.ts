@@ -355,6 +355,8 @@ export const en: LocaleDict = {
     "autoKeyframe": "Auto keyframe",
     "snap": "Snap",
     "snapTitle": "Snap drags to keyframes and clip edges.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "frame": "Current frame",
     "zoom": "Zoom",
     "inPoint": "In",

@@ -355,6 +355,8 @@ export const zhCN: LocaleDict = {
     "autoKeyframe": "自动关键帧",
     "snap": "吸附",
     "snapTitle": "拖动时吸附到关键帧和片段边缘。",
+    "lockView": "锁定3D视图",
+    "lockViewTitle": "锁定3D视图相机：快捷键、滚轮和拖动不会移动它，仍可选择对象。",
     "frame": "当前帧",
     "zoom": "缩放",
     "inPoint": "入点",

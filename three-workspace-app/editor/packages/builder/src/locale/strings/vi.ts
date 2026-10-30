@@ -387,6 +387,8 @@ export const vi: LocaleDict = {
     "fps": "Tốc độ khung hình",
     "snap": "Chụp nhanh",
     "snapTitle": "Kéo sẽ hút vào khóa và mép clip.",
+    "lockView": "Khoá khung 3D",
+    "lockViewTitle": "Khoá camera khung 3D: phím tắt, lăn chuột và kéo không đổi góc nhìn. Chọn vật vẫn dùng được.",
     "addKeyframeBundle": "Khóa mọi kênh trong nhóm này ở khung hình hiện tại",
     "addKeyframeMulti": "Khóa tất cả các đối tượng được chọn {{count}} ở khung hiện tại",
     "saveKeyframe": "Lưu khung hình chính",

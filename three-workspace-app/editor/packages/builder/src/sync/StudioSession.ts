@@ -199,6 +199,9 @@ export class StudioSession implements StudioView {
   get timelineSnap(): boolean {
     return this.editor.timelineSnap
   }
+  get viewportLocked(): boolean {
+    return this.editor.viewportLocked
+  }
   get pendingKeyframe(): PendingKeyframe | null {
     return this.editor.pendingKeyframes[0] ?? null
   }
@@ -476,6 +479,10 @@ export class StudioSession implements StudioView {
   toggleAutoKeyframe = (): void => this.editor.toggleAutoKeyframe()
 
   toggleTimelineSnap = (): void => this.editor.toggleTimelineSnap()
+  toggleViewportLocked = (): void => {
+    this.editor.toggleViewportLocked()
+    this.engine.setViewLocked(this.editor.viewportLocked)
+  }
   toggleChainCameraMotion = (): void => this.editor.toggleChainCameraMotion()
   setExporting = (b: boolean): void => this.editor.setExporting(b)
   undo = (): void => {
@@ -2278,6 +2285,7 @@ export class StudioSession implements StudioView {
   }
 
   focusSelection = (): void => {
+    if (this.editor.viewportLocked) return
     const sel = this.editor.selection
     if (sel?.kind !== 'node') return
     const ids = sel.nodeIds?.length ? sel.nodeIds : [sel.nodeId]

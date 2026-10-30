@@ -387,6 +387,8 @@ export const ru: LocaleDict = {
     "fps": "Частота кадров",
     "snap": "Привязка",
     "snapTitle": "Перетаскивание липнет к ключам и краям.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Ввод каждого канала в этой группе в текущем кадре.",
     "addKeyframeMulti": "Введите все выбранные объекты {{count}} в текущем кадре.",
     "saveKeyframe": "Сохранить ключевой кадр",

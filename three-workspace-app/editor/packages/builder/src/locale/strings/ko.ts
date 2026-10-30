@@ -387,6 +387,8 @@ export const ko: LocaleDict = {
     "fps": "프레임 속도",
     "snap": "스냅",
     "snapTitle": "드래그를 키프레임과 클립 끝에 맞춥니다.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "현재 프레임에서 이 그룹의 모든 채널에 키를 지정합니다.",
     "addKeyframeMulti": "현재 프레임에서 선택한 모든 {{count}} 개체에 키를 지정합니다.",
     "saveKeyframe": "키프레임 저장",

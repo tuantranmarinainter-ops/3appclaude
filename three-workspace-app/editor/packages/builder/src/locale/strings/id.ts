@@ -387,6 +387,8 @@ export const id: LocaleDict = {
     "fps": "Kecepatan bingkai",
     "snap": "Jepret",
     "snapTitle": "Seretan menempel ke keyframe dan tepi klip.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Kunci setiap saluran pada grup ini pada frame saat ini",
     "addKeyframeMulti": "Kunci semua objek {{count}} yang dipilih pada frame saat ini",
     "saveKeyframe": "Simpan bingkai utama",

@@ -387,6 +387,8 @@ export const ja: LocaleDict = {
     "fps": "フレームレート",
     "snap": "スナップ",
     "snapTitle": "ドラッグをキーとクリップ端に吸着します。",
+    "lockView": "3Dビューをロック",
+    "lockViewTitle": "3Dビューのカメラをロック：ショートカット・ホイール・ドラッグで動きません。選択は可能です。",
     "addKeyframeBundle": "現在のフレームでこのグループのすべてのチャネルをキー設定します",
     "addKeyframeMulti": "現在のフレームで選択したすべての {{count}} オブジェクトにキーを設定します",
     "saveKeyframe": "キーフレームの保存",

@@ -387,6 +387,8 @@ export const es: LocaleDict = {
     "fps": "Velocidad de fotogramas",
     "snap": "Broche",
     "snapTitle": "El arrastre se ajusta a claves y bordes.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Clave cada canal en este grupo en el cuadro actual",
     "addKeyframeMulti": "Clave todos los objetos seleccionados {{count}} en el cuadro actual",
     "saveKeyframe": "Guardar fotograma clave",

@@ -387,6 +387,8 @@ export const tr: LocaleDict = {
     "fps": "Kare hızı",
     "snap": "Snap",
     "snapTitle": "Sürükleme anahtarlara ve klip kenarlarına yapışır.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Bu gruptaki her kanalı geçerli kareye göre anahtarlayın",
     "addKeyframeMulti": "Seçilen tüm {{count}} nesneleri geçerli karede anahtarla",
     "saveKeyframe": "Ana kareyi kaydet",

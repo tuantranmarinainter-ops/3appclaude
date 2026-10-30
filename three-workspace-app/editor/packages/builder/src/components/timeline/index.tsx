@@ -18,6 +18,7 @@ import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
 import {
   IconAutoKeyframe,
   IconChevron,
+  IconLock,
   IconPause,
   IconPlay,
   IconSnapMagnet,
@@ -65,6 +66,7 @@ function SceneTimeline() {
   const userKeysEnabled = useStore((s) => s.userKeysEnabled)
   const autoKeyframe = useStore((s) => s.autoKeyframe)
   const timelineSnap = useStore((s) => s.timelineSnap)
+  const viewportLocked = useStore((s) => s.viewportLocked)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
   const timelineUnit = useStore((s) => s.timelineUnit)
@@ -84,6 +86,7 @@ function SceneTimeline() {
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
+    toggleViewportLocked,
     addKeyframes,
     addTransformKeyframes,
     moveKeyframes,
@@ -435,6 +438,17 @@ function SceneTimeline() {
           >
             <IconSnapMagnet />
             {t('timeline.snap')}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('timeline.lockViewTitle')} side="top">
+          <button
+            type="button"
+            className={cx('t3d-timeline-auto-key', viewportLocked && 'is-active')}
+            aria-pressed={viewportLocked}
+            onClick={toggleViewportLocked}
+          >
+            <IconLock />
+            {t('timeline.lockView')}
           </button>
         </Tooltip>
         <label className="t3d-timeline-field">

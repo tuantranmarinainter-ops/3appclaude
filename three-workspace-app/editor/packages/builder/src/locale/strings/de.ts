@@ -387,6 +387,8 @@ export const de: LocaleDict = {
     "fps": "Bildrate",
     "snap": "Schnapp",
     "snapTitle": "Ziehen rastet an Keys und Clip-Kanten ein.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Key jeden Kanal dieser Gruppe im aktuellen Frame",
     "addKeyframeMulti": "Key alle {{count}} ausgewählten Objekte im aktuellen Frame",
     "saveKeyframe": "Keyframe speichern",

@@ -387,6 +387,8 @@ export const pt: LocaleDict = {
     "fps": "Taxa de quadros",
     "snap": "Snap",
     "snapTitle": "O arraste gruda em chaves e bordas.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Chaveie todos os canais deste grupo no quadro atual",
     "addKeyframeMulti": "Chavear todos os objetos {{count}} selecionados no quadro atual",
     "saveKeyframe": "Salvar quadro-chave",

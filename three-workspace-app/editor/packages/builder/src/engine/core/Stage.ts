@@ -1527,6 +1527,10 @@ export class Stage implements DirectorEngine, PathViewHost {
     this.viewport.setOrbitEnabled(v)
   }
 
+  setViewLocked(v: boolean): void {
+    this.viewport.setViewLocked(v)
+  }
+
   setLeftPointerReserved(v: boolean): void {
     this.viewport.setLeftPointerReserved(v)
   }

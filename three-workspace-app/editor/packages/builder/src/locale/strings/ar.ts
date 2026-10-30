@@ -387,6 +387,8 @@ export const ar: LocaleDict = {
     "fps": "معدل الإطارات",
     "snap": "المفاجئة",
     "snapTitle": "السحب يلتصق بالإطارات المفتاحية وحواف المقاطع.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "قم بمفتاح كل قناة في هذه المجموعة في الإطار الحالي",
     "addKeyframeMulti": "قم بمفتاح كافة الكائنات المحددة {{count}} في الإطار الحالي",
     "saveKeyframe": "حفظ الإطار الرئيسي",

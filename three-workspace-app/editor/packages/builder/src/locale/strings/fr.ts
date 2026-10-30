@@ -387,6 +387,8 @@ export const fr: LocaleDict = {
     "fps": "Fréquence d'images",
     "snap": "Snap",
     "snapTitle": "L'aimantation aligne sur les clés et les bords.",
+    "lockView": "Lock 3D view",
+    "lockViewTitle": "Lock the 3D view camera: shortcuts, wheel and drags do not move it. Selection still works.",
     "addKeyframeBundle": "Clé de chaque canal de ce groupe à la trame actuelle",
     "addKeyframeMulti": "Clé de tous les objets sélectionnés {{count}} dans l'image actuelle",
     "saveKeyframe": "Enregistrer l'image clé",
