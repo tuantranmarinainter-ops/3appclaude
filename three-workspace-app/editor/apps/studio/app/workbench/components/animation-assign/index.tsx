@@ -1,4 +1,5 @@
 'use client'
+import { invalidateLibrary } from '../../../../src/libraryClient'
 
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
@@ -64,6 +65,7 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
       const body = await response.json() as { linkedNodes?: Array<{ displayName: string }>; error?: string }
       if (!response.ok) throw new Error(body.error ?? `Nối thất bại (${response.status})`)
       setMessage(`Đã nối “${node.name}” với nhân vật thư viện${body.linkedNodes?.[0] ? ` — tên hiển thị: ${body.linkedNodes[0].displayName}` : ''}.`)
+      invalidateLibrary()
       await refreshProject()
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(null) }
@@ -82,6 +84,7 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
       if (body.clipId && body.frameStart !== undefined && body.frameEnd !== undefined) {
         window.dispatchEvent(new CustomEvent('bbs-reveal-clip', { detail: { projectId, clipId: body.clipId, nodeId: node.nodeId, frameStart: body.frameStart, frameEnd: body.frameEnd } }))
       }
+      invalidateLibrary()
       await refreshProject()
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setBusy(null) }

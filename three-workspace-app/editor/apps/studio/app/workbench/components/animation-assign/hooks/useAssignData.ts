@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AssignActionItem } from '../utils'
+import { libraryJson as getJson, LIBRARY_CHANGED } from '../../../../../src/libraryClient'
 
 export interface AssignLibraryCharacter { charId: string; name: string; rig: string }
-
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { credentials: 'same-origin' })
-  const body = await response.json() as T & { error?: string }
-  if (!response.ok) throw new Error(body.error ?? `Yêu cầu thất bại (${response.status})`)
-  return body
-}
 
 /** Library data for the assign panel: character list once, Action lists per owner on demand. */
 export function useAssignData() {
@@ -20,13 +14,17 @@ export function useAssignData() {
 
   useEffect(() => {
     let cancelled = false
-    getJson<{ characters: AssignLibraryCharacter[] }>('/api/library?characters=1')
-      .then((body) => { if (!cancelled) setCharacters(body.characters) })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)) })
-    getJson<{ actions: AssignActionItem[] }>('/api/library?raw=1')
-      .then((body) => { if (!cancelled) setSharedActions(body.actions) })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)) })
-    return () => { cancelled = true }
+    const refresh = () => {
+      getJson<{ characters: AssignLibraryCharacter[] }>('/api/library?characters=1')
+        .then((body) => { if (!cancelled) setCharacters(body.characters) })
+        .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)) })
+      getJson<{ actions: AssignActionItem[] }>('/api/library?raw=1')
+        .then((body) => { if (!cancelled) setSharedActions(body.actions) })
+        .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)) })
+    }
+    refresh()
+    window.addEventListener(LIBRARY_CHANGED, refresh)
+    return () => { cancelled = true; window.removeEventListener(LIBRARY_CHANGED, refresh) }
   }, [])
 
   const loadOwn = useCallback(async (charId: string | null) => {

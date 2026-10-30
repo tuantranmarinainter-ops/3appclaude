@@ -1,4 +1,4 @@
-import { libraryCharacterModel } from '../../../src/libraryModels'
+import { invalidateLibraryModels, libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
 import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, updateLibraryCharacterHeights, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
 
@@ -13,7 +13,9 @@ export async function GET(request: Request): Promise<Response> {
       let model = await libraryCharacterModel(modelCharacter)
       if (fingerprint !== model.fingerprint) { const legacy = await libraryCharacterModel(modelCharacter, false); if (legacy.fingerprint === fingerprint) model = legacy }
       if (fingerprint !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
-      return new Response(new Uint8Array(model.bytes), { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store' } })
+      const headers = { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'private, max-age=31536000, immutable', ETag: `"${model.fingerprint}"` }
+      if (request.headers.get('if-none-match')?.split(',').some(tag => tag.trim().replace(/^W\//, '') === headers.ETag || tag.trim() === '*')) return new Response(null, { status: 304, headers })
+      return new Response(new Uint8Array(model.bytes), { headers })
     }
     const actionUuid = url.searchParams.get('actionUuid')
     if (actionUuid) {
@@ -54,7 +56,9 @@ export async function PATCH(request: Request): Promise<Response> {
     }
     if (body.operation === 'profile') {
       if (!body.charId || body.heightBlocks === undefined && !body.personality && !body.requiredActions) return Response.json({ error: 'Character profile is required' }, { status: 400 })
-      return Response.json({ character: updateCharacterProfile(body.charId, body.personality, body.requiredActions, body.heightBlocks) })
+      const character = updateCharacterProfile(body.charId, body.personality, body.requiredActions, body.heightBlocks)
+      invalidateLibraryModels(body.charId)
+      return Response.json({ character })
     }
     if (!body.actionUuid) return Response.json({ error: 'actionUuid is required' }, { status: 400 })
     if (body.category !== undefined && !ACTION_CATEGORIES.includes(body.category as ActionCategory)) return Response.json({ error: 'Unknown category' }, { status: 400 })
