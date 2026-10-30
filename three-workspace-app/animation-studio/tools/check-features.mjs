@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs'
 
 const [baselinePath, candidatePath] = process.argv.slice(2)
 if (!baselinePath || !candidatePath) { console.error('usage: check-features.mjs <baseline.html> <candidate.html>'); process.exit(2) }
-const ids = (html) => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]))
+// Formatting can wrap concatenated dynamic ids; canonicalize only their JS joins.
+const ids = (html) => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1].replace(/'\s*\+\s*([A-Za-z_$][\w$]*)\s*\+\s*'/g, "'+$1+'")))
 const lookups = (html) => new Set([...html.matchAll(/(?:\$|getElementById)\('([A-Za-z][\w-]*)'\)/g)].map((match) => match[1]))
 const baseline = readFileSync(baselinePath, 'utf8'), candidate = readFileSync(candidatePath, 'utf8')
 const baseIds = ids(baseline), candIds = ids(candidate), candLookups = lookups(candidate)

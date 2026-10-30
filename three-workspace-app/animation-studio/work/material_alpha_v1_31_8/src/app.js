@@ -1,3 +1,7 @@
+import * as TimelineTools from './timeline_tools.js';
+let playbackElapsed = null,
+  playbackOrigin = 0,
+  playbackFinished = false;
 import { transformKeyTimes } from './keyframe_time.js';
 import * as PoseClipboard from './pose_clipboard.js';
 import { SilhouetteView } from './silhouette_view.js';
@@ -2208,6 +2212,11 @@ function syncTime() {
         : '▶ Phát';
 }
 function syncProject() {
+  playbackElapsed = null;
+  $('playMode').value = TimelineTools.playMode(project);
+  $('loop').checked = TimelineTools.playMode(project) === 'loop';
+  $('startDelay').value = project.startDelay ?? 0;
+  $('loopDelay').value = project.loopDelay ?? 0;
   $('inPlace').checked = !!project.inPlace;
   $('inPlaceExport').checked = !!project.inPlaceExport;
   syncLabPanel();
@@ -2221,6 +2230,7 @@ function syncProject() {
   drawCurve();
 }
 function seek(t, live = false) {
+  playbackElapsed = null;
   if (sceneMode && !sceneEditing) return sceneSeek(t);
   if (sourcePreview) {
     seekSourceClip(t);
@@ -2581,6 +2591,15 @@ function drawTimeline() {
     text = color('--text'),
     muted = color('--muted'),
     accent = color('--accent');
+  // Index once per draw; colouring must not scan every track for every diamond.
+  const colorIndex = TimelineTools.colorIndex(project),
+    bodyColors = new Map();
+  if (colorIndex.size)
+    for (const ref of C.bodyKeyRefs(rig, project)) {
+      const color = colorIndex.get(TimelineTools.colorKey(ref)),
+        at = ref.time.toFixed(7);
+      if (color && !bodyColors.has(at)) bodyColors.set(at, color);
+    }
   timelineHits = [];
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
@@ -2683,7 +2702,17 @@ function drawTimeline() {
               (r.id === 'allBody' || ((s.kind || 'keys') === 'keys' && s.id === r.id)) &&
               Math.abs(s.time - key.time) < 1e-7,
           );
-      ctx.fillStyle = chosen ? '#eebc51' : r.id === selected ? accent : '#82a9e8';
+      const colored =
+        r.id === 'allBody'
+          ? bodyColors.get(key.time.toFixed(7))
+          : TimelineTools.keyColor(
+              project,
+              r.id.startsWith('labGroup_')
+                ? labGroupRefs(r.id.slice(9), key.time)
+                : [{ id: r.id, time: key.time }],
+              colorIndex,
+            );
+      ctx.fillStyle = colored || (chosen ? '#eebc51' : r.id === selected ? accent : '#82a9e8');
       ctx.beginPath();
       if (style === 'compact') ctx.arc(x, y, k, 0, Math.PI * 2);
       else {
@@ -2694,6 +2723,11 @@ function drawTimeline() {
         ctx.closePath();
       }
       ctx.fill();
+      if (colored && chosen) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
       timelineHits.push({ id: r.id, time: key.time, x, y, radius: k + 4 });
     }
     ctx.restore();
@@ -3024,6 +3058,25 @@ const timelineDeleteItem = document.createElement('button');
 timelineDeleteItem.textContent = 'Xoá';
 timelineDeleteItem.setAttribute('role', 'menuitem');
 timelineKeyMenu.append(timelineDeleteItem);
+for (const [index, color] of [...TimelineTools.KEY_COLORS, null].entries()) {
+  const item = document.createElement('button');
+  item.textContent = color ? `Màu key ${index + 1}` : 'Bỏ màu';
+  item.dataset.keyColor = color || '';
+  item.setAttribute('role', 'menuitem');
+  if (color) item.style.borderLeft = `12px solid ${color}`;
+  item.addEventListener(
+    'click',
+    guard(() => {
+      assertEditingAllowed();
+      project = TimelineTools.colorKeys(project, selectionKeys, color);
+      commit();
+      refresh();
+      closeTimelineKeyMenu();
+      $('timeline').focus();
+    }),
+  );
+  timelineKeyMenu.append(item);
+}
 document.body.append(timelineKeyMenu);
 function closeTimelineKeyMenu() {
   timelineKeyMenu.hidden = true;
@@ -7262,6 +7315,8 @@ function setupPoseContextMenu() {
   menu.id = 'timelineKeyMenu';
   menu.classList.add('timeline-key-menu', 'interpolation-window');
   menu.style.width = '290px';
+  menu.style.maxHeight = 'calc(100vh - 16px)';
+  menu.style.overflowY = 'auto';
   menu.style.gridTemplateColumns = '1fr';
   menu.hidden = true;
   menu.setAttribute('role', 'menu');
@@ -7308,8 +7363,10 @@ function setupPoseContextMenu() {
     }
     menu.lastElementChild.disabled = !canPasteClipboard();
     menu.hidden = false;
-    menu.style.left = Math.max(8, Math.min(innerWidth - 300, event.clientX)) + 'px';
-    menu.style.top = Math.max(8, Math.min(innerHeight - 160, event.clientY)) + 'px';
+    menu.style.left =
+      Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, event.clientX)) + 'px';
+    menu.style.top =
+      Math.max(8, Math.min(innerHeight - menu.offsetHeight - 8, event.clientY)) + 'px';
     menu.firstElementChild.focus({ preventScroll: true });
   });
   document.addEventListener('pointerdown', (event) => {
@@ -7764,6 +7821,41 @@ listen('keyBtn', 'click', () => {
 listen('undoBtn', 'click', () => restoreHistory(historyIndex - 1));
 listen('redoBtn', 'click', () => restoreHistory(historyIndex + 1));
 listen('saveBtn', 'click', saveProject);
+function jumpKey(direction) {
+  if (!project || mode === 'compare' || sourcePreview || (sceneMode && !sceneEditing)) return;
+  const scope = selected === 'root' ? null : selected; // Root is the whole-character control.
+  const target = TimelineTools.adjacentKey(project, scope, time, direction);
+  if (target !== null) {
+    playing = false;
+    seek(target);
+  }
+}
+listen('prevKey', 'click', () => jumpKey(-1));
+listen('nextKey', 'click', () => jumpKey(1));
+for (const field of ['playMode', 'startDelay', 'loopDelay'])
+  listen(field, 'change', () => {
+    assertEditingAllowed();
+    const value = field === 'playMode' ? $(field).value : Number($(field).value);
+    const next = { ...project, [field]: value };
+    TimelineTools.validateTimeline(next);
+    project[field] = value;
+    playing = false;
+    commit();
+    syncProject();
+    syncTime();
+  });
+// Compatibility mirror for integrations retaining the old id; it is no longer the visible control.
+listen('loop', 'change', () => {
+  $('playMode').value = $('loop').checked ? 'loop' : 'once';
+  $('playMode').dispatchEvent(new Event('change'));
+});
+function beginPreviewClock() {
+  if (!playing && (playbackElapsed === null || playbackFinished)) {
+    playbackElapsed = 0;
+    playbackOrigin = time;
+    playbackFinished = false;
+  }
+}
 function playbackRange() {
   if (sceneMode && !sceneEditing) return [0, sceneProject.duration];
   if (directorPending?.showing) return directorPending.showing.loop;
@@ -7779,6 +7871,7 @@ listen('playBtn', 'click', () => {
   if (sourcePreview) {
     if (!sourcePreview.duration) return;
     if (time >= sourcePreview.duration) seekSourceClip(0);
+    beginPreviewClock();
     playing = !playing;
     lastStamp = performance.now();
     syncTime();
@@ -7789,6 +7882,7 @@ listen('playBtn', 'click', () => {
   }
   const [a, b] = playbackRange();
   if (time < a || time >= b) seek(a);
+  beginPreviewClock();
   playing = !playing;
   playbackDiagnostics = { frames: 0, skipped: 0, last: Math.floor(time * project.fps), maxGap: 0 };
   lastStamp = performance.now();
@@ -8326,6 +8420,11 @@ window.addEventListener(
       document.querySelector('dialog[open]')
     )
       return;
+    if ([',', '.'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      jumpKey(e.key === '.' ? 1 : -1);
+      return;
+    }
     if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
       if (e.target.isContentEditable || e.target.closest('[role=textbox]')) return;
       e.preventDefault();
@@ -8454,22 +8553,31 @@ function frame(stamp) {
   flushTimelineScrub();
   if (sourcePreview && mode !== 'compare') {
     if (playing) {
-      playing = sourcePreview.advance(dt * Number($('speedInput').value), $('loop').checked);
+      playbackElapsed = (playbackElapsed ?? 0) + dt * Number($('speedInput').value);
+      const state = TimelineTools.previewAt(
+        project,
+        playbackElapsed,
+        [0, sourcePreview.duration],
+        playbackOrigin,
+      );
+      playing = state.playing;
+      playbackFinished = !playing;
+      sourcePreview.seek(state.time);
       time = sourcePreview.time;
       dirtyViews();
       syncTime();
     }
   } else if (playing && mode !== 'compare') {
-    time += dt * Number($('speedInput').value);
-    const [a, b] = playbackRange();
-    if (time < a) time = a;
-    if (time > b) {
-      if ($('loop').checked) time = a + ((time - a) % (b - a));
-      else {
-        time = b;
-        playing = false;
-      }
-    }
+    playbackElapsed = (playbackElapsed ?? 0) + dt * Number($('speedInput').value);
+    const state = TimelineTools.previewAt(
+      project,
+      playbackElapsed,
+      playbackRange(),
+      playbackOrigin,
+    );
+    time = state.time;
+    playing = state.playing;
+    playbackFinished = !playing;
     C.evaluate(rig, directorPending?.showing || easingPreview?.project || project, time);
     const index = Math.floor(time * project.fps);
     playbackDiagnostics.frames++;

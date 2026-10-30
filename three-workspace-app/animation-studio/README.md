@@ -15,13 +15,18 @@ Mã nguồn của Animation Studio 1.31.8 (App 3), chép từ bản gốc ngoài
 | `../builtin-assets/animation-studio/sample.fbx` | Mixamo T-pose nhúng làm mẫu (binary chỉ được nằm trong `builtin-assets/`) |
 
 ## Build
-Từ `work/material_alpha_v1_31_8`: `node src/build.mjs` → `../../outputs/Animation_Studio_v1_31_8.html` (thư mục
-`outputs/` không commit). Không cần cài thư viện.
+Từ `three-workspace-app/animation-studio/`:
 
-Kiểm khớp: SHA-256 của file build phải bằng bản nhúng hiện tại
-`8E316DC81C37E2148487…` (= 1.31.8 gốc `3CB0CC25…` + 3 bản vá host bên dưới). Sau khi sửa giao diện thì đổi số phiên
-bản, build ra thư mục phiên bản mới `editor/apps/studio/public/animation-studio/v<phiên bản>/index.html`, không ghi đè
-bản cũ, và cập nhật README trong thư mục đó.
+```text
+node work/material_alpha_v1_31_8/src/build.mjs
+node --test work/material_alpha_v1_31_8/src/*.test.mjs
+```
+
+Đầu ra `outputs/Animation_Studio_v1_33_0.html` không commit. Build dùng vendor đã có
+và fixture `../builtin-assets/animation-studio/sample.fbx` trong bản clone đầy đủ.
+Một số test cần dependencies của editor, Chromium hoặc resolver `shot_test_loader.mjs`;
+xem báo cáo Gói 1 để tái lập môi trường kiểm. Không cập nhật bản nhúng App 2 trong task này;
+việc đó làm riêng sau merge, kèm LICENSE GPL cạnh index.html.
 
 ## Bản vá host đã đưa vào `src/app.js`
 1. `exportSkeleton`: đặt tên `AuxScene` cho gốc và `Bone_n`/`Node_n` cho node không tên (Studio từ chối GLB có channel
@@ -33,3 +38,10 @@ bản cũ, và cập nhật README trong thư mục đó.
 - Không bỏ chức năng của người dùng; chỉ dời chỗ trên giao diện hoặc thêm qua `host-bridge.js`/broker.
 - Phần nhập Warcraft (MDX/MDL/DDS, Reforged) đã ra khỏi phạm vi App 3: không kiểm, không sửa.
 - Đánh giá giao diện và đề xuất: `docs/APP3-REVIEW-2026-10-21.md`.
+
+## Giấy phép App 3
+
+Thư mục này phân phối theo **GPL-3.0-or-later**, xem LICENSE, NOTICE và vendor/BLOCKBENCH_PROVENANCE.md.
+Phần còn lại của monorepo giữ giấy phép riêng (Apache-2.0). Bản nhúng cập nhật riêng sau merge phải kèm LICENSE cạnh index.html; không import module GPL vào bundle App 2.
+
+Gói 1: `,` / `.` nhảy key; menu chuột phải tô màu; Một lần/Lặp/Giữ khung cuối và thời gian chờ chỉ ảnh hưởng preview. Một lần về đầu vùng; Giữ khung cuối dừng ở cuối. Delay theo tốc độ xem, tạm dừng không tính thời gian. Các định dạng xuất hiện có bỏ qua ba trường preview.

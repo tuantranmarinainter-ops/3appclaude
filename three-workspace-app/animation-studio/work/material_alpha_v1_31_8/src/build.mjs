@@ -4,6 +4,11 @@ const root = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, 
   shared = path.resolve(root, '../..'),
   vendor = path.join(shared, 'vendor/three');
 const imports = {};
+imports['@studio/timeline-tools'] =
+  'data:text/javascript;base64,' +
+  Buffer.from(await fs.readFile(path.join(root, 'src/timeline_tools.js'), 'utf8')).toString(
+    'base64',
+  );
 async function walk(dir) {
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
@@ -111,6 +116,7 @@ imports['@studio/core'] =
   Buffer.from(
     (await fs.readFile(path.join(root, 'src/core.js'), 'utf8'))
       .replace("'./director_schema.js'", "'@studio/director-schema'")
+      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
       .replace("'./joint_limits.js'", "'@studio/joint-limits'")
       .replace("'./skin_shape.js'", "'@studio/skin-shape'")
       .replace("'./rig_kinematics.js'", "'@studio/rig-kinematics'")
@@ -134,6 +140,7 @@ imports['@studio/onion-skin'] =
       .replace("'./texture_assets.js'", "'@studio/texture-assets'")
       .replace("'./compare_space.js'", "'@studio/compare-space'")
       .replace("'./core.js'", "'@studio/core'")
+      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
       .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
       .replace("'./fbx_loader_native.js'", "'@studio/fbx-native'"),
   ).toString('base64');
@@ -188,7 +195,8 @@ imports['@studio/source-preview'] =
   Buffer.from(
     (await fs.readFile(path.join(root, 'src/source_preview.js'), 'utf8'))
       .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
-      .replace("'./core.js'", "'@studio/core'"),
+      .replace("'./core.js'", "'@studio/core'")
+      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'"),
   ).toString('base64');
 for (const [id, file] of [
   ['warcraft-loader', 'warcraft_loader.js'],
@@ -244,6 +252,7 @@ imports['@studio/shot-export'] =
   Buffer.from(
     (await fs.readFile(path.join(root, 'src/shot_export.js'), 'utf8'))
       .replace("'./core.js'", "'@studio/core'")
+      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
       .replace("'./shot_package.js'", "'@studio/shot-package'"),
   ).toString('base64');
 for (const file of ['shot_reverse', 'minecraft20_postprocess', 'minecraft20_export']) {
@@ -291,6 +300,7 @@ const app = (
   .replace("'./texture_assets.js'", "'@studio/texture-assets'")
   .replace("'./compare_space.js'", "'@studio/compare-space'")
   .replace("'./core.js'", "'@studio/core'")
+  .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
   .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
   .replace("'./fbx_loader_native.js'", "'@studio/fbx-native'")
   .replace("'./control_rig.js'", "'@studio/control-rig'")
@@ -335,6 +345,10 @@ const jpegNotice =
   'BLP JPEG decoder: Copyright 2017 Mozilla Foundation. Apache-2.0. The upstream mdx-m3-viewer version adapts RGBA JPEG support and modern building.\n' +
   (await fs.readFile(path.join(shared, 'vendor/LICENSE_APACHE_2.txt'), 'utf8'));
 const license =
+  (await fs.readFile(path.join(shared, 'LICENSE'), 'utf8')) +
+  '\n' +
+  (await fs.readFile(path.join(shared, 'NOTICE'), 'utf8')) +
+  '\n' +
   (await fs.readFile(path.join(shared, 'vendor/war3-model/LICENSE'), 'utf8')) +
   '\n' +
   jpegNotice +

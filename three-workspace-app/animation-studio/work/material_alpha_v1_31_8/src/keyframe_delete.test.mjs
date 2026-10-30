@@ -133,7 +133,7 @@ test(
         // Right-click a selected key preserves the multi-selection.
         box = await page.locator('#timeline').boundingBox();
         await page.mouse.click(point(5).x, point(5).y, { button: 'right' });
-        await page.locator('.timeline-key-menu [role=menuitem]').click();
+        await page.getByRole('menuitem', { name: 'Xoá', exact: true }).click();
         assert.equal(await page.evaluate(() => window.__studio.project().keys.root.length), 2);
         await page.keyboard.press('Control+z');
         assert.deepEqual(await page.evaluate(() => window.__studio.project()), before);

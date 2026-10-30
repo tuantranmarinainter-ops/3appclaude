@@ -1,3 +1,4 @@
+import { validateTimeline } from './timeline_tools.js';
 import { validate as validateDirector } from './director_schema.js';
 import * as T from 'three';
 import * as J from './joint_limits.js';
@@ -386,6 +387,7 @@ export function validateProject(p, rig) {
     ![24, 30, 60, 120].includes(p.fps)
   )
     throw Error('Thời lượng / FPS không hợp lệ.');
+  validateTimeline(p);
   validateDirector(p.director, p);
   J.validate(p.jointLimits, rig);
   if (p.rig?.fingerprint !== rig.fingerprint)

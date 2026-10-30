@@ -136,12 +136,17 @@ function setupStudioWorkspace() {
   group(transport, 'Phát animation', [
     $('restartBtn'),
     $('prevFrame'),
+    $('prevKey'),
     $('playBtn'),
+    $('nextKey'),
     $('nextFrame'),
   ]);
   group(transport, 'Tùy chọn phát', [
     $('inPlace').closest('label'),
-    $('loop').closest('label'),
+    $('playMode').closest('label'),
+    $('startDelay').closest('label'),
+    $('loopDelay').closest('label'),
+    $('playbackExportNote'),
     $('minimalSpeed'),
   ]);
   $('restartBtn').setAttribute('aria-label', 'Về đầu animation');
