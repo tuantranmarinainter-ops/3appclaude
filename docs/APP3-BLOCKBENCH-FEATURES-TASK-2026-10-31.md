@@ -153,8 +153,42 @@ mũi tên, `e.code === 'Space'`…), không xem hay đổi được; bảng `#mo
 26. **Bảng "Phím tắt" trong ⚙ Cài đặt**: liệt kê theo nhóm, có ô tìm kiếm (theo tên hành động hoặc theo phím); bấm một dòng
     → "Nhấn tổ hợp phím mới" → gán; mỗi hành động tối đa 2 phím; nút "Xoá phím", "Về mặc định" (từng dòng và toàn bộ).
 27. **Báo trùng**: gán phím đã dùng trong cùng phạm vi → cảnh báo, cho chọn "Thay thế" (bỏ phím ở hành động cũ) hoặc "Huỷ".
-28. **Bộ phím có sẵn (preset)**: `App 3 (mặc định)`, `Kiểu Blockbench`, `Kiểu Blender`, `Kiểu Maya`; chọn preset rồi vẫn sửa
-    được từng phím (lưu thành "Tuỳ chỉnh"). Nội dung preset kiểu Blockbench lấy theo phím mặc định công khai của nó.
+28. **Bộ phím có sẵn (preset)**: `App 3 (mặc định)`, `Kiểu Blockbench`, `Kiểu Blender`, `Kiểu Maya`, `Kiểu Cinema 4D`;
+    chọn preset rồi vẫn sửa được từng phím (lưu thành "Tuỳ chỉnh").
+    - **Nguồn preset Blockbench** (GPL-3.0, theo mục **Bản quyền**): commit `ec0b282` của Blockbench — phím mặc định khai báo
+      trong `keybind: new Keybind({...})` của từng `Action`/`Tool` (`js/animations/*.js`, `js/interface/*.ts`, `js/undo.js`,
+      `js/copy_paste.js`, `js/preview/preview.ts`…) và 3 bộ `keymaps/blender.bbkeymap`, `maya.bbkeymap`, `cinema4d.bbkeymap`.
+      Viết script nhỏ trích tự động từ mã nguồn ra `src/keymaps/blockbench*.json` (ghi commit, SPDX, PROVENANCE) thay vì gõ tay.
+    - Chỉ ánh xạ hành động **App 3 có tương đương**; hành động Blockbench không có (UV, vẽ texture, lưới mesh…) bỏ qua và liệt
+      kê trong PROVENANCE. Phím Blockbench trùng với hành động riêng của App 3 → giữ phím cho hành động tương đương Blockbench,
+      hành động App 3 bị trùng chuyển sang phím trống và ghi chú.
+    - Bảng tối thiểu phải khớp khi chọn `Kiểu Blockbench` (đã đọc từ mã Blockbench `ec0b282`):
+
+      | Hành động App 3 | Blockbench (id) | Phím |
+      | --- | --- | --- |
+      | Phát / dừng | `play_animation` | Space |
+      | Thêm keyframe tại đầu phát | `add_keyframe` | Q |
+      | Khung trước / khung sau | `timeline_frame_back` / `_forth` | `,` / `.` |
+      | Về đầu / cuối timeline | `jump_to_timeline_start` / `_end` | Home / End |
+      | Dời keyframe đang chọn sớm / muộn 1 khung | `move_keyframe_back` / `_forth` | ← / → |
+      | Đặt điểm cuối animation tại đầu phát | `set_animation_end` | Ctrl+End |
+      | Thêm marker | `add_marker` | Ctrl+M |
+      | Bật/tắt Graph Editor | `timeline_graph_editor` | F3 |
+      | Công cụ dời / xoay / pivot | `move_tool` / `rotate_tool` / `pivot_tool` | V / R / P |
+      | Hoàn tác / Làm lại | `undo` / `redo` | Ctrl+Z / Ctrl+Y |
+      | Sao chép / Cắt / Dán | `copy` / `cut` / `paste` | Ctrl+C / Ctrl+X / Ctrl+V |
+      | Nhân bản / Xoá | `duplicate` / `delete` | Ctrl+D / Delete |
+      | Chọn tất cả / Đảo chọn | `select_all` / `invert_selection` | Ctrl+A / Ctrl+I |
+      | Đổi tên | `rename` | F2 |
+      | Ẩn/hiện thanh bên | `toggle_sidebars` | Ctrl+B |
+      | Chụp ảnh khung 3D | `screenshot_model` | Ctrl+P |
+      | Mở / đóng project | `open_model` / `close_project` | Ctrl+O / Ctrl+W |
+      | Góc nhìn: ban đầu / dưới / nam / đông / bắc / tây / trên | `camera_*` | Numpad 1 / 2 / 4 / 5(chiếu) / 6 / 7 / 8 / 9 |
+      | Toàn màn hình | `fullscreen` | F11 |
+
+      Lưu ý trùng: Space trong Blockbench vừa phát animation (chế độ Animate) vừa đổi công cụ cặp (`swap_tools`) — App 3 làm
+      theo phạm vi: timeline/Animate → phát; khung 3D ở chế độ Pose → đổi công cụ. Các preset Blender/Maya/Cinema 4D lấy theo
+      `.bbkeymap` tương ứng (vd Blender: dời G, thêm keyframe I, nhân bản Shift+D, làm lại Ctrl+Shift+Z).
 29. **Điều khiển chuột khung 3D** (học theo Blockbench): chọn kiểu xoay / kéo / zoom — `Mặc định (chuột)`,
     `Mặc định (trackpad)`, `Blender`, `Maya`, `Cinema 4D` — trong cùng bảng; áp dụng ngay cho khung 3D.
 30. **Lưu và mang theo**: lưu trong `localStorage['animation-studio-settings']` (try/catch); **Xuất / Nhập** file `.json`
