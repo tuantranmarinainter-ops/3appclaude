@@ -1,7 +1,7 @@
 # Task App 3: bổ sung tính năng kiểu Blockbench (2026-10-31)
 
 > Người dùng giao 2026-10-31, **cho phép sửa App 3** (Animation Studio). Giao Codex.
-> **5 gói = 5 nhánh + 5 PR** vào `main`, thứ tự **1 → 5 → 2 → 3 → 4**, **không tự merge**.
+> **6 gói = 6 nhánh + 6 PR** vào `main`, thứ tự **1 → 5 → 6 → 2 → 3 → 4**, **không tự merge**.
 > Phần hiệu ứng (particle/sound) **không** thuộc task này: hiệu ứng đi qua App 4 + làn VFX của App 2.
 
 ## Bối cảnh
@@ -46,7 +46,7 @@ Thư mục: `three-workspace-app/animation-studio/work/material_alpha_v1_31_8/sr
 **Trước khi bắt đầu:** nhánh `app3-prettier` (chỉ định dạng lại `src/` bằng Prettier, giữ CRLF) nên được merge trước.
 Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đột toàn file.
 
-## Quy tắc chung cho cả 5 gói
+## Quy tắc chung cho cả 6 gói
 - Tương thích ngược: project cũ (`version: 1`) mở được y như trước; trường mới đều **tuỳ chọn**, có giá trị mặc định.
   Nếu phải đổi cấu trúc thì nâng `version` và viết hàm chuyển đổi + test.
 - Giao diện **tiếng Việt**, theo phong cách hiện có. Mọi thao tác mới **Hoàn tác/Làm lại** được.
@@ -136,6 +136,34 @@ Mục tiêu: người quen Blockbench dùng App 3 ngay; màn hình bớt rối (
   tải lại; người dùng cũ mặc định cổ điển; mỗi tab chỉ hiện đúng panel; `Ctrl+1/2/3`; bố cục cổ điển so ảnh chụp trước/sau
   Gói 5 không khác (ảnh chụp ở cùng kích thước cửa sổ).
 - Ảnh chụp hoặc GIF cả hai bố cục ở 1920×1080 và 1024×768 đưa vào mô tả PR.
+
+## Gói 6 — Hệ thống phím tắt tuỳ chỉnh (nhánh `codex/app3-bb-keymap`)
+> Người dùng thêm 2026-10-31. Làm **ngay sau Gói 5** (trước Gói 2–4) để các gói sau đăng ký hành động vào hệ thống này.
+
+Hiện trạng: phím tắt viết cứng, rải trong ~9 file (`app.js`, `workspace_ui.js`, `motion_panel.js`, `graph_editor.js`,
+`viewport_toolbar.js`, `easing_panel.js`, `smoothing_panel.js`…, kiểm `e.key === 'Escape' | 'Home' | 'End' | 'Delete' |`
+mũi tên, `e.code === 'Space'`…), không xem hay đổi được; bảng `#mouseSettings` chỉ có khoảng cách focus, lưới, trục.
+
+24. **Sổ đăng ký hành động** (file mới vd `src/keymap.js`): mỗi hành động có `id` cố định (vd `timeline.play`,
+    `key.delete`, `key.next`, `mode.animate`), tên tiếng Việt, nhóm (Timeline, Keyframe, Pose, Khung 3D, Chế độ, Tệp…),
+    phím mặc định, phạm vi (toàn cục / timeline / khung 3D / Graph Editor). **Chuyển toàn bộ phím tắt hiện có** vào đây;
+    hành vi mặc định giữ nguyên như trước Gói 6. Gói 1, 5 và các gói sau đăng ký hành động mới qua sổ này.
+25. **Xử lý phím tập trung**: một bộ lắng nghe duy nhất định tuyến theo phạm vi đang focus; **không** kích hoạt khi đang gõ
+    trong ô nhập/ô biểu thức (trừ `Escape`/`Enter` theo ngữ cảnh); hỗ trợ tổ hợp `Ctrl/Alt/Shift/Meta` (Mac: `Cmd`).
+26. **Bảng "Phím tắt" trong ⚙ Cài đặt**: liệt kê theo nhóm, có ô tìm kiếm (theo tên hành động hoặc theo phím); bấm một dòng
+    → "Nhấn tổ hợp phím mới" → gán; mỗi hành động tối đa 2 phím; nút "Xoá phím", "Về mặc định" (từng dòng và toàn bộ).
+27. **Báo trùng**: gán phím đã dùng trong cùng phạm vi → cảnh báo, cho chọn "Thay thế" (bỏ phím ở hành động cũ) hoặc "Huỷ".
+28. **Bộ phím có sẵn (preset)**: `App 3 (mặc định)`, `Kiểu Blockbench`, `Kiểu Blender`, `Kiểu Maya`; chọn preset rồi vẫn sửa
+    được từng phím (lưu thành "Tuỳ chỉnh"). Nội dung preset kiểu Blockbench lấy theo phím mặc định công khai của nó.
+29. **Điều khiển chuột khung 3D** (học theo Blockbench): chọn kiểu xoay / kéo / zoom — `Mặc định (chuột)`,
+    `Mặc định (trackpad)`, `Blender`, `Maya`, `Cinema 4D` — trong cùng bảng; áp dụng ngay cho khung 3D.
+30. **Lưu và mang theo**: lưu trong `localStorage['animation-studio-settings']` (try/catch); **Xuất / Nhập** file `.json`
+    bộ phím; đi kèm "Lưu preset" cài đặt hiện có (`#saveSettingsPreset`).
+31. **Hiện phím tắt** trong tooltip của nút và trong menu chuột phải, tự cập nhật khi người dùng đổi phím.
+32. Hoạt động ở **cả hai bố cục** (Gói 5). Không dùng tên/logo Blockbench trong giao diện ngoài tên preset mô tả "Kiểu Blockbench".
+- Test: mọi phím cũ vẫn chạy như trước (bảng đối chiếu trước/sau); đổi phím → phím mới chạy, phím cũ không; báo trùng;
+  không kích hoạt khi gõ trong ô nhập; xuất → nhập lại bộ phím giống hệt; preset Blender/Maya đổi điều khiển chuột khung 3D;
+  về mặc định.
 
 ## Kiểm mỗi PR (ghi kết quả trong mô tả PR)
 - `node --test` toàn bộ `src/*.test.mjs` (sau khi build bản HTML), liệt kê pass/fail/skip trước và sau.
