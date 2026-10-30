@@ -141,3 +141,10 @@ thiếu role chính.
 - Demo hẹp (1 nguồn → Mixamo65 → GLB mở được): vài giờ khi có file mẫu.
 - MVP test được (2 nguồn, calibration A/T, report): 2-5 ngày.
 - Đủ W01: 2-6 tuần, chủ yếu thời gian kiểm tra và sửa với dữ liệu thật.
+
+## Giấy phép App 3 (người dùng chốt 2026-10-31)
+- Được chép / chuyển thể mã Blockbench (GPL-3.0) vào App 3 để bổ sung timeline, Molang, Bedrock JSON, Animation Controller
+  (task `docs/APP3-BLOCKBENCH-FEATURES-TASK-2026-10-31.md`).
+- Hệ quả: `three-workspace-app/animation-studio/` chuyển sang **GPL-3.0**; phần còn lại của repo giữ **Apache-2.0**.
+- Mã Blockbench không được đưa vào App 1, App 2 (`editor/`), App 4 (`vfx/`), `packages/*`. App 2 chỉ nhúng bản build App 3
+  qua iframe + `postMessage`, không import mã App 3.

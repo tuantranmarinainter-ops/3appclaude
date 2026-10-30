@@ -10,12 +10,25 @@ làm mượt, copy pose, co giãn nhóm key. App 3 còn thiếu: tiện ích tim
 Bedrock JSON, Animation Controller.
 
 ## Bản quyền (bắt buộc đọc)
-- Repo này là **Apache-2.0**. Blockbench là **GPL-3.0** → **không chép, không dịch lại mã Blockbench**. Chỉ học hành vi
-  từ giao diện và làm theo **đặc tả định dạng công khai** (tài liệu Minecraft Bedrock của Microsoft: animation,
-  animation controller, Molang).
-- Thư viện Molang bên ngoài (vd MolangJS): kiểm `LICENSE` trước. Chỉ dùng nếu MIT/Apache/BSD; chép vào `vendor/` kèm
-  file LICENSE + PROVENANCE như các vendor hiện có (`animation-studio/vendor/*_PROVENANCE*`). Nếu không chắc → tự viết
-  bộ đánh giá nhỏ.
+Người dùng chốt 2026-10-31 (`docs/DECISIONS.md`): **được chép / chuyển thể mã Blockbench** (GPL-3.0,
+https://github.com/JannisX11/blockbench) vào App 3. Hệ quả: **App 3 (`three-workspace-app/animation-studio/`) chuyển sang
+GPL-3.0**. Phần còn lại của repo (App 1, App 2, App 4, thư viện) **giữ Apache-2.0**. Bắt buộc:
+- Gói 1 (PR đầu tiên) làm luôn việc đổi giấy phép App 3: thêm `animation-studio/LICENSE` (toàn văn GPL-3.0),
+  `animation-studio/NOTICE` ghi "App 3 phân phối theo GPL-3.0; gồm mã chuyển thể từ Blockbench © JannisX11 và cộng sự,
+  GPL-3.0"; sửa `animation-studio/README.md`; thêm một dòng vào `three-workspace-app/NOTICE` rằng thư mục
+  `animation-studio/` theo GPL-3.0, không theo Apache-2.0.
+- Mã chép/chuyển thể đặt trong file riêng, đầu file ghi: nguồn (đường dẫn file + commit Blockbench), bản quyền gốc,
+  `SPDX-License-Identifier: GPL-3.0-or-later` (đúng theo giấy phép của Blockbench tại commit đó), và mô tả đã sửa gì.
+  Giữ nguyên mọi thông báo bản quyền có sẵn trong đoạn mã gốc.
+- Lập `animation-studio/vendor/BLOCKBENCH_PROVENANCE.md`: bảng file App 3 ↔ file/commit Blockbench nguồn.
+- **Không** chép mã Blockbench sang App 2 (`editor/`), App 4, `packages/*` — các phần đó vẫn Apache-2.0.
+- App 2 chỉ nhúng bản build App 3 qua iframe (`public/animation-studio/`), giao tiếp qua `postMessage`; giữ đúng kiểu tách
+  rời này, **không** import mã App 3 vào bundle App 2. Bản nhúng phải kèm `LICENSE` GPL-3.0 bên cạnh `index.html`
+  (việc cập nhật bản nhúng vẫn làm riêng sau khi merge).
+- Blockbench dùng Vue 2, jQuery và biến toàn cục: chỉ lấy phần logic (Molang, codec Bedrock, controller, nội suy),
+  viết lại phần giao diện theo App 3; không kéo Vue/jQuery vào App 3.
+- Thư viện Molang riêng (vd MolangJS) vẫn ưu tiên nếu giấy phép MIT/Apache/BSD; chép vào `vendor/` kèm LICENSE +
+  PROVENANCE như các vendor hiện có.
 
 ## Mã liên quan (đã đọc trên `main`)
 Thư mục: `three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/`
@@ -98,5 +111,5 @@ Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đ
 - Repo https://github.com/tuantranmarinainter-ops/3appclaude, dựa trên `main` (hoặc `app3-prettier` nếu chưa merge).
 - Chỉ sửa `three-workspace-app/animation-studio/`. Không sửa App 2 (`editor/`), App 4 (`vfx/`), `packages/retarget`.
   Cập nhật bản nhúng trong `editor/apps/studio/public/animation-studio/` là **việc riêng sau khi merge**, không làm trong task này.
-- Không chép mã Blockbench (GPL-3.0). Không commit binary, model, hay file của bên thứ ba.
+- Mã Blockbench chỉ vào `animation-studio/`, theo đúng mục **Bản quyền** (ghi nguồn, SPDX, PROVENANCE). Không commit binary, model, hay file của bên thứ ba.
 - Báo cáo bằng tiếng Việt.
