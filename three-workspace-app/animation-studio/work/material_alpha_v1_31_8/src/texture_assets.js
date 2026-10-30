@@ -1,44 +1,459 @@
 import * as T from 'three';
-const MAX=20*1024*1024,DATA=/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
-export const IMAGE_ACCEPT='.png,.jpg,.jpeg,.webp,.gif,.bmp,.dds,.blp,.tex';
-export const IMAGE_FORMATS='PNG, JPG/JPEG, WebP, GIF, BMP, DDS, BLP, TEX';
-export const MODEL_ACCEPT='.fbx,.glb,.bobj,.mdx,.mdl,.skn,.skl,.anm';
-export const isImageFile=file=>/\.(png|jpe?g|webp|gif|bmp|dds|blp|tex)$/i.test(file.name);
-export const imageStem=name=>key(name).split('/').at(-1).replace(/\.(png|jpe?g|webp|gif|bmp|dds|blp|tex)$/,'');
-const key=s=>{try{s=decodeURIComponent(s);}catch{}return s.replaceAll('\\','/').replace(/^file:\/+/i,'').toLowerCase();};
-export function imageType(bytes){const a=new Uint8Array(bytes);if(a.length>=8&&[137,80,78,71,13,10,26,10].every((v,i)=>a[i]===v))return 'image/png';if(a.length>=3&&a[0]===255&&a[1]===216&&a[2]===255)return 'image/jpeg';if(a.length>=12&&String.fromCharCode(...a.slice(0,4))==='RIFF'&&String.fromCharCode(...a.slice(8,12))==='WEBP')return 'image/webp';if(a.length>=6&&['GIF87a','GIF89a'].includes(String.fromCharCode(...a.slice(0,6))))return 'image/gif';if(a.length>=26&&a[0]===66&&a[1]===77)return 'image/bmp';throw Error('Cần ảnh PNG/JPG/WebP/GIF/BMP hợp lệ; DDS/BLP/TEX cần bộ đọc texture.');}
-export async function readImage(file){if(file.size>MAX)throw Error('Ảnh quá lớn (tối đa20MB).');const bytes=await file.arrayBuffer(),mime=imageType(bytes);let data='data:'+mime+';base64,'+await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Không đọc được ảnh.'));reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.readAsDataURL(new Blob([bytes]));});if(mime==='image/gif'||mime==='image/bmp'){
- const image=new Image();image.src=data;await image.decode();if(!image.width||!image.height||image.width*image.height>64*1024*1024)throw Error('Ảnh vượt64triệu pixel hoặc kích thước không hợp lệ.');
- // Store a static PNG so JSON, FBX resources and scene ZIP retain their existing image contract.
- const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;canvas.getContext('2d').drawImage(image,0,0);data=canvas.toDataURL('image/png');
- }return {name:file.webkitRelativePath||file.name,data};}
-export function validateResources(resources=[]){if(!Array.isArray(resources)||resources.length>128)throw Error('Danh sách ảnh không hợp lệ (tối đa128).');let total=0;for(const r of resources){if(!r||typeof r.name!=='string'||r.name.length>1024||typeof r.data!=='string'||!DATA.test(r.data)||r.data.length>MAX*1.4)throw Error('Texture JSON không hợp lệ.');total+=r.data.length;}if(total>140*1024*1024)throw Error('Tổng ảnh vượt100MB.');return resources;}
-export function findResource(url,resources){const path=key(url),base=path.split('/').at(-1);let matches=resources.filter(r=>path===key(r.name)||path.endsWith('/'+key(r.name)));if(!matches.length)matches=resources.filter(r=>key(r.name).split('/').at(-1)===base);return matches.length===1?matches[0]:null;}
-export function automaticAssignments(rig,resources,source){
- validateResources(resources);const assignments=[],warnings=[];
- for(const row of rows(rig,source)){
-  const reference=row.material.userData?.studioSourceTexture||row.material.map?.userData?.studioSourceURL||row.material.map?.name;
-  let found=reference&&findResource(reference,resources);
-  if(rig.isBOBJ){const suffix='textures/'+key(row.mesh.name)+'/default',matches=resources.filter(resource=>{const path=key(resource.name).replace(/\.[^/.]+$/,'');return path===suffix||path.endsWith('/'+suffix);});found=matches.length===1?matches[0]:null;if(matches.length>1)warnings.push('Trùng texture: '+row.mesh.name);}
-  else if(!found&&!row.material.map){const stem=key(row.material.name||'').split('/').at(-1);const matches=stem?resources.filter(resource=>imageStem(resource.name)===stem):[];found=matches.length===1?matches[0]:null;}
-  if(found&&row.mesh.geometry.getAttribute('uv'))assignments.push({key:row.key,resource:found,role:roleForName(found.name)});
-  else if(rig.isBOBJ||reference)warnings.push('Thiếu hoặc chưa ghép được texture: '+row.label);
- }
- return{assignments,warnings};
+const MAX = 20 * 1024 * 1024,
+  DATA = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+export const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.bmp,.dds,.blp,.tex';
+export const IMAGE_FORMATS = 'PNG, JPG/JPEG, WebP, GIF, BMP, DDS, BLP, TEX';
+export const MODEL_ACCEPT = '.fbx,.glb,.bobj,.mdx,.mdl,.skn,.skl,.anm';
+export const isImageFile = (file) => /\.(png|jpe?g|webp|gif|bmp|dds|blp|tex)$/i.test(file.name);
+export const imageStem = (name) =>
+  key(name)
+    .split('/')
+    .at(-1)
+    .replace(/\.(png|jpe?g|webp|gif|bmp|dds|blp|tex)$/, '');
+const key = (s) => {
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
+  return s
+    .replaceAll('\\', '/')
+    .replace(/^file:\/+/i, '')
+    .toLowerCase();
+};
+export function imageType(bytes) {
+  const a = new Uint8Array(bytes);
+  if (a.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => a[i] === v))
+    return 'image/png';
+  if (a.length >= 3 && a[0] === 255 && a[1] === 216 && a[2] === 255) return 'image/jpeg';
+  if (
+    a.length >= 12 &&
+    String.fromCharCode(...a.slice(0, 4)) === 'RIFF' &&
+    String.fromCharCode(...a.slice(8, 12)) === 'WEBP'
+  )
+    return 'image/webp';
+  if (a.length >= 6 && ['GIF87a', 'GIF89a'].includes(String.fromCharCode(...a.slice(0, 6))))
+    return 'image/gif';
+  if (a.length >= 26 && a[0] === 66 && a[1] === 77) return 'image/bmp';
+  throw Error('Cần ảnh PNG/JPG/WebP/GIF/BMP hợp lệ; DDS/BLP/TEX cần bộ đọc texture.');
 }
-const EMPTY='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=';
-const textureBases=new WeakMap();
-export function loading(resources=[],changed=()=>{}){validateResources(resources);const warnings=[],manager=new T.LoadingManager();let started=false,finish;const ready=new Promise(resolve=>finish=resolve),start=manager.itemStart.bind(manager);manager.itemStart=url=>{started=true;start(url);};manager.onLoad=()=>{changed();finish();};manager.onError=url=>{warnings.push('Không đọc được ảnh: '+url.slice(0,160));changed();};manager.setURLModifier(url=>{if(/^(blob:|data:)/i.test(url))return url;const found=findResource(url,resources);if(found)return found.data;warnings.push('Thiếu hoặc trùng tên texture: '+url.slice(0,160));return EMPTY;});return {manager,warnings,wait:async()=>{if(started)await ready;}};}
-export function rows(rig,source=mesh=>mesh.material){return rig.mesh.flatMap((mesh,mi)=>(Array.isArray(source(mesh))?source(mesh):[source(mesh)]).map((material,si)=>({mesh,material,mi,si,key:mi+':'+si,label:(mesh.name||'Mesh '+(mi+1))+' / '+(material.name||'Material '+(si+1))})));}
-export function targets(rig,keys){const all=rows(rig),chosen=keys==='all'?all:all.filter(r=>keys.includes(r.key));if(!chosen.length)throw Error('Chưa chọn mesh/material.');for(const r of chosen)if(!r.mesh.geometry.getAttribute('uv'))throw Error('Mesh '+r.mesh.name+' không có UV; cần tạo UV trước.');return chosen;}
-export function roleForName(name){const stem=String(name).split(/[\\/]/).at(-1).toLowerCase().replace(/\.[^.]+$/,'');if(/(^|[._ -])(orm|occlusionroughnessmetallic)([._ -]|$)/.test(stem))return'orm';if(/(^|[._ -])(normal|norm|nrm)([._ -]|$)/.test(stem))return'normal';if(/(^|[._ -])(roughness|rough)([._ -]|$)/.test(stem))return'roughness';if(/(^|[._ -])(metallic|metalness|metal)([._ -]|$)/.test(stem))return'metalness';if(/(^|[._ -])(emissive|emission|emit)([._ -]|$)/.test(stem))return'emissive';if(/(^|[._ -])(teamcolor|team_color|teamcolour)([._ -]|$)/.test(stem))return'team';if(/(^|[._ -])(ao|ambientocclusion)([._ -]|$)/.test(stem))return'ao';return'diffuse';}
-export async function decode(resource,flipY=true,role='diffuse'){validateResources([resource]);const image=new Image();image.src=resource.data;await image.decode();if(image.width*image.height>64*1024*1024)throw Error('Ảnh vượt64triệu pixel.');const texture=new T.Texture(image);texture.flipY=flipY;texture.colorSpace=['diffuse','emissive'].includes(role)?T.SRGBColorSpace:T.NoColorSpace;texture.name=resource.name;texture.userData.studioImage=resource;texture.userData.studioRole=role;texture.needsUpdate=true;return texture;}
-export async function decodeRole(resource,flipY=true,role=roleForName(resource.name),encoding='standard'){if(role==='normal'&&encoding==='warcraft'){const src=await decode(resource,flipY,role),canvas=document.createElement('canvas');canvas.width=src.image.width;canvas.height=src.image.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(src.image,0,0);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<pixels.data.length;i+=4){if(pixels.data[i+2]>16)continue;const x=pixels.data[i]/127.5-1,y=pixels.data[i+1]/127.5-1;pixels.data[i+2]=Math.round((Math.sqrt(Math.max(0,1-Math.min(1,x*x+y*y)))*.5+.5)*255);}ctx.putImageData(pixels,0,0);src.dispose();const tex=new T.CanvasTexture(canvas);tex.flipY=flipY;tex.colorSpace=T.NoColorSpace;tex.name=resource.name;tex.userData={studioImage:resource,studioRole:role};tex.needsUpdate=true;return tex;}if(role!=='orm')return await decode(resource,flipY,role);const src=await decode(resource,flipY,'orm'),image=src.image,canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height),out={};for(const[key,channel]of [['ao',0],['roughness',1],['metalness',2]]){const target=document.createElement('canvas');target.width=canvas.width;target.height=canvas.height;const tc=target.getContext('2d'),data=tc.createImageData(canvas.width,canvas.height);for(let i=0;i<pixels.data.length;i+=4){const value=pixels.data[i+channel];data.data[i]=data.data[i+1]=data.data[i+2]=value;data.data[i+3]=255;}tc.putImageData(data,0,0);const tex=new T.CanvasTexture(target);tex.flipY=flipY;tex.colorSpace=T.NoColorSpace;tex.name=resource.name+' · '+key;tex.userData={studioImage:resource,studioRole:key};tex.needsUpdate=true;out[key]=tex;}src.dispose();return out;}
-function captureMaterial(m){return{color:m.color?.clone(),map:m.map,normalMap:m.normalMap,aoMap:m.aoMap,roughnessMap:m.roughnessMap,metalnessMap:m.metalnessMap,emissiveMap:m.emissiveMap,emissive:m.emissive?.clone(),roughness:m.roughness,metalness:m.metalness,transparent:m.transparent,opacity:m.opacity};}
-export function hasTexture(m){return!!(m?.map||m?.normalMap||m?.aoMap||m?.roughnessMap||m?.metalnessMap||m?.emissiveMap||m?.userData?.studioTeamColorMap);}
-export function assign(rig,keys,resource,textures,role=roleForName(resource.name)){const chosen=targets(rig,keys);for(const row of chosen){const old=row.material,m=old.clone(),flip=old.map?.flipY??(!/\.(glb|mdx|mdl)$/i.test(rig.name)),tex=textures[String(flip)];textureBases.set(m,textureBases.get(old)||captureMaterial(old));if(role==='diffuse'){m.map=tex;m.color?.set(0xffffff);m.transparent=true;m.opacity=1;}else if(role==='normal')m.normalMap=tex;else if(role==='ao'){m.aoMap=tex;if(!row.mesh.geometry.getAttribute('uv2'))row.mesh.geometry.setAttribute('uv2',row.mesh.geometry.getAttribute('uv').clone());}else if(role==='roughness')m.roughnessMap=tex;else if(role==='metalness')m.metalnessMap=tex;else if(role==='emissive'){m.emissiveMap=tex;m.emissive?.set(0xffffff);}else if(role==='team')m.userData.studioTeamColorMap=tex;else if(role==='orm'){m.aoMap=tex.ao;m.roughnessMap=tex.roughness;m.metalnessMap=tex.metalness;if(!row.mesh.geometry.getAttribute('uv2'))row.mesh.geometry.setAttribute('uv2',row.mesh.geometry.getAttribute('uv').clone());}m.needsUpdate=true;if(Array.isArray(row.mesh.material)){row.mesh.material=[...row.mesh.material];row.mesh.material[row.si]=m;}else row.mesh.material=m;}return chosen.length;}
-export function unassign(rig,keys){const chosen=rows(rig).filter(row=>keys==='all'||keys.includes(row.key));if(!chosen.length)throw Error('Chưa chọn mesh/material.');for(const row of chosen){const m=row.material.clone(),base=textureBases.get(row.material);if(base){Object.assign(m,{map:base.map,normalMap:base.normalMap,aoMap:base.aoMap,roughnessMap:base.roughnessMap,metalnessMap:base.metalnessMap,emissiveMap:base.emissiveMap,roughness:base.roughness,metalness:base.metalness,transparent:base.transparent,opacity:base.opacity});if(base.color)m.color?.copy(base.color);if(base.emissive)m.emissive?.copy(base.emissive);}else{m.map=m.normalMap=m.aoMap=m.roughnessMap=m.metalnessMap=m.emissiveMap=null;}delete m.userData.studioTeamColorMap;m.needsUpdate=true;if(Array.isArray(row.mesh.material)){row.mesh.material=[...row.mesh.material];row.mesh.material[row.si]=m;}else row.mesh.material=m;}return chosen.length;}
-export async function apply(rig,keys,resource){const chosen=targets(rig,keys),flips=new Set(chosen.map(r=>r.material.map?.flipY??(!/\.(glb|mdx|mdl)$/i.test(rig.name)))),textures={};try{for(const flip of flips)textures[String(flip)]=await decode(resource,flip);return assign(rig,keys,resource,textures);}catch(e){Object.values(textures).forEach(t=>t.dispose());throw e;}}
-export function serialize(rig,source){const result=[];for(const r of rows(rig,source)){for(const[role,map]of Object.entries({diffuse:r.material.map,normal:r.material.normalMap,ao:r.material.aoMap,roughness:r.material.roughnessMap,metalness:r.material.metalnessMap,emissive:r.material.emissiveMap,team:r.material.userData?.studioTeamColorMap})){const resource=map?.userData?.studioImage;if(resource&&!result.some(x=>x.key===r.key&&x.role===role&&x.data===resource.data))result.push({key:r.key,role,...resource,flipY:map.flipY});}}return result;}
-export function validateOverrides(rig,list=[]){if(!Array.isArray(list)||list.length>512)throw Error('Texture assignments không hợp lệ.');validateResources([...new Map(list.map(r=>[r.data,r])).values()]);const valid=new Set(rows(rig).map(r=>r.key)),roles=new Set(['diffuse','normal','orm','ao','roughness','metalness','emissive','team']);for(const r of list)if(!valid.has(r.key)||typeof r.flipY!=='boolean'||r.role&&!roles.has(r.role))throw Error('Texture material không tồn tại hoặc vai trò ảnh không hợp lệ.');return list;}
-export async function restore(rig,list=[]){validateOverrides(rig,list);const cache=new Map();try{for(const r of list){const role=r.role||'diffuse',encoding=role==='normal'&&/\.(mdx|mdl)$/i.test(rig.name)?'warcraft':'standard',cacheKey=r.data+':'+r.flipY+':'+role+':'+encoding;let t=cache.get(cacheKey);if(!t){t=await decodeRole(r,r.flipY,role,encoding);cache.set(cacheKey,t);}assign(rig,[r.key],r,{true:t,false:t},role);}}catch(e){cache.forEach(t=>{if(t?.isTexture)t.dispose();else Object.values(t||{}).forEach(x=>x.dispose());});throw e;}}
+export async function readImage(file) {
+  if (file.size > MAX) throw Error('Ảnh quá lớn (tối đa20MB).');
+  const bytes = await file.arrayBuffer(),
+    mime = imageType(bytes);
+  let data =
+    'data:' +
+    mime +
+    ';base64,' +
+    (await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(Error('Không đọc được ảnh.'));
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.readAsDataURL(new Blob([bytes]));
+    }));
+  if (mime === 'image/gif' || mime === 'image/bmp') {
+    const image = new Image();
+    image.src = data;
+    await image.decode();
+    if (!image.width || !image.height || image.width * image.height > 64 * 1024 * 1024)
+      throw Error('Ảnh vượt64triệu pixel hoặc kích thước không hợp lệ.');
+    // Store a static PNG so JSON, FBX resources and scene ZIP retain their existing image contract.
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    data = canvas.toDataURL('image/png');
+  }
+  return { name: file.webkitRelativePath || file.name, data };
+}
+export function validateResources(resources = []) {
+  if (!Array.isArray(resources) || resources.length > 128)
+    throw Error('Danh sách ảnh không hợp lệ (tối đa128).');
+  let total = 0;
+  for (const r of resources) {
+    if (
+      !r ||
+      typeof r.name !== 'string' ||
+      r.name.length > 1024 ||
+      typeof r.data !== 'string' ||
+      !DATA.test(r.data) ||
+      r.data.length > MAX * 1.4
+    )
+      throw Error('Texture JSON không hợp lệ.');
+    total += r.data.length;
+  }
+  if (total > 140 * 1024 * 1024) throw Error('Tổng ảnh vượt100MB.');
+  return resources;
+}
+export function findResource(url, resources) {
+  const path = key(url),
+    base = path.split('/').at(-1);
+  let matches = resources.filter((r) => path === key(r.name) || path.endsWith('/' + key(r.name)));
+  if (!matches.length) matches = resources.filter((r) => key(r.name).split('/').at(-1) === base);
+  return matches.length === 1 ? matches[0] : null;
+}
+export function automaticAssignments(rig, resources, source) {
+  validateResources(resources);
+  const assignments = [],
+    warnings = [];
+  for (const row of rows(rig, source)) {
+    const reference =
+      row.material.userData?.studioSourceTexture ||
+      row.material.map?.userData?.studioSourceURL ||
+      row.material.map?.name;
+    let found = reference && findResource(reference, resources);
+    if (rig.isBOBJ) {
+      const suffix = 'textures/' + key(row.mesh.name) + '/default',
+        matches = resources.filter((resource) => {
+          const path = key(resource.name).replace(/\.[^/.]+$/, '');
+          return path === suffix || path.endsWith('/' + suffix);
+        });
+      found = matches.length === 1 ? matches[0] : null;
+      if (matches.length > 1) warnings.push('Trùng texture: ' + row.mesh.name);
+    } else if (!found && !row.material.map) {
+      const stem = key(row.material.name || '')
+        .split('/')
+        .at(-1);
+      const matches = stem ? resources.filter((resource) => imageStem(resource.name) === stem) : [];
+      found = matches.length === 1 ? matches[0] : null;
+    }
+    if (found && row.mesh.geometry.getAttribute('uv'))
+      assignments.push({ key: row.key, resource: found, role: roleForName(found.name) });
+    else if (rig.isBOBJ || reference)
+      warnings.push('Thiếu hoặc chưa ghép được texture: ' + row.label);
+  }
+  return { assignments, warnings };
+}
+const EMPTY =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=';
+const textureBases = new WeakMap();
+export function loading(resources = [], changed = () => {}) {
+  validateResources(resources);
+  const warnings = [],
+    manager = new T.LoadingManager();
+  let started = false,
+    finish;
+  const ready = new Promise((resolve) => (finish = resolve)),
+    start = manager.itemStart.bind(manager);
+  manager.itemStart = (url) => {
+    started = true;
+    start(url);
+  };
+  manager.onLoad = () => {
+    changed();
+    finish();
+  };
+  manager.onError = (url) => {
+    warnings.push('Không đọc được ảnh: ' + url.slice(0, 160));
+    changed();
+  };
+  manager.setURLModifier((url) => {
+    if (/^(blob:|data:)/i.test(url)) return url;
+    const found = findResource(url, resources);
+    if (found) return found.data;
+    warnings.push('Thiếu hoặc trùng tên texture: ' + url.slice(0, 160));
+    return EMPTY;
+  });
+  return {
+    manager,
+    warnings,
+    wait: async () => {
+      if (started) await ready;
+    },
+  };
+}
+export function rows(rig, source = (mesh) => mesh.material) {
+  return rig.mesh.flatMap((mesh, mi) =>
+    (Array.isArray(source(mesh)) ? source(mesh) : [source(mesh)]).map((material, si) => ({
+      mesh,
+      material,
+      mi,
+      si,
+      key: mi + ':' + si,
+      label: (mesh.name || 'Mesh ' + (mi + 1)) + ' / ' + (material.name || 'Material ' + (si + 1)),
+    })),
+  );
+}
+export function targets(rig, keys) {
+  const all = rows(rig),
+    chosen = keys === 'all' ? all : all.filter((r) => keys.includes(r.key));
+  if (!chosen.length) throw Error('Chưa chọn mesh/material.');
+  for (const r of chosen)
+    if (!r.mesh.geometry.getAttribute('uv'))
+      throw Error('Mesh ' + r.mesh.name + ' không có UV; cần tạo UV trước.');
+  return chosen;
+}
+export function roleForName(name) {
+  const stem = String(name)
+    .split(/[\\/]/)
+    .at(-1)
+    .toLowerCase()
+    .replace(/\.[^.]+$/, '');
+  if (/(^|[._ -])(orm|occlusionroughnessmetallic)([._ -]|$)/.test(stem)) return 'orm';
+  if (/(^|[._ -])(normal|norm|nrm)([._ -]|$)/.test(stem)) return 'normal';
+  if (/(^|[._ -])(roughness|rough)([._ -]|$)/.test(stem)) return 'roughness';
+  if (/(^|[._ -])(metallic|metalness|metal)([._ -]|$)/.test(stem)) return 'metalness';
+  if (/(^|[._ -])(emissive|emission|emit)([._ -]|$)/.test(stem)) return 'emissive';
+  if (/(^|[._ -])(teamcolor|team_color|teamcolour)([._ -]|$)/.test(stem)) return 'team';
+  if (/(^|[._ -])(ao|ambientocclusion)([._ -]|$)/.test(stem)) return 'ao';
+  return 'diffuse';
+}
+export async function decode(resource, flipY = true, role = 'diffuse') {
+  validateResources([resource]);
+  const image = new Image();
+  image.src = resource.data;
+  await image.decode();
+  if (image.width * image.height > 64 * 1024 * 1024) throw Error('Ảnh vượt64triệu pixel.');
+  const texture = new T.Texture(image);
+  texture.flipY = flipY;
+  texture.colorSpace = ['diffuse', 'emissive'].includes(role) ? T.SRGBColorSpace : T.NoColorSpace;
+  texture.name = resource.name;
+  texture.userData.studioImage = resource;
+  texture.userData.studioRole = role;
+  texture.needsUpdate = true;
+  return texture;
+}
+export async function decodeRole(
+  resource,
+  flipY = true,
+  role = roleForName(resource.name),
+  encoding = 'standard',
+) {
+  if (role === 'normal' && encoding === 'warcraft') {
+    const src = await decode(resource, flipY, role),
+      canvas = document.createElement('canvas');
+    canvas.width = src.image.width;
+    canvas.height = src.image.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src.image, 0, 0);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      if (pixels.data[i + 2] > 16) continue;
+      const x = pixels.data[i] / 127.5 - 1,
+        y = pixels.data[i + 1] / 127.5 - 1;
+      pixels.data[i + 2] = Math.round(
+        (Math.sqrt(Math.max(0, 1 - Math.min(1, x * x + y * y))) * 0.5 + 0.5) * 255,
+      );
+    }
+    ctx.putImageData(pixels, 0, 0);
+    src.dispose();
+    const tex = new T.CanvasTexture(canvas);
+    tex.flipY = flipY;
+    tex.colorSpace = T.NoColorSpace;
+    tex.name = resource.name;
+    tex.userData = { studioImage: resource, studioRole: role };
+    tex.needsUpdate = true;
+    return tex;
+  }
+  if (role !== 'orm') return await decode(resource, flipY, role);
+  const src = await decode(resource, flipY, 'orm'),
+    image = src.image,
+    canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height),
+    out = {};
+  for (const [key, channel] of [
+    ['ao', 0],
+    ['roughness', 1],
+    ['metalness', 2],
+  ]) {
+    const target = document.createElement('canvas');
+    target.width = canvas.width;
+    target.height = canvas.height;
+    const tc = target.getContext('2d'),
+      data = tc.createImageData(canvas.width, canvas.height);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const value = pixels.data[i + channel];
+      data.data[i] = data.data[i + 1] = data.data[i + 2] = value;
+      data.data[i + 3] = 255;
+    }
+    tc.putImageData(data, 0, 0);
+    const tex = new T.CanvasTexture(target);
+    tex.flipY = flipY;
+    tex.colorSpace = T.NoColorSpace;
+    tex.name = resource.name + ' · ' + key;
+    tex.userData = { studioImage: resource, studioRole: key };
+    tex.needsUpdate = true;
+    out[key] = tex;
+  }
+  src.dispose();
+  return out;
+}
+function captureMaterial(m) {
+  return {
+    color: m.color?.clone(),
+    map: m.map,
+    normalMap: m.normalMap,
+    aoMap: m.aoMap,
+    roughnessMap: m.roughnessMap,
+    metalnessMap: m.metalnessMap,
+    emissiveMap: m.emissiveMap,
+    emissive: m.emissive?.clone(),
+    roughness: m.roughness,
+    metalness: m.metalness,
+    transparent: m.transparent,
+    opacity: m.opacity,
+  };
+}
+export function hasTexture(m) {
+  return !!(
+    m?.map ||
+    m?.normalMap ||
+    m?.aoMap ||
+    m?.roughnessMap ||
+    m?.metalnessMap ||
+    m?.emissiveMap ||
+    m?.userData?.studioTeamColorMap
+  );
+}
+export function assign(rig, keys, resource, textures, role = roleForName(resource.name)) {
+  const chosen = targets(rig, keys);
+  for (const row of chosen) {
+    const old = row.material,
+      m = old.clone(),
+      flip = old.map?.flipY ?? !/\.(glb|mdx|mdl)$/i.test(rig.name),
+      tex = textures[String(flip)];
+    textureBases.set(m, textureBases.get(old) || captureMaterial(old));
+    if (role === 'diffuse') {
+      m.map = tex;
+      m.color?.set(0xffffff);
+      m.transparent = true;
+      m.opacity = 1;
+    } else if (role === 'normal') m.normalMap = tex;
+    else if (role === 'ao') {
+      m.aoMap = tex;
+      if (!row.mesh.geometry.getAttribute('uv2'))
+        row.mesh.geometry.setAttribute('uv2', row.mesh.geometry.getAttribute('uv').clone());
+    } else if (role === 'roughness') m.roughnessMap = tex;
+    else if (role === 'metalness') m.metalnessMap = tex;
+    else if (role === 'emissive') {
+      m.emissiveMap = tex;
+      m.emissive?.set(0xffffff);
+    } else if (role === 'team') m.userData.studioTeamColorMap = tex;
+    else if (role === 'orm') {
+      m.aoMap = tex.ao;
+      m.roughnessMap = tex.roughness;
+      m.metalnessMap = tex.metalness;
+      if (!row.mesh.geometry.getAttribute('uv2'))
+        row.mesh.geometry.setAttribute('uv2', row.mesh.geometry.getAttribute('uv').clone());
+    }
+    m.needsUpdate = true;
+    if (Array.isArray(row.mesh.material)) {
+      row.mesh.material = [...row.mesh.material];
+      row.mesh.material[row.si] = m;
+    } else row.mesh.material = m;
+  }
+  return chosen.length;
+}
+export function unassign(rig, keys) {
+  const chosen = rows(rig).filter((row) => keys === 'all' || keys.includes(row.key));
+  if (!chosen.length) throw Error('Chưa chọn mesh/material.');
+  for (const row of chosen) {
+    const m = row.material.clone(),
+      base = textureBases.get(row.material);
+    if (base) {
+      Object.assign(m, {
+        map: base.map,
+        normalMap: base.normalMap,
+        aoMap: base.aoMap,
+        roughnessMap: base.roughnessMap,
+        metalnessMap: base.metalnessMap,
+        emissiveMap: base.emissiveMap,
+        roughness: base.roughness,
+        metalness: base.metalness,
+        transparent: base.transparent,
+        opacity: base.opacity,
+      });
+      if (base.color) m.color?.copy(base.color);
+      if (base.emissive) m.emissive?.copy(base.emissive);
+    } else {
+      m.map = m.normalMap = m.aoMap = m.roughnessMap = m.metalnessMap = m.emissiveMap = null;
+    }
+    delete m.userData.studioTeamColorMap;
+    m.needsUpdate = true;
+    if (Array.isArray(row.mesh.material)) {
+      row.mesh.material = [...row.mesh.material];
+      row.mesh.material[row.si] = m;
+    } else row.mesh.material = m;
+  }
+  return chosen.length;
+}
+export async function apply(rig, keys, resource) {
+  const chosen = targets(rig, keys),
+    flips = new Set(
+      chosen.map((r) => r.material.map?.flipY ?? !/\.(glb|mdx|mdl)$/i.test(rig.name)),
+    ),
+    textures = {};
+  try {
+    for (const flip of flips) textures[String(flip)] = await decode(resource, flip);
+    return assign(rig, keys, resource, textures);
+  } catch (e) {
+    Object.values(textures).forEach((t) => t.dispose());
+    throw e;
+  }
+}
+export function serialize(rig, source) {
+  const result = [];
+  for (const r of rows(rig, source)) {
+    for (const [role, map] of Object.entries({
+      diffuse: r.material.map,
+      normal: r.material.normalMap,
+      ao: r.material.aoMap,
+      roughness: r.material.roughnessMap,
+      metalness: r.material.metalnessMap,
+      emissive: r.material.emissiveMap,
+      team: r.material.userData?.studioTeamColorMap,
+    })) {
+      const resource = map?.userData?.studioImage;
+      if (
+        resource &&
+        !result.some((x) => x.key === r.key && x.role === role && x.data === resource.data)
+      )
+        result.push({ key: r.key, role, ...resource, flipY: map.flipY });
+    }
+  }
+  return result;
+}
+export function validateOverrides(rig, list = []) {
+  if (!Array.isArray(list) || list.length > 512) throw Error('Texture assignments không hợp lệ.');
+  validateResources([...new Map(list.map((r) => [r.data, r])).values()]);
+  const valid = new Set(rows(rig).map((r) => r.key)),
+    roles = new Set([
+      'diffuse',
+      'normal',
+      'orm',
+      'ao',
+      'roughness',
+      'metalness',
+      'emissive',
+      'team',
+    ]);
+  for (const r of list)
+    if (!valid.has(r.key) || typeof r.flipY !== 'boolean' || (r.role && !roles.has(r.role)))
+      throw Error('Texture material không tồn tại hoặc vai trò ảnh không hợp lệ.');
+  return list;
+}
+export async function restore(rig, list = []) {
+  validateOverrides(rig, list);
+  const cache = new Map();
+  try {
+    for (const r of list) {
+      const role = r.role || 'diffuse',
+        encoding = role === 'normal' && /\.(mdx|mdl)$/i.test(rig.name) ? 'warcraft' : 'standard',
+        cacheKey = r.data + ':' + r.flipY + ':' + role + ':' + encoding;
+      let t = cache.get(cacheKey);
+      if (!t) {
+        t = await decodeRole(r, r.flipY, role, encoding);
+        cache.set(cacheKey, t);
+      }
+      assign(rig, [r.key], r, { true: t, false: t }, role);
+    }
+  } catch (e) {
+    cache.forEach((t) => {
+      if (t?.isTexture) t.dispose();
+      else Object.values(t || {}).forEach((x) => x.dispose());
+    });
+    throw e;
+  }
+}

@@ -1,17 +1,90 @@
 import './silhouette_view.test.mjs';
 import './app3_mcp_demo_hook.test.mjs';
 import './app3_bridge.test.mjs';
-import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
-import {validateShot,sha256,clipTime} from './shot_package.js';
-const enc=x=>new TextEncoder().encode(JSON.stringify(x));
-async function fixture(){const docs=readFileSync(new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md',import.meta.url),'utf8').replace(/\r\n/g,'\n'),files={};for(const m of docs.matchAll(/<!-- example:shot\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))files[m[1]]=new TextEncoder().encode(m[2]+'\n');files['characters/hero.glb']=new TextEncoder().encode('shot-contract-fixture-v1\n');files['references/stage.glb']=new TextEncoder().encode('shot-contract-reference-v1\n');return files;}
-async function check(mutator,code){const f=await fixture(),s=JSON.parse(new TextDecoder().decode(f['shot.json']));mutator(s,f);f['shot.json']=enc(s);const issues=await validateShot(f);assert(issues.some(x=>x.code===code),JSON.stringify(issues));}
-test('contract example valid',async()=>assert.deepEqual(await validateShot(await fixture()),[]));
-for(const[code,fn]of [
- ['MISSING_FIELD',s=>delete s.sceneId],['INVALID_TYPE',s=>s.fps=true],['INVALID_VALUE',s=>s.sceneId=''],['UNSUPPORTED_VERSION',s=>s.version='2.0.0'],['INVALID_FPS',s=>s.fps=24],['INVALID_FRAME_RANGE',s=>s.frameRange=[60,0]],['INVALID_FRAME_RANGE',s=>s.frameRange=[-1,10]],
- ['UNSAFE_PATH',s=>s.characters[0].glb='../hero.glb'],['UNSAFE_PATH',s=>s.characters[0].glb='/hero.glb'],['UNSAFE_PATH',s=>s.characters[0].glb='C:hero.glb'],['UNSAFE_PATH',s=>s.characters[0].glb='a\\b'],['FILE_NOT_FOUND',s=>s.characters[0].glb='absent.glb'],
- ['INVALID_JSON',(_,f)=>f['characters/hero.manifest.json']=new TextEncoder().encode('{')],['INVALID_SHA256',s=>s.characters[0].glbSha256='bad'],['SHA256_MISMATCH',s=>s.characters[0].glbSha256='0'.repeat(64)],['INVALID_UUID',s=>s.characters[0].actionUuid='bad'],['ACTION_NOT_IN_MANIFEST',s=>s.characters[0].actionUuid='22222222-2222-4222-8222-222222222222'],
- ['DUPLICATE_ACTION_UUID',(_,f)=>{const m=JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));m.actions.push(m.actions[0]);f['characters/hero.manifest.json']=enc(m);}],['NO_EDITABLE_CHARACTER',s=>s.characters.forEach(c=>c.editable=false)],['DUPLICATE_CHARACTER_ID',s=>s.characters[1].characterId='hero'],['INVALID_CLIP',s=>s.characters[0].clip.speed=0],['INVALID_CLIP',s=>s.characters[0].clip.sourceEndSeconds=-1],['INVALID_ROOT_POLICY',s=>s.characters[0].rootPolicy='bad'],['FRAME_OUT_OF_RANGE',s=>s.camera.keys[0].frame=90],['KEYS_NOT_INCREASING',s=>s.camera.keys[1].frame=0],['INVALID_VALUE',s=>s.camera.keys[0].position=[1,2]],['INVALID_VALUE',s=>s.camera.keys[0].fovYDegrees=180],
-])test(code+' '+fn.toString(),()=>check(fn,code));
-test('missing shot, malformed JSON, wrong object type and unsafe zip entries',async()=>{for(const files of [{},{'shot.json':enc('bad')},{'shot.json':new TextEncoder().encode('{')},{...await fixture(),'../hidden':enc(0)}])assert((await validateShot(files)).length);});
-test('hash actual bytes and clip speed/reverse/loop/zero length',async()=>{assert.equal((await sha256(new Uint8Array())).length,64);const c={sourceStartSeconds:1,sourceEndSeconds:3,speed:2,loop:false,reverse:false};assert.equal(clipTime(c,2),3);assert.equal(clipTime({...c,loop:true},1.25),1.5);assert.equal(clipTime({...c,reverse:true},.25),2.5);assert.equal(clipTime({...c,sourceEndSeconds:1},2),1);});
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { validateShot, sha256, clipTime } from './shot_package.js';
+const enc = (x) => new TextEncoder().encode(JSON.stringify(x));
+async function fixture() {
+  const docs = readFileSync(
+      new URL('../../../../../docs/SHOT-PACKAGE-CONTRACT.md', import.meta.url),
+      'utf8',
+    ).replace(/\r\n/g, '\n'),
+    files = {};
+  for (const m of docs.matchAll(/<!-- example:shot\/(.*?) -->\s*```json\n([\s\S]*?)\n```/g))
+    files[m[1]] = new TextEncoder().encode(m[2] + '\n');
+  files['characters/hero.glb'] = new TextEncoder().encode('shot-contract-fixture-v1\n');
+  files['references/stage.glb'] = new TextEncoder().encode('shot-contract-reference-v1\n');
+  return files;
+}
+async function check(mutator, code) {
+  const f = await fixture(),
+    s = JSON.parse(new TextDecoder().decode(f['shot.json']));
+  mutator(s, f);
+  f['shot.json'] = enc(s);
+  const issues = await validateShot(f);
+  assert(
+    issues.some((x) => x.code === code),
+    JSON.stringify(issues),
+  );
+}
+test('contract example valid', async () =>
+  assert.deepEqual(await validateShot(await fixture()), []));
+for (const [code, fn] of [
+  ['MISSING_FIELD', (s) => delete s.sceneId],
+  ['INVALID_TYPE', (s) => (s.fps = true)],
+  ['INVALID_VALUE', (s) => (s.sceneId = '')],
+  ['UNSUPPORTED_VERSION', (s) => (s.version = '2.0.0')],
+  ['INVALID_FPS', (s) => (s.fps = 24)],
+  ['INVALID_FRAME_RANGE', (s) => (s.frameRange = [60, 0])],
+  ['INVALID_FRAME_RANGE', (s) => (s.frameRange = [-1, 10])],
+  ['UNSAFE_PATH', (s) => (s.characters[0].glb = '../hero.glb')],
+  ['UNSAFE_PATH', (s) => (s.characters[0].glb = '/hero.glb')],
+  ['UNSAFE_PATH', (s) => (s.characters[0].glb = 'C:hero.glb')],
+  ['UNSAFE_PATH', (s) => (s.characters[0].glb = 'a\\b')],
+  ['FILE_NOT_FOUND', (s) => (s.characters[0].glb = 'absent.glb')],
+  ['INVALID_JSON', (_, f) => (f['characters/hero.manifest.json'] = new TextEncoder().encode('{'))],
+  ['INVALID_SHA256', (s) => (s.characters[0].glbSha256 = 'bad')],
+  ['SHA256_MISMATCH', (s) => (s.characters[0].glbSha256 = '0'.repeat(64))],
+  ['INVALID_UUID', (s) => (s.characters[0].actionUuid = 'bad')],
+  [
+    'ACTION_NOT_IN_MANIFEST',
+    (s) => (s.characters[0].actionUuid = '22222222-2222-4222-8222-222222222222'),
+  ],
+  [
+    'DUPLICATE_ACTION_UUID',
+    (_, f) => {
+      const m = JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));
+      m.actions.push(m.actions[0]);
+      f['characters/hero.manifest.json'] = enc(m);
+    },
+  ],
+  ['NO_EDITABLE_CHARACTER', (s) => s.characters.forEach((c) => (c.editable = false))],
+  ['DUPLICATE_CHARACTER_ID', (s) => (s.characters[1].characterId = 'hero')],
+  ['INVALID_CLIP', (s) => (s.characters[0].clip.speed = 0)],
+  ['INVALID_CLIP', (s) => (s.characters[0].clip.sourceEndSeconds = -1)],
+  ['INVALID_ROOT_POLICY', (s) => (s.characters[0].rootPolicy = 'bad')],
+  ['FRAME_OUT_OF_RANGE', (s) => (s.camera.keys[0].frame = 90)],
+  ['KEYS_NOT_INCREASING', (s) => (s.camera.keys[1].frame = 0)],
+  ['INVALID_VALUE', (s) => (s.camera.keys[0].position = [1, 2])],
+  ['INVALID_VALUE', (s) => (s.camera.keys[0].fovYDegrees = 180)],
+])
+  test(code + ' ' + fn.toString(), () => check(fn, code));
+test('missing shot, malformed JSON, wrong object type and unsafe zip entries', async () => {
+  for (const files of [
+    {},
+    { 'shot.json': enc('bad') },
+    { 'shot.json': new TextEncoder().encode('{') },
+    { ...(await fixture()), '../hidden': enc(0) },
+  ])
+    assert((await validateShot(files)).length);
+});
+test('hash actual bytes and clip speed/reverse/loop/zero length', async () => {
+  assert.equal((await sha256(new Uint8Array())).length, 64);
+  const c = { sourceStartSeconds: 1, sourceEndSeconds: 3, speed: 2, loop: false, reverse: false };
+  assert.equal(clipTime(c, 2), 3);
+  assert.equal(clipTime({ ...c, loop: true }, 1.25), 1.5);
+  assert.equal(clipTime({ ...c, reverse: true }, 0.25), 2.5);
+  assert.equal(clipTime({ ...c, sourceEndSeconds: 1 }, 2), 1);
+});

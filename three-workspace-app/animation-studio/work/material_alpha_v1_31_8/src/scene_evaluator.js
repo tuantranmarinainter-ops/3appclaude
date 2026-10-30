@@ -1,30 +1,313 @@
 import * as T from 'three';
 import * as C from './core.js';
 import * as S from './scene_studio.js';
-const UP=new T.Vector3(0,1,0),BASIS=new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),Math.PI/2);
-export const unitScale=a=>(a.units==='cm'?.01:1)*a.transform.scale;
-export function initialize(rig,wrapper=new T.Group()){rig.editorUp='z';wrapper.quaternion.copy(BASIS);wrapper.add(rig.root);C.resetRig(rig);wrapper.updateMatrixWorld(true);rig.chains=C.chainSpecs(rig);rig.controls={};for(const c of rig.chains){const A=c.a.o.getWorldPosition(new T.Vector3()),B=c.b.o.getWorldPosition(new T.Vector3()),end=c.c.o.getWorldPosition(new T.Vector3()),direction=end.clone().sub(A).normalize(),pole=B.clone().sub(A);pole.addScaledVector(direction,-pole.dot(direction));if(pole.lengthSq()<1e-9)pole.set(0,0,1);pole.normalize().multiplyScalar(rig.height*.3).add(B);for(const [id,p]of [['ik_'+c.id,end],['pole_'+c.id,pole]]){const o=new T.Object3D();wrapper.add(o);o.position.copy(wrapper.worldToLocal(p.clone()));o.quaternion.copy(wrapper.getWorldQuaternion(new T.Quaternion()).invert().multiply(c.c.o.getWorldQuaternion(new T.Quaternion())));rig.controls[id]={object:o,rest:C.snap(o)};}C.kinematics.init(rig,c,wrapper);c.sceneRestBend=c.bendMemory.clone();}return{rig,wrapper};}
-export function place(runtime,a){runtime.wrapper.position.fromArray(a.transform.position);runtime.wrapper.quaternion.setFromEuler(new T.Euler(...a.transform.rotation.map(T.MathUtils.degToRad),'XYZ')).multiply(BASIS);runtime.wrapper.scale.setScalar(unitScale(a));runtime.wrapper.updateMatrixWorld(true);}
-function capture(r){return{pose:C.capture(r),controls:Object.fromEntries(Object.entries(r.controls).map(([id,c])=>[id,C.snap(c.object)])),modes:r.chains.map(c=>({id:c.id,mode:c.mode,options:C.clone(c.options)}))};}
-function restore(r,x){C.resetRig(r);for(const [id,p]of Object.entries(x.pose))C.apply(id==='root'?r.root:r.records.find(rec=>rec.id===id).o,p);for(const [id,p]of Object.entries(x.controls))if(r.controls[id])C.apply(r.controls[id].object,p);for(const m of x.modes){const c=r.chains.find(c=>c.id===m.id);if(c){c.mode=m.mode;C.kinematics.configure(r,c,m.options,false);}}r.root.updateMatrixWorld(true);}
-export {capture,restore};
-function carrier(r){return r.records.find(x=>/^(hips|pelvis)$/i.test(C.canon(x.name)))?.o||r.records.find(x=>!x.parent)?.o||r.root;}
-function anchor(runtime){const object=carrier(runtime.rig),position=runtime.wrapper.worldToLocal(object.getWorldPosition(new T.Vector3())),q=runtime.wrapper.getWorldQuaternion(new T.Quaternion()).invert().multiply(object.getWorldQuaternion(new T.Quaternion())),forward=new T.Vector3(0,0,1).applyQuaternion(q);return{position,yaw:Math.atan2(forward.x,forward.z)};}
-function applyCorrection(r,matrix){r.root.updateMatrix();const m=matrix.clone().multiply(r.root.matrix);m.decompose(r.root.position,r.root.quaternion,r.root.scale);r.root.updateMatrixWorld(true);}
-function mixTransform(a,b,w){return{p:a.p.map((v,i)=>v+(b.p[i]-v)*w),q:new T.Quaternion().fromArray(a.q).slerp(new T.Quaternion().fromArray(b.q),w).toArray(),s:a.s.map((v,i)=>v+(b.s[i]-v)*w)};}
-function blend(a,b,w){return{pose:Object.fromEntries(Object.keys(b.pose).map(id=>[id,mixTransform(a.pose[id]||b.pose[id],b.pose[id],w)])),controls:Object.fromEntries(Object.keys(b.controls).map(id=>[id,mixTransform(a.controls[id]||b.controls[id],b.controls[id],w)])),modes:b.modes};}
-function source(scene,clip,runtime){const m=S.motion(scene,clip.sourceId);if(m.rigFingerprint!==runtime.rig.fingerprint)throw Error('Nguồn '+m.name+' không tương thích actor.');return m.project;}
-function raw(scene,clip,runtime,time){for(const c of runtime.rig.chains)if(c.sceneRestBend)c.bendMemory=c.sceneRestBend.clone();C.evaluate(runtime.rig,source(scene,clip,runtime),time,{inPlace:false});}
-function corrected(scene,actor,clip,runtime,time,cache,depth=0){
- if(depth>128)throw Error('Quá nhiều clip nối tiếp.');let correction=cache.get(clip.id);if(!correction){correction=new T.Matrix4();if(clip.align==='continue'){const previous=[...actor.clips].sort((a,b)=>a.start-b.start).filter(c=>c.start<clip.start-1e-7).at(-1);if(previous){const sample=S.sampleClip(previous,Math.min(previous.start+previous.length,clip.start));corrected(scene,actor,previous,runtime,sample.time,cache,depth+1);const end=anchor(runtime);raw(scene,clip,runtime,clip.reverse?clip.sourceStart+clip.sourceLength:clip.sourceStart);const start=anchor(runtime),rotation=new T.Quaternion().setFromAxisAngle(UP,end.yaw-start.yaw),p=start.position.clone().applyQuaternion(rotation);correction.compose(new T.Vector3(end.position.x-p.x,0,end.position.z-p.z),rotation,new T.Vector3(1,1,1));}}cache.set(clip.id,correction);}raw(scene,clip,runtime,time);applyCorrection(runtime.rig,correction);
+const UP = new T.Vector3(0, 1, 0),
+  BASIS = new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), Math.PI / 2);
+export const unitScale = (a) => (a.units === 'cm' ? 0.01 : 1) * a.transform.scale;
+export function initialize(rig, wrapper = new T.Group()) {
+  rig.editorUp = 'z';
+  wrapper.quaternion.copy(BASIS);
+  wrapper.add(rig.root);
+  C.resetRig(rig);
+  wrapper.updateMatrixWorld(true);
+  rig.chains = C.chainSpecs(rig);
+  rig.controls = {};
+  for (const c of rig.chains) {
+    const A = c.a.o.getWorldPosition(new T.Vector3()),
+      B = c.b.o.getWorldPosition(new T.Vector3()),
+      end = c.c.o.getWorldPosition(new T.Vector3()),
+      direction = end.clone().sub(A).normalize(),
+      pole = B.clone().sub(A);
+    pole.addScaledVector(direction, -pole.dot(direction));
+    if (pole.lengthSq() < 1e-9) pole.set(0, 0, 1);
+    pole
+      .normalize()
+      .multiplyScalar(rig.height * 0.3)
+      .add(B);
+    for (const [id, p] of [
+      ['ik_' + c.id, end],
+      ['pole_' + c.id, pole],
+    ]) {
+      const o = new T.Object3D();
+      wrapper.add(o);
+      o.position.copy(wrapper.worldToLocal(p.clone()));
+      o.quaternion.copy(
+        wrapper
+          .getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(c.c.o.getWorldQuaternion(new T.Quaternion())),
+      );
+      rig.controls[id] = { object: o, rest: C.snap(o) };
+    }
+    C.kinematics.init(rig, c, wrapper);
+    c.sceneRestBend = c.bendMemory.clone();
+  }
+  return { rig, wrapper };
 }
-function sample(scene,a,c,runtime,cache){const r=runtime.rig;corrected(scene,a,c,runtime,c.time,cache);const baked=capture(r);if(c.rootMotion==='baked')return{state:baked,offset:new T.Vector3()};const before=carrier(r).getWorldPosition(new T.Vector3());corrected(scene,a,c,runtime,c.reverse?c.sourceStart+c.sourceLength:c.sourceStart,cache);const anchors=C.motionOrigins(r);restore(r,baked);C.applyInPlace(r,anchors);const after=carrier(r).getWorldPosition(new T.Vector3()),offset=before.sub(after);offset.z=0;return{state:capture(r),offset:c.rootMotion==='bbs-path'?offset:new T.Vector3()};}
-export function evaluate(scene,runtimes,time,{contacts=true}={}){
- if(!Number.isFinite(time))throw Error('Thời gian cảnh không hợp lệ.');const warnings=[],paths={};
- for(const a of scene.actors){const rt=runtimes.get(a.id);if(!rt)continue;place(rt,a);rt.wrapper.visible=a.visible&&!a.muted;const e=S.evaluate(scene,a.id,time);if(!e.primary){C.resetRig(rt.rig);paths[a.id]=rt.wrapper.position.toArray();continue;}const cache=new Map(),p=sample(scene,a,e.primary,rt,cache);let state=p.state,offset=p.offset;if(e.previous&&e.primary.weight<1){const b=sample(scene,a,e.previous,rt,cache);state=blend(b.state,p.state,e.primary.weight);offset=b.offset.clone().lerp(p.offset,e.primary.weight);}restore(rt.rig,state);rt.wrapper.position.add(offset);rt.wrapper.updateMatrixWorld(true);paths[a.id]=rt.wrapper.position.toArray();}
- if(contacts)for(const contact of scene.contacts){if(time<contact.start-1e-7||time>contact.end+1e-7)continue;const src=runtimes.get(contact.source.actorId),dst=runtimes.get(contact.target.actorId);if(!src||!dst)throw Error('Contact thiếu model actor.');const chain=src.rig.chains.find(c=>c.c.id===contact.source.boneId||'ik_'+c.id===contact.source.boneId),target=contact.target.boneId==='root'?dst.rig.root:dst.rig.records.find(r=>r.id===contact.target.boneId)?.o||dst.rig.controls[contact.target.boneId]?.object;if(!chain||!target)throw Error('Contact thiếu effector IK hoặc bone mục tiêu.');const control=src.rig.controls['ik_'+chain.id]?.object;if(!control)throw Error('Actor nguồn chưa có IK control.');const goal=chain.c.o.getWorldPosition(new T.Vector3()).lerp(target.getWorldPosition(new T.Vector3()),contact.strength);control.position.copy(control.parent.worldToLocal(goal));control.quaternion.copy(control.parent.getWorldQuaternion(new T.Quaternion()).invert().multiply((contact.mode==='position-rotation'?target:chain.c.o).getWorldQuaternion(new T.Quaternion())));chain.mode='ik';C.solveIK(src.rig,chain);src.rig.root.updateMatrixWorld(true);const distance=chain.c.o.getWorldPosition(new T.Vector3()).distanceTo(goal);if(distance>.01)warnings.push({contactId:contact.id,distanceMeters:distance,reason:'Mục tiêu ngoài tầm hoặc solver chưa đạt.'});}
- return{time,paths,warnings};
+export function place(runtime, a) {
+  runtime.wrapper.position.fromArray(a.transform.position);
+  runtime.wrapper.quaternion
+    .setFromEuler(new T.Euler(...a.transform.rotation.map(T.MathUtils.degToRad), 'XYZ'))
+    .multiply(BASIS);
+  runtime.wrapper.scale.setScalar(unitScale(a));
+  runtime.wrapper.updateMatrixWorld(true);
 }
-export function check(scene,runtimes){const errors=[],warnings=[];try{S.validate(scene);}catch(e){errors.push(e.message);}for(const a of scene.actors){const rt=runtimes.get(a.id);if(!rt||rt.rig.fingerprint!==a.rigFingerprint)errors.push(a.name+': model khác rig.');if(!a.clips.length)warnings.push(a.name+': không có clip, xuất rest pose.');for(const c of a.clips){try{C.validateProject(S.motion(scene,c.sourceId).project,rt.rig);}catch(e){errors.push(a.name+'/'+c.name+': '+e.message);}}}for(const c of scene.contacts){const src=runtimes.get(c.source.actorId),dst=runtimes.get(c.target.actorId);if(!src?.rig.chains.some(x=>x.c.id===c.source.boneId||'ik_'+x.id===c.source.boneId)||!(c.target.boneId==='root'||dst?.rig.records.some(x=>x.id===c.target.boneId)))errors.push(c.id+': effector hoặc target không hợp lệ.');}return{ok:!errors.length,errors,warnings};}
-export function minecraftPosition(p){return[p[0],p[2],-p[1]];}
-export function minecraftRotation(degrees){const q=new T.Quaternion().setFromEuler(new T.Euler(...degrees.map(T.MathUtils.degToRad),'XYZ'));q.premultiply(BASIS.clone().invert()).multiply(BASIS);const e=new T.Euler().setFromQuaternion(q,'XYZ');return{rotationDegrees:[e.x,e.y,e.z].map(T.MathUtils.radToDeg),rotationQuaternion:q.toArray()};}
+function capture(r) {
+  return {
+    pose: C.capture(r),
+    controls: Object.fromEntries(
+      Object.entries(r.controls).map(([id, c]) => [id, C.snap(c.object)]),
+    ),
+    modes: r.chains.map((c) => ({ id: c.id, mode: c.mode, options: C.clone(c.options) })),
+  };
+}
+function restore(r, x) {
+  C.resetRig(r);
+  for (const [id, p] of Object.entries(x.pose))
+    C.apply(id === 'root' ? r.root : r.records.find((rec) => rec.id === id).o, p);
+  for (const [id, p] of Object.entries(x.controls))
+    if (r.controls[id]) C.apply(r.controls[id].object, p);
+  for (const m of x.modes) {
+    const c = r.chains.find((c) => c.id === m.id);
+    if (c) {
+      c.mode = m.mode;
+      C.kinematics.configure(r, c, m.options, false);
+    }
+  }
+  r.root.updateMatrixWorld(true);
+}
+export { capture, restore };
+function carrier(r) {
+  return (
+    r.records.find((x) => /^(hips|pelvis)$/i.test(C.canon(x.name)))?.o ||
+    r.records.find((x) => !x.parent)?.o ||
+    r.root
+  );
+}
+function anchor(runtime) {
+  const object = carrier(runtime.rig),
+    position = runtime.wrapper.worldToLocal(object.getWorldPosition(new T.Vector3())),
+    q = runtime.wrapper
+      .getWorldQuaternion(new T.Quaternion())
+      .invert()
+      .multiply(object.getWorldQuaternion(new T.Quaternion())),
+    forward = new T.Vector3(0, 0, 1).applyQuaternion(q);
+  return { position, yaw: Math.atan2(forward.x, forward.z) };
+}
+function applyCorrection(r, matrix) {
+  r.root.updateMatrix();
+  const m = matrix.clone().multiply(r.root.matrix);
+  m.decompose(r.root.position, r.root.quaternion, r.root.scale);
+  r.root.updateMatrixWorld(true);
+}
+function mixTransform(a, b, w) {
+  return {
+    p: a.p.map((v, i) => v + (b.p[i] - v) * w),
+    q: new T.Quaternion().fromArray(a.q).slerp(new T.Quaternion().fromArray(b.q), w).toArray(),
+    s: a.s.map((v, i) => v + (b.s[i] - v) * w),
+  };
+}
+function blend(a, b, w) {
+  return {
+    pose: Object.fromEntries(
+      Object.keys(b.pose).map((id) => [id, mixTransform(a.pose[id] || b.pose[id], b.pose[id], w)]),
+    ),
+    controls: Object.fromEntries(
+      Object.keys(b.controls).map((id) => [
+        id,
+        mixTransform(a.controls[id] || b.controls[id], b.controls[id], w),
+      ]),
+    ),
+    modes: b.modes,
+  };
+}
+function source(scene, clip, runtime) {
+  const m = S.motion(scene, clip.sourceId);
+  if (m.rigFingerprint !== runtime.rig.fingerprint)
+    throw Error('Nguồn ' + m.name + ' không tương thích actor.');
+  return m.project;
+}
+function raw(scene, clip, runtime, time) {
+  for (const c of runtime.rig.chains) if (c.sceneRestBend) c.bendMemory = c.sceneRestBend.clone();
+  C.evaluate(runtime.rig, source(scene, clip, runtime), time, { inPlace: false });
+}
+function corrected(scene, actor, clip, runtime, time, cache, depth = 0) {
+  if (depth > 128) throw Error('Quá nhiều clip nối tiếp.');
+  let correction = cache.get(clip.id);
+  if (!correction) {
+    correction = new T.Matrix4();
+    if (clip.align === 'continue') {
+      const previous = [...actor.clips]
+        .sort((a, b) => a.start - b.start)
+        .filter((c) => c.start < clip.start - 1e-7)
+        .at(-1);
+      if (previous) {
+        const sample = S.sampleClip(
+          previous,
+          Math.min(previous.start + previous.length, clip.start),
+        );
+        corrected(scene, actor, previous, runtime, sample.time, cache, depth + 1);
+        const end = anchor(runtime);
+        raw(
+          scene,
+          clip,
+          runtime,
+          clip.reverse ? clip.sourceStart + clip.sourceLength : clip.sourceStart,
+        );
+        const start = anchor(runtime),
+          rotation = new T.Quaternion().setFromAxisAngle(UP, end.yaw - start.yaw),
+          p = start.position.clone().applyQuaternion(rotation);
+        correction.compose(
+          new T.Vector3(end.position.x - p.x, 0, end.position.z - p.z),
+          rotation,
+          new T.Vector3(1, 1, 1),
+        );
+      }
+    }
+    cache.set(clip.id, correction);
+  }
+  raw(scene, clip, runtime, time);
+  applyCorrection(runtime.rig, correction);
+}
+function sample(scene, a, c, runtime, cache) {
+  const r = runtime.rig;
+  corrected(scene, a, c, runtime, c.time, cache);
+  const baked = capture(r);
+  if (c.rootMotion === 'baked') return { state: baked, offset: new T.Vector3() };
+  const before = carrier(r).getWorldPosition(new T.Vector3());
+  corrected(
+    scene,
+    a,
+    c,
+    runtime,
+    c.reverse ? c.sourceStart + c.sourceLength : c.sourceStart,
+    cache,
+  );
+  const anchors = C.motionOrigins(r);
+  restore(r, baked);
+  C.applyInPlace(r, anchors);
+  const after = carrier(r).getWorldPosition(new T.Vector3()),
+    offset = before.sub(after);
+  offset.z = 0;
+  return { state: capture(r), offset: c.rootMotion === 'bbs-path' ? offset : new T.Vector3() };
+}
+export function evaluate(scene, runtimes, time, { contacts = true } = {}) {
+  if (!Number.isFinite(time)) throw Error('Thời gian cảnh không hợp lệ.');
+  const warnings = [],
+    paths = {};
+  for (const a of scene.actors) {
+    const rt = runtimes.get(a.id);
+    if (!rt) continue;
+    place(rt, a);
+    rt.wrapper.visible = a.visible && !a.muted;
+    const e = S.evaluate(scene, a.id, time);
+    if (!e.primary) {
+      C.resetRig(rt.rig);
+      paths[a.id] = rt.wrapper.position.toArray();
+      continue;
+    }
+    const cache = new Map(),
+      p = sample(scene, a, e.primary, rt, cache);
+    let state = p.state,
+      offset = p.offset;
+    if (e.previous && e.primary.weight < 1) {
+      const b = sample(scene, a, e.previous, rt, cache);
+      state = blend(b.state, p.state, e.primary.weight);
+      offset = b.offset.clone().lerp(p.offset, e.primary.weight);
+    }
+    restore(rt.rig, state);
+    rt.wrapper.position.add(offset);
+    rt.wrapper.updateMatrixWorld(true);
+    paths[a.id] = rt.wrapper.position.toArray();
+  }
+  if (contacts)
+    for (const contact of scene.contacts) {
+      if (time < contact.start - 1e-7 || time > contact.end + 1e-7) continue;
+      const src = runtimes.get(contact.source.actorId),
+        dst = runtimes.get(contact.target.actorId);
+      if (!src || !dst) throw Error('Contact thiếu model actor.');
+      const chain = src.rig.chains.find(
+          (c) => c.c.id === contact.source.boneId || 'ik_' + c.id === contact.source.boneId,
+        ),
+        target =
+          contact.target.boneId === 'root'
+            ? dst.rig.root
+            : dst.rig.records.find((r) => r.id === contact.target.boneId)?.o ||
+              dst.rig.controls[contact.target.boneId]?.object;
+      if (!chain || !target) throw Error('Contact thiếu effector IK hoặc bone mục tiêu.');
+      const control = src.rig.controls['ik_' + chain.id]?.object;
+      if (!control) throw Error('Actor nguồn chưa có IK control.');
+      const goal = chain.c.o
+        .getWorldPosition(new T.Vector3())
+        .lerp(target.getWorldPosition(new T.Vector3()), contact.strength);
+      control.position.copy(control.parent.worldToLocal(goal));
+      control.quaternion.copy(
+        control.parent
+          .getWorldQuaternion(new T.Quaternion())
+          .invert()
+          .multiply(
+            (contact.mode === 'position-rotation' ? target : chain.c.o).getWorldQuaternion(
+              new T.Quaternion(),
+            ),
+          ),
+      );
+      chain.mode = 'ik';
+      C.solveIK(src.rig, chain);
+      src.rig.root.updateMatrixWorld(true);
+      const distance = chain.c.o.getWorldPosition(new T.Vector3()).distanceTo(goal);
+      if (distance > 0.01)
+        warnings.push({
+          contactId: contact.id,
+          distanceMeters: distance,
+          reason: 'Mục tiêu ngoài tầm hoặc solver chưa đạt.',
+        });
+    }
+  return { time, paths, warnings };
+}
+export function check(scene, runtimes) {
+  const errors = [],
+    warnings = [];
+  try {
+    S.validate(scene);
+  } catch (e) {
+    errors.push(e.message);
+  }
+  for (const a of scene.actors) {
+    const rt = runtimes.get(a.id);
+    if (!rt || rt.rig.fingerprint !== a.rigFingerprint) errors.push(a.name + ': model khác rig.');
+    if (!a.clips.length) warnings.push(a.name + ': không có clip, xuất rest pose.');
+    for (const c of a.clips) {
+      try {
+        C.validateProject(S.motion(scene, c.sourceId).project, rt.rig);
+      } catch (e) {
+        errors.push(a.name + '/' + c.name + ': ' + e.message);
+      }
+    }
+  }
+  for (const c of scene.contacts) {
+    const src = runtimes.get(c.source.actorId),
+      dst = runtimes.get(c.target.actorId);
+    if (
+      !src?.rig.chains.some(
+        (x) => x.c.id === c.source.boneId || 'ik_' + x.id === c.source.boneId,
+      ) ||
+      !(c.target.boneId === 'root' || dst?.rig.records.some((x) => x.id === c.target.boneId))
+    )
+      errors.push(c.id + ': effector hoặc target không hợp lệ.');
+  }
+  return { ok: !errors.length, errors, warnings };
+}
+export function minecraftPosition(p) {
+  return [p[0], p[2], -p[1]];
+}
+export function minecraftRotation(degrees) {
+  const q = new T.Quaternion().setFromEuler(
+    new T.Euler(...degrees.map(T.MathUtils.degToRad), 'XYZ'),
+  );
+  q.premultiply(BASIS.clone().invert()).multiply(BASIS);
+  const e = new T.Euler().setFromQuaternion(q, 'XYZ');
+  return {
+    rotationDegrees: [e.x, e.y, e.z].map(T.MathUtils.radToDeg),
+    rotationQuaternion: q.toArray(),
+  };
+}
