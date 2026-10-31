@@ -157,16 +157,27 @@ function setupStudioWorkspace() {
     if (getComputedStyle(panel).position !== 'fixed') {
       panel.style.removeProperty('left');
       panel.style.removeProperty('top');
+      panel.style.removeProperty('max-height');
       return;
     }
-    if (!menu.open) return;
+    if (!menu.open) {
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('top');
+      panel.style.removeProperty('max-height');
+      return;
+    }
     const anchor = menu.querySelector('summary').getBoundingClientRect();
+    panel.style.removeProperty('max-height');
+    const naturalHeight = panel.getBoundingClientRect().height;
+    const above = Math.max(0, anchor.top - 4), below = Math.max(0, innerHeight - anchor.bottom - 4);
+    const useAbove = menu.id === 'minimalSpeed'
+      ? above >= naturalHeight || above > below
+      : below < naturalHeight && above > below;
+    panel.style.maxHeight = (useAbove ? above : below) + 'px';
     const box = panel.getBoundingClientRect();
     const left = Math.max(4, Math.min(innerWidth - box.width - 4, anchor.right - box.width));
-    const preferred = menu.id === 'minimalSpeed' ? anchor.top - box.height : anchor.bottom;
-    const top = Math.max(4, Math.min(innerHeight - box.height - 4, preferred));
     panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
+    panel.style.top = (useAbove ? anchor.top - box.height : anchor.bottom) + 'px';
   };
   for (const menu of floatingMenus)
     menu.addEventListener('toggle', () => requestAnimationFrame(() => positionFloatingMenu(menu)));
@@ -207,13 +218,30 @@ function setupStudioWorkspace() {
   setupStudioPaneSizing();
   const timelineGrip = document.querySelector('[data-resize=timeline]');
   timelineGrip.title = 'Kéo để đổi chiều cao editor · khung 3D giữ ít nhất 45% cửa sổ';
+  // A transiently tall toolbar can clamp the saved height during startup. Keep
+  // the requested height until space grows, while respecting later user changes.
+  let savedTimeline = null;
+  try {
+    const stored = JSON.parse(localStorage.getItem('animation-studio-pane-sizes-v1') || '{}');
+    if (Number.isFinite(stored.timeline)) savedTimeline = stored.timeline;
+  } catch {}
+  let initialEditor = $('animationArea').dataset.editor;
+  const stopRestoringTimeline = () => { savedTimeline = null; };
+  timelineGrip.addEventListener('pointerdown', stopRestoringTimeline, true);
+  timelineGrip.addEventListener('keydown', stopRestoringTimeline, true);
+  $('resetLayout').addEventListener('click', stopRestoringTimeline, true);
+  $('layoutMode').addEventListener('change', stopRestoringTimeline, true);
   const fitTimeline = () => {
-    if (mode !== 'compare')
-      clampStudioTimelineHeight(
-        parseFloat(
-          getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'),
-        ) || 240,
-      );
+    if (mode === 'compare') return;
+    const editor = $('animationArea').dataset.editor;
+    if (initialEditor !== editor) stopRestoringTimeline();
+    initialEditor = editor;
+    const current = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--timeline-height'),
+    ) || 240;
+    const requested = !document.body.classList.contains('layout-modes') && savedTimeline !== null
+      ? savedTimeline : current;
+    clampStudioTimelineHeight(requested);
   };
   const stage = document.querySelector('.stage');
   const fitStage = () => {
@@ -224,6 +252,8 @@ function setupStudioWorkspace() {
   const sizing = new ResizeObserver(fitStage);
   for (const el of [document.querySelector('.stage'), toolbar, transport]) sizing.observe(el);
   fitStage();
+  // Mode layout renders its own dimensions on resize; clamp after that render.
+  window.addEventListener('resize', () => requestAnimationFrame(fitStage));
   const observer = new MutationObserver(() => syncStudioWorkspace());
   observer.observe($('saveBtn'), { childList: true, subtree: true });
   observer.observe($('selectedName'), { childList: true, subtree: true });
@@ -729,6 +759,7 @@ function setupStudioPaneSizing() {
       else {
         sizes[sizeKey(kind)] = d.value;
         save();
+        workspace.dispatchEvent(new CustomEvent('studio-pane-resized', { detail: { kind, value: d.value } }));
       }
       if (handle.hasPointerCapture(d.id)) handle.releasePointerCapture(d.id);
       document.body.classList.remove('studio-pane-dragging');
@@ -807,6 +838,7 @@ function setupStudioPaneSizing() {
                   (spec.unit === '%' ? 0.1 : 1);
         sizes[sizeKey(kind)] = apply(kind, n);
         save();
+        workspace.dispatchEvent(new CustomEvent('studio-pane-resized', { detail: { kind, value: sizes[sizeKey(kind)] } }));
       }, true);
     window.addEventListener('blur', () => end());
   };

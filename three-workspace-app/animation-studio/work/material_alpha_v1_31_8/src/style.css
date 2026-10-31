@@ -294,3 +294,5 @@ body{font-size:13px}body>header{height:auto;min-height:54px;flex-wrap:wrap;gap:8
 body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage .stage-toolbar,
 body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage .transport{max-height:90px;overflow:auto}
 body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage :is(#minimalViewMenu,#minimalSpeed,#rigPresetMenu)>div{position:fixed;right:auto;bottom:auto;max-height:calc(100dvh - 8px);max-width:calc(100vw - 8px);overflow:auto}
+
+body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage:has(:is(#minimalViewMenu,#minimalSpeed,#rigPresetMenu)[open]){position:relative;z-index:51}

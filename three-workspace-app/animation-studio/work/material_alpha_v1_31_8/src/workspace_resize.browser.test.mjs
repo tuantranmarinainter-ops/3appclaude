@@ -39,7 +39,7 @@ test(
         if (message.type() === 'error') console.error(message.text());
       });
       page.on('pageerror', (error) => console.error(error));
-      page.setDefaultTimeout(60000);
+      page.setDefaultTimeout(8000);
       await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}`, {
         waitUntil: 'domcontentloaded',
@@ -98,8 +98,9 @@ test(
           await page.waitForFunction((name) => document.getElementById(name).open, id);
           const panel = menu.locator(':scope > div');
           await page.waitForFunction((name) => { const panel = document.querySelector('#' + name + ' > div'); return getComputedStyle(panel).position === 'fixed' && panel.style.top !== ''; }, id);
+          await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           const rect = await panel.boundingBox();
-          assert.ok(rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= page.viewportSize().width + 1 && rect.y + rect.height <= page.viewportSize().height + 1, id);
+          assert.ok(rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= page.viewportSize().width + 1 && rect.y + rect.height <= page.viewportSize().height + 1, JSON.stringify({ id, rect, viewport: page.viewportSize() }));
           return menu;
         };
         let menu = await openMenu('minimalViewMenu');
@@ -166,6 +167,7 @@ test(
       );
       await page.evaluate(() => __studio.setHostActive(false));
       await page.locator('#animationListToggle').click({ force: true });
+      await page.waitForTimeout(500);
       const reloaded = await measure();
       console.log(JSON.stringify({ classicReloaded: reloaded, classicReloadedState: await sizingState() }));
       for (const k of ['left', 'right'])
@@ -298,7 +300,7 @@ test('mode layout dividers resize and retain sizes across reload without changin
   const browser = await chromium.launch(browserOptions({ headless: true, args: ['--disable-dev-shm-usage'] }));
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-    page.setDefaultTimeout(60000);
+    page.setDefaultTimeout(8000);
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.__studio?.state.bones > 0, null, { timeout: 60000 });
     await page.locator('#layoutTab-animate').click();
@@ -337,6 +339,7 @@ test('mode layout dividers resize and retain sizes across reload without changin
     const modesDesktopViewport = await viewportHeight();
     assert.ok(modesDesktopViewport >= 449);
     await page.setViewportSize({ width: 1024, height: 768 });
+    await page.waitForTimeout(500);
     const modesTabletViewport = await viewportHeight();
     const modesTabletTimeline = await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height);
     console.log(JSON.stringify({ modesDesktopViewport, modesTabletViewport, modesTabletTimeline, maxTimeline }));
@@ -360,6 +363,28 @@ test('mode layout dividers resize and retain sizes across reload without changin
     assert.ok(Math.abs(await width('#layoutRight') - resizedRight) < 2);
     assert.ok(Math.abs(await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height) - maxTimeline) < 2);
     assert.ok(await viewportHeight() >= 449);
+    // Keyboard changes immediately after switching tabs must remain in that tab.
+    await page.locator('#layoutTab-pose').click();
+    await page.locator('#layoutTab-animate').click();
+    await page.locator('[data-layout-grip=left]').focus();
+    await page.keyboard.press('ArrowRight');
+    const keyboardLeft = await width('#layoutLeft');
+    assert.ok(keyboardLeft > resizedLeft + 5);
+    await page.locator('#layoutTab-pose').click();
+    await page.locator('#layoutTab-animate').click();
+    assert.ok(Math.abs(await width('#layoutLeft') - keyboardLeft) < 2);
+    // Programmatic editor changes still open Graph and restore the prior editor.
+    await page.evaluate(() => {
+      const field = document.getElementById('animationEditor');
+      field.value = 'graph'; field.dispatchEvent(new Event('change'));
+    });
+    assert.equal(await page.locator('#animationArea').getAttribute('data-editor'), 'graph');
+    await page.evaluate(() => {
+      const field = document.getElementById('animationEditor');
+      field.value = 'timeline'; field.dispatchEvent(new Event('change'));
+    });
+    assert.equal(await page.locator('#animationArea').getAttribute('data-editor'), 'timeline');
+    assert.equal(await snapshot(), before);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

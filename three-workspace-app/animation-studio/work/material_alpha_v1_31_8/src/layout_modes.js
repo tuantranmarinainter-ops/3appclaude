@@ -73,6 +73,15 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     drawerSmall = innerWidth <= 1024,
     allowedSmall = false,
     applying = false;
+  let suppressStyleCapture = false;
+  let captureFrame = 0;
+  const deferStyleCapture = () => {
+    suppressStyleCapture = true;
+    cancelAnimationFrame(captureFrame);
+    captureFrame = requestAnimationFrame(() => {
+      captureFrame = requestAnimationFrame(() => { suppressStyleCapture = false; });
+    });
+  };
   let classicVariables = {};
   let nativeOpen = new Map();
   const anchors = new Map(),
@@ -286,6 +295,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
   }
   function render() {
     if (layout !== 'modes') return;
+    deferStyleCapture();
     applying = true;
     body.dataset.layoutTab = tab;
     const state = states[tab];
@@ -456,8 +466,14 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
       }
     }
   }).observe(body, { attributes: true, attributeFilter: ['data-workflow-step'] });
+  // User input must persist even while a render suppresses transient style writes.
+  workspace.addEventListener('studio-pane-resized', ({ detail }) => {
+    if (layout !== 'modes' || !['left', 'right', 'timeline'].includes(detail?.kind)) return;
+    states[tab][detail.kind] = detail.value;
+    persist();
+  });
   new MutationObserver(() => {
-    if (layout !== 'modes' || applying) return;
+    if (layout !== 'modes' || applying || suppressStyleCapture) return;
     let changed = false;
     for (const [name, key] of [
       ['left', '--studio-left-width'],
@@ -472,6 +488,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     }
     if (changed) persist();
   }).observe(root, { attributes: true, attributeFilter: ['style'] });
+  window.addEventListener('resize', deferStyleCapture, true);
   window.addEventListener('resize', () => {
     const small = innerWidth <= 1024;
     if (small !== drawerSmall) {
