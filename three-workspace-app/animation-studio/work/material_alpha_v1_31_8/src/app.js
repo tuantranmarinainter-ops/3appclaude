@@ -8111,6 +8111,8 @@ function syncOnionUI() {
         (note ? ' ' : '') +
         (english ? 'No mesh: using bone lines.' : 'Rig không có mesh: dùng xương line.');
   }
+  if (enabled && +s.onionSpread) note += (note ? ' ' : '') + (english ? 'Ghosts are spread for viewing only; actual positions are unchanged.' : 'Bóng đã giãn — chỉ để nhìn, không đổi vị trí thật.');
+  $('onionSpreadNumber').value = s.onionSpread;
   if ($('onionNotice').textContent !== note) $('onionNotice').textContent = note;
   $('onionLegend').hidden = !enabled || mode === 'compare' || (playing && !s.onionPlayback);
   $('onionLegendBefore').style.color = s.onionBeforeColor;
@@ -8143,6 +8145,14 @@ listen('onionUnit', 'change', () => {
     ),
   );
   applySettings(readSettings());
+});
+listen('onionSpread', 'input', () => applySettings(readSettings()));
+listen('onionSpreadNumber', 'input', () => {
+  const n = Number($('onionSpreadNumber').value);
+  if ($('onionSpreadNumber').value !== '' && Number.isFinite(n)) {
+    $('onionSpread').value = Math.max(0, Math.min(200, Math.round(n)));
+    applySettings(readSettings());
+  }
 });
 for (const part of ['Mesh', 'Bone']) {
   const id = 'onion' + part + 'Opacity';
