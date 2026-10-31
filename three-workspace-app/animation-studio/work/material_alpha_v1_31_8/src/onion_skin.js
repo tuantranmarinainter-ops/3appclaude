@@ -15,6 +15,9 @@ export const defaults = {
   onionBeforeColor: '#78aaff',
   onionAfterColor: '#ffb266',
   onionPlayback: false,
+  onionSpread: '0',
+  onionSpreadAxis: 'screen',
+  onionSpreadGuides: true,
 };
 export function validate(settings = {}) {
   const result = { ...defaults };
@@ -24,12 +27,13 @@ export function validate(settings = {}) {
       if (typeof x === 'boolean') result[id] = x;
     } else if (id.endsWith('Color')) {
       if (typeof x === 'string' && /^#[0-9a-f]{6}$/i.test(x)) result[id] = x;
-    } else if (['onionSampling', 'onionUnit', 'onionParts'].includes(id)) {
+    } else if (['onionSampling', 'onionUnit', 'onionParts', 'onionSpreadAxis'].includes(id)) {
       if (
         {
           onionSampling: ['interval', 'keys'],
           onionUnit: ['frames', 'ticks'],
           onionParts: ['mesh', 'bones', 'both'],
+          onionSpreadAxis: ['screen', 'x', 'z', 'motion'],
         }[id].includes(x)
       )
         result[id] = x;
@@ -37,7 +41,7 @@ export function validate(settings = {}) {
       (typeof x === 'number' || (typeof x === 'string' && x.trim() !== '')) &&
       Number.isFinite(+x)
     ) {
-      const max = id === 'onionStep' ? 120 : 100,
+      const max = id === 'onionStep' ? 120 : id === 'onionSpread' ? 200 : 100,
         min = id === 'onionStep' ? 1 : 0;
       result[id] = String(Math.max(min, Math.min(max, Math.round(+x))));
     }
@@ -89,6 +93,19 @@ export function sampleTimes(project, time, s, times) {
     }
   return result;
 }
+// Directions and displacements are world-space; up follows the view's ground plane.
+export function spreadOffset(axis, screenRight, motion, up, height, spread, side, rank) {
+  const normal = up.clone().normalize();
+  const screen = screenRight.clone().projectOnPlane(normal);
+  if (screen.lengthSq() < 1e-12) screen.set(1, 0, 0).projectOnPlane(normal);
+  screen.normalize();
+  const travel = motion.clone().projectOnPlane(normal);
+  let dir = screen;
+  if (axis === 'x') dir = new T.Vector3(1, 0, 0);
+  else if (axis === 'z') dir = new T.Vector3(0, 0, 1);
+  else if (axis === 'motion' && travel.length() >= height * 0.01) dir = travel.normalize();
+  return dir.clone().multiplyScalar((side === 'before' ? -1 : 1) * rank * height * spread / 100);
+}
 export class OnionSkin {
   constructor(view) {
     this.view = view;
@@ -113,6 +130,9 @@ export class OnionSkin {
     s.meshMaterial.dispose();
     s.lineMaterial.dispose();
     s.line.geometry.dispose();
+    s.guide.geometry.dispose();
+    s.guide.material.dispose();
+    s.guide.removeFromParent();
     const skeletons = new Set(s.rig.mesh.filter((m) => m.isSkinnedMesh).map((m) => m.skeleton));
     skeletons.forEach((x) => x.dispose());
     s.wrapper.removeFromParent();
@@ -182,7 +202,11 @@ export class OnionSkin {
     line.frustumCulled = false;
     line.renderOrder = 2;
     this.group.add(line);
-    const slot = { rig: r, wrapper, line, meshMaterial, lineMaterial };
+    const guide = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]),
+      new T.LineBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false }));
+    guide.frustumCulled = false;
+    this.group.add(guide);
+    const slot = { rig: r, wrapper, line, guide, meshMaterial, lineMaterial };
     this.slots.push(slot);
     return slot;
   }
@@ -198,7 +222,11 @@ export class OnionSkin {
       this.revision = -1;
       this.lastUpdate = -Infinity;
     }
-    const key = JSON.stringify([time, revision, source.activeRoot, s]);
+    const up = this.view.camera.up.clone().normalize();
+    const screenRight = new T.Vector3(1, 0, 0).applyQuaternion(this.view.camera.getWorldQuaternion(new T.Quaternion())).projectOnPlane(up).normalize();
+    const directionKey = +s.onionSpread && ['screen', 'motion'].includes(s.onionSpreadAxis)
+      ? screenRight.toArray().map(n => Math.round(n * 100) / 100) : null;
+    const key = JSON.stringify([time, revision, source.activeRoot, s, directionKey]);
     if (key === this.signature) {
       const changed = !this.group.visible;
       this.group.visible = true;
@@ -226,6 +254,21 @@ export class OnionSkin {
             )),
       );
     this.hasMesh = hasMesh;
+    const height = source.height * this.view.wrapper.getWorldScale(new T.Vector3()).y;
+    let motion = new T.Vector3();
+    if (+s.onionSpread && s.onionSpreadAxis === 'motion' && samples.length) {
+      const far = samples.reduce((a, b) => Math.abs(b.time - time) > Math.abs(a.time - time) ? b : a);
+      const slot = this.slots[0] || this.create(source);
+      slot.wrapper.position.copy(this.view.wrapper.position);
+      slot.wrapper.quaternion.copy(this.view.wrapper.quaternion);
+      slot.wrapper.scale.copy(this.view.wrapper.scale);
+      slot.rig.activeRoot = source.activeRoot;
+      slot.wrapper.updateMatrixWorld(true);
+      C.evaluate(slot.rig, project, far.time);
+      slot.wrapper.updateMatrixWorld(true);
+      const current = source.root.getWorldPosition(new T.Vector3());
+      motion = slot.rig.root.getWorldPosition(new T.Vector3()).sub(current);
+    }
     for (let i = 0; i < samples.length; i++) {
       const sample = samples[i],
         slot = this.slots[i] || this.create(source),
@@ -233,12 +276,25 @@ export class OnionSkin {
       slot.wrapper.position.copy(this.view.wrapper.position);
       slot.wrapper.quaternion.copy(this.view.wrapper.quaternion);
       slot.wrapper.scale.copy(this.view.wrapper.scale);
+      const displacement = spreadOffset(s.onionSpreadAxis, screenRight, motion, up, height, +s.onionSpread, sample.side, sample.rank);
+      // The preview group shares the scene's world coordinates with the real wrapper.
+      slot.wrapper.position.add(displacement);
       r.activeRoot = source.activeRoot;
       slot.wrapper.updateMatrixWorld(true);
       C.evaluate(r, project, sample.time);
       slot.wrapper.updateMatrixWorld(true);
+      const origin = r.records.reduce((lowest, rec) => {
+        const point = rec.o.getWorldPosition(new T.Vector3());
+        return !lowest || point.dot(up) < lowest.dot(up) ? point : lowest;
+      }, null) || r.root.getWorldPosition(new T.Vector3());
+      const guidePositions = slot.guide.geometry.getAttribute('position');
+      guidePositions.setXYZ(0, origin.x, origin.y, origin.z);
+      guidePositions.setXYZ(1, origin.x - displacement.x, origin.y - displacement.y, origin.z - displacement.z);
+      guidePositions.needsUpdate = true;
+      slot.guide.visible = !!+s.onionSpread && s.onionSpreadGuides;
       const color = sample.side === 'before' ? s.onionBeforeColor : s.onionAfterColor,
         fade = s.onionFade ? 1 / sample.rank : 1;
+      slot.guide.material.color.set(color);
       slot.meshMaterial.color.set(color);
       slot.meshMaterial.opacity = (1 - +s.onionMeshOpacity / 100) * fade;
       slot.lineMaterial.color.set(color);
@@ -264,6 +320,7 @@ export class OnionSkin {
           positions.setXYZ(offset++, b.x, b.y, b.z);
         }
       positions.needsUpdate = true;
+      slot.line.geometry.computeBoundingSphere();
       this.evaluations++;
     }
     for (const slot of this.slots.splice(samples.length)) this.release(slot);
