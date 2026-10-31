@@ -13,7 +13,7 @@ const require = createRequire(
 const { chromium } = require('playwright');
 test(
   'pane dividers resize, reload, clamp and leave project/history unchanged',
-  { skip: process.env.APP3_RESIZE_BROWSER !== '1' },
+  { skip: process.env.APP3_RESIZE_BROWSER === '0' },
   async () => {
     const html = await readFile(
       new URL('../../../outputs/Animation_Studio_v1_33_0.html', import.meta.url),

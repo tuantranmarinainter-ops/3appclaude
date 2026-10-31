@@ -674,6 +674,7 @@ function setupStudioPaneSizing() {
       [min, max] = spec.range(),
       n = Math.max(min, Math.min(max, value));
     (spec.target || root).style.setProperty(spec.variable, n + (spec.unit || 'px'));
+    if (kind === 'timeline') syncStudioViewportMin(n);
     const h = handles.get(kind);
     if (h) {
       h.setAttribute('aria-valuemin', Math.round(min));
@@ -875,6 +876,16 @@ function setupStudioPaneSizing() {
     return result;
   };
   window.addEventListener('resize', restore);
+  // Side panes and window width change how the toolbar/transport wrap; keep the viewport minimum in step.
+  if (typeof ResizeObserver === 'function') {
+    let pending = 0;
+    const watch = new ResizeObserver(() => {
+      cancelAnimationFrame(pending);
+      pending = requestAnimationFrame(() => syncStudioViewportMin());
+    });
+    for (const el of [document.querySelector('.stage'), document.querySelector('.stage-toolbar'), document.querySelector('.transport')])
+      if (el) watch.observe(el);
+  }
   $('resetLayout').addEventListener('click', () => {
     sizes = {};
     save();

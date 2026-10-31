@@ -92,7 +92,7 @@ body.studio-workspace{font:13px/1.5 'Segoe UI',Arial,sans-serif}
 .studio-advanced-body #modeCompare{width:100%;text-align:left}
 .studio-workspace #createWorkspace>.stage{display:flex;flex-direction:column}
 .studio-workspace #createWorkspace .stage-toolbar,.studio-workspace #createWorkspace .transport{flex:none}
-.studio-workspace #createWorkspace #viewportShell{flex:1;min-height:45vh}
+.studio-workspace #createWorkspace #viewportShell{flex:1;min-height:min(45vh,var(--studio-viewport-min,45vh))}
 .studio-workspace #createWorkspace .animation-area{flex:none;min-height:0;height:var(--timeline-height)}
 .studio-workspace #createWorkspace .timeline-resize{height:12px;min-height:12px;flex:none}
 .studio-workspace #createWorkspace[data-maximized=animation] #viewportShell .viewport{display:block}
