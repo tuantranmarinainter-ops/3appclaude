@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 // Explicit runtime gate: APP3_RUNTIME_BASE=http://127.0.0.1:3013 node --test src/app3_browser.test.mjs
 // Run against an isolated Studio server (BBS_UNIFIED_PROJECTS_DIR), after rebuilding/publishing App3.
 import { test } from 'node:test';
@@ -67,7 +68,7 @@ test(
     const { makeEmptyDraft } = await import(
       pathToFileURL(require.resolve('@topview/3d-builder')).href
     );
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch(browserOptions({ headless: true }));
     try {
       const context = await browser.newContext({ viewport: { width: 1500, height: 1000 } }),
         page = await context.newPage(),

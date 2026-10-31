@@ -1,3 +1,7 @@
+import * as Keymap from './keymap.js';
+import { installKeymapSettings } from './keymap_settings.js';
+Keymap.initialize();
+Keymap.install(() => ({ readOnly: mode === 'compare' || !!sourcePreview || (sceneMode && !sceneEditing) }));
 import { initializeLayoutPreference, installModeLayout } from './layout_modes.js';
 let modeLayout = null;
 initializeLayoutPreference();
@@ -2930,13 +2934,13 @@ for (const id of ['timelineRuler', 'timeline']) {
         stopTimelineScrub();
       }
     });
-  listen(id, 'keydown', (e) => {
+  Keymap.on($(id), "app.0", guard((e) => {
     if (e.key === 'Escape' && timelineDrag) {
       e.preventDefault();
       if (timelineMarquee?.active) selectionKeys = timelineMarquee.selection;
       stopTimelineScrub();
     }
-  });
+  }), false);
 }
 window.addEventListener('blur', () => {
   if (timelineMarquee?.active) selectionKeys = timelineMarquee.selection;
@@ -3059,6 +3063,7 @@ timelineKeyMenu.setAttribute('role', 'menu');
 timelineKeyMenu.hidden = true;
 const timelineDeleteItem = document.createElement('button');
 timelineDeleteItem.textContent = 'Xoá';
+timelineDeleteItem.dataset.keymapAction = 'key.delete';
 timelineDeleteItem.setAttribute('role', 'menuitem');
 timelineKeyMenu.append(timelineDeleteItem);
 for (const [index, color] of [...TimelineTools.KEY_COLORS, null].entries()) {
@@ -3124,9 +3129,9 @@ listen('timeline', 'contextmenu', (e) => {
 document.addEventListener('pointerdown', (e) => {
   if (!timelineKeyMenu.contains(e.target)) closeTimelineKeyMenu();
 });
-document.addEventListener('keydown', (e) => {
+Keymap.on(document, "app.1", (e) => {
   if (e.key === 'Escape') closeTimelineKeyMenu();
-});
+}, false);
 window.addEventListener('blur', closeTimelineKeyMenu);
 function selectTimelineHit(hit, additive = false) {
   cancelEasingPreview();
@@ -4512,6 +4517,7 @@ function minimalPalette(light, index) {
 setupMinimalDOM();
 setupDualEditor();
 const settingIds = [
+  'keymapState',
   'layoutMode',
   'layoutModePanels',
   ...Object.keys(V.defaults),
@@ -4686,7 +4692,7 @@ function readSettings(includeInterface = true) {
     ),
     coordinateSystem: 'blender-z-up',
   };
-  if (!includeInterface) { delete result.layoutMode; delete result.layoutModePanels; }
+  if (!includeInterface) { delete result.layoutMode; delete result.layoutModePanels; delete result.keymapState; }
   return result;
 }
 function applySettings(settings) {
@@ -4755,6 +4761,7 @@ function applySettings(settings) {
   } catch {}
   applyLabLayout();
   modeLayout?.acceptSettings();
+  try { if ($('keymapState').value) Keymap.load($('keymapState').value, false); } catch {}
   refresh();
   if (editorSlots.A) {
     setDualTimeline($('dualTimelineModeSettings').value);
@@ -5198,7 +5205,7 @@ function setupModernUI() {
       handle.addEventListener(event, (e) => {
         if (resizing?.pointer === e.pointerId) cancelAreaResize();
       });
-    handle.addEventListener('keydown', (e) => {
+    Keymap.on(handle, "app.2", (e) => {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
       e.preventDefault();
       if (workspace.dataset.maximized || (mobileLayout && kind !== 'timeline')) return;
@@ -5211,10 +5218,10 @@ function setupModernUI() {
       drawTimeline();
       drawCurve();
       editView.dirty = true;
-    });
+    }, false);
   }
   window.addEventListener('blur', cancelAreaResize);
-  window.addEventListener('keydown', (e) => {
+  Keymap.on(window, "app.3", (e) => {
     if (
       e.key !== 'Escape' ||
       document.querySelector('dialog[open]') ||
@@ -5227,7 +5234,7 @@ function setupModernUI() {
       cancelAreaResize();
     } else maximizeArea(null);
     sync();
-  });
+  }, false);
   for (const button of document.querySelectorAll('[data-maximize]'))
     button.addEventListener('click', () => {
       maximizeArea(button.dataset.maximize);
@@ -5298,7 +5305,7 @@ function setupModernUI() {
   for (const id of ['rx', 'ry', 'rz', 'px', 'py', 'pz', 'sx', 'sy', 'sz']) {
     const input = $(id);
     input.addEventListener('focus', () => (input.dataset.before = input.value));
-    input.addEventListener('keydown', (e) => {
+    Keymap.on(input, "app.4", (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -5308,7 +5315,7 @@ function setupModernUI() {
         e.preventDefault();
         input.blur();
       }
-    });
+    }, false);
   }
   for (const details of document.querySelectorAll('details'))
     details.addEventListener('toggle', () => {
@@ -5518,9 +5525,7 @@ document.addEventListener(
   },
   true,
 );
-document.addEventListener(
-  'keydown',
-  (e) => {
+Keymap.on(document, "app.compare", (e) => {
     if (mode !== 'compare' || e.target.closest?.('input,select,textarea,[contenteditable=true]'))
       return;
     if (e.key === ' ' && e.target.closest?.('#compareWorkspace button,#compareWorkspace summary'))
@@ -5536,9 +5541,7 @@ document.addEventListener(
       e.preventDefault();
       e.stopImmediatePropagation();
     }
-  },
-  true,
-);
+  }, true);
 let compareHeight = 0.55,
   compareResizeDrag = null;
 try {
@@ -5589,7 +5592,7 @@ const endCompareResize = (e) => {
 };
 for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'])
   compareResize.addEventListener(event, endCompareResize);
-compareResize.addEventListener('keydown', (e) => {
+Keymap.on(compareResize, "app.6", (e) => {
   if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
     e.preventDefault();
     resizeCompare(
@@ -5605,7 +5608,7 @@ compareResize.addEventListener('keydown', (e) => {
     endCompareResize();
     resizeCompare(original, true);
   }
-});
+}, false);
 window.addEventListener('resize', () => resizeCompare(compareHeight));
 async function loadCompare(side, bytes, name, resources = [], overrides = [], companions = []) {
   const token = (comparison[side].importToken || 0) + 1;
@@ -7380,9 +7383,9 @@ function setupPoseContextMenu() {
   document.addEventListener('pointerdown', (event) => {
     if (!menu.contains(event.target)) close();
   });
-  window.addEventListener('keydown', (event) => {
+  Keymap.on(window, "app.7", (event) => {
     if (event.key === 'Escape') close();
-  });
+  }, false);
   window.addEventListener('blur', close);
 }
 function motionBaseline() {
@@ -7830,7 +7833,13 @@ listen('undoBtn', 'click', () => restoreHistory(historyIndex - 1));
 listen('redoBtn', 'click', () => restoreHistory(historyIndex + 1));
 listen('saveBtn', 'click', saveProject);
 function jumpKey(direction) {
-  if (!project || mode === 'compare' || sourcePreview || (sceneMode && !sceneEditing)) return;
+  if (!project || mode === 'compare' || (sceneMode && !sceneEditing)) return;
+  if (sourcePreview) {
+    const times = [...new Set(rig.clips[sourcePreview.index].tracks.flatMap(track => Array.from(track.times)))].sort((a,b)=>a-b);
+    const next = direction > 0 ? times.find(t => t > time + 1e-6) : times.filter(t => t < time - 1e-6).at(-1);
+    if (next !== undefined) { playing = false; seekSourceClip(next); }
+    return;
+  }
   const scope = selected === 'root' ? null : selected; // Root is the whole-character control.
   const target = TimelineTools.adjacentKey(project, scope, time, direction);
   if (target !== null) {
@@ -7971,7 +7980,7 @@ listen('timelineRuler', 'click', (e) => {
       $('showMinecraftTicks').checked && e.clientY - rect.top < 22 ? 20 : timelineRate(),
     );
 });
-listen('timelineRuler', 'keydown', (e) => {
+Keymap.on($('timelineRuler'), "app.8", guard((e) => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
   e.preventDefault();
   playing = false;
@@ -7986,7 +7995,7 @@ listen('timelineRuler', 'keydown', (e) => {
             project.duration,
           ),
   );
-});
+}), false);
 listen('moveKey', 'click', () => keyOperation('move'));
 listen('copyKey', 'click', () => keyOperation('copy'));
 listen('deleteKey', 'click', deleteTimelineKeys);
@@ -8374,9 +8383,7 @@ window.addEventListener('beforeunload', (e) => {
     e.returnValue = '';
   }
 });
-window.addEventListener(
-  'keydown',
-  guard((e) => {
+Keymap.on(window, "app.main", guard((e) => {
     if (mode === 'compare') return;
     if (sourcePreview) {
       if (
@@ -8384,7 +8391,8 @@ window.addEventListener(
         document.querySelector('dialog[open]')
       )
         return;
-      if (e.code === 'Space' && !e.target.closest('button,summary')) {
+      if ([',', '.'].includes(e.key)) { e.preventDefault(); jumpKey(e.key === '.' ? 1 : -1); }
+      else if (e.code === 'Space' && (!e.target.closest('button,summary') || !Keymap.nativeControlActivation(e))) {
         e.preventDefault();
         $('playBtn').click();
       } else if (e.key.toLowerCase() === 'q') resetThreeQuarter(activeEditView);
@@ -8419,7 +8427,7 @@ window.addEventListener(
       return;
     }
     if (
-      (e.code === 'Space' || e.key === 'Enter') &&
+      Keymap.nativeControlActivation(e) &&
       e.target.closest('button,summary,[role=separator]')
     )
       return;
@@ -8539,8 +8547,7 @@ window.addEventListener(
       }
       refresh();
     }
-  }),
-);
+  }), false);
 let hostActive = true;
 let lastStamp = performance.now(),
   playbackDiagnostics = { frames: 0, skipped: 0, last: 0, maxGap: 0 };
@@ -9139,12 +9146,12 @@ function setupSettingsWindow() {
   window.addEventListener('resize', () => {
     if (dialog.open) clampSettingsWindow();
   });
-  window.addEventListener('keydown', (e) => {
+  Keymap.on(window, "app.10", (e) => {
     if (e.key === 'Escape' && dialog.open) {
       e.preventDefault();
       dialog.close();
     }
-  });
+  }, false);
 }
 function cameraSnapshot(v) {
   return {
@@ -9274,7 +9281,7 @@ function setupNumericInputs() {
     input.inputMode = 'decimal';
     input.addEventListener('focus', () => input.select());
     input.addEventListener('click', () => input.select());
-    input.addEventListener('keydown', (e) => {
+    Keymap.on(input, "app.11", (e) => {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
       const n = Number(input.value);
       if (!input.value.trim() || !Number.isFinite(n)) return;
@@ -9286,7 +9293,7 @@ function setupNumericInputs() {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.select();
-    });
+    }, false);
   }
   const kinds = { rx: 'q', ry: 'q', rz: 'q', px: 'p', py: 'p', pz: 'p', sx: 's', sy: 's', sz: 's' };
   const restore = (drag) => {
@@ -9359,17 +9366,13 @@ function setupNumericInputs() {
       if (numericDrag?.input === input) end(false);
     });
   }
-  window.addEventListener(
-    'keydown',
-    (e) => {
+  Keymap.on(window, "app.12", (e) => {
       if (e.key === 'Escape' && numericDrag) {
         e.preventDefault();
         e.stopImmediatePropagation();
         end(true);
       }
-    },
-    { capture: true },
-  );
+    }, { capture: true });
   window.addEventListener('blur', () => end(true));
 }
 listen('saveSettingsPreset', 'click', () =>
@@ -9456,9 +9459,9 @@ $('timeline').addEventListener('pointerdown', (e) => {
 document.addEventListener('pointerdown', (e) => {
   if (!$('fileMenu').contains(e.target)) $('fileMenu').open = false;
 });
-window.addEventListener('keydown', (e) => {
+Keymap.on(window, "app.13", (e) => {
   if (e.key === 'Escape') $('fileMenu').open = false;
-});
+}, false);
 $('projectInput').addEventListener('change', () => {
   $('fileMenu').open = false;
 });
@@ -9595,13 +9598,13 @@ document.addEventListener('pointerdown', (e) => {
   }
   if (!e.target.closest('#rigPresetMenu')) $('rigPresetMenu').open = false;
 });
-window.addEventListener('keydown', (e) => {
+Keymap.on(window, "app.14", (e) => {
   if (e.key === 'Escape') {
     interpolationWindow.hidden = true;
     $('rigPresetMenu').open = false;
     $('interpolationPicker').setAttribute('aria-expanded', 'false');
   }
-});
+}, false);
 syncInterpolationChoice();
 
 function setSilhouette(enabled) {
@@ -9621,9 +9624,7 @@ function setSilhouette(enabled) {
   return result;
 }
 $('silhouetteBtn').onclick = () => setSilhouette(!silhouetteView.enabled);
-window.addEventListener(
-  'keydown',
-  (e) => {
+Keymap.on(window, "app.15", (e) => {
     if (
       e.code !== 'KeyS' ||
       !e.shiftKey ||
@@ -9638,9 +9639,7 @@ window.addEventListener(
     e.preventDefault();
     e.stopImmediatePropagation();
     setSilhouette(!silhouetteView.enabled);
-  },
-  { capture: true },
-);
+  }, { capture: true });
 viewportToolbar = new ViewportToolbar($('viewportGrid'), {
   changed: (persist) => {
     dirtyViews();
@@ -9904,6 +9903,8 @@ syncMinimalUI();
 setupDirector();
 modeLayout = installModeLayout({ save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
 window.__studio.layoutModes = modeLayout;
+setupKeymapActions();
+window.__studio.keymap = Keymap;
 window.__studio.ready = true;
 requestAnimationFrame(frame);
 
@@ -9985,12 +9986,12 @@ function setupModernWorkspace() {
     if (drag) width(drag.w + drag.x - e.clientX);
   };
   resize.onpointerup = resize.onpointercancel = resize.onlostpointercapture = () => (drag = null);
-  resize.onkeydown = (e) => {
+  Keymap.on(resize, "app.16", (e) => {
     if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
       width(sidebar.clientWidth + (e.key === 'ArrowLeft' ? 10 : -10));
     }
-  };
+  }, false);
   const update = () => {
     syncWorkspaceTools();
   };
@@ -10371,7 +10372,7 @@ function setupMinimalUX() {
   splitter.onpointerup = () => finish(false);
   splitter.onpointercancel = () => finish(true);
   splitter.onlostpointercapture = () => finish(false);
-  splitter.onkeydown = (e) => {
+  Keymap.on(splitter, "app.17", (e) => {
     if (e.key === 'Escape') {
       finish(true);
       return;
@@ -10386,16 +10387,16 @@ function setupMinimalUX() {
     try {
       localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings()));
     } catch {}
-  };
+  }, false);
   window.addEventListener('blur', () => finish(true));
   document.addEventListener('pointerdown', (e) => {
     for (const id of ['minimalViewMenu', 'minimalSpeed'])
       if (!e.target.closest('#' + id)) $(id).open = false;
   });
-  window.addEventListener('keydown', (e) => {
+  Keymap.on(window, "app.18", (e) => {
     if (e.key === 'Escape')
       for (const id of ['minimalViewMenu', 'minimalSpeed']) $(id).open = false;
-  });
+  }, false);
   syncMinimalUI();
   document
     .querySelectorAll('[data-workflow-step]')
@@ -10412,3 +10413,40 @@ document.addEventListener(
   },
   true,
 );
+
+function setupKeymapActions() {
+  const add = (id,name,group,scope,fn,extra={}) => Keymap.register({id,name,group,scope,defaults:[],...extra}, guard(e=>{e.preventDefault();fn(e);}));
+  const endTime=()=>sourcePreview?.duration ?? project.duration;
+  const navigate=fn=>{playing=false;fn();syncTime();drawTimeline();};
+  add('timeline.frameBack','Khung trước','Timeline','timeline',()=>navigate(()=>seek((Math.round(time*timelineRate())-1)/timelineRate())));
+  add('timeline.frameNext','Khung sau','Timeline','timeline',()=>navigate(()=>seek((Math.round(time*timelineRate())+1)/timelineRate())));
+  add('timeline.start','Về đầu timeline','Timeline','timeline',()=>navigate(()=>seek(0)));
+  add('timeline.end','Về cuối timeline','Timeline','timeline',()=>navigate(()=>seek(endTime())));
+  add('timeline.setEnd','Đặt điểm cuối tại đầu phát','Timeline','timeline',()=>{$('duration').value=String(Math.max(.1,time));$('duration').dispatchEvent(new Event('change'));},{mutates:true,selector:'#duration'});
+  add('timeline.marker','Thêm marker','Timeline','timeline',()=>{$('labAddMarker').click();},{mutates:true,selector:'#labAddMarker'});
+  add('timeline.graph','Bật/tắt Graph Editor','Timeline','timeline',()=>setAnimationEditor($('animationEditor').value==='graph'?'timeline':'graph'),{selector:'[data-editor-tab="graph"]'});
+  add('key.moveBack','Dời key sớm một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start-1/timelineRate());},{mutates:true});
+  add('key.moveNext','Dời key muộn một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start+1/timelineRate());},{mutates:true});
+  add('key.invert','Đảo chọn key','Keyframe','timeline',()=>{const all=C.bodyKeyRefs(rig,project);selectionKeys=all.filter(a=>!selectionKeys.some(b=>a.id===b.id&&a.time===b.time&&(a.kind||'keys')===(b.kind||'keys')));drawTimeline();});
+  add('tool.swap','Đổi công cụ dời/xoay','Khung 3D','viewport',()=>{$('transformMode').value=$('transformMode').value==='rotate'?'translate':'rotate';$('transformMode').dispatchEvent(new Event('change'));},{enabled:()=>document.body.dataset.layoutTab==='pose'&&!sourcePreview&&mode!=='compare'});
+  add('file.open','Mở project','Tệp','global',()=>$('projectInput').click());
+  add('file.rename','Đổi tên clip','Tệp','global',()=>{$('clipName').focus();$('clipName').select();},{mutates:true,selector:'#clipName'});
+  add('view.fullscreen','Toàn màn hình','Khung 3D','global',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen());
+  add('view.sidebars','Ẩn/hiện hai thanh bên','Bố cục','global',()=>{if(modeLayout?.layout==='modes'){ $('layoutPane-left').click();$('layoutPane-right').click(); }else{$('uiSidebarOpen').checked=!$('uiSidebarOpen').checked;syncMinimalUI();}});
+  for(const [id,label,preset] of [['initial','Ban đầu','reset'],['top','Trên','top'],['south','Trước','front'],['north','Sau','back'],['east','Phải','side'],['west','Trái','left']])add('view.'+id,'Camera · '+label,'Khung 3D','global',()=>setupViewPreset(activeEditView,preset));
+  add('view.bottom','Camera · Dưới','Khung 3D','global',()=>{setupViewPreset(activeEditView,'top');const target=activeEditView.orbit.target;activeEditView.camera.position.z=target.z-Math.abs(activeEditView.camera.position.z-target.z);activeEditView.camera.lookAt(target);activeEditView.dirty=true;});
+  add('view.screenshot','Chụp ảnh khung 3D','Khung 3D','global',()=>{const view=activeEditView;view.renderer.render(view.scene,view.camera);const a=document.createElement('a');a.download='animation-studio.png';a.href=view.renderer.domElement.toDataURL('image/png');a.click();});
+  add('view.projection','Phối cảnh / Trực giao','Khung 3D','global',()=>$('projectionBtn').click(),{selector:'#projectionBtn'});
+  const ui = installKeymapSettings({ mouseChanged: (profile, bindings) => {
+    const defaults={orbit:['0','none'],pan:['1','none'],zoom:['2','none']};
+    const names={orbit:'preview_rotate',pan:'preview_drag',zoom:'preview_zoom'};
+    for(const id of cameraActions){const raw=bindings?.[names[id]];let [button,modifier]=defaults[id];
+      if(raw && Number.isInteger(raw.key) && raw.key>=1 && raw.key<=3){button=String(raw.key-1);modifier=raw.alt?'alt':raw.ctrl?'ctrl':raw.shift?'shift':'none';}
+      else if(profile==='trackpad'){[button,modifier]=id==='orbit'?['0','none']:id==='pan'?['0','shift']:['0','ctrl'];}
+      $(id+'Button').value=button;$(id+'Modifier').value=modifier;
+    }
+    $('zoomWheel').checked=true;applyMouseSettings();
+    try {localStorage.setItem('animation-studio-settings',JSON.stringify(readSettings()));}catch{}
+  }});
+  if(Keymap.state.mouse!=='default')ui.applyMouse();
+}

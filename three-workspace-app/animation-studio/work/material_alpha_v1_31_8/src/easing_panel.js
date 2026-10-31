@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 import * as E from './easing.js';
 const pathFor = (id, strength) =>
   Array.from({ length: 65 }, (_, i) => {
@@ -55,13 +56,13 @@ export class EasingPanel {
       const card = e.target.closest('[data-preset]');
       if (card) this.animated = card.dataset.preset;
     });
-    this.root.addEventListener('keydown', (e) => {
+    Keymap.on(this.root, "easing_panel.0", (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         this.action('close', this.args());
       }
-    });
+    }, false);
   }
   args() {
     return { interp: this.choice, strength: this.strength, scope: this.scope };

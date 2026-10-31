@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 export class SmoothingPanel {
   constructor(host, { state, action }) {
     this.state = state;
@@ -27,13 +28,13 @@ export class SmoothingPanel {
       this.action('cancel');
       this.sync();
     });
-    this.root.addEventListener('keydown', (e) => {
+    Keymap.on(this.root, "smoothing_panel.0", (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         this.action('close');
       }
-    });
+    }, false);
   }
   args() {
     const get = (id) => this.root.querySelector('#' + id),

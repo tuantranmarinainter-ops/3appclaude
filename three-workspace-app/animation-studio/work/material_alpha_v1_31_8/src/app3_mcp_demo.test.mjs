@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
@@ -318,7 +319,7 @@ test(
       }
       assert.ok(ready, 'Next startup deadline: ' + serverLog);
       const { chromium } = require('playwright');
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch(browserOptions({ headless: true }));
       const context = await browser.newContext({ viewport: { width: 1500, height: 1200 } }),
         page = await context.newPage(),
         errors = [];

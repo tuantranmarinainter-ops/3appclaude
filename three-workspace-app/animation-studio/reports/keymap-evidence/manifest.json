@@ -1,0 +1,15 @@
+{
+  "main": "5985e23",
+  "suite": {
+    "tests": 148,
+    "pass": 143,
+    "fail": 0,
+    "skipped": 5
+  },
+  "playwright": "1.63.0",
+  "chromiumRevision": 1243,
+  "keymapPngSha256": "877cd5720650076315577018224d85e7935e1abb54ec15c0dc9264048268ce75",
+  "keymapSvgSha256": "f35eebd9ef68284330a6abf3971336ac149a7e6ac0f689eb922780a0a98422d3",
+  "svgRoundTripRgbDifference": 0,
+  "buildSha256": "cf1761944d63f72caed06a9d615bf8e013638b4dd38c5e0c7d27b3edf711aaa2"
+}

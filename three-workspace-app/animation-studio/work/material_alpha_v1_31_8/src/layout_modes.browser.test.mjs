@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -30,12 +31,10 @@ test(
     const base = 'http://127.0.0.1:' + server.address().port,
       errors = [];
     try {
-      browser = await chromium.launch({
-        executablePath:
-          process.env.CHROMIUM_PATH ??
-          (process.platform === 'win32' ? undefined : '/usr/bin/chromium'),
+      browser = await chromium.launch(browserOptions({
+        ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
         args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-      });
+      }));
       const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
       page.setDefaultTimeout(15000);
       page.on('pageerror', (e) => errors.push(e.message));

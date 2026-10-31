@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 import * as G from './graph_curves.js';
 const colors = ['#ee9292', '#8ae0aa', '#8eafff'],
   names = ['X', 'Y', 'Z'];
@@ -160,7 +161,7 @@ export class GraphEditor {
       },
       { passive: false },
     );
-    this.canvas.addEventListener('keydown', (e) => {
+    Keymap.on(this.canvas, "graph_editor.0", (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -178,7 +179,7 @@ export class GraphEditor {
         const s = this.state();
         this.action('seek', s.time + (e.key === 'ArrowRight' ? 1 : -1) / this.rate());
       }
-    });
+    }, false);
     for (const input of host.querySelectorAll('input[type=number]'))
       input.addEventListener('focus', () => input.select());
     window.addEventListener('blur', () => this.cancel());
@@ -202,7 +203,7 @@ export class GraphEditor {
     });
     splitter.addEventListener('pointerup', () => (resize = null));
     splitter.addEventListener('pointercancel', () => (resize = null));
-    splitter.addEventListener('keydown', (e) => {
+    Keymap.on(splitter, "graph_editor.1", (e) => {
       if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault();
         this.height = Math.max(
@@ -211,7 +212,7 @@ export class GraphEditor {
         );
         this.draw();
       }
-    });
+    }, false);
   }
   message(m) {
     this.host.querySelector('#graphMessage').textContent = m;

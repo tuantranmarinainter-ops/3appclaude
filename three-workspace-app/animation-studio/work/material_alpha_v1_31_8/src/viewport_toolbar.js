@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 export class ViewportToolbar {
   constructor(host, { changed, reset }) {
     this.host = host;
@@ -142,19 +143,17 @@ export class ViewportToolbar {
       h.addEventListener('pointerup', () => this.finish());
       h.addEventListener('pointercancel', () => this.finish(true));
       h.addEventListener('lostpointercapture', () => this.finish());
-      h.addEventListener('keydown', (e) => {
+      Keymap.on(h, "viewport_toolbar.0", (e) => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
         e.preventDefault();
         const value =
           Number($(axis === 'x' ? 'viewportSplitX' : 'viewportSplitY').value) +
           (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1) * (e.shiftKey ? 0.01 : 0.05);
         this.setSplit(axis, value, true);
-      });
+      }, false);
       return h;
     });
-    window.addEventListener(
-      'keydown',
-      (e) => {
+    Keymap.on(window, "viewport_toolbar.1", (e) => {
         if (e.key !== 'Escape') return;
         if (this.resize) {
           e.preventDefault();
@@ -165,9 +164,7 @@ export class ViewportToolbar {
           e.stopImmediatePropagation();
           this.close();
         }
-      },
-      { capture: true },
-    );
+      }, { capture: { capture: true }, owner: this.panel });
     window.addEventListener('blur', () => this.finish());
     new ResizeObserver(() => {
       if (!this.panel.hidden) {

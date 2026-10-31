@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 import { useClassicLayout } from './classic_test_layout.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,12 +26,10 @@ test(
     const dir = process.env.BB_EVIDENCE_DIR || path.join(tmpdir(), 'app3-bb-evidence');
     mkdirSync(dir, { recursive: true });
     try {
-      browser = await chromium.launch({
-        executablePath:
-          process.env.CHROMIUM_PATH ??
-          (process.platform === 'win32' ? undefined : '/usr/bin/chromium'),
+      browser = await chromium.launch(browserOptions({
+        ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
         args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-      });
+      }));
       const page = await browser.newPage({ viewport: { width: 1680, height: 1120 } }),
         errors = [];
       page.setDefaultTimeout(10000);

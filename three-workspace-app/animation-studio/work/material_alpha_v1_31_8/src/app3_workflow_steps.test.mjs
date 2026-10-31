@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,14 +41,12 @@ test(
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { chromium } = require('playwright');
-    const executablePath =
-      process.env.CHROMIUM_EXECUTABLE_PATH ||
-      (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
-    const browser = await chromium.launch({
+    const executablePath = process.env.CHROMIUM_PATH;
+    const browser = await chromium.launch(browserOptions({
       headless: true,
       ...(executablePath ? { executablePath } : {}),
       args: process.platform === 'linux' ? ['--no-sandbox', '--enable-unsafe-swiftshader'] : [],
-    });
+    }));
     try {
       const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
       const errors = [];

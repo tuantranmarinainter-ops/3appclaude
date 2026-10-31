@@ -3,3 +3,5 @@ Blockbench © JannisX11 và cộng sự, GPL-3.0-or-later.
 Nguồn, commit và thay đổi: vendor/BLOCKBENCH_PROVENANCE.md.
 Các vendor bên thứ ba giữ thông báo/giấy phép riêng đi kèm.
 App 1, App 2, App 4 và thư viện ngoài animation-studio/ không đổi giấy phép.
+
+Gói 6: dữ liệu preset phím được trích từ Blockbench, copyright JannisX11 và các cộng sự, GPL-3.0-or-later, commit ec0b2827104d0799c153bfb5f867579c0c44652f. Xem src/keymaps/PROVENANCE.json và tools/extract-keymaps.py. Mã router/settings là mã mới của App 3.

@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Original App 3 layout implementation; no Blockbench source, branding or icons copied.
 export const LAYOUT_SETTINGS = 'animation-studio-settings';
@@ -408,9 +409,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     persist();
   }
   preference.addEventListener('change', () => setLayout(preference.value));
-  document.addEventListener(
-    'keydown',
-    (event) => {
+  Keymap.on(document, "layout_modes.0", (event) => {
       if (
         layout !== 'modes' ||
         !event.ctrlKey ||
@@ -425,9 +424,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
       event.preventDefault();
       event.stopImmediatePropagation();
       selectTab(['pose', 'animate', 'export'][Number(event.key) - 1], true);
-    },
-    true,
-  );
+    }, true);
   $('toggleTimeline').addEventListener(
     'click',
     (event) => {

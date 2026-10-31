@@ -1,0 +1,850 @@
+[
+  {
+    "group": "app.0",
+    "action": "app.0.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.1",
+    "action": "app.1.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.2",
+    "action": "app.2.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.2",
+    "action": "app.2.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.2",
+    "action": "app.2.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.2",
+    "action": "app.2.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.3",
+    "action": "app.3.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.4",
+    "action": "app.4.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.4",
+    "action": "app.4.enter",
+    "before": "Enter",
+    "after": "Enter",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.compare",
+    "action": "view.compareReset",
+    "before": "Q",
+    "after": "Q",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.6",
+    "action": "app.6.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.6",
+    "action": "app.6.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.6",
+    "action": "app.6.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.6",
+    "action": "app.6.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.6",
+    "action": "app.6.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.7",
+    "action": "app.7.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.8",
+    "action": "app.8.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.8",
+    "action": "app.8.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.8",
+    "action": "app.8.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.8",
+    "action": "app.8.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "timeline.play",
+    "before": "Space",
+    "after": "Space",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.add",
+    "before": "K",
+    "after": "K",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "pose.keyContext",
+    "before": "I",
+    "after": "I",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "view.reset",
+    "before": "Q",
+    "after": "Q",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "view.focus",
+    "before": "E",
+    "after": "E",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "motion.toggle",
+    "before": "N",
+    "after": "N",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "tool.translate",
+    "before": "G",
+    "after": "G",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "tool.rotate",
+    "before": "R",
+    "after": "R",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "history.undo",
+    "before": "Mod+Z",
+    "after": "Mod+Z",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "history.redo",
+    "before": "Mod+Shift+Z",
+    "after": "Mod+Shift+Z",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.previous",
+    "before": ",",
+    "after": ",",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.next",
+    "before": ".",
+    "after": ".",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.delete",
+    "before": "Delete",
+    "after": "Delete",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.selectAll",
+    "before": "Mod+A",
+    "after": "Mod+A",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "edit.cancel",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.main",
+    "action": "key.delete",
+    "before": "Shift+Delete",
+    "after": "Shift+Delete",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.10",
+    "action": "app.10.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.11",
+    "action": "app.11.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.11",
+    "action": "app.11.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.12",
+    "action": "app.12.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.13",
+    "action": "app.13.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.14",
+    "action": "app.14.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.15",
+    "action": "view.silhouette",
+    "before": "Shift+S",
+    "after": "Shift+S",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.16",
+    "action": "app.16.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.16",
+    "action": "app.16.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.17",
+    "action": "app.17.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.17",
+    "action": "app.17.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.17",
+    "action": "app.17.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.17",
+    "action": "app.17.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "app.18",
+    "action": "app.18.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "easing_panel.0",
+    "action": "easing_panel.0.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.0",
+    "action": "graph_editor.0.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.0",
+    "action": "graph_editor.0.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.0",
+    "action": "graph_editor.0.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.0",
+    "action": "graph_editor.0.mod-a",
+    "before": "Mod+A",
+    "after": "Mod+A",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.1",
+    "action": "graph_editor.1.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "graph_editor.1",
+    "action": "graph_editor.1.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "layout_modes.0",
+    "action": "mode.pose",
+    "before": "Ctrl+1",
+    "after": "Ctrl+1",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "layout_modes.0",
+    "action": "mode.animate",
+    "before": "Ctrl+2",
+    "after": "Ctrl+2",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "layout_modes.0",
+    "action": "mode.export",
+    "before": "Ctrl+3",
+    "after": "Ctrl+3",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.enter",
+    "before": "Enter",
+    "after": "Enter",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.space",
+    "before": "Space",
+    "after": "Space",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.0",
+    "action": "motion_panel.0.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.1",
+    "action": "motion_panel.1.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.1",
+    "action": "motion_panel.1.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.1",
+    "action": "motion_panel.1.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.1",
+    "action": "motion_panel.1.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.1",
+    "action": "motion_panel.1.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.2",
+    "action": "motion_panel.2.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.3",
+    "action": "motion_panel.3.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.4",
+    "action": "motion_panel.4.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "motion_panel.4",
+    "action": "motion_panel.4.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "smoothing_panel.0",
+    "action": "smoothing_panel.0.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowleft",
+    "before": "Shift+ArrowLeft",
+    "after": "Shift+ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowright",
+    "before": "Shift+ArrowRight",
+    "after": "Shift+ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowup",
+    "before": "Shift+ArrowUp",
+    "after": "Shift+ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.0",
+    "action": "viewport_toolbar.0.arrowdown",
+    "before": "Shift+ArrowDown",
+    "after": "Shift+ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "viewport_toolbar.1",
+    "action": "viewport_toolbar.1.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.0",
+    "action": "workspace_ui.0.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.0",
+    "action": "workspace_ui.0.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.0",
+    "action": "workspace_ui.0.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.0",
+    "action": "workspace_ui.0.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.1",
+    "action": "workspace_ui.1.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.1",
+    "action": "workspace_ui.1.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.1",
+    "action": "workspace_ui.1.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.1",
+    "action": "workspace_ui.1.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.2",
+    "action": "workspace_ui.2.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.3",
+    "action": "workspace_ui.3.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowleft",
+    "before": "ArrowLeft",
+    "after": "ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowleft",
+    "before": "Shift+ArrowLeft",
+    "after": "Shift+ArrowLeft",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowright",
+    "before": "ArrowRight",
+    "after": "ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowright",
+    "before": "Shift+ArrowRight",
+    "after": "Shift+ArrowRight",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowup",
+    "before": "ArrowUp",
+    "after": "ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowup",
+    "before": "Shift+ArrowUp",
+    "after": "Shift+ArrowUp",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowdown",
+    "before": "ArrowDown",
+    "after": "ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.arrowdown",
+    "before": "Shift+ArrowDown",
+    "after": "Shift+ArrowDown",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.home",
+    "before": "Home",
+    "after": "Home",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.end",
+    "before": "End",
+    "after": "End",
+    "instances": 2,
+    "result": "PASS"
+  },
+  {
+    "group": "workspace_ui.4",
+    "action": "workspace_ui.4.escape",
+    "before": "Escape",
+    "after": "Escape",
+    "instances": 2,
+    "result": "PASS"
+  }
+]

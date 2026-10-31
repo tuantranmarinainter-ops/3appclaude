@@ -272,6 +272,15 @@ for (const file of ['shot_reverse', 'minecraft20_postprocess', 'minecraft20_expo
   imports['@studio/' + file.replaceAll('_', '-')] =
     'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 }
+for (const [id, file] of [['keymap-catalog','keymap_catalog.js'],['keymap-presets','keymaps/presets.js'],['keymap','keymap.js'],['keymap-settings','keymap_settings.js']]) {
+  let code = await fs.readFile(path.join(root, 'src', file), 'utf8');
+  code = code.replaceAll("'./keymap_catalog.js'", "'@studio/keymap-catalog'").replaceAll("'./keymaps/presets.js'", "'@studio/keymap-presets'").replaceAll("'./keymap.js'", "'@studio/keymap'");
+  imports['@studio/' + id] = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+}
+for (const [id, value] of Object.entries(imports)) if (value.startsWith('data:text/javascript;base64,')) {
+  const code = Buffer.from(value.slice('data:text/javascript;base64,'.length), 'base64').toString('utf8').replaceAll("'./keymap.js'", "'@studio/keymap'");
+  imports[id] = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+}
 let html = await fs.readFile(path.join(root, 'src/index.html'), 'utf8');
 const app = (
   (await fs.readFile(path.join(root, 'src/app.js'), 'utf8')) +
@@ -288,6 +297,8 @@ const app = (
   '\n' +
   (await fs.readFile(path.join(root, 'src/shot_controller.js'), 'utf8'))
 )
+  .replaceAll("'./keymap.js'", "'@studio/keymap'")
+  .replaceAll("'./keymap_settings.js'", "'@studio/keymap-settings'")
   .replace("'./keyframe_time.js'", "'@studio/keyframe-time'")
   .replace("'./pose_clipboard.js'", "'@studio/pose-clipboard'")
   .replace("'./minecraft20_export.js'", "'@studio/minecraft20-export'")

@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 const regions = [
   'body',
   'head',
@@ -165,7 +166,7 @@ export class MotionPanel {
           pose: Number(this.el('motionPoseLibrary').value),
         });
     });
-    root.addEventListener('keydown', (e) => {
+    Keymap.on(root, "motion_panel.0", (e) => {
       const joint = e.target.closest('[data-joint]');
       if (joint && ['Enter', ' '].includes(e.key)) {
         e.preventDefault();
@@ -189,7 +190,7 @@ export class MotionPanel {
         this.sync();
         this.el('motionTab_' + this.tab).focus();
       }
-    });
+    }, false);
     for (const [id, action] of [
       ['motionSpace', 'space'],
       ['motionFloor', 'floor'],
@@ -276,7 +277,7 @@ export class MotionPanel {
     h.addEventListener('pointercancel', () => end(true));
     h.addEventListener('lostpointercapture', () => end(true));
     window.addEventListener('blur', () => end(true));
-    h.addEventListener('keydown', (e) => {
+    Keymap.on(h, "motion_panel.1", (e) => {
       if (e.key === 'Escape' && this.drag) {
         e.preventDefault();
         end(true);
@@ -293,17 +294,13 @@ export class MotionPanel {
           (e.key === 'ArrowUp' ? -10 : e.key === 'ArrowDown' ? 10 : 0);
       this.position(x, y);
       this.clamp();
-    });
-    window.addEventListener(
-      'keydown',
-      (e) => {
+    }, false);
+    Keymap.on(window, "motion_panel.2", (e) => {
         if (e.key === 'Escape' && this.drag) {
           e.preventDefault();
           end(true);
         }
-      },
-      true,
-    );
+      }, { capture: true, owner: this.root });
   }
   setupHandDrag() {
     let drag = null;
@@ -391,9 +388,7 @@ export class MotionPanel {
     this.root.addEventListener('pointercancel', () => end(true));
     this.root.addEventListener('lostpointercapture', () => end(true));
     window.addEventListener('blur', () => end(true));
-    window.addEventListener(
-      'keydown',
-      (e) => {
+    Keymap.on(window, "motion_panel.3", (e) => {
         if (e.key === 'Escape' && wheel) {
           e.preventDefault();
           clearTimeout(wheelTimer);
@@ -406,10 +401,8 @@ export class MotionPanel {
           e.stopImmediatePropagation();
           end(true);
         }
-      },
-      true,
-    );
-    this.root.addEventListener('keydown', (e) => {
+      }, { capture: true, owner: this.root });
+    Keymap.on(this.root, "motion_panel.4", (e) => {
       const el = e.target.closest('.motion-hand-grip');
       if (
         !el ||
@@ -428,7 +421,7 @@ export class MotionPanel {
         });
         this.action('handEnd', {});
       }
-    });
+    }, false);
   }
   sync() {
     const s = this.state();

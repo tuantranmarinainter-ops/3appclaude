@@ -20,8 +20,7 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 let browser;
 try {
   browser = await chromium.launch({
-    executablePath:
-      process.env.CHROMIUM_PATH ?? (process.platform === 'win32' ? undefined : '/usr/bin/chromium'),
+    ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
     args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage({ viewport: { width: 1680, height: 1120 } });
