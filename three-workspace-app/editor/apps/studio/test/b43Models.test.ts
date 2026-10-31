@@ -16,7 +16,7 @@ test('unchanged model is reused; route validates before 304; texture mtime rebui
   process.env.W01_VFX_PREVIEWS = path.join(temp, 'vfx')
   try {
     const model = path.join(temp, 'model.bobj'), textures = path.join(temp, 'textures')
-    const armature = readFileSync('apps/studio/public/retarget/v9.12/minecraft20-armature.bobj', 'utf8')
+    const armature = readFileSync(new URL('../public/retarget/v9.12/minecraft20-armature.bobj', import.meta.url), 'utf8')
     writeFileSync(model, `${armature}\no Body\no_arm minecraft20\nv 0 0 0\nvw body 1\nv 0 2 0\nvw head 1\nv 1 0 0\nvw body 1\nf 1 2 3\n`)
     mkdirSync(path.join(textures, 'Body'), { recursive: true })
     const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
