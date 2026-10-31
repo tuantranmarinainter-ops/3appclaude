@@ -112,10 +112,13 @@ imports['@studio/graph-editor'] =
 imports['@studio/joint-limits'] =
   'data:text/javascript;base64,' +
   Buffer.from(await fs.readFile(path.join(root, 'src/joint_limits.js'), 'utf8')).toString('base64');
+imports['@studio/molang'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/molang.js'), 'utf8')).toString('base64');
+imports['@studio/molang-panel'] = 'data:text/javascript;base64,' + Buffer.from((await fs.readFile(path.join(root, 'src/molang_panel.js'), 'utf8')).replace("'./molang.js'", "'@studio/molang'")).toString('base64');
 imports['@studio/core'] =
   'data:text/javascript;base64,' +
   Buffer.from(
     (await fs.readFile(path.join(root, 'src/core.js'), 'utf8'))
+      .replace("'./molang.js'", "'@studio/molang'")
       .replace("'./director_schema.js'", "'@studio/director-schema'")
       .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
       .replace("'./layout_modes.js'", "'@studio/layout-modes'")
@@ -297,6 +300,7 @@ const app = (
   '\n' +
   (await fs.readFile(path.join(root, 'src/shot_controller.js'), 'utf8'))
 )
+  .replaceAll("'./molang_panel.js'", "'@studio/molang-panel'")
   .replaceAll("'./keymap.js'", "'@studio/keymap'")
   .replaceAll("'./keymap_settings.js'", "'@studio/keymap-settings'")
   .replace("'./keyframe_time.js'", "'@studio/keyframe-time'")

@@ -19,3 +19,7 @@ Chỉ App 3 mang mã GPL; không import vào editor/packages hoặc App 4.
 Nguồn: Blockbench ec0b2827104d0799c153bfb5f867579c0c44652f, các Action/Tool/Toggle/KeybindItem trong js/ và keymaps/{blender,maya,cinema4d}.bbkeymap. SPDX GPL-3.0-or-later. Copyright JannisX11 và các cộng sự.
 Trích bằng `python tools/extract-keymaps.py <checkout-hoặc-archive-ec0b282>`; không thực thi mã nguồn upstream. Kết quả tại work/material_alpha_v1_31_8/src/keymaps/presets.js; danh sách ánh xạ, mọi mục bỏ qua và hash SHA-256 nguồn ở PROVENANCE.json cùng thư mục. Router, adapter widget và giao diện cài đặt tự viết, không sao chép UI/ảnh/logo upstream.
 Không có tương đương ở App3 hiện tại: UV/mesh/paint, công cụ pivot chỉnh được, sao chép/cắt/dán/nhân bản key (Gói2), đóng project. Không đăng ký lệnh giả; các gói sau dùng Keymap.register để thêm tương đương thật.
+
+## Gói 2 — Molang
+
+`src/molang.js` là parser và bộ đánh giá Molang viết độc lập cho tập con trong đặc tả, không chép mã Blockbench hoặc thư viện bên thứ ba. SPDX: GPL-3.0-or-later (giấy phép App 3). `src/molang_panel.js` và các tích hợp là mã mới của App 3.
