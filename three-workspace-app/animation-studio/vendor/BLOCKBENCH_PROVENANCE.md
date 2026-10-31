@@ -23,3 +23,7 @@ Không có tương đương ở App3 hiện tại: UV/mesh/paint, công cụ piv
 ## Gói 2 — Molang
 
 `src/molang.js` là parser và bộ đánh giá Molang viết độc lập cho tập con trong đặc tả, không chép mã Blockbench hoặc thư viện bên thứ ba. SPDX: GPL-3.0-or-later (giấy phép App 3). `src/molang_panel.js` và các tích hợp là mã mới của App 3.
+
+## Gói 3 — Bedrock animation JSON
+
+`src/bedrock_animation.js` (codec) và `src/bedrock_panel.js` (giao diện) là mã mới của App 3. Chỉ lấy **quy ước định dạng** từ Blockbench ec0b2827104d0799c153bfb5f867579c0c44652f, `js/formats/bedrock/bedrock_animation.js` và `js/io/format.ts` (SPDX GPL-3.0-or-later, Copyright JannisX11 và các cộng sự): cấu trúc `animations.<tên>.bones.<xương>.{rotation,position,scale}`, giá trị `loop` (true / "hold_on_last_frame"), `pre`/`post` + `lerp_mode: "catmullrom"`, thứ tự Euler mặc định ZYX, đảo dấu xoay X/Y và vị trí X, 16 pixel mỗi block, `format_version` 1.8.0. Không chép đoạn mã nào; phần quy đổi từ khoá xương của App 3 (quaternion cục bộ, tư thế nghỉ, tỉ lệ armature) và cách bọc biểu thức Molang là thiết kế riêng.

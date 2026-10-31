@@ -1,5 +1,8 @@
 import { installMolangPanel } from './molang_panel.js';
+import { installBedrockPanel } from './bedrock_panel.js';
+import * as Bedrock from './bedrock_animation.js';
 let molangPanel = null;
+let bedrockPanel = null;
 import * as Keymap from './keymap.js';
 import { installKeymapSettings } from './keymap_settings.js';
 Keymap.initialize();
@@ -9926,6 +9929,37 @@ syncMinimalUI();
 setupDirector();
 modeLayout = installModeLayout({ save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
 window.__studio.layoutModes = modeLayout;
+bedrockPanel = installBedrockPanel(document.querySelector('#exportPanel'), {
+  exportFile() {
+    const out = Bedrock.exportAnimation(project, rig, { name: project.name, sample: (keys, t, rest) => C.sampleKeys(keys, t, rest, project) });
+    const filename = safeName() + '.animation.json';
+    download(JSON.stringify(out.file, null, 2), filename, 'application/json');
+    return { filename, warnings: out.warnings };
+  },
+  parse(text) {
+    let json;
+    try { json = JSON.parse(text); } catch { throw Error('Tệp không phải JSON hợp lệ.'); }
+    return { json, names: Bedrock.listAnimations(json) };
+  },
+  plan(parsed, name) {
+    const plan = Bedrock.matchBones(parsed.json.animations[name || parsed.names[0]], rig);
+    return { ...plan, bones: plan.bones.map((bone) => ({ id: bone.id, name: bone.name })) };
+  },
+  apply(parsed, name, mapping) {
+    assertEditingAllowed();
+    const result = Bedrock.importAnimation(parsed.json, rig, { animation: name || parsed.names[0], mapping, variables: project.molangVariables || {} });
+    const ids = Object.keys(result.keys);
+    if (!ids.length) throw Error('Không có xương nào được nhập.');
+    for (const id of ids) project.keys[id] = result.keys[id];
+    project.duration = Math.min(300, Math.max(0.1, result.duration));
+    project.loop = [0, project.duration];
+    project.playMode = result.playMode;
+    if (result.startDelay !== undefined) project.startDelay = result.startDelay;
+    if (result.loopDelay !== undefined) project.loopDelay = result.loopDelay;
+    C.evaluate(rig, project, Math.min(time, project.duration)); commit(); refresh();
+    return { bones: ids.length, warnings: result.warnings };
+  },
+});
 molangPanel = installMolangPanel(document.querySelector('.key-editor'), {
   state() {
     const selectedKeys = selectionKeys.filter(r => (r.kind || 'keys') === 'keys');
@@ -10497,6 +10531,8 @@ function setupKeymapActions() {
   add('key.invert','Đảo chọn key','Keyframe','timeline',()=>{const all=C.bodyKeyRefs(rig,project);selectionKeys=all.filter(a=>!selectionKeys.some(b=>a.id===b.id&&a.time===b.time&&(a.kind||'keys')===(b.kind||'keys')));drawTimeline();});
   add('tool.swap','Đổi công cụ dời/xoay','Khung 3D','viewport',()=>{$('transformMode').value=$('transformMode').value==='rotate'?'translate':'rotate';$('transformMode').dispatchEvent(new Event('change'));},{enabled:()=>document.body.dataset.layoutTab==='pose'&&!sourcePreview&&mode!=='compare'});
   add('file.open','Mở project','Tệp','global',()=>$('projectInput').click());
+  add('file.bedrockExport','Xuất Bedrock animation JSON','Tệp','global',()=>bedrockPanel?.exportNow());
+  add('file.bedrockImport','Nhập Bedrock animation JSON','Tệp','global',()=>bedrockPanel?.openImport(),{mutates:true});
   add('file.rename','Đổi tên clip','Tệp','global',()=>{$('clipName').focus();$('clipName').select();},{mutates:true,selector:'#clipName'});
   add('view.fullscreen','Toàn màn hình','Khung 3D','global',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen());
   add('view.sidebars','Ẩn/hiện hai thanh bên','Bố cục','global',()=>{if(modeLayout?.layout==='modes'){ $('layoutPane-left').click();$('layoutPane-right').click(); }else{$('uiSidebarOpen').checked=!$('uiSidebarOpen').checked;syncMinimalUI();}});

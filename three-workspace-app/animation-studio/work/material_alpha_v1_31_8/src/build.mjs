@@ -114,6 +114,8 @@ imports['@studio/joint-limits'] =
   Buffer.from(await fs.readFile(path.join(root, 'src/joint_limits.js'), 'utf8')).toString('base64');
 imports['@studio/molang'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/molang.js'), 'utf8')).toString('base64');
 imports['@studio/molang-panel'] = 'data:text/javascript;base64,' + Buffer.from((await fs.readFile(path.join(root, 'src/molang_panel.js'), 'utf8')).replace("'./molang.js'", "'@studio/molang'")).toString('base64');
+imports['@studio/bedrock-animation'] = 'data:text/javascript;base64,' + Buffer.from((await fs.readFile(path.join(root, 'src/bedrock_animation.js'), 'utf8')).replace("'./molang.js'", "'@studio/molang'").replace("'./timeline_tools.js'", "'@studio/timeline-tools'")).toString('base64');
+imports['@studio/bedrock-panel'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/bedrock_panel.js'), 'utf8')).toString('base64');
 imports['@studio/core'] =
   'data:text/javascript;base64,' +
   Buffer.from(
@@ -301,6 +303,8 @@ const app = (
   (await fs.readFile(path.join(root, 'src/shot_controller.js'), 'utf8'))
 )
   .replaceAll("'./molang_panel.js'", "'@studio/molang-panel'")
+  .replaceAll("'./bedrock_panel.js'", "'@studio/bedrock-panel'")
+  .replaceAll("'./bedrock_animation.js'", "'@studio/bedrock-animation'")
   .replaceAll("'./keymap.js'", "'@studio/keymap'")
   .replaceAll("'./keymap_settings.js'", "'@studio/keymap-settings'")
   .replace("'./keyframe_time.js'", "'@studio/keyframe-time'")
