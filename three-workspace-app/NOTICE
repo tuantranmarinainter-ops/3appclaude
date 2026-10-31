@@ -31,3 +31,5 @@ from BBSFix-Blender512. Their full license is
 agent/film_worker/vendor/LICENSE-GPL-2.0-or-later.txt; source hashes and origin
 are recorded in agent/film_worker/NOTICE.md. Review license compatibility before
 redistributing the combined application with this GPL helper.
+
+animation-studio/ (App 3) is GPL-3.0-or-later, not Apache-2.0; see animation-studio/LICENSE and NOTICE.
