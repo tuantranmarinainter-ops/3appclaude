@@ -49,6 +49,9 @@ test('onion spread keeps source state in classic and modes layouts', { timeout: 
       await page.evaluate(() => { const e=document.getElementById('onionSpread'); e.value='0'; e.dispatchEvent(new Event('input')); });
       await page.waitForFunction(() => window.__studio.onion().slots[10]?.guide.visible === false);
     }
+    await page.evaluate(async () => { await window.__studio.dual.enable(true); window.__studio.dual.activate('B'); document.getElementById('keyBtn').click(); window.__studio.seek(1); const e=document.getElementById('onionSpread'); e.value='60'; e.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => window.__studio.dual.slots().active === 'B' && window.__studio.onion().samples.length > 0 && window.__studio.onion().slots[0].guide.visible);
+    assert.equal(await page.evaluate(() => window.__studio.dual.slots().enabled), true);
   } finally {
     await browser?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   }
