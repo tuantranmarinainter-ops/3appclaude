@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -28,6 +29,7 @@ test(
         errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('dialog', (dialog) => dialog.accept());
+      await useClassicLayout(page);
       await page.goto('http://127.0.0.1:' + server.address().port);
       await page.waitForFunction(() => window.__studio?.ready);
       assert.equal(await page.locator('#poseKeepHeight').isChecked(), false);

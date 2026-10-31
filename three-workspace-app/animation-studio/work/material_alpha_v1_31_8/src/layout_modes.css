@@ -1,0 +1,402 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later — original App 3 layout styles. */
+[data-mode-layout] {
+  display: none;
+}
+body.layout-modes {
+  --lm-panel: var(--panel, #272c33);
+  --lm-background: var(--bg, #1e2228);
+  --lm-line: var(--line, #414955);
+  --lm-text: var(--text, #eef1f6);
+  --lm-accent: var(--accent, #a4c5ed);
+  background: var(--lm-background);
+  color: var(--lm-text);
+}
+.layout-modes #layoutModeTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--lm-panel);
+  border-bottom: 1px solid var(--lm-line);
+  flex: none;
+  min-height: 38px;
+}
+.layout-modes #layoutModeTabs [role='tab'] {
+  min-width: 82px;
+  font-weight: 600;
+}
+.layout-modes #layoutModeTabs [aria-selected='true'] {
+  box-shadow: inset 0 -2px var(--lm-accent);
+}
+.layout-modes #layoutPane-left {
+  margin-left: auto;
+}
+.layout-modes #createWorkspace {
+  display: grid !important;
+  grid-template-columns: var(--studio-left-width, 260px) 6px minmax(0, 1fr) 6px var(
+      --right-width,
+      320px
+    );
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+.layout-modes #createWorkspace[hidden] {
+  display: none !important;
+}
+.layout-modes #createWorkspace > .stage {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.layout-modes #minimalSidebar,
+.layout-modes #createWorkspace > .library,
+.layout-modes #createWorkspace > [data-resize='left'],
+.layout-modes .studio-mobile-pane-tools {
+  display: none !important;
+}
+.layout-modes #layoutLeft,
+.layout-modes #layoutRight {
+  display: block;
+  grid-row: 1;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--lm-panel);
+  padding: 7px;
+}
+.layout-modes #layoutLeft {
+  grid-column: 1;
+  border-right: 1px solid var(--lm-line);
+}
+.layout-modes #layoutRight {
+  grid-column: 5;
+  border-left: 1px solid var(--lm-line);
+}
+.layout-modes [data-layout-grip] {
+  display: block !important;
+  grid-row: 1;
+  position: static !important;
+  width: 6px !important;
+  min-width: 0 !important;
+  cursor: ew-resize;
+  background: var(--lm-line);
+}
+.layout-modes [data-layout-slot] {
+  border-bottom: 1px solid var(--lm-line);
+  padding: 3px 0;
+  margin: 0 0 7px;
+  min-width: 0;
+}
+.layout-modes [data-layout-slot] > summary {
+  font-weight: 600;
+  padding: 5px;
+  cursor: pointer;
+}
+.layout-modes [data-layout-slot][hidden] {
+  display: none !important;
+}
+.layout-modes [data-layout-slot] #treeSection,
+.layout-modes [data-layout-slot] #poseSection,
+.layout-modes [data-layout-slot] > .properties,
+.layout-modes [data-layout-slot] > #exportPanel,
+.layout-modes [data-layout-slot] > #minimalMaterial,
+.layout-modes #layoutSlot-clipboard > #blockingPoseClipboard {
+  display: block !important;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  position: static;
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 4px;
+}
+.layout-modes #layoutLeft .bone-list {
+  max-height: 36vh;
+  overflow: auto;
+}
+.layout-modes #layoutSlot-clipboard button {
+  margin: 3px;
+}
+.layout-modes #layoutMainTools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 4px 8px;
+  background: var(--lm-panel);
+  border-bottom: 1px solid var(--lm-line);
+  flex: none;
+}
+.layout-modes #layoutTransformTools,
+.layout-modes #layoutPlaybackTools {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.layout-modes #layoutTransformTools > #transformTools {
+  position: static;
+  display: flex !important;
+  flex-direction: row;
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.layout-modes #layoutTransformTools > #transformTools button {
+  width: 34px;
+  min-height: 30px;
+}
+.layout-modes #layoutTransformTools #animationListToggle {
+  width: 34px;
+}
+.layout-modes #layoutMoreTools {
+  margin-left: auto;
+  position: relative;
+}
+.layout-modes #layoutMoreTools > summary {
+  cursor: pointer;
+  list-style: none;
+  min-width: 40px;
+  text-align: center;
+  font-size: 20px;
+}
+.layout-modes #layoutMoreContent {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 80;
+  background: var(--lm-panel);
+  border: 1px solid var(--lm-line);
+  padding: 10px;
+  width: min(500px, 85vw);
+  max-height: 65vh;
+  overflow: auto;
+  box-shadow: 0 10px 35px #0008;
+}
+.layout-modes #layoutMoreContent > .stage-toolbar {
+  display: flex;
+  position: static;
+  flex-direction: column;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.layout-modes #layoutMoreContent > .stage-toolbar > .row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.layout-modes #layoutMoreContent .studio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: auto;
+}
+.layout-modes #layoutMoreContent #workflowTools {
+  display: block;
+}
+.layout-modes #createWorkspace #viewportShell {
+  flex: 1;
+  min-height: 100px;
+  min-width: 0;
+}
+.layout-modes #createWorkspace #viewportGrid {
+  height: 100%;
+  min-height: 100px;
+}
+.layout-modes #createWorkspace .transport {
+  flex: none;
+  flex-wrap: wrap;
+  height: auto;
+  max-height: 92px;
+  overflow: auto;
+}
+.layout-modes #createWorkspace #animationArea {
+  flex: none;
+  height: var(--timeline-height, 240px);
+  min-height: 80px;
+  max-height: 50vh;
+}
+.layout-modes:not([data-layout-tab='animate']) #animationArea,
+.layout-modes:not([data-layout-tab='animate']) [data-resize='timeline'],
+.layout-modes:not([data-layout-tab='animate']) #createWorkspace .transport,
+.layout-modes:not([data-layout-tab='animate']) #layoutPlaybackTools {
+  display: none !important;
+}
+.layout-modes[data-layout-tab='export'] #layoutTransformTools {
+  display: none;
+}
+.layout-modes.layout-bottom-closed #animationArea,
+.layout-modes.layout-bottom-closed [data-resize='timeline'] {
+  display: none !important;
+}
+.layout-modes.layout-left-closed #createWorkspace {
+  grid-template-columns: 0 0 minmax(0, 1fr) 6px var(--right-width, 320px);
+}
+.layout-modes.layout-right-closed #createWorkspace {
+  grid-template-columns: var(--studio-left-width, 260px) 6px minmax(0, 1fr) 0 0;
+}
+.layout-modes.layout-left-closed.layout-right-closed #createWorkspace {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
+}
+.layout-modes.layout-left-closed #layoutLeft,
+.layout-modes.layout-left-closed [data-layout-grip='left'],
+.layout-modes.layout-right-closed #layoutRight,
+.layout-modes.layout-right-closed [data-layout-grip='right'] {
+  display: none !important;
+}
+.layout-modes #floatingAnimationList {
+  position: fixed !important;
+  left: 15px;
+  top: 150px;
+  bottom: 20px;
+  z-index: 90;
+  width: min(340px, 90vw);
+  max-width: 90vw;
+  box-shadow: 0 8px 30px #0009;
+}
+.layout-classic #layoutOpenSmall {
+  display: none;
+}
+.layout-modes #layoutDrawerBackdrop {
+  display: none;
+}
+@media (max-width: 1024px) {
+  .layout-modes #createWorkspace {
+    grid-template-columns: 0 0 minmax(0, 1fr) 0 0 !important;
+  }
+  .layout-modes [data-layout-grip] {
+    display: none !important;
+  }
+  .layout-modes #layoutLeft,
+  .layout-modes #layoutRight {
+    display: block !important;
+    position: fixed;
+    top: 140px;
+    bottom: 20px;
+    z-index: 71;
+    width: min(340px, 88vw);
+    visibility: hidden;
+    pointer-events: none;
+    box-shadow: 0 10px 40px #000a;
+  }
+  .layout-modes #layoutLeft {
+    left: 0;
+    transform: translateX(-105%);
+  }
+  .layout-modes #layoutRight {
+    right: 0;
+    transform: translateX(105%);
+  }
+  .layout-modes.layout-drawer-left #layoutLeft,
+  .layout-modes.layout-drawer-right #layoutRight {
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+  }
+  .layout-modes.layout-drawer-left #layoutDrawerBackdrop,
+  .layout-modes.layout-drawer-right #layoutDrawerBackdrop {
+    display: block;
+    position: fixed;
+    inset: 140px 0 0;
+    z-index: 70;
+    background: #0005;
+    border: 0;
+  }
+  .layout-modes #layoutModeTabs {
+    gap: 2px;
+    overflow: auto;
+  }
+  .layout-modes #layoutModeTabs [role='tab'] {
+    min-width: 66px;
+    padding: 4px;
+  }
+  .layout-modes #layoutModeTabs .layout-pane-toggle {
+    font-size: 11px;
+    padding: 4px;
+    white-space: nowrap;
+  }
+  .layout-modes > header {
+    height: auto;
+    min-height: 58px;
+    gap: 5px;
+    flex-wrap: wrap;
+    padding: 4px 8px;
+  }
+  .layout-modes > header #workflowSteps button {
+    font-size: 11px;
+    padding: 3px 6px;
+    white-space: nowrap;
+  }
+  .layout-modes > header .studio-identity {
+    max-width: 130px;
+  }
+  .layout-modes > header .header-actions {
+    margin-left: auto;
+    gap: 2px;
+  }
+  .layout-modes #createWorkspace #animationArea {
+    max-height: 40vh;
+  }
+}
+/* Own grid tracks take priority over the classic dock's conditional selectors. */
+body.layout-modes #createWorkspace {
+  grid-template-columns: var(--studio-left-width, 260px) 6px minmax(0, 1fr) 6px var(
+      --right-width,
+      320px
+    ) !important;
+}
+body.layout-modes #createWorkspace > .stage {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+}
+body.layout-modes.layout-left-closed #createWorkspace {
+  grid-template-columns: 0 0 minmax(0, 1fr) 6px var(--right-width, 320px) !important;
+}
+body.layout-modes.layout-right-closed #createWorkspace {
+  grid-template-columns: var(--studio-left-width, 260px) 6px minmax(0, 1fr) 0 0 !important;
+}
+body.layout-modes.layout-left-closed.layout-right-closed #createWorkspace {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0 0 !important;
+}
+body.layout-modes #createWorkspace #viewportShell {
+  display: flex !important;
+  position: relative;
+}
+body.layout-modes #createWorkspace #viewportGrid {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 1024px) {
+  body.layout-modes #createWorkspace {
+    grid-template-columns: 0 0 minmax(0, 1fr) 0 0 !important;
+  }
+  body.layout-modes #createWorkspace > .stage {
+    grid-column: 3 !important;
+  }
+}
+
+body.layout-modes #layoutOpenSmall {
+  display: inline-block;
+}
+
+.layout-modes .transport > .studio-group[aria-label='Phát animation'] {
+  display: none;
+}
+.layout-modes #layoutSlot-project > #projectDetails > summary,
+.layout-modes #layoutSlot-poses #poseLibrary > summary,
+.layout-modes #layoutSlot-export > #exportPanel > summary {
+  display: none;
+}
+
+body.layout-modes #animationArea { overflow: auto; }

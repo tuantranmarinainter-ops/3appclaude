@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
@@ -387,6 +388,7 @@ test(
         { assetId, skeletonId: Object.keys(loaded.skeletons)[0], name: 'E5 sample actor' },
         projectId,
       );
+      await useClassicLayout(page);
       await page.goto(`${base}/?unified=${projectId}`);
       await page
         .locator('nav[aria-label="5 workspace"], nav[aria-label="Chế độ biên tập trong App 2"]')

@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -35,6 +36,7 @@ test(
       page.setDefaultTimeout(10000);
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('dialog', (d) => d.accept());
+      await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await page.waitForFunction(() => window.__studio?.ready);
       await page.evaluate(async () => {

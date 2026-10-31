@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -23,6 +24,7 @@ test(
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage();
+      await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => window.__studio?.ready);
       const result = await page.evaluate(async () => {

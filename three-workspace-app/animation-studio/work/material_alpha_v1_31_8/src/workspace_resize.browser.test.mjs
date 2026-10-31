@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -41,6 +42,7 @@ test(
       });
       page.on('pageerror', (error) => console.error(error));
       page.setDefaultTimeout(60000);
+      await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}`, {
         waitUntil: 'domcontentloaded',
         timeout: 60000,
