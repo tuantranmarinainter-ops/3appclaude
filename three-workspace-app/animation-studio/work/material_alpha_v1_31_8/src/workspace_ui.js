@@ -149,6 +149,30 @@ function setupStudioWorkspace() {
     $('playbackExportNote'),
     $('minimalSpeed'),
   ]);
+  // Fixed menus escape the scrolling toolbar while retaining the original controls.
+  const floatingMenus = ['minimalViewMenu', 'minimalSpeed', 'rigPresetMenu'].map((id) => $(id));
+  const positionFloatingMenu = (menu) => {
+    const panel = menu.querySelector(':scope > div');
+    if (!panel) return;
+    if (getComputedStyle(panel).position !== 'fixed') {
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('top');
+      return;
+    }
+    if (!menu.open) return;
+    const anchor = menu.querySelector('summary').getBoundingClientRect();
+    const box = panel.getBoundingClientRect();
+    const left = Math.max(4, Math.min(innerWidth - box.width - 4, anchor.right - box.width));
+    const preferred = menu.id === 'minimalSpeed' ? anchor.top - box.height : anchor.bottom;
+    const top = Math.max(4, Math.min(innerHeight - box.height - 4, preferred));
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  };
+  for (const menu of floatingMenus)
+    menu.addEventListener('toggle', () => requestAnimationFrame(() => positionFloatingMenu(menu)));
+  const repositionMenus = () => floatingMenus.forEach(positionFloatingMenu);
+  window.addEventListener('resize', repositionMenus);
+  document.addEventListener('scroll', repositionMenus, true);
   $('restartBtn').setAttribute('aria-label', 'Về đầu animation');
   $('restartBtn').title = 'Về đầu animation';
   $('prevFrame').title = 'Lùi một frame';
@@ -191,9 +215,15 @@ function setupStudioWorkspace() {
         ) || 240,
       );
   };
-  const sizing = new ResizeObserver(fitTimeline);
+  const stage = document.querySelector('.stage');
+  const fitStage = () => {
+    stage.classList.toggle('studio-compact-stage', stage.clientWidth <= 800);
+    repositionMenus();
+    fitTimeline();
+  };
+  const sizing = new ResizeObserver(fitStage);
   for (const el of [document.querySelector('.stage'), toolbar, transport]) sizing.observe(el);
-  fitTimeline();
+  fitStage();
   const observer = new MutationObserver(() => syncStudioWorkspace());
   observer.observe($('saveBtn'), { childList: true, subtree: true });
   observer.observe($('selectedName'), { childList: true, subtree: true });

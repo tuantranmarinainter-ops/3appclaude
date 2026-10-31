@@ -290,8 +290,7 @@ body{font-size:13px}body>header{height:auto;min-height:54px;flex-wrap:wrap;gap:8
 .molang-axes input { width: 100%; }
 .molang-panel input[aria-invalid="true"] { border-color: #e5484d; color: #e5484d; outline: 1px solid #e5484d; }
 
-/* Keep the classic viewport and timeline usable on narrow screens; controls remain scrollable. */
-@media (max-width:1100px){
-  body.minimal-studio:not(.layout-modes) #createWorkspace .stage-toolbar,
-  body.minimal-studio:not(.layout-modes) #createWorkspace .transport{max-height:90px;overflow:auto}
-}
+/* The stage can be narrow even in a wide window when both docks are open. */
+body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage .stage-toolbar,
+body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage .transport{max-height:90px;overflow:auto}
+body.minimal-studio:not(.layout-modes) #createWorkspace .stage.studio-compact-stage :is(#minimalViewMenu,#minimalSpeed,#rigPresetMenu)>div{position:fixed;right:auto;bottom:auto;max-height:calc(100dvh - 8px);max-width:calc(100vw - 8px);overflow:auto}

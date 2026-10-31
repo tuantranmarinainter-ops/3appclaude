@@ -90,6 +90,40 @@ test(
         );
       const out = process.env.APP3_RESIZE_EVIDENCE || '/tmp/app3-a11-evidence';
       await mkdir(out, { recursive: true });
+      const checkMenus = async () => {
+        const openMenu = async (id) => {
+          const menu = page.locator('#' + id), summary = menu.locator(':scope > summary');
+          await summary.scrollIntoViewIfNeeded();
+          await summary.click();
+          await page.waitForFunction((name) => document.getElementById(name).open, id);
+          const panel = menu.locator(':scope > div');
+          await page.waitForFunction((name) => { const panel = document.querySelector('#' + name + ' > div'); return getComputedStyle(panel).position === 'fixed' && panel.style.top !== ''; }, id);
+          const rect = await panel.boundingBox();
+          assert.ok(rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= page.viewportSize().width + 1 && rect.y + rect.height <= page.viewportSize().height + 1, id);
+          return menu;
+        };
+        let menu = await openMenu('minimalViewMenu');
+        await menu.locator('#viewportSettingsBtn').click();
+        assert.equal(await page.locator('#viewportSettingsPanel').isVisible(), true);
+        await page.locator('#viewportSettingsPanel [data-close]').click();
+        if (await menu.evaluate((node) => node.open)) await menu.locator(':scope > summary').click();
+        menu = await openMenu('rigPresetMenu');
+        await menu.locator('#rigStyle').focus();
+        assert.equal(await page.evaluate(() => document.activeElement.id), 'rigStyle');
+        await menu.locator(':scope > summary').click();
+        menu = await openMenu('minimalSpeed');
+        await menu.locator('[data-speed="1"]').click();
+        if (await menu.evaluate((node) => node.open)) await menu.locator(':scope > summary').click();
+      };
+      const sizingState = () => page.evaluate(() => ({
+        values: Object.fromEntries(['--studio-left-width', '--right-width', '--timeline-height'].map((key) => [key, {
+          inline: document.documentElement.style.getPropertyValue(key),
+          computed: getComputedStyle(document.documentElement).getPropertyValue(key),
+        }])),
+        panes: localStorage.getItem('animation-studio-pane-sizes-v1'),
+        settings: localStorage.getItem('animation-studio-settings'),
+        legacy: localStorage.getItem('animation-studio-layout-v2'),
+      }));
       const initial = await measure();
       await page.screenshot({ path: path.join(out, 'desktop-initial.png'), timeout: 60000 });
       const drag = async (selector, dx, dy) => {
@@ -102,12 +136,14 @@ test(
       };
       await drag('#studioLeftDivider', 55, 0);
       await drag('[data-resize=right]', -60, 0);
-      await drag('[data-resize=timeline]', 0, 50);
+      await drag('[data-resize=timeline]', 0, -50);
       const resized = await measure();
+      console.log(JSON.stringify({ classicResizedState: await sizingState() }));
       console.log(JSON.stringify({ initial, resized }));
       assert.ok(resized.left.width > initial.left.width + 40);
       assert.ok(resized.right.width > initial.right.width + 40);
-      assert.ok(resized.timeline.height < initial.timeline.height - 30);
+      assert.ok(resized.timeline.height > initial.timeline.height + 30);
+      assert.ok(resized.viewport.height >= 449 && resized.timeline.height >= 120);
       assert.equal(await snapshot(), before);
       const stored = await page.evaluate(() =>
         localStorage.getItem('animation-studio-pane-sizes-v1'),
@@ -131,6 +167,7 @@ test(
       await page.evaluate(() => __studio.setHostActive(false));
       await page.locator('#animationListToggle').click({ force: true });
       const reloaded = await measure();
+      console.log(JSON.stringify({ classicReloaded: reloaded, classicReloadedState: await sizingState() }));
       for (const k of ['left', 'right'])
         assert.ok(Math.abs(reloaded[k].width - resized[k].width) < 2);
       assert.ok(Math.abs(reloaded.timeline.height - resized.timeline.height) < 2);
@@ -150,10 +187,7 @@ test(
       await page.keyboard.press('Escape');
       await page.locator('#restartBtn').scrollIntoViewIfNeeded();
       await page.locator('#restartBtn').click();
-      await page.locator('#viewportSettingsBtn').scrollIntoViewIfNeeded();
-      await page.locator('#viewportSettingsBtn').click();
-      assert.equal(await page.locator('#viewportSettingsPanel').isVisible(), true);
-      await page.locator('#viewportSettingsPanel [data-close]').click();
+      await checkMenus();
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.setViewportSize({ width: 1440, height: 1000 });
       let stable = await snapshot();
@@ -182,6 +216,7 @@ test(
       assert.equal(mobile.right.width, 0);
       assert.equal(await snapshot(), stable);
       await page.screenshot({ path: path.join(out, 'mobile-clamped.png'), timeout: 60000 });
+      await checkMenus();
       const mobileRight = page.getByRole('button', { name: 'Mở / đóng Công cụ', exact: true }),
         mobileLeft = page.getByRole('button', { name: 'Mở / đóng Animation', exact: true });
       await mobileRight.click({ force: true });
@@ -208,6 +243,7 @@ test(
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.waitForTimeout(100);
       const desktopRestored = await measure();
+      assert.ok(desktopRestored.viewport.height >= 449 && desktopRestored.timeline.height >= 120);
       assert.equal(desktopRestored.left.width, 315);
       assert.equal(desktopRestored.right.width, 390);
       console.log(
@@ -308,9 +344,18 @@ test('mode layout dividers resize and retain sizes across reload without changin
     assert.ok(modesTabletTimeline >= 60);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.setViewportSize({ width: 1440, height: 1000 });
+    console.log(JSON.stringify({ modesBeforeReload: await page.evaluate(() => ({
+      panes: localStorage.getItem('animation-studio-pane-sizes-v1'), settings: localStorage.getItem('animation-studio-settings'),
+      inline: document.documentElement.getAttribute('style'),
+    })) }));
     await page.reload();
     await page.waitForFunction(() => window.__studio?.state.bones > 0, null, { timeout: 60000 });
     await page.locator('#layoutTab-animate').click();
+    console.log(JSON.stringify({ modesAfterReload: await page.evaluate(() => ({
+      panes: localStorage.getItem('animation-studio-pane-sizes-v1'), settings: localStorage.getItem('animation-studio-settings'),
+      inline: document.documentElement.getAttribute('style'),
+      computed: ['--studio-left-width', '--right-width', '--timeline-height'].map((key) => getComputedStyle(document.documentElement).getPropertyValue(key)),
+    })) }));
     assert.ok(Math.abs(await width('#layoutLeft') - resizedLeft) < 2);
     assert.ok(Math.abs(await width('#layoutRight') - resizedRight) < 2);
     assert.ok(Math.abs(await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height) - maxTimeline) < 2);
