@@ -400,3 +400,12 @@ body.layout-modes #layoutOpenSmall {
 }
 
 body.layout-modes #animationArea { overflow: auto; }
+
+/* Leave room for both the viewport and visible key tracks on tablets. */
+@media (max-width: 1024px) {
+  .layout-modes #createWorkspace .transport { max-height: 45px; }
+  .layout-modes #animationArea:not([data-editor=graph]) .animation-bottom { display: flex; flex-direction: column; }
+  .layout-modes #animationArea:not([data-editor=graph]) .animation-bottom > * { flex: none; order: 2; }
+  .layout-modes #animationArea:not([data-editor=graph]) :is(#labClipLane, #timelineRuler) { order: 0; }
+  .layout-modes #animationArea:not([data-editor=graph]) .timeline-scroll { order: 1; }
+}

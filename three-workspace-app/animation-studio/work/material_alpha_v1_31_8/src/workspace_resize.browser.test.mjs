@@ -345,6 +345,11 @@ test('mode layout dividers resize and retain sizes across reload without changin
     console.log(JSON.stringify({ modesDesktopViewport, modesTabletViewport, modesTabletTimeline, maxTimeline }));
     assert.ok(modesTabletViewport >= 344);
     assert.ok(modesTabletTimeline >= 60);
+    const tabletTracks = await page.locator('#timeline').boundingBox();
+    assert.ok(tabletTracks && tabletTracks.y + tabletTracks.height <= 768);
+    const keyTools = page.locator('#studioKeyTools');
+    await keyTools.scrollIntoViewIfNeeded();
+    await keyTools.locator('#selectBodyKeys').click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.setViewportSize({ width: 1440, height: 1000 });
     console.log(JSON.stringify({ modesBeforeReload: await page.evaluate(() => ({
