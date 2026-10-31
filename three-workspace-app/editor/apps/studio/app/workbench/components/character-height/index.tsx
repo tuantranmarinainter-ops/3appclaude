@@ -1,27 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useCharacterHeights } from './hooks/useCharacterHeights'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 export function CharacterHeightNotice({ project, selectedNodeId }: { project: UnifiedProject; selectedNodeId: string | null }) {
-  const [heights, setHeights] = useState<Record<string, number>>({})
+  const heights = useCharacterHeights(JSON.stringify([...new Set(project.scene.content.nodes.map(node => node.metadata?.libraryCharacterId).filter(id => typeof id === 'string'))].sort()))
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    let alive = true
-    const refresh = async () => {
-      try {
-        const response = await fetch('/api/library?characters=1', { cache: 'no-store' })
-        if (!response.ok) return
-        const data = await response.json()
-        if (alive) setHeights(Object.fromEntries((data.characters ?? []).filter((c: { heightBlocks?: number }) => Number.isFinite(c.heightBlocks)).map((c: { charId: string; heightBlocks: number }) => [c.charId, c.heightBlocks])))
-      } catch { /* Library unavailable: scene keeps its saved scale. */ }
-    }
-    void refresh()
-    window.addEventListener('focus', refresh)
-    const timer = window.setInterval(refresh, 15000)
-    return () => { alive = false; window.removeEventListener('focus', refresh); window.clearInterval(timer) }
-  }, [project.projectId, project.revision])
   const changed = project.scene.content.nodes.filter(node => typeof node.metadata?.libraryCharacterId === 'string' && heights[node.metadata.libraryCharacterId] !== undefined && heights[node.metadata.libraryCharacterId] !== node.metadata.libraryHeightBlocks)
   const selected = project.scene.content.nodes.find(node => node.id === selectedNodeId && node.type === 'character')
   const target = Number(selected?.metadata?.libraryHeightBlocks)
