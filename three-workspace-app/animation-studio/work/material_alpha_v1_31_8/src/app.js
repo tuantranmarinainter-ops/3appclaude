@@ -4846,21 +4846,39 @@ function maximizeArea(area) {
   drawCurve();
 }
 // Layout only: reserve 45% of the browser height for the shared 3D viewport.
+const STUDIO_TIMELINE_FLOOR = 90;
 function studioTimelineBounds() {
   const stage = document.querySelector('.stage');
   const fixed = [...stage.children]
     .filter((el) => !['viewportGrid', 'viewportShell', 'animationArea'].includes(el.id))
     .reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
-  const max = Math.max(
-    0,
-    Math.min(500, stage.clientHeight - fixed - Math.ceil(innerHeight * 0.45)),
-  );
-  return { min: Math.min(120, max), max };
+  // Keep the 3D view at 45% of the window when possible, but never collapse the timeline below
+  // its usable floor (wrapped toolbars with wide side panes left it at ~11px). The viewport row
+  // keeps its own 150px grid minimum.
+  const available = stage.clientHeight - fixed,
+    floor = Math.min(STUDIO_TIMELINE_FLOOR, Math.max(0, available - 150)),
+    max = Math.max(0, Math.min(500, Math.max(floor, available - Math.ceil(innerHeight * 0.45))));
+  return { min: Math.min(STUDIO_TIMELINE_FLOOR, max), max };
+}
+// The 3D view prefers 45vh, but must yield when wrapped toolbars + timeline would push the timeline
+// below the stage (it was clipped off-screen). Never below the 150px viewport minimum.
+function syncStudioViewportMin(timeline) {
+  const stage = document.querySelector('.stage');
+  if (!stage) return;
+  const fixed = [...stage.children]
+    .filter((el) => !['viewportGrid', 'viewportShell', 'animationArea'].includes(el.id))
+    .reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+  const height = Number.isFinite(timeline)
+    ? timeline
+    : parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')) || 0;
+  const room = Math.max(150, Math.floor(stage.clientHeight - fixed - height));
+  document.documentElement.style.setProperty('--studio-viewport-min', room + 'px');
 }
 function clampStudioTimelineHeight(value) {
   const { min, max } = studioTimelineBounds(),
     height = Math.max(min, Math.min(max, Number.isFinite(value) ? value : 240));
   document.documentElement.style.setProperty('--timeline-height', height + 'px');
+  syncStudioViewportMin(height);
   const grip = document.querySelector('[data-resize=timeline]');
   if (grip) {
     grip.setAttribute('aria-valuemin', min);
