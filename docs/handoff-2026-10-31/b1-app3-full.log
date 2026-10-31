@@ -1,0 +1,921 @@
+TAP version 13
+# Subtest: A8 Blocking clipboard across animations, ABC, root policy, atomic Undo, reopen and real library preview
+ok 1 - A8 Blocking clipboard across animations, ABC, root policy, atomic Undo, reopen and real library preview
+  ---
+  duration_ms: 30037.211568
+  type: 'test'
+  ...
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 2 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 58.410382
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 3 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 9.84321
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 4 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 4.349516
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 5 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 59.986134
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 6 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.282911
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 7 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.715401
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 8 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.379544
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 9 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 1.821754
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 10 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.173506
+  type: 'test'
+  ...
+# Subtest: broker exact identity, readiness, source rebind and process generation
+ok 11 - broker exact identity, readiness, source rebind and process generation
+  ---
+  duration_ms: 3.005433
+  type: 'test'
+  ...
+# Subtest: two characters sharing asset remain ambiguous, explicit registration validates exact pair
+ok 12 - two characters sharing asset remain ambiguous, explicit registration validates exact pair
+  ---
+  duration_ms: 0.338471
+  type: 'test'
+  ...
+# Subtest: broker serialized ticket retry, result dedupe and stale reply rejection
+ok 13 - broker serialized ticket retry, result dedupe and stale reply rejection
+  ---
+  duration_ms: 1.633269
+  type: 'test'
+  ...
+# Subtest: schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+ok 14 - schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+  ---
+  duration_ms: 0.893291
+  type: 'test'
+  ...
+# Subtest: receiver cache shares in-flight promise, preserves errors and never touches Sites
+ok 15 - receiver cache shares in-flight promise, preserves errors and never touches Sites
+  ---
+  duration_ms: 0.38325
+  type: 'test'
+  ...
+# Subtest: host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+ok 16 - host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+  ---
+  duration_ms: 13.151732
+  type: 'test'
+  ...
+# Subtest: host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+ok 17 - host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+  ---
+  duration_ms: 4.270947
+  type: 'test'
+  ...
+# Subtest: host refuses requested SHA when actual installed asset differs
+ok 18 - host refuses requested SHA when actual installed asset differs
+  ---
+  duration_ms: 2.18947
+  type: 'test'
+  ...
+# Subtest: queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+ok 19 - queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+  ---
+  duration_ms: 0.454046
+  type: 'test'
+  ...
+# Subtest: Python App3 MCP suite is part of the existing App3 test:all entry
+ok 20 - Python App3 MCP suite is part of the existing App3 test:all entry
+  ---
+  duration_ms: 168.305113
+  type: 'test'
+  ...
+# Subtest: mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+ok 21 - mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+  ---
+  duration_ms: 1.38237
+  type: 'test'
+  ...
+# Subtest: E3 both JS schemas reject unsafe parameters and accept the same five tools
+ok 22 - E3 both JS schemas reject unsafe parameters and accept the same five tools
+  ---
+  duration_ms: 1.3294
+  type: 'test'
+  ...
+# Subtest: App 3 host composition selects only the requested second library clip and binds it to the chosen character
+ok 23 - App 3 host composition selects only the requested second library clip and binds it to the chosen character
+  ---
+  duration_ms: 1.115176
+  type: 'test'
+  ...
+# Subtest: library Action open requires a verified compatible Action proof and queues an explicit broker command
+ok 24 - library Action open requires a verified compatible Action proof and queues an explicit broker command
+  ---
+  duration_ms: 0.735512
+  type: 'test'
+  ...
+# Subtest: shot transition retires original lease, keeps result readable and private token only in receiver ack
+ok 25 - shot transition retires original lease, keeps result readable and private token only in receiver ack
+  ---
+  duration_ms: 0.987913
+  type: 'test'
+  ...
+# Subtest: export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+ok 26 - export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+  ---
+  duration_ms: 0.399874
+  type: 'test'
+  ...
+# Subtest: artifact broker Node regressions including actual Python validate-result
+ok 27 - artifact broker Node regressions including actual Python validate-result
+  ---
+  duration_ms: 695.490419
+  type: 'test'
+  ...
+# Subtest: expired shot-open retires uncertain dispatched lease but preserves only result reads
+ok 28 - expired shot-open retires uncertain dispatched lease but preserves only result reads
+  ---
+  duration_ms: 0.5884
+  type: 'test'
+  ...
+# Subtest: receiver completes definite artifact validation failures and releases the native lock
+ok 29 - receiver completes definite artifact validation failures and releases the native lock
+  ---
+  duration_ms: 6.251532
+  type: 'test'
+  ...
+# Subtest: Chromium: real Python MCP → authenticated broker → host bridge → Director reads
+ok 30 - Chromium: real Python MCP → authenticated broker → host bridge → Director reads # SKIP
+  ---
+  duration_ms: 0.588209
+  type: 'test'
+  ...
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 31 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 60.904784
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 32 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 10.100639
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 33 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 4.543499
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 34 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 59.464467
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 35 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.423553
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 36 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.672326
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 37 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.391572
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 38 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 1.789545
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 39 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.225655
+  type: 'test'
+  ...
+# E5 reviewing candidate 0
+# E5 reviewing candidate 1
+# E5 reviewing candidate 2
+# E5 reviewing candidate 3
+# E5 reviewing candidate 4
+# E5 reviewing candidate 5
+# E5 reviewing candidate 6
+# E5 reviewing candidate 7
+# E5 reviewing candidate 8
+# E5 reviewing candidate 9
+# E5 reviewing candidate 10
+# E5 reviewing candidate 11
+# E5 reviewing candidate 12
+# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-b46/three-workspace-app/editor/.test-results/e5-app3-demo
+# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+ok 40 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+  ---
+  duration_ms: 140161.647368
+  type: 'test'
+  ...
+# TAP version 13
+# \# E5 reviewing candidate 0
+# \# E5 reviewing candidate 1
+# \# E5 reviewing candidate 2
+# \# E5 reviewing candidate 3
+# \# E5 reviewing candidate 4
+# \# E5 reviewing candidate 5
+# \# E5 reviewing candidate 6
+# \# E5 reviewing candidate 7
+# \# E5 reviewing candidate 8
+# \# E5 reviewing candidate 9
+# \# E5 reviewing candidate 10
+# \# E5 reviewing candidate 11
+# \# E5 reviewing candidate 12
+# \# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-b46/three-workspace-app/editor/.test-results/e5-app3-demo
+# \# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+# ok 1 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+#   ---
+#   duration_ms: 142760.585722
+#   type: 'test'
+#   ...
+# 1..1
+# \# tests 1
+# \# suites 0
+# \# pass 1
+# \# fail 0
+# \# cancelled 0
+# \# skipped 0
+# \# todo 0
+# \# duration_ms 147632.88986
+# Subtest: E5 default real browser demo executes without skips
+ok 41 - E5 default real browser demo executes without skips
+  ---
+  duration_ms: 147749.894098
+  type: 'test'
+  ...
+# Subtest: A7 evaluated key capture, whole/selected paste, exact Undo and saved round-trip
+ok 42 - A7 evaluated key capture, whole/selected paste, exact Undo and saved round-trip
+  ---
+  duration_ms: 16929.44081
+  type: 'test'
+  ...
+# Subtest: App3 silhouette: two-color pixels, exact off restoration, view-only shortcut and real App2 synchronization
+ok 43 - App3 silhouette: two-color pixels, exact off restoration, view-only shortcut and real App2 synchronization # SKIP
+  ---
+  duration_ms: 0.659246
+  type: 'test'
+  ...
+# Subtest: F1 workflow keeps baseline controls and switches Blocking, Tinh chỉnh, and Xuất
+ok 44 - F1 workflow keeps baseline controls and switches Blocking, Tinh chỉnh, and Xuất
+  ---
+  duration_ms: 7931.854131
+  type: 'test'
+  ...
+# Subtest: recognizes and describes v1.1 extra-bone chains with local rest transforms
+ok 45 - recognizes and describes v1.1 extra-bone chains with local rest transforms
+  ---
+  duration_ms: 3.332463
+  type: 'test'
+  ...
+# Subtest: rejects an extra whose named core attachment is not an ancestor
+ok 46 - rejects an extra whose named core attachment is not an ancestor
+  ---
+  duration_ms: 0.346744
+  type: 'test'
+  ...
+# Subtest: rejects malformed names, duplicate names, and non-finite rest values
+ok 47 - rejects malformed names, duplicate names, and non-finite rest values
+  ---
+  duration_ms: 0.265451
+  type: 'test'
+  ...
+# Subtest: keeps ordinary rigs on the v1.0 path and rejects non-Mixamo extras
+ok 48 - keeps ordinary rigs on the v1.0 path and rejects non-Mixamo extras
+  ---
+  duration_ms: 0.18554
+  type: 'test'
+  ...
+# Subtest: A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+not ok 49 - A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+  ---
+  duration_ms: 13632.587438
+  type: 'test'
+  location: '/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/keyframe_delete.test.mjs:9:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    locator.click: Error: strict mode violation: locator('.timeline-key-menu [role=menuitem]') resolved to 4 elements:
+        1) <button role="menuitem">Xoá</button> aka getByRole('menuitem', { name: 'Xoá' })
+        2) <button type="button" role="menuitem">Sao chép pose (Toàn thân)</button> aka getByRole('menuitem', { name: 'Sao chép pose (Toàn thân)' })
+        3) <button type="button" role="menuitem">Sao chép pose (Phần đang chọn)</button> aka getByRole('menuitem', { name: 'Sao chép pose (Phần đang chọn)' })
+        4) <button disabled type="button" role="menuitem">Dán pose</button> aka getByRole('menuitem', { name: 'Dán pose' })
+    
+    Call log:
+    [2m  - waiting for locator('.timeline-key-menu [role=menuitem]')[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/keyframe_delete.test.mjs:32:172)
+  ...
+# Subtest: A6 real pointers move/scale group, ripple, cancel, collision and exact undo
+ok 50 - A6 real pointers move/scale group, ripple, cancel, collision and exact undo
+  ---
+  duration_ms: 61803.979439
+  type: 'test'
+  ...
+# Subtest: A4 real pointers: rectangle, modifiers, cancel and unchanged data/history
+ok 51 - A4 real pointers: rectangle, modifiers, cancel and unchanged data/history
+  ---
+  duration_ms: 23238.083359
+  type: 'test'
+  ...
+# Subtest: 30-60 compressed to 30-45 doubles speed and ripple moves later tracks -15 frames
+ok 52 - 30-60 compressed to 30-45 doubles speed and ripple moves later tracks -15 frames
+  ---
+  duration_ms: 1.793809
+  type: 'test'
+  ...
+# Subtest: move, expand, left edge and single key preserve values
+ok 53 - move, expand, left edge and single key preserve values
+  ---
+  duration_ms: 1.637252
+  type: 'test'
+  ...
+# Subtest: collision, stale selection, collapsed/reversed range and out of bounds reject atomically
+ok 54 - collision, stale selection, collapsed/reversed range and out of bounds reject atomically
+  ---
+  duration_ms: 0.575449
+  type: 'test'
+  ...
+# node:internal/modules/package_json_reader:268
+#   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+#         ^
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'three' imported from /workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/core.js
+#     at Object.getPackageJSONURL (node:internal/modules/package_json_reader:268:9)
+#     at packageResolve (node:internal/modules/esm/resolve:768:81)
+#     at moduleResolve (node:internal/modules/esm/resolve:854:18)
+#     at defaultResolve (node:internal/modules/esm/resolve:984:11)
+#     at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:780:12)
+#     at \#cachedDefaultResolve (node:internal/modules/esm/loader:704:25)
+#     at ModuleLoader.resolve (node:internal/modules/esm/loader:687:38)
+#     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:305:38)
+#     at ModuleJob._link (node:internal/modules/esm/module_job:137:49) {
+#   code: 'ERR_MODULE_NOT_FOUND'
+# }
+# Node.js v22.15.0
+# Subtest: src/minecraft20_controls.test.mjs
+not ok 15 - src/minecraft20_controls.test.mjs
+  ---
+  duration_ms: 41.569996
+  type: 'test'
+  location: '/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/minecraft20_controls.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# node:internal/modules/package_json_reader:268
+#   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+#         ^
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'three' imported from /workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/minecraft20_postprocess.test.mjs
+#     at Object.getPackageJSONURL (node:internal/modules/package_json_reader:268:9)
+#     at packageResolve (node:internal/modules/esm/resolve:768:81)
+#     at moduleResolve (node:internal/modules/esm/resolve:854:18)
+#     at defaultResolve (node:internal/modules/esm/resolve:984:11)
+#     at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:780:12)
+#     at \#cachedDefaultResolve (node:internal/modules/esm/loader:704:25)
+#     at ModuleLoader.resolve (node:internal/modules/esm/loader:687:38)
+#     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:305:38)
+#     at ModuleJob._link (node:internal/modules/esm/module_job:137:49) {
+#   code: 'ERR_MODULE_NOT_FOUND'
+# }
+# Node.js v22.15.0
+# Subtest: src/minecraft20_postprocess.test.mjs
+not ok 16 - src/minecraft20_postprocess.test.mjs
+  ---
+  duration_ms: 30.850013
+  type: 'test'
+  location: '/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/minecraft20_postprocess.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: maps by names and hierarchy across reordered IDs; keeps root place by default and copies XYZ on request
+ok 57 - maps by names and hierarchy across reordered IDs; keeps root place by default and copies XYZ on request
+  ---
+  duration_ms: 6.216357
+  type: 'test'
+  ...
+# Subtest: missing, ambiguous, changed hierarchy, orientation and non-finite poses reject without mutation
+ok 58 - missing, ambiguous, changed hierarchy, orientation and non-finite poses reject without mutation
+  ---
+  duration_ms: 1.791215
+  type: 'test'
+  ...
+# node:internal/modules/package_json_reader:268
+#   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+#         ^
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'three' imported from /workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/shot_export.test.mjs
+#     at Object.getPackageJSONURL (node:internal/modules/package_json_reader:268:9)
+#     at packageResolve (node:internal/modules/esm/resolve:768:81)
+#     at moduleResolve (node:internal/modules/esm/resolve:854:18)
+#     at defaultResolve (node:internal/modules/esm/resolve:984:11)
+#     at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:780:12)
+#     at \#cachedDefaultResolve (node:internal/modules/esm/loader:704:25)
+#     at ModuleLoader.resolve (node:internal/modules/esm/loader:687:38)
+#     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:305:38)
+#     at ModuleJob._link (node:internal/modules/esm/module_job:137:49) {
+#   code: 'ERR_MODULE_NOT_FOUND'
+# }
+# Node.js v22.15.0
+# Subtest: src/shot_export.test.mjs
+not ok 18 - src/shot_export.test.mjs
+  ---
+  duration_ms: 36.177603
+  type: 'test'
+  location: '/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/shot_export.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: shot export bakes weighted Motion Lab layers and clip timing without losing edits or doubling actor travel
+ok 60 - shot export bakes weighted Motion Lab layers and clip timing without losing edits or doubling actor travel
+  ---
+  duration_ms: 3138.158874
+  type: 'test'
+  ...
+# TAP version 13
+# \# E5 reviewing candidate 0
+# \# E5 reviewing candidate 1
+# \# E5 reviewing candidate 2
+# \# E5 reviewing candidate 3
+# \# E5 reviewing candidate 4
+# \# E5 reviewing candidate 5
+# \# E5 reviewing candidate 6
+# \# E5 reviewing candidate 7
+# \# E5 reviewing candidate 8
+# \# E5 reviewing candidate 9
+# \# E5 reviewing candidate 10
+# \# E5 reviewing candidate 11
+# \# E5 reviewing candidate 12
+# \# E5 observed metrics {"cycles":2,"lobes":[1,-1,1,-1],"amplitudeDegrees":50,"maxLeftDrift":0,"segmentLengthError":6.661338147750939e-16,"handHipDistance":0.15264337522473728,"holdDrift":3.469446951953614e-17,"wristTravelMeters":0.2394456883984771,"finalTargetError":2.3263411494723067e-16,"neutralAngleErrorDegrees":4.000635990412458e-14,"sourceUnitMeters":0.01,"wrapperScale":0.010988892892000625,"upperLengthMeters":0.27841518023440637,"lowerLengthMeters":0.283288383483758,"minRaisedHandAboveHead":0.34477286612594726} artifacts=/workspace/3appclaude-b46/three-workspace-app/editor/.test-results/e5-app3-demo
+# \# Subtest: E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+# ok 1 - E5 fixed Vietnamese prompt executes real stdio MCP animation and observed two-cycle wrist trace
+#   ---
+#   duration_ms: 143854.45172
+#   type: 'test'
+#   ...
+# 1..1
+# \# tests 1
+# \# suites 0
+# \# pass 1
+# \# fail 0
+# \# cancelled 0
+# \# skipped 0
+# \# todo 0
+# \# duration_ms 148719.308454
+# Subtest: E5 default real browser demo executes without skips
+ok 61 - E5 default real browser demo executes without skips
+  ---
+  duration_ms: 148830.541436
+  type: 'test'
+  ...
+# Subtest: silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+ok 62 - silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+  ---
+  duration_ms: 3.402437
+  type: 'test'
+  ...
+# Subtest: silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+ok 63 - silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+  ---
+  duration_ms: 0.398522
+  type: 'test'
+  ...
+# Subtest: silhouette keeps separate caches across views sharing a rig and disposes both
+ok 64 - silhouette keeps separate caches across views sharing a rig and disposes both
+  ---
+  duration_ms: 0.526195
+  type: 'test'
+  ...
+# Subtest: actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+ok 65 - actual Director + core: all five tools stage immutable candidates and one native Undo restores exact project
+  ---
+  duration_ms: 443.143881
+  type: 'test'
+  ...
+# Subtest: actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+ok 66 - actual controller rejects stale revision, slot/units changes and preserves pending on conflict; cancel makes no history
+  ---
+  duration_ms: 10.362886
+  type: 'test'
+  ...
+# Subtest: deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+ok 67 - deferred receiver guards use current readiness/visibility/revision and shot range/root policy
+  ---
+  duration_ms: 4.862811
+  type: 'test'
+  ...
+# Subtest: E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+ok 68 - E3 native timing and key/curve numeric oracles, immutable staging and one Undo
+  ---
+  duration_ms: 61.99576
+  type: 'test'
+  ...
+# Subtest: E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+ok 69 - E3 actual core: filter protects Step/contact, Euler Spin survives retime/curves and slopes scale
+  ---
+  duration_ms: 2.900829
+  type: 'test'
+  ...
+# Subtest: E3 shot rejection occurs before native dispatch
+ok 70 - E3 shot rejection occurs before native dispatch
+  ---
+  duration_ms: 0.731585
+  type: 'test'
+  ...
+# Subtest: E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+ok 71 - E3 shot rejects incomplete marker range; protected spline fails closed but ordinary internal retime remains available
+  ---
+  duration_ms: 0.473234
+  type: 'test'
+  ...
+# Subtest: E3 actual core move/delete key results and hold Step survive auto smoothing
+ok 72 - E3 actual core move/delete key results and hold Step survive auto smoothing
+  ---
+  duration_ms: 1.945908
+  type: 'test'
+  ...
+# Subtest: E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+ok 73 - E3 filter matches an independent Gaussian spike oracle; Euler sample keeps accumulated turns
+  ---
+  duration_ms: 2.43081
+  type: 'test'
+  ...
+# Subtest: broker exact identity, readiness, source rebind and process generation
+ok 74 - broker exact identity, readiness, source rebind and process generation
+  ---
+  duration_ms: 2.368576
+  type: 'test'
+  ...
+# Subtest: two characters sharing asset remain ambiguous, explicit registration validates exact pair
+ok 75 - two characters sharing asset remain ambiguous, explicit registration validates exact pair
+  ---
+  duration_ms: 0.32507
+  type: 'test'
+  ...
+# Subtest: broker serialized ticket retry, result dedupe and stale reply rejection
+ok 76 - broker serialized ticket retry, result dedupe and stale reply rejection
+  ---
+  duration_ms: 1.345942
+  type: 'test'
+  ...
+# Subtest: schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+ok 77 - schema rejects mutation, invalid numeric ranges and excess data at both boundaries
+  ---
+  duration_ms: 0.746547
+  type: 'test'
+  ...
+# Subtest: receiver cache shares in-flight promise, preserves errors and never touches Sites
+ok 78 - receiver cache shares in-flight promise, preserves errors and never touches Sites
+  ---
+  duration_ms: 0.407485
+  type: 'test'
+  ...
+# Subtest: host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+ok 79 - host self-registers, polls authenticated local queue and retains active/ping while rejecting spoofed events
+  ---
+  duration_ms: 13.111396
+  type: 'test'
+  ...
+# Subtest: host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+ok 80 - host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA
+  ---
+  duration_ms: 2.129545
+  type: 'test'
+  ...
+# Subtest: host refuses requested SHA when actual installed asset differs
+ok 81 - host refuses requested SHA when actual installed asset differs
+  ---
+  duration_ms: 1.964396
+  type: 'test'
+  ...
+# Subtest: queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+ok 82 - queue timeout distinguishes unsent and dispatched results, and heartbeat expires
+  ---
+  duration_ms: 0.506054
+  type: 'test'
+  ...
+# Subtest: Python App3 MCP suite is part of the existing App3 test:all entry
+ok 83 - Python App3 MCP suite is part of the existing App3 test:all entry
+  ---
+  duration_ms: 166.159205
+  type: 'test'
+  ...
+# Subtest: mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+ok 84 - mutation broker separates revision types, fails closed after lost dispatch and never advertises unsupported tools
+  ---
+  duration_ms: 1.546715
+  type: 'test'
+  ...
+# Subtest: E3 both JS schemas reject unsafe parameters and accept the same five tools
+ok 85 - E3 both JS schemas reject unsafe parameters and accept the same five tools
+  ---
+  duration_ms: 1.251359
+  type: 'test'
+  ...
+# Subtest: App 3 host composition selects only the requested second library clip and binds it to the chosen character
+ok 86 - App 3 host composition selects only the requested second library clip and binds it to the chosen character
+  ---
+  duration_ms: 1.441807
+  type: 'test'
+  ...
+# Subtest: library Action open requires a verified compatible Action proof and queues an explicit broker command
+ok 87 - library Action open requires a verified compatible Action proof and queues an explicit broker command
+  ---
+  duration_ms: 0.734799
+  type: 'test'
+  ...
+# Subtest: shot transition retires original lease, keeps result readable and private token only in receiver ack
+ok 88 - shot transition retires original lease, keeps result readable and private token only in receiver ack
+  ---
+  duration_ms: 0.916534
+  type: 'test'
+  ...
+# Subtest: export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+ok 89 - export schema and claim require active exact revisions; shot bytes cannot use generic source registration
+  ---
+  duration_ms: 0.544192
+  type: 'test'
+  ...
+# Subtest: artifact broker Node regressions including actual Python validate-result
+ok 90 - artifact broker Node regressions including actual Python validate-result
+  ---
+  duration_ms: 675.952062
+  type: 'test'
+  ...
+# Subtest: expired shot-open retires uncertain dispatched lease but preserves only result reads
+ok 91 - expired shot-open retires uncertain dispatched lease but preserves only result reads
+  ---
+  duration_ms: 0.633537
+  type: 'test'
+  ...
+# Subtest: receiver completes definite artifact validation failures and releases the native lock
+ok 92 - receiver completes definite artifact validation failures and releases the native lock
+  ---
+  duration_ms: 7.566059
+  type: 'test'
+  ...
+# Subtest: contract example valid
+ok 93 - contract example valid
+  ---
+  duration_ms: 2.511611
+  type: 'test'
+  ...
+# Subtest: MISSING_FIELD s=>delete s.sceneId
+ok 94 - MISSING_FIELD s=>delete s.sceneId
+  ---
+  duration_ms: 2.399282
+  type: 'test'
+  ...
+# Subtest: INVALID_TYPE s=>s.fps=true
+ok 95 - INVALID_TYPE s=>s.fps=true
+  ---
+  duration_ms: 2.181674
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE s=>s.sceneId=''
+ok 96 - INVALID_VALUE s=>s.sceneId=''
+  ---
+  duration_ms: 1.306783
+  type: 'test'
+  ...
+# Subtest: UNSUPPORTED_VERSION s=>s.version='2.0.0'
+ok 97 - UNSUPPORTED_VERSION s=>s.version='2.0.0'
+  ---
+  duration_ms: 3.96741
+  type: 'test'
+  ...
+# Subtest: INVALID_FPS s=>s.fps=24
+ok 98 - INVALID_FPS s=>s.fps=24
+  ---
+  duration_ms: 0.970795
+  type: 'test'
+  ...
+# Subtest: INVALID_FRAME_RANGE s=>s.frameRange=[60,0]
+ok 99 - INVALID_FRAME_RANGE s=>s.frameRange=[60,0]
+  ---
+  duration_ms: 1.10582
+  type: 'test'
+  ...
+# Subtest: INVALID_FRAME_RANGE s=>s.frameRange=[-1,10]
+ok 100 - INVALID_FRAME_RANGE s=>s.frameRange=[-1,10]
+  ---
+  duration_ms: 0.86054
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH s=>s.characters[0].glb='../hero.glb'
+ok 101 - UNSAFE_PATH s=>s.characters[0].glb='../hero.glb'
+  ---
+  duration_ms: 1.060822
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH s=>s.characters[0].glb='/hero.glb'
+ok 102 - UNSAFE_PATH s=>s.characters[0].glb='/hero.glb'
+  ---
+  duration_ms: 0.869983
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH s=>s.characters[0].glb='C:hero.glb'
+ok 103 - UNSAFE_PATH s=>s.characters[0].glb='C:hero.glb'
+  ---
+  duration_ms: 0.774259
+  type: 'test'
+  ...
+# Subtest: UNSAFE_PATH s=>s.characters[0].glb='a\\\\b'
+ok 104 - UNSAFE_PATH s=>s.characters[0].glb='a\\\\b'
+  ---
+  duration_ms: 0.659375
+  type: 'test'
+  ...
+# Subtest: FILE_NOT_FOUND s=>s.characters[0].glb='absent.glb'
+ok 105 - FILE_NOT_FOUND s=>s.characters[0].glb='absent.glb'
+  ---
+  duration_ms: 0.690122
+  type: 'test'
+  ...
+# Subtest: INVALID_JSON (_,f)=>f['characters/hero.manifest.json']=new TextEncoder().encode('{')
+ok 106 - INVALID_JSON (_,f)=>f['characters/hero.manifest.json']=new TextEncoder().encode('{')
+  ---
+  duration_ms: 1.201093
+  type: 'test'
+  ...
+# Subtest: INVALID_SHA256 s=>s.characters[0].glbSha256='bad'
+ok 107 - INVALID_SHA256 s=>s.characters[0].glbSha256='bad'
+  ---
+  duration_ms: 0.833609
+  type: 'test'
+  ...
+# Subtest: SHA256_MISMATCH s=>s.characters[0].glbSha256='0'.repeat(64)
+ok 108 - SHA256_MISMATCH s=>s.characters[0].glbSha256='0'.repeat(64)
+  ---
+  duration_ms: 0.787319
+  type: 'test'
+  ...
+# Subtest: INVALID_UUID s=>s.characters[0].actionUuid='bad'
+ok 109 - INVALID_UUID s=>s.characters[0].actionUuid='bad'
+  ---
+  duration_ms: 0.91387
+  type: 'test'
+  ...
+# Subtest: ACTION_NOT_IN_MANIFEST s=>s.characters[0].actionUuid='22222222-2222-4222-8222-222222222222'
+ok 110 - ACTION_NOT_IN_MANIFEST s=>s.characters[0].actionUuid='22222222-2222-4222-8222-222222222222'
+  ---
+  duration_ms: 0.853168
+  type: 'test'
+  ...
+# Subtest: DUPLICATE_ACTION_UUID (_,f)=>{const m=JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));m.actions.push(m.actions[0]);f['characters/hero.manifest.json']=enc(m);}
+ok 111 - DUPLICATE_ACTION_UUID (_,f)=>{const m=JSON.parse(new TextDecoder().decode(f['characters/hero.manifest.json']));m.actions.push(m.actions[0]);f['characters/hero.manifest.json']=enc(m);}
+  ---
+  duration_ms: 0.807059
+  type: 'test'
+  ...
+# Subtest: NO_EDITABLE_CHARACTER s=>s.characters.forEach(c=>c.editable=false)
+ok 112 - NO_EDITABLE_CHARACTER s=>s.characters.forEach(c=>c.editable=false)
+  ---
+  duration_ms: 0.905978
+  type: 'test'
+  ...
+# Subtest: DUPLICATE_CHARACTER_ID s=>s.characters[1].characterId='hero'
+ok 113 - DUPLICATE_CHARACTER_ID s=>s.characters[1].characterId='hero'
+  ---
+  duration_ms: 3.511492
+  type: 'test'
+  ...
+# Subtest: INVALID_CLIP s=>s.characters[0].clip.speed=0
+ok 114 - INVALID_CLIP s=>s.characters[0].clip.speed=0
+  ---
+  duration_ms: 1.392703
+  type: 'test'
+  ...
+# Subtest: INVALID_CLIP s=>s.characters[0].clip.sourceEndSeconds=-1
+ok 115 - INVALID_CLIP s=>s.characters[0].clip.sourceEndSeconds=-1
+  ---
+  duration_ms: 0.819677
+  type: 'test'
+  ...
+# Subtest: INVALID_ROOT_POLICY s=>s.characters[0].rootPolicy='bad'
+ok 116 - INVALID_ROOT_POLICY s=>s.characters[0].rootPolicy='bad'
+  ---
+  duration_ms: 0.882492
+  type: 'test'
+  ...
+# Subtest: FRAME_OUT_OF_RANGE s=>s.camera.keys[0].frame=90
+ok 117 - FRAME_OUT_OF_RANGE s=>s.camera.keys[0].frame=90
+  ---
+  duration_ms: 0.778646
+  type: 'test'
+  ...
+# Subtest: KEYS_NOT_INCREASING s=>s.camera.keys[1].frame=0
+ok 118 - KEYS_NOT_INCREASING s=>s.camera.keys[1].frame=0
+  ---
+  duration_ms: 0.778896
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE s=>s.camera.keys[0].position=[1,2]
+ok 119 - INVALID_VALUE s=>s.camera.keys[0].position=[1,2]
+  ---
+  duration_ms: 0.727709
+  type: 'test'
+  ...
+# Subtest: INVALID_VALUE s=>s.camera.keys[0].fovYDegrees=180
+ok 120 - INVALID_VALUE s=>s.camera.keys[0].fovYDegrees=180
+  ---
+  duration_ms: 1.363889
+  type: 'test'
+  ...
+# Subtest: missing shot, malformed JSON, wrong object type and unsafe zip entries
+ok 121 - missing shot, malformed JSON, wrong object type and unsafe zip entries
+  ---
+  duration_ms: 0.812216
+  type: 'test'
+  ...
+# Subtest: hash actual bytes and clip speed/reverse/loop/zero length
+ok 122 - hash actual bytes and clip speed/reverse/loop/zero length
+  ---
+  duration_ms: 0.468057
+  type: 'test'
+  ...
+# Subtest: silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+ok 123 - silhouette render transaction restores exact materials/visibility/environment and owns one flat material per mesh
+  ---
+  duration_ms: 3.961791
+  type: 'test'
+  ...
+# Subtest: silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+ok 124 - silhouette prunes replaced meshes and restores hidden flags even after a rendering error
+  ---
+  duration_ms: 0.402839
+  type: 'test'
+  ...
+# Subtest: silhouette keeps separate caches across views sharing a rig and disposes both
+ok 125 - silhouette keeps separate caches across views sharing a rig and disposes both
+  ---
+  duration_ms: 0.458011
+  type: 'test'
+  ...
+# Subtest: pane dividers resize, reload, clamp and leave project/history unchanged
+ok 126 - pane dividers resize, reload, clamp and leave project/history unchanged # SKIP
+  ---
+  duration_ms: 0.742951
+  type: 'test'
+  ...
+1..126
+# tests 126
+# suites 0
+# pass 119
+# fail 4
+# cancelled 0
+# skipped 3
+# todo 0
+# duration_ms 603726.514137

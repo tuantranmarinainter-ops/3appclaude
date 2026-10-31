@@ -1,0 +1,93 @@
+TAP version 13
+# (node:997536) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+not ok 1 - A5 real pointers: delete ten keys, resample and undo exactly in Classic and Lab
+  ---
+  duration_ms: 11506.936049
+  type: 'test'
+  location: '/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/keyframe_delete.test.mjs:9:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    locator.click: Error: strict mode violation: locator('.timeline-key-menu [role=menuitem]') resolved to 4 elements:
+        1) <button role="menuitem">Xoá</button> aka getByRole('menuitem', { name: 'Xoá' })
+        2) <button type="button" role="menuitem">Sao chép pose (Toàn thân)</button> aka getByRole('menuitem', { name: 'Sao chép pose (Toàn thân)' })
+        3) <button type="button" role="menuitem">Sao chép pose (Phần đang chọn)</button> aka getByRole('menuitem', { name: 'Sao chép pose (Phần đang chọn)' })
+        4) <button disabled type="button" role="menuitem">Dán pose</button> aka getByRole('menuitem', { name: 'Dán pose' })
+    
+    Call log:
+    [2m  - waiting for locator('.timeline-key-menu [role=menuitem]')[22m
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    TestContext.<anonymous> (/workspace/3appclaude-b46/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/keyframe_delete.test.mjs:32:172)
+  ...
+# (node:997616) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: exact MC20 profile provides four chains without adding export bones
+ok 2 - exact MC20 profile provides four chains without adding export bones
+  ---
+  duration_ms: 9.526453
+  type: 'test'
+  ...
+# Subtest: MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rotation
+ok 3 - MC20 leg IK reaches target while keeping exactly20 bones and lower-leg rotation
+  ---
+  duration_ms: 7.577089
+  type: 'test'
+  ...
+# Subtest: MC20 display has every physical FK joint plus four IK/pole pairs
+ok 4 - MC20 display has every physical FK joint plus four IK/pole pairs
+  ---
+  duration_ms: 13.20741
+  type: 'test'
+  ...
+# (node:997628) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:997628) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# Subtest: correct 60 degree twist, lock hands, preserve bend and match App1
+ok 5 - correct 60 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 4.497801
+  type: 'test'
+  ...
+# Subtest: correct 120 degree twist, lock hands, preserve bend and match App1
+ok 6 - correct 120 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 1.270819
+  type: 'test'
+  ...
+# Subtest: correct 179 degree twist, lock hands, preserve bend and match App1
+ok 7 - correct 179 degree twist, lock hands, preserve bend and match App1
+  ---
+  duration_ms: 0.989404
+  type: 'test'
+  ...
+# Subtest: real normalized GLB: written BOBJ at every tick stays untwisted, hands rest, matches App1
+ok 8 - real normalized GLB: written BOBJ at every tick stays untwisted, hands rest, matches App1 # SKIP Set SHOT_TEST_ASSET to App1 normalized GLB.
+  ---
+  duration_ms: 0.064097
+  type: 'test'
+  ...
+# (node:997640) ExperimentalWarning: `--experimental-loader` may be removed in the future; instead use `register()`:
+# --import 'data:text/javascript,import { register } from "node:module"; import { pathToFileURL } from "node:url"; register("./work/material_alpha_v1_31_8/src/shot_test_loader.mjs", pathToFileURL("./"));'
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:997640) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# Subtest: real App1 GLB → edited GLB → App1 loader and Python validate-result
+ok 9 - real App1 GLB → edited GLB → App1 loader and Python validate-result # SKIP Set SHOT_TEST_ASSET to an App1-normalized GLB.
+  ---
+  duration_ms: 0.52982
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 2
+# todo 0
+# duration_ms 12693.960566
