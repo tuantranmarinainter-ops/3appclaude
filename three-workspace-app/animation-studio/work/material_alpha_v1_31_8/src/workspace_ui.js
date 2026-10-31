@@ -590,7 +590,7 @@ function setupStudioPaneSizing() {
         .filter(el => !['viewportGrid', 'viewportShell', 'animationArea'].includes(el.id))
         .reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
       const available = Math.max(0, stage.clientHeight - fixed);
-      const viewportMinimum = Math.min(180, Math.max(100, available - 220));
+      const viewportMinimum = Math.min(Math.ceil(innerHeight * 0.45), available);
       const max = Math.max(0, Math.min(500, available - viewportMinimum));
       return { min: Math.min(220, max), max };
     }

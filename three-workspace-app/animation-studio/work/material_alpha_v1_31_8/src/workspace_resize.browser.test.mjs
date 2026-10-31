@@ -13,7 +13,6 @@ const require = createRequire(
 const { chromium } = require('playwright');
 test(
   'pane dividers resize, reload, clamp and leave project/history unchanged',
-  { skip: process.env.APP3_RESIZE_BROWSER !== '1' },
   async () => {
     const html = await readFile(
       new URL('../../../outputs/Animation_Studio_v1_33_0.html', import.meta.url),
@@ -114,6 +113,14 @@ test(
         localStorage.getItem('animation-studio-pane-sizes-v1'),
       );
       assert.ok(stored);
+      const timelineState = await page.evaluate(() => ({
+        inline: parseFloat(document.documentElement.style.getPropertyValue('--timeline-height')),
+        computed: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--timeline-height')),
+        stored: JSON.parse(localStorage.getItem('animation-studio-pane-sizes-v1')).timeline,
+      }));
+      assert.ok(Math.abs(timelineState.inline - timelineState.computed) < 0.01);
+      assert.ok(Math.abs(timelineState.inline - timelineState.stored) < 0.01);
+      assert.ok(Math.abs(timelineState.inline - resized.timeline.height) < 2);
       await page.screenshot({ path: path.join(out, 'desktop-resized.png'), timeout: 60000 });
       await page.reload();
       await page.waitForFunction(
@@ -127,6 +134,28 @@ test(
       for (const k of ['left', 'right'])
         assert.ok(Math.abs(reloaded[k].width - resized[k].width) < 2);
       assert.ok(Math.abs(reloaded.timeline.height - resized.timeline.height) < 2);
+      await page.locator('[data-resize=timeline]').focus();
+      await page.keyboard.press('End');
+      const maxTimeline = await measure();
+      assert.ok(maxTimeline.viewport.height >= 450, JSON.stringify(maxTimeline));
+      await page.setViewportSize({ width: 1024, height: 768 });
+      const tablet = await measure();
+      console.log(JSON.stringify({ classicMaxTimeline: maxTimeline, classicTablet: tablet, stage: await page.evaluate(() => [...document.querySelector('.stage').children].map(el => ({ id: el.id, cls: el.className, height: el.getBoundingClientRect().height }))) }));
+      assert.ok(tablet.viewport.height >= 345 && tablet.viewport.width > 0, JSON.stringify(tablet));
+      assert.ok(tablet.timeline.height >= 80, JSON.stringify(tablet));
+      await page.locator('#playMode').scrollIntoViewIfNeeded();
+      await page.locator('#playMode').focus();
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'playMode');
+      await page.keyboard.press('Alt+ArrowDown');
+      await page.keyboard.press('Escape');
+      await page.locator('#restartBtn').scrollIntoViewIfNeeded();
+      await page.locator('#restartBtn').click();
+      await page.locator('#viewportSettingsBtn').scrollIntoViewIfNeeded();
+      await page.locator('#viewportSettingsBtn').click();
+      assert.equal(await page.locator('#viewportSettingsPanel').isVisible(), true);
+      await page.locator('#viewportSettingsPanel [data-close]').click();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.setViewportSize({ width: 1440, height: 1000 });
       let stable = await snapshot();
       await page.locator('[data-resize=right]').focus();
       await page.keyboard.press('ArrowLeft');
@@ -225,3 +254,69 @@ test(
     }
   },
 );
+
+test('mode layout dividers resize and retain sizes across reload without changing project', async () => {
+  const html = await readFile(new URL('../../../outputs/Animation_Studio_v1_33_0.html', import.meta.url));
+  const server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(html); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const browser = await chromium.launch(browserOptions({ headless: true, args: ['--disable-dev-shm-usage'] }));
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    page.setDefaultTimeout(60000);
+    await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.__studio?.state.bones > 0, null, { timeout: 60000 });
+    await page.locator('#layoutTab-animate').click();
+    const snapshot = () => page.evaluate(() => JSON.stringify({ project: __studio.serialized(false), history: __studio.state.historyIndex, dirty: __studio.state.dirty }));
+    const before = await snapshot();
+    const width = (selector) => page.locator(selector).evaluate((node) => node.getBoundingClientRect().width);
+    const drag = async (selector, dx, dy = 0) => {
+      const box = await page.locator(selector).boundingBox();
+      assert.ok(box);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 8 });
+      await page.mouse.up();
+    };
+    const left = await width('#layoutLeft'), right = await width('#layoutRight');
+    await drag('[data-layout-grip=left]', 50);
+    await drag('[data-layout-grip=right]', -50);
+    const resizedLeft = await width('#layoutLeft'), resizedRight = await width('#layoutRight');
+    assert.ok(resizedLeft > left + 35);
+    assert.ok(resizedRight > right + 35);
+    const timelineBefore = await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height);
+    await drag('[data-resize=timeline]', 0, -40);
+    const timelineAfter = await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height);
+    console.log(JSON.stringify({ timelineBefore, timelineAfter, modeStage: await page.evaluate(() => [...document.querySelector('.stage').children].map(el => ({ id: el.id, cls: el.className, height: el.getBoundingClientRect().height }))) }));
+    assert.ok(timelineAfter > timelineBefore + 10);
+    assert.equal(await snapshot(), before);
+    await page.locator('#layoutTab-pose').click();
+    await page.locator('#layoutTab-animate').click();
+    assert.ok(Math.abs(await width('#layoutLeft') - resizedLeft) < 2);
+    assert.ok(Math.abs(await width('#layoutRight') - resizedRight) < 2);
+    assert.equal(await snapshot(), before);
+    await page.locator('[data-resize=timeline]').focus();
+    await page.keyboard.press('End');
+    const maxTimeline = await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height);
+    const viewportHeight = () => page.locator('#viewportShell').evaluate((node) => node.getBoundingClientRect().height);
+    const modesDesktopViewport = await viewportHeight();
+    assert.ok(modesDesktopViewport >= 449);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    const modesTabletViewport = await viewportHeight();
+    const modesTabletTimeline = await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height);
+    console.log(JSON.stringify({ modesDesktopViewport, modesTabletViewport, modesTabletTimeline, maxTimeline }));
+    assert.ok(modesTabletViewport >= 344);
+    assert.ok(modesTabletTimeline >= 60);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.reload();
+    await page.waitForFunction(() => window.__studio?.state.bones > 0, null, { timeout: 60000 });
+    await page.locator('#layoutTab-animate').click();
+    assert.ok(Math.abs(await width('#layoutLeft') - resizedLeft) < 2);
+    assert.ok(Math.abs(await width('#layoutRight') - resizedRight) < 2);
+    assert.ok(Math.abs(await page.locator('#animationArea').evaluate((node) => node.getBoundingClientRect().height) - maxTimeline) < 2);
+    assert.ok(await viewportHeight() >= 449);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
