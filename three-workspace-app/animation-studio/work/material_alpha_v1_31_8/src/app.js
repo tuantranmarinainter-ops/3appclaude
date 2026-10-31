@@ -1,3 +1,5 @@
+import { installMolangPanel } from './molang_panel.js';
+let molangPanel = null;
 import * as Keymap from './keymap.js';
 import { installKeymapSettings } from './keymap_settings.js';
 Keymap.initialize();
@@ -2757,6 +2759,7 @@ function drawTimeline() {
     ctx.strokeRect(m.x, m.y, m.toX - m.x, m.toY - m.y);
   }
   $('keySelectionCount').textContent = selectionKeys.length + ' key đã chọn';
+  molangPanel?.sync();
   const x = left + (span * time) / project.duration;
   for (const [c, h] of [
     [ctx, height],
@@ -8593,7 +8596,9 @@ function frame(stamp) {
     time = state.time;
     playing = state.playing;
     playbackFinished = !playing;
-    C.evaluate(rig, directorPending?.showing || easingPreview?.project || project, time);
+    C.evaluate(rig, directorPending?.showing || easingPreview?.project || project, time, {
+      lifeTime: playbackElapsed,
+    });
     const index = Math.floor(time * project.fps);
     playbackDiagnostics.frames++;
     playbackDiagnostics.maxGap = Math.max(playbackDiagnostics.maxGap, dt);
@@ -9903,6 +9908,48 @@ syncMinimalUI();
 setupDirector();
 modeLayout = installModeLayout({ save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
 window.__studio.layoutModes = modeLayout;
+molangPanel = installMolangPanel(document.querySelector('.key-editor'), {
+  state() {
+    const selectedKeys = selectionKeys.filter(r => (r.kind || 'keys') === 'keys');
+    const candidate = selectionKeys.length === 1 && selectedKeys.length === 1 ? selectedKeys[0] : null;
+    const key = candidate && project.keys[candidate.id]?.find(k => Math.abs(k.time - candidate.time) < 1e-7);
+    const euler = key && new T.Euler().setFromQuaternion(new T.Quaternion().fromArray(key.q), 'XYZ');
+    const values = key && Object.fromEntries([['p', key.p], ['r', [deg(euler.x), deg(euler.y), deg(euler.z)]], ['s', key.s]].flatMap(([path, vector]) => vector.map((value, axis) => [path + axis, value])));
+    return { ref: key ? { ...candidate, key, values } : null, variables: project.molangVariables || {},
+      readOnly: mode === 'compare' || !!sourcePreview || (sceneMode && !sceneEditing),
+      hasExpressions: C.hasExpressions(project) };
+  },
+  apply(channel, source) {
+    assertEditingAllowed();
+    const ref = this.state().ref;
+    if (!ref) return {error: 'Hãy chọn một key của khớp.'};
+    const text = source.trim();
+    const result = C.setKeyExpression(project, ref.id, ref.time, channel[0], Number(channel[1]), text);
+    if (text.length > 4096 && result.error) return result;
+    if (text && Number.isFinite(Number(text)) && !result.error)
+      C.setKeyExpression(project, ref.id, ref.time, channel[0], Number(channel[1]), '');
+    C.evaluate(rig, project, time); commit(); refresh();
+    return result;
+  },
+  previewVariable(name, value) { if (!Number.isFinite(value)) return; project.molangVariables[name] = value; C.evaluate(rig, project, time); dirtyViews(); syncTransform(); },
+  setVariable(name, value) { assertEditingAllowed(); if (!Number.isFinite(value)) return; project.molangVariables[name] = value; C.evaluate(rig, project, time); commit(); refresh(); },
+  addVariable(name) {
+    assertEditingAllowed();
+    name = name.replace(/^(variable|v)\./i, '');
+    if (!/^[a-z_][a-z0-9_]*$/i.test(name)) return 'Tên biến chỉ gồm chữ, số và dấu gạch dưới, bắt đầu bằng chữ hoặc gạch dưới.';
+    if (['__proto__', 'prototype', 'constructor'].includes(name.toLowerCase())) return 'Tên biến này không được hỗ trợ.';
+    project.molangVariables ||= {};
+    if (Object.hasOwn(project.molangVariables, name)) return 'Biến này đã tồn tại.';
+    project.molangVariables[name] = 0; commit(); refresh(); return null;
+  },
+  removeVariable(name) { assertEditingAllowed(); delete project.molangVariables[name]; C.evaluate(rig, project, time); commit(); refresh(); },
+  bake() {
+    assertEditingAllowed();
+    try { const baked = C.bakeExpressions(project); project = baked; C.evaluate(rig, project, time); commit(); refresh(); return null; }
+    catch (error) { return error.message || 'Không thể bake biểu thức.'; }
+  },
+});
+molangPanel.sync(true);
 setupKeymapActions();
 window.__studio.keymap = Keymap;
 window.__studio.ready = true;
@@ -10425,6 +10472,8 @@ function setupKeymapActions() {
   add('timeline.setEnd','Đặt điểm cuối tại đầu phát','Timeline','timeline',()=>{$('duration').value=String(Math.max(.1,time));$('duration').dispatchEvent(new Event('change'));},{mutates:true,selector:'#duration'});
   add('timeline.marker','Thêm marker','Timeline','timeline',()=>{$('labAddMarker').click();},{mutates:true,selector:'#labAddMarker'});
   add('timeline.graph','Bật/tắt Graph Editor','Timeline','timeline',()=>setAnimationEditor($('animationEditor').value==='graph'?'timeline':'graph'),{selector:'[data-editor-tab="graph"]'});
+  add('key.molang', 'Mở biểu thức Molang', 'Keyframe', 'timeline', () => { molangPanel.root.open = true; molangPanel.root.scrollIntoView({block:'nearest'}); document.getElementById('molangExpression').focus(); }, {selector:'#molangExpression'});
+  add('key.molangBake', 'Chuyển biểu thức thành keyframe', 'Keyframe', 'timeline', () => document.getElementById('molangBake').click(), {mutates:true, selector:'#molangBake'});
   add('key.moveBack','Dời key sớm một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start-1/timelineRate());},{mutates:true});
   add('key.moveNext','Dời key muộn một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start+1/timelineRate());},{mutates:true});
   add('key.invert','Đảo chọn key','Keyframe','timeline',()=>{const all=C.bodyKeyRefs(rig,project);selectionKeys=all.filter(a=>!selectionKeys.some(b=>a.id===b.id&&a.time===b.time&&(a.kind||'keys')===(b.kind||'keys')));drawTimeline();});

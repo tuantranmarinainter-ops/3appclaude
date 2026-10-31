@@ -51,7 +51,7 @@ test(
         s.seek(0);
         return { id, expected };
       });
-      await page.locator('#minimalKeyOptions summary').click();
+      await page.locator('#minimalKeyOptions > summary').click();
       async function rightClickKey() {
         await page.locator('#timeline').scrollIntoViewIfNeeded();
         await page.waitForTimeout(200);

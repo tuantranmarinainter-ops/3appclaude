@@ -9,6 +9,7 @@ import * as M from './motion_lab.js';
 import * as E from './easing.js';
 import * as N from './motion_smoothing.js';
 import * as G from './graph_curves.js';
+import { evaluateMolang } from './molang.js';
 export { G as graphCurves };
 export { N as smoothing };
 export { E as easing };
@@ -248,13 +249,39 @@ function sampleLegacy(keys, t, rest) {
       ),
   };
 }
-export function sampleKeys(keys, t, rest) {
-  return G.overlay(keys, t, sampleLegacy(keys, t, rest));
+function expressionContext(project, time, lifeTime = time) {
+  return { anim_time: time, life_time: lifeTime, variables: project?.molangVariables || {} };
 }
-export function evaluateRaw(rig, project, t) {
+function expressionKey(key, time, project, lifeTime) {
+  if (!key.molang || !Object.keys(key.molang).length) return key;
+  const result = clone(key);
+  let rotation;
+  for (const [channel, source] of Object.entries(key.molang)) {
+    if (!/^[prs][012]$/.test(channel) || typeof source !== 'string') continue;
+    const evaluated = evaluateMolang(source, expressionContext(project, time, lifeTime));
+    if (evaluated.error || !Number.isFinite(evaluated.value)) continue;
+    const axis = Number(channel[1]);
+    if (channel[0] === 'r') {
+      rotation ||= [...(result.graph?.euler || G.euler(result.q))];
+      rotation[axis] = evaluated.value;
+    } else result[channel[0]][axis] = evaluated.value;
+  }
+  if (rotation) {
+    result.q = G.quaternion(rotation);
+    if (result.graph?.euler) result.graph.euler = rotation;
+  }
+  return result;
+}
+export function sampleKeys(keys, t, rest, project, lifeTime = t) {
+  const sampled = keys?.some((k) => k.molang && Object.keys(k.molang).length)
+    ? keys.map((k) => expressionKey(k, t, project, lifeTime))
+    : keys;
+  return G.overlay(sampled, t, sampleLegacy(sampled, t, rest));
+}
+export function evaluateRaw(rig, project, t, options = {}) {
   resetRig(rig);
-  for (const r of rig.records) apply(r.o, sampleKeys(project.keys[r.id], t, r.rest));
-  apply(rig.root, sampleKeys(project.keys.root, t, rig.rootRest));
+  for (const r of rig.records) apply(r.o, sampleKeys(project.keys[r.id], t, r.rest, project, options.lifeTime));
+  apply(rig.root, sampleKeys(project.keys.root, t, rig.rootRest, project, options.lifeTime));
   rig.root.updateMatrixWorld(true);
   for (const c of rig.chains) {
     const options = K.sampleOptions(project.ikOptions?.[c.id], t);
@@ -264,7 +291,7 @@ export function evaluateRaw(rig, project, t) {
     const prefix = id.startsWith('pole_') ? 'pole_' : 'ik_',
       chain = id.slice(prefix.length),
       keys = K.controlKeys(project.keys[id], project.ikOptions?.[chain], prefix);
-    apply(c.object, sampleKeys(keys, t, c.rest));
+    apply(c.object, sampleKeys(keys, t, c.rest, project, options.lifeTime));
   }
   for (const chain of rig.chains) {
     const keys = project.ikModes[chain.id] || [];
@@ -275,18 +302,19 @@ export function evaluateRaw(rig, project, t) {
   }
   rig.root.updateMatrixWorld(true);
 }
-function evaluatePose(rig, project, t) {
+function evaluatePose(rig, project, t, options) {
   if (project.lab)
     return M.evaluate(rig, project, t, {
-      raw: evaluateRaw,
+      raw: (rig, base, time) => evaluateRaw(rig, project.molangVariables
+        ? { ...base, molangVariables: project.molangVariables } : base, time, options),
       snap,
       apply,
-      sample: sampleKeys,
+      sample: (keys, time, rest) => sampleKeys(keys, time, rest, project, options.lifeTime),
       solveIK,
       setWorldQ,
       configure: K.configure,
     });
-  return evaluateRaw(rig, project, t);
+  return evaluateRaw(rig, project, t, options);
 }
 export function motionOrigins(rig) {
   const roots = activeRecords(rig).filter(
@@ -324,11 +352,76 @@ export function applyInPlace(rig, anchors) {
   rig.root.updateMatrixWorld(true);
 }
 export function evaluate(rig, project, t, options = {}) {
-  if (!(options.inPlace ?? project.inPlace)) return evaluatePose(rig, project, t);
-  evaluatePose(rig, project, 0);
+  if (!(options.inPlace ?? project.inPlace)) return evaluatePose(rig, project, t, options);
+  evaluatePose(rig, project, 0, options);
   const anchors = motionOrigins(rig);
-  evaluatePose(rig, project, t);
+  evaluatePose(rig, project, t, options);
   applyInPlace(rig, anchors);
+}
+// Rotation channels use XYZ Euler degrees, matching the graph editor.
+export function setKeyExpression(project, id, time, path, axis, source) {
+  if (!['p', 'r', 's'].includes(path) || ![0, 1, 2].includes(axis) || typeof source !== 'string')
+    throw Error('Kênh biểu thức không hợp lệ.');
+  const key = project.keys[id]?.find((k) => Math.abs(k.time - time) < 1e-7);
+  if (!key) throw Error('Không tìm thấy keyframe.');
+  const channel = path + axis;
+  if (source.length > 4096) return evaluateMolang(source, expressionContext(project, key.time));
+  if (!source.trim()) {
+    if (key.molang) {
+      delete key.molang[channel];
+      if (!Object.keys(key.molang).length) delete key.molang;
+    }
+    return { value: null, error: null };
+  }
+  (key.molang ||= {})[channel] = source;
+  const evaluated = evaluateMolang(source, expressionContext(project, key.time));
+  if (!evaluated.error && Number.isFinite(evaluated.value)) {
+    if (path === 'r') {
+      const rotation = [...(key.graph?.euler || G.euler(key.q))];
+      rotation[axis] = evaluated.value;
+      key.q = G.quaternion(rotation);
+      if (key.graph?.euler) key.graph.euler = rotation;
+    } else key[path][axis] = evaluated.value;
+  }
+  return evaluated;
+}
+export function hasExpressions(project) {
+  const own = Object.values(project.keys || {}).some((keys) =>
+    keys.some((key) => key.molang && Object.keys(key.molang).length),
+  );
+  return own || !!(project.lab && (hasExpressions(project.lab.base) ||
+    project.lab.layers.some((layer) => hasExpressions(layer))));
+}
+export function bakeExpressions(project) {
+  if (!Number.isFinite(project.duration) || project.duration <= 0 ||
+      !Number.isFinite(project.fps) || project.fps <= 0)
+    throw Error('Thời lượng / FPS không hợp lệ.');
+  const baked = clone(project);
+  for (const [id, keys] of Object.entries(project.keys)) {
+    if (!keys.some((key) => key.molang && Object.keys(key.molang).length)) continue;
+    const frameCount = project.duration * project.fps;
+    const lastGridFrame = Math.floor(frameCount + 1e-9);
+    const hasEndpoint = Math.abs(lastGridFrame / project.fps - project.duration) < 1e-9;
+    const count = lastGridFrame + 1 + (hasEndpoint ? 0 : 1);
+    baked.keys[id] = Array.from({ length: count }, (_, frame) => {
+      const time = frame === count - 1 ? project.duration : frame / project.fps;
+      const value = sampleKeys(keys, time, keys[0], project);
+      const original = keys.find((key) => Math.abs(key.time - time) < 1e-7);
+      return { p: [...value.p], q: [...value.q], s: [...value.s], time, interp: 'linear',
+        ...(original?.color === undefined ? {} : { color: original.color }) };
+    });
+  }
+  if (project.lab) {
+    const variables = project.molangVariables || {};
+    const bakePart = (part) => bakeExpressions({
+      ...part, duration: part.duration ?? project.duration, fps: part.fps ?? project.fps,
+      molangVariables: variables,
+    }).keys;
+    baked.lab.base.keys = bakePart(project.lab.base);
+    for (let i = 0; i < project.lab.layers.length; i++)
+      baked.lab.layers[i].keys = bakePart(project.lab.layers[i]);
+  }
+  return baked;
 }
 export function addKey(project, id, time, value, interp, easingStrength = 1) {
   if (!Number.isFinite(time) || time < 0 || time > project.duration + 1e-7)
@@ -337,6 +430,7 @@ export function addKey(project, id, time, value, interp, easingStrength = 1) {
     key = { ...clone(value), time, ...metadata },
     keys = project.keys[id] || (project.keys[id] = []);
   const i = keys.findIndex((k) => Math.abs(k.time - time) < 1e-7);
+  if (i >= 0 && keys[i].molang) key.molang = clone(keys[i].molang);
   if (keys.some((k) => k.graph?.euler)) {
     const near =
       i >= 0
@@ -424,6 +518,10 @@ export function validateProject(p, rig) {
     for (const k of keys) {
       if (
         !valid(k) ||
+        (k.molang !== undefined &&
+          (!k.molang || typeof k.molang !== 'object' || Array.isArray(k.molang) ||
+            Object.entries(k.molang).some(([channel, source]) =>
+              !/^[prs][012]$/.test(channel) || typeof source !== 'string' || source.length > 4096))) ||
         !Number.isFinite(k.time) ||
         k.time < 0 ||
         k.time > p.duration + 1e-7 ||
@@ -435,6 +533,11 @@ export function validateProject(p, rig) {
       prev = k.time;
     }
   }
+  if (p.molangVariables !== undefined &&
+      (!p.molangVariables || typeof p.molangVariables !== 'object' || Array.isArray(p.molangVariables) ||
+        Object.entries(p.molangVariables).some(([name, value]) =>
+          !/^[a-z_][a-z0-9_]*$/i.test(name) || !Number.isFinite(value))))
+    throw Error('Biến Molang không hợp lệ.');
   for (const pose of p.poses) {
     if (
       typeof pose.name !== 'string' ||

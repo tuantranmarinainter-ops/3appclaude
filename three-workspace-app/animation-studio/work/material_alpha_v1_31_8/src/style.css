@@ -274,3 +274,18 @@ body{font-size:13px}body>header{height:auto;min-height:54px;flex-wrap:wrap;gap:8
 #blockingPoseClipboard{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--panel);flex-wrap:wrap}body:not([data-workflow-step="blocking"]) #blockingPoseClipboard{display:none}#blockingPoseStatus{color:var(--accent)}
 
 #keymapSettings table{width:100%;border-collapse:collapse}#keymapSettings td,#keymapSettings th{padding:5px;text-align:left;border-bottom:1px solid var(--line)}#keymapSettings td button{margin:2px}#keymapSettings input[type=search]{width:100%;margin:8px 0}#keymapSettings #keymapConflict{padding:10px;border:1px solid var(--accent)}#keymapSettings #keymapConflict[hidden]{display:none}kbd{float:right;margin-left:12px;font:inherit;color:var(--muted)}
+
+.molang-panel { flex-basis: 100%; min-width: 0; }
+.molang-panel > summary { cursor: pointer; }
+.molang-controls { display: grid; gap: .5rem; padding: .6rem; max-width: 42rem; }
+.molang-controls label { display: grid; gap: .2rem; }
+.molang-controls input[type=text] { width: 100%; min-width: 0; }
+.molang-controls output { color: var(--accent); overflow-wrap: anywhere; }
+.molang-variable { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(5rem, 2fr) 5rem auto; gap: .4rem; align-items: center; }
+.molang-variable label { overflow-wrap: anywhere; }
+.molang-variable input { min-width: 0; width: 100%; }
+.molang-add { display: flex; align-items: end; gap: .4rem; }
+@media (max-width: 600px) { .molang-variable { grid-template-columns: 1fr 1fr; } }
+.molang-axes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
+.molang-axes input { width: 100%; }
+.molang-panel input[aria-invalid="true"] { border-color: #e5484d; color: #e5484d; outline: 1px solid #e5484d; }
