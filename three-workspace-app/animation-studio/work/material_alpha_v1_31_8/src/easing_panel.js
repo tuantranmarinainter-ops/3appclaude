@@ -1,3 +1,4 @@
+import { registerWidgetKey } from './shortcut_context.js';
 import * as E from './easing.js';
 const pathFor = (id, strength) =>
   Array.from({ length: 65 }, (_, i) => {
@@ -55,7 +56,7 @@ export class EasingPanel {
       const card = e.target.closest('[data-preset]');
       if (card) this.animated = card.dataset.preset;
     });
-    this.root.addEventListener('keydown', (e) => {
+    registerWidgetKey(this.root, (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();

@@ -56,7 +56,7 @@ export function panelState(value = {}) {
       if (typeof flag === 'boolean') result.collapsed[key] = flag;
   return result;
 }
-export function installModeLayout({ save, workflow, invalidate, restoreClassic }) {
+export function installModeLayout({ save, workflow, invalidate, restoreClassic, keyIs }) {
   const $ = (id) => document.getElementById(id),
     body = document.body;
   body.classList.add('layout-classic');
@@ -408,26 +408,15 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     persist();
   }
   preference.addEventListener('change', () => setLayout(preference.value));
-  document.addEventListener(
-    'keydown',
-    (event) => {
-      if (
-        layout !== 'modes' ||
-        !event.ctrlKey ||
-        event.altKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        !['1', '2', '3'].includes(event.key) ||
-        event.target.closest('input,textarea,select,[contenteditable=true]') ||
-        document.querySelector('dialog[open]')
-      )
-        return;
+  function handleShortcut(event) {
+      const names = ['pose', 'animate', 'export'];
+      const name = names.find(name => keyIs ? keyIs('mode.' + name, event) : event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && event.key === String(names.indexOf(name) + 1));
+      if (layout !== 'modes' || !name || event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]') || document.querySelector('dialog[open]')) return false;
       event.preventDefault();
       event.stopImmediatePropagation();
-      selectTab(['pose', 'animate', 'export'][Number(event.key) - 1], true);
-    },
-    true,
-  );
+      selectTab(name, true);
+      return true;
+  }
   $('toggleTimeline').addEventListener(
     'click',
     (event) => {
@@ -488,6 +477,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
   return {
     setLayout,
     selectTab,
+    handleShortcut,
     get layout() {
       return layout;
     },

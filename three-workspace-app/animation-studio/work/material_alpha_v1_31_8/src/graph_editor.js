@@ -1,8 +1,9 @@
+import { registerWidgetKey } from './shortcut_context.js';
 import * as G from './graph_curves.js';
 const colors = ['#ee9292', '#8ae0aa', '#8eafff'],
   names = ['X', 'Y', 'Z'];
 export class GraphEditor {
-  constructor(host, { state, action }) {
+  constructor(host, { state, action, keyIs }) {
     this.host = host;
     this.state = state;
     this.action = (...a) => {
@@ -160,25 +161,25 @@ export class GraphEditor {
       },
       { passive: false },
     );
-    this.canvas.addEventListener('keydown', (e) => {
+    this.handleKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         this.cancel();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      if (keyIs ? keyIs('graph.selectAll', e) : (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
         e.stopPropagation();
         this.times = this.state().keys.map((k) => k.time);
         this.draw();
       }
-      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      if (keyIs ? keyIs('graph.frameBack', e) || keyIs('graph.frameNext', e) : ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
         const s = this.state();
-        this.action('seek', s.time + (e.key === 'ArrowRight' ? 1 : -1) / this.rate());
+        this.action('seek', s.time + ((keyIs ? keyIs('graph.frameNext', e) : e.key === 'ArrowRight') ? 1 : -1) / this.rate());
       }
-    });
+    };
     for (const input of host.querySelectorAll('input[type=number]'))
       input.addEventListener('focus', () => input.select());
     window.addEventListener('blur', () => this.cancel());
@@ -202,7 +203,7 @@ export class GraphEditor {
     });
     splitter.addEventListener('pointerup', () => (resize = null));
     splitter.addEventListener('pointercancel', () => (resize = null));
-    splitter.addEventListener('keydown', (e) => {
+    registerWidgetKey(splitter, (e) => {
       if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
         e.preventDefault();
         this.height = Math.max(

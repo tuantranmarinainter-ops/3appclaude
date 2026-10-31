@@ -68,7 +68,7 @@ function setupStudioWorkspace() {
     p.setAttribute('aria-labelledby', 'studioTab-' + key);
     $('studioTab-' + key).setAttribute('aria-controls', p.id);
   }
-  tabs.addEventListener('keydown', (e) => {
+  registerWidgetKey(tabs, (e) => {
     if (
       !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) ||
       e.target.getAttribute('role') !== 'tab'
@@ -258,6 +258,7 @@ function setupStudioSettings() {
   body.id = 'studioSettingsBody';
   const titles = {
       input: 'Điều khiển',
+      keymap: 'Phím tắt',
       appearance: 'Giao diện',
       viewport: 'Khung 3D',
       rig: 'Xương & Control Rig',
@@ -325,7 +326,7 @@ function setupStudioSettings() {
   layout.className = 'studio-settings-layout';
   layout.append(nav, body);
   form.append(layout);
-  nav.addEventListener('keydown', (e) => {
+  registerWidgetKey(nav, (e) => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
     const bs = [...nav.children],
       i = bs.indexOf(e.target);
@@ -421,7 +422,7 @@ function setupStudioMenus() {
   document.addEventListener('pointerdown', (e) => {
     for (const m of document.querySelectorAll(selector)) if (!m.contains(e.target)) m.open = false;
   });
-  document.addEventListener('keydown', (e) => {
+  registerWidgetBubble(document, (e) => {
     if (e.key !== 'Escape') return;
     for (const m of document.querySelectorAll(selector))
       if (m.open) {
@@ -462,7 +463,7 @@ function setupStudioTextureDrag() {
     handle.addEventListener(ev, end);
   window.addEventListener('blur', end);
   $('textureClose').addEventListener('click', end);
-  panel.addEventListener('keydown', (e) => {
+  registerWidgetKey(panel, (e) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
       $('textureClose').click();
@@ -747,8 +748,7 @@ function setupStudioPaneSizing() {
         },
         true,
       );
-    handle.addEventListener(
-      'keydown',
+    registerWidgetKey(handle,
       (e) => {
         if (
           !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Escape'].includes(
@@ -780,7 +780,6 @@ function setupStudioPaneSizing() {
         sizes[sizeKey(kind)] = apply(kind, n);
         save();
       },
-      true,
     );
     window.addEventListener('blur', () => end());
   };

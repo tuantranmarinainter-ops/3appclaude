@@ -1,3 +1,4 @@
+import { registerWidgetKey, registerWidgetCapture } from './shortcut_context.js';
 export class ViewportToolbar {
   constructor(host, { changed, reset }) {
     this.host = host;
@@ -142,7 +143,7 @@ export class ViewportToolbar {
       h.addEventListener('pointerup', () => this.finish());
       h.addEventListener('pointercancel', () => this.finish(true));
       h.addEventListener('lostpointercapture', () => this.finish());
-      h.addEventListener('keydown', (e) => {
+      registerWidgetKey(h, (e) => {
         if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
         e.preventDefault();
         const value =
@@ -152,8 +153,7 @@ export class ViewportToolbar {
       });
       return h;
     });
-    window.addEventListener(
-      'keydown',
+    registerWidgetCapture(
       (e) => {
         if (e.key !== 'Escape') return;
         if (this.resize) {
@@ -166,7 +166,6 @@ export class ViewportToolbar {
           this.close();
         }
       },
-      { capture: true },
     );
     window.addEventListener('blur', () => this.finish());
     new ResizeObserver(() => {

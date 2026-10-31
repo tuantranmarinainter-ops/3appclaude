@@ -1,3 +1,4 @@
+import { registerWidgetKey, registerWidgetCapture } from './shortcut_context.js';
 const regions = [
   'body',
   'head',
@@ -165,7 +166,7 @@ export class MotionPanel {
           pose: Number(this.el('motionPoseLibrary').value),
         });
     });
-    root.addEventListener('keydown', (e) => {
+    registerWidgetKey(root, (e) => {
       const joint = e.target.closest('[data-joint]');
       if (joint && ['Enter', ' '].includes(e.key)) {
         e.preventDefault();
@@ -276,7 +277,7 @@ export class MotionPanel {
     h.addEventListener('pointercancel', () => end(true));
     h.addEventListener('lostpointercapture', () => end(true));
     window.addEventListener('blur', () => end(true));
-    h.addEventListener('keydown', (e) => {
+    registerWidgetKey(h, (e) => {
       if (e.key === 'Escape' && this.drag) {
         e.preventDefault();
         end(true);
@@ -294,15 +295,13 @@ export class MotionPanel {
       this.position(x, y);
       this.clamp();
     });
-    window.addEventListener(
-      'keydown',
+    registerWidgetCapture(
       (e) => {
         if (e.key === 'Escape' && this.drag) {
           e.preventDefault();
           end(true);
         }
       },
-      true,
     );
   }
   setupHandDrag() {
@@ -391,8 +390,7 @@ export class MotionPanel {
     this.root.addEventListener('pointercancel', () => end(true));
     this.root.addEventListener('lostpointercapture', () => end(true));
     window.addEventListener('blur', () => end(true));
-    window.addEventListener(
-      'keydown',
+    registerWidgetCapture(
       (e) => {
         if (e.key === 'Escape' && wheel) {
           e.preventDefault();
@@ -409,7 +407,7 @@ export class MotionPanel {
       },
       true,
     );
-    this.root.addEventListener('keydown', (e) => {
+    this.registerWidgetKey(root, (e) => {
       const el = e.target.closest('.motion-hand-grip');
       if (
         !el ||

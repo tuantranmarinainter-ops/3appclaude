@@ -26,9 +26,7 @@ test(
     mkdirSync(dir, { recursive: true });
     try {
       browser = await chromium.launch({
-        executablePath:
-          process.env.CHROMIUM_PATH ??
-          (process.platform === 'win32' ? undefined : '/usr/bin/chromium'),
+        ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
         args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
       });
       const page = await browser.newPage({ viewport: { width: 1680, height: 1120 } }),

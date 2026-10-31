@@ -1,3 +1,4 @@
+import { registerWidgetKey } from './shortcut_context.js';
 export class SmoothingPanel {
   constructor(host, { state, action }) {
     this.state = state;
@@ -27,7 +28,7 @@ export class SmoothingPanel {
       this.action('cancel');
       this.sync();
     });
-    this.root.addEventListener('keydown', (e) => {
+    registerWidgetKey(this.root, (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
