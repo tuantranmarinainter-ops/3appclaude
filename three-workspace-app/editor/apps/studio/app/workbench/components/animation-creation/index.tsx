@@ -9,10 +9,7 @@ import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 import { resolveTimelineInOutDefault } from '../../../../src/timelineInOut'
-
-const CHANNEL = 'bbs-animation-studio-v1.33.0'
-const FRAME_URL = '/animation-studio/v1.33.0/index.html'
-const BRIDGE_URL = '/animation-studio/v1.33.0/host-bridge.js'
+import { APP3_BRIDGE_CHANNEL as CHANNEL, APP3_BRIDGE_URL as BRIDGE_URL, APP3_FRAME_URL as FRAME_URL, APP3_TITLE } from '../../../../src/app3Embed'
 
 type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { state?: { project?: Record<string, unknown> }; nativeProject?: Record<string, unknown>; derivativeBase64?: string; fps?: number; duration?: number; shotId?: string; characterId?: string; zip?: ArrayBuffer }; error?: string }
 
@@ -65,7 +62,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
-    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus('Animation Studio 1.33.0 đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
+    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus(APP3_TITLE + ' đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
     if (event.data.type === 'dirty') { const dirty = event.data.dirty === true; setEditorDirty(dirty); onEditorDirty(dirty); return }
     const item = pending.current.get(event.data.requestId)
     if (!item) return
@@ -290,7 +287,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   return <section className="wb-animation-creation" aria-label="Animation Creation">
     {controlsDock ? createPortal(controls, controlsDock) : controls}
-    <iframe ref={frame} className="wb-animation-creation-frame" title="Animation Studio 1.33.0" src={FRAME_URL} onLoad={() => {
+    <iframe ref={frame} className="wb-animation-creation-frame" title={APP3_TITLE} src={FRAME_URL} onLoad={() => {
       const doc = frame.current?.contentDocument
       if (!doc) return
       attachControlsDock(doc)
