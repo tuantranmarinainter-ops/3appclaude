@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -20,6 +21,7 @@ test(
     try {
       const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
       page.on('dialog', (d) => d.accept());
+      await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await page.waitForFunction(() => window.__studio?.ready);
       const evidence = [];

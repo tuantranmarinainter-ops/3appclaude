@@ -9,3 +9,7 @@ Copyright © JannisX11 và các cộng sự Blockbench. SPDX: GPL-3.0-or-later.
 Không chép Vue/jQuery, giao diện, âm thanh hoặc Molang của upstream.
 Các hàm nhảy key, màu key và giao diện App 3 là phần triển khai mới cho dự án này.
 Chỉ App 3 mang mã GPL; không import vào editor/packages hoặc App 4.
+
+## Gói 5 — bố cục theo chế độ
+
+`src/layout_modes.js` và `src/layout_modes.css` là mã mới của App 3, chỉ học cách chia vùng giao diện. Không chuyển thể mã nguồn/CSS Blockbench, không dùng logo, icon, ảnh chụp hoặc tài sản Blockbench. Dùng lại đúng các phần tử DOM, công cụ và cơ chế resize của App 3.

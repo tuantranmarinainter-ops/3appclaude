@@ -287,7 +287,7 @@ function setupStudioSettings() {
     body.append(p);
   }
   const targets = {
-    appearance: ['minimalThemeSettings', 'uiLanguage', 'theme', 'themeColor'],
+    appearance: ['layoutModeSettings', 'minimalThemeSettings', 'uiLanguage', 'theme', 'themeColor'],
     input: ['mouseSettings', 'focusDistance'],
     viewport: [
       'viewportDisplaySettings',
@@ -584,6 +584,16 @@ function setupStudioPaneSizing() {
   };
   const originalTimelineBounds = studioTimelineBounds;
   studioTimelineBounds = () => {
+    if (document.body.classList.contains('layout-modes')) {
+      const stage = document.querySelector('.stage');
+      const fixed = [...stage.children]
+        .filter(el => !['viewportGrid', 'viewportShell', 'animationArea'].includes(el.id))
+        .reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+      const available = Math.max(0, stage.clientHeight - fixed);
+      const viewportMinimum = Math.min(180, Math.max(100, available - 220));
+      const max = Math.max(0, Math.min(500, available - viewportMinimum));
+      return { min: Math.min(220, max), max };
+    }
     if (innerWidth > 700) return originalTimelineBounds();
     const stage = document.querySelector('.stage'),
       fixed = [...stage.children]
@@ -601,7 +611,7 @@ function setupStudioPaneSizing() {
     return { min: Math.min(80, max), max };
   };
   const bounds = (min, max) => [Math.min(min, Math.max(0, max)), Math.max(0, max)];
-  const sizeKey = (kind) => (innerWidth <= 700 ? 'mobile-' + kind : kind);
+  const sizeKey = (kind) => document.body.classList.contains('layout-modes') ? 'modes-' + document.body.dataset.layoutTab + '-' + (innerWidth <= 1024 ? 'mobile-' : '') + kind : (innerWidth <= 700 ? 'mobile-' + kind : kind);
   const widthBounds = () =>
     bounds(
       innerWidth <= 700 ? 140 : 180,

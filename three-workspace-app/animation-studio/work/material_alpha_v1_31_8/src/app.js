@@ -1,3 +1,6 @@
+import { initializeLayoutPreference, installModeLayout } from './layout_modes.js';
+let modeLayout = null;
+initializeLayoutPreference();
 import * as TimelineTools from './timeline_tools.js';
 let playbackElapsed = null,
   playbackOrigin = 0,
@@ -3809,7 +3812,7 @@ async function saveProject() {
   data.draftRigOptions = snapshot().options;
   data.time = time;
   data.draftDirty = draft;
-  data.settings = readSettings();
+  data.settings = readSettings(false);
   data.workspaceMode = mode;
   data.selected = selected;
   data.workspaceLayout = workspaceSnapshot();
@@ -4509,6 +4512,8 @@ function minimalPalette(light, index) {
 setupMinimalDOM();
 setupDualEditor();
 const settingIds = [
+  'layoutMode',
+  'layoutModePanels',
   ...Object.keys(V.defaults),
   ...Object.keys(O.defaults),
   ...minimalSettingIds,
@@ -4674,13 +4679,15 @@ function applyGroundViews() {
   }
   viewportToolbar?.sync();
 }
-function readSettings() {
-  return {
+function readSettings(includeInterface = true) {
+  const result = {
     ...Object.fromEntries(
       settingIds.map((id) => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value]),
     ),
     coordinateSystem: 'blender-z-up',
   };
+  if (!includeInterface) { delete result.layoutMode; delete result.layoutModePanels; }
+  return result;
 }
 function applySettings(settings) {
   settings = { ...settings, ...O.validate(settings) };
@@ -4747,6 +4754,7 @@ function applySettings(settings) {
     localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings()));
   } catch {}
   applyLabLayout();
+  modeLayout?.acceptSettings();
   refresh();
   if (editorSlots.A) {
     setDualTimeline($('dualTimelineModeSettings').value);
@@ -5329,7 +5337,7 @@ function blockedCompareTarget(target) {
   return (
     !!target &&
     !target.closest?.(
-      '#compareWorkspace,#texturePanel,#modeCreate,#modeRig,#modeCompare,#helpBtn,#help',
+      '#compareWorkspace,#texturePanel,#modeCreate,#modeRig,#modeCompare,#helpBtn,#help,#layoutModeTabs',
     )
   );
 }
@@ -9839,7 +9847,7 @@ window.__studio = {
     p.parallelModes = parallelSave();
     p.rig.asset = embed ? rig.asset : null;
     if (rig.isBOBJ) p.rig.bobjEulerOrder = rig.bobjEulerOrder;
-    p.settings = readSettings();
+    p.settings = readSettings(false);
     p.workspaceMode = mode;
     p.selected = selected;
     p.workspaceLayout = workspaceSnapshot();
@@ -9894,6 +9902,8 @@ syncWorkspaceTools();
 minimalBooting = false;
 syncMinimalUI();
 setupDirector();
+modeLayout = installModeLayout({ save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
+window.__studio.layoutModes = modeLayout;
 window.__studio.ready = true;
 requestAnimationFrame(frame);
 

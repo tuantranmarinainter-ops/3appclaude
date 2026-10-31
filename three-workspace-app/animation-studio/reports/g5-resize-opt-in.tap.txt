@@ -1,0 +1,33 @@
+TAP version 13
+# {"initial":{"left":{"width":260,"height":874.5},"right":{"width":320,"height":874.5},"timeline":{"width":844,"height":125.40625},"viewport":{"width":844,"height":450}},"resized":{"left":{"width":315,"height":874.5},"right":{"width":380,"height":874.5},"timeline":{"width":729,"height":28.40625},"viewport":{"width":729,"height":450}}}
+# Subtest: pane dividers resize, reload, clamp and leave project/history unchanged
+not ok 1 - pane dividers resize, reload, clamp and leave project/history unchanged
+  ---
+  duration_ms: 15833.665312
+  type: 'test'
+  location: '/workspace/3appclaude-app3-layout/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/workspace_resize.browser.test.mjs:13:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+    
+      assert.ok(Math.abs(reloaded.timeline.height - resized.timeline.height) < 2)
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/3appclaude-app3-layout/three-workspace-app/animation-studio/work/material_alpha_v1_31_8/src/workspace_resize.browser.test.mjs:130:14)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16324.672072

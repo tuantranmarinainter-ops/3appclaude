@@ -1,0 +1,37 @@
+{
+  "images": [
+    {
+      "name": "classic-1920x1080",
+      "width": 1920,
+      "height": 1080,
+      "pngSha256": "6d8ab07137ff1196d2cd867011cbdf8dbbcd92d42327d9c73c9f932db85f5863",
+      "svgSha256": "614c7bbb216e11e6ec28641fba7d6f72c61124e981c28e32e0892db9b24fc30f",
+      "rgbDifference": 0
+    },
+    {
+      "name": "classic-1024x768",
+      "width": 1024,
+      "height": 768,
+      "pngSha256": "d176aabc9ab3659a062e8664f02ab4f94497d414b2748b1725b5e622199e903c",
+      "svgSha256": "13052f83c8f503d6666fb7dfd18b514b29b04a3af5e112681c10a4fdab7621b1",
+      "rgbDifference": 0
+    },
+    {
+      "name": "modes-1920x1080",
+      "width": 1920,
+      "height": 1080,
+      "pngSha256": "d88c79f99850a82084555dabf4106cc67c3f767b88576767d69ce072e5b9606d",
+      "svgSha256": "8d87505248ee2e79acceec93c46cc9e46057cd56a9e5066ccd3ba0060ad1abb9",
+      "rgbDifference": 0
+    },
+    {
+      "name": "modes-1024x768",
+      "width": 1024,
+      "height": 768,
+      "pngSha256": "292e28a70125aefb366b52aa1dad35fd2bd6b8207d5846357d483a7b066503da",
+      "svgSha256": "95709eff7b42d206c331cddbb17069e918d84fe5867b8b0d72941b9c955e513b",
+      "rgbDifference": 0
+    }
+  ],
+  "classicBeforeAfterDifference": 0
+}

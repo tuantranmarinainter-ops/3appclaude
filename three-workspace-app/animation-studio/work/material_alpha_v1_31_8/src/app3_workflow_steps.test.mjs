@@ -1,3 +1,4 @@
+import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -51,6 +52,7 @@ test(
       const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
       const errors = [];
       page.on('pageerror', (error) => errors.push(error.message));
+      await useClassicLayout(page);
       await page.goto(`http://127.0.0.1:${server.address().port}/`);
       await page.waitForFunction(() => window.__studio?.ready);
 

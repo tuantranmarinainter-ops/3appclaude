@@ -4,6 +4,7 @@ const root = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, 
   shared = path.resolve(root, '../..'),
   vendor = path.join(shared, 'vendor/three');
 const imports = {};
+imports['@studio/layout-modes'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/layout_modes.js'), 'utf8')).toString('base64');
 imports['@studio/timeline-tools'] =
   'data:text/javascript;base64,' +
   Buffer.from(await fs.readFile(path.join(root, 'src/timeline_tools.js'), 'utf8')).toString(
@@ -117,6 +118,7 @@ imports['@studio/core'] =
     (await fs.readFile(path.join(root, 'src/core.js'), 'utf8'))
       .replace("'./director_schema.js'", "'@studio/director-schema'")
       .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
+      .replace("'./layout_modes.js'", "'@studio/layout-modes'")
       .replace("'./joint_limits.js'", "'@studio/joint-limits'")
       .replace("'./skin_shape.js'", "'@studio/skin-shape'")
       .replace("'./rig_kinematics.js'", "'@studio/rig-kinematics'")
@@ -141,6 +143,7 @@ imports['@studio/onion-skin'] =
       .replace("'./compare_space.js'", "'@studio/compare-space'")
       .replace("'./core.js'", "'@studio/core'")
       .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
+      .replace("'./layout_modes.js'", "'@studio/layout-modes'")
       .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
       .replace("'./fbx_loader_native.js'", "'@studio/fbx-native'"),
   ).toString('base64');
@@ -196,7 +199,8 @@ imports['@studio/source-preview'] =
     (await fs.readFile(path.join(root, 'src/source_preview.js'), 'utf8'))
       .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
       .replace("'./core.js'", "'@studio/core'")
-      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'"),
+      .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
+      .replace("'./layout_modes.js'", "'@studio/layout-modes'"),
   ).toString('base64');
 for (const [id, file] of [
   ['warcraft-loader', 'warcraft_loader.js'],
@@ -253,6 +257,7 @@ imports['@studio/shot-export'] =
     (await fs.readFile(path.join(root, 'src/shot_export.js'), 'utf8'))
       .replace("'./core.js'", "'@studio/core'")
       .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
+      .replace("'./layout_modes.js'", "'@studio/layout-modes'")
       .replace("'./shot_package.js'", "'@studio/shot-package'"),
   ).toString('base64');
 for (const file of ['shot_reverse', 'minecraft20_postprocess', 'minecraft20_export']) {
@@ -301,6 +306,7 @@ const app = (
   .replace("'./compare_space.js'", "'@studio/compare-space'")
   .replace("'./core.js'", "'@studio/core'")
   .replace("'./timeline_tools.js'", "'@studio/timeline-tools'")
+      .replace("'./layout_modes.js'", "'@studio/layout-modes'")
   .replace("'./bobj_loader.js'", "'@studio/bobj-loader'")
   .replace("'./fbx_loader_native.js'", "'@studio/fbx-native'")
   .replace("'./control_rig.js'", "'@studio/control-rig'")
@@ -324,7 +330,7 @@ html = html
     '/*STYLE*/',
     (await fs.readFile(path.join(root, 'src/style.css'), 'utf8')) +
       '\n' +
-      (await fs.readFile(path.join(root, 'src/workspace_ui.css'), 'utf8')),
+      (await fs.readFile(path.join(root, 'src/workspace_ui.css'), 'utf8')) + '\n' + (await fs.readFile(path.join(root, 'src/layout_modes.css'), 'utf8')),
   )
   .replace(
     '<!--IMPORTMAP-->',
