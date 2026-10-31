@@ -148,3 +148,6 @@ thiếu role chính.
 - Hệ quả: `three-workspace-app/animation-studio/` chuyển sang **GPL-3.0**; phần còn lại của repo giữ **Apache-2.0**.
 - Mã Blockbench không được đưa vào App 1, App 2 (`editor/`), App 4 (`vfx/`), `packages/*`. App 2 chỉ nhúng bản build App 3
   qua iframe + `postMessage`, không import mã App 3.
+- **Bỏ hoàn toàn Gói 4 – Animation Controller (người dùng chốt 2026-11-01).** Controller là cơ chế của Minecraft Bedrock cho
+  thực thể tự hành động khi chơi; người dùng chỉ làm phim BBS FS trên PC, động tác xếp theo kịch bản trên timeline App 2.
+  PR đề xuất #185 đã đóng. Không làm nhiều animation trong một project, không xuất `animation_controllers.json`.

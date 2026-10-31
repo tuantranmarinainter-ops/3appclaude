@@ -1,7 +1,8 @@
 # Task App 3: bổ sung tính năng kiểu Blockbench (2026-10-31)
 
 > Người dùng giao 2026-10-31, **cho phép sửa App 3** (Animation Studio). Giao Codex.
-> **6 gói = 6 nhánh + 6 PR** vào `main`, thứ tự **1 → 5 → 6 → 2 → 3 → 4**, **không tự merge**.
+> **5 gói = 5 nhánh + 5 PR** vào `main`, thứ tự **1 → 5 → 6 → 2 → 3**, **không tự merge**.
+> **Gói 4 (Animation Controller) đã bị bỏ hoàn toàn** (người dùng chốt 2026-11-01, xem `docs/DECISIONS.md`).
 > Phần hiệu ứng (particle/sound) **không** thuộc task này: hiệu ứng đi qua App 4 + làn VFX của App 2.
 
 ## Bối cảnh
@@ -46,7 +47,7 @@ Thư mục: `three-workspace-app/animation-studio/work/material_alpha_v1_31_8/sr
 **Trước khi bắt đầu:** nhánh `app3-prettier` (chỉ định dạng lại `src/` bằng Prettier, giữ CRLF) nên được merge trước.
 Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đột toàn file.
 
-## Quy tắc chung cho cả 6 gói
+## Quy tắc chung cho cả 5 gói
 - Tương thích ngược: project cũ (`version: 1`) mở được y như trước; trường mới đều **tuỳ chọn**, có giá trị mặc định.
   Nếu phải đổi cấu trúc thì nâng `version` và viết hàm chuyển đổi + test.
 - Giao diện **tiếng Việt**, theo phong cách hiện có. Mọi thao tác mới **Hoàn tác/Làm lại** được.
@@ -90,7 +91,9 @@ Nếu chưa merge, dựa nhánh mới trên `app3-prettier` để tránh xung đ
 - Fixture: tự tạo file JSON nhỏ trong test (không commit file của bên thứ ba).
 - Mở thử file xuất trong Blockbench (bản web) với model khớp tên xương: NOT_RUN được, ghi rõ trong PR.
 
-## Gói 4 — Animation Controller (nhánh `codex/app3-bb-controller`)
+## ~~Gói 4 — Animation Controller~~ — ĐÃ BỎ (2026-11-01, không làm)
+> Giữ nội dung dưới đây chỉ để tra cứu. Không giao, không code.
+
 14. **Nhiều animation trong một project** (điều kiện cần): danh sách animation (idle, walk, attack…) mỗi cái có
     `duration`/`keys`/`playMode` riêng; project cũ = 1 animation. Nâng `version` + chuyển đổi + test. Đây là thay đổi lớn
     nhất: **đề xuất cấu trúc trong PR mô tả trước khi code nặng** nếu cần đổi cầu nối App 2.
