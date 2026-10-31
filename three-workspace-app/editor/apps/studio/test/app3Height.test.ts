@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import test from 'node:test'
 import { app3HeightHint, shotPlacementAtHeight } from '../src/app3Height'
+import { APP3_EMBED_VERSION } from '../src/app3Embed'
 
 test('S1 height snapshots require positive finite values and legacy models have no override', () => {
   assert.equal(app3HeightHint({}),undefined)
@@ -20,7 +21,7 @@ test('S1 root-placement delta scales once around its world anchor; canonical Act
 })
 
 test('S1 native App3 display uses outer viewport wrapper while preserving canonical rig/fingerprint/Action scale', () => {
-  const source=readFileSync(fileURLToPath(new URL('../public/animation-studio/v1.33.0/host-bridge.js',import.meta.url)),'utf8')
+  const source=readFileSync(fileURLToPath(new URL(`../public/animation-studio/v${APP3_EMBED_VERSION}/host-bridge.js`,import.meta.url)),'utf8')
   const functions=source.slice(source.indexOf('  let displayHeight'),source.indexOf('  let loadedSha'))
   const root={scale:{x:1,y:1,z:1}},rig={root,height:1.8},otherRig={root:{},height:3}
   const wrapper=()=>({scale:{x:1,y:1,z:1,setScalar(n:number){this.x=this.y=this.z=n}},updateMatrixWorld(){}})
