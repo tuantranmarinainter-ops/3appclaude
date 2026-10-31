@@ -68,7 +68,7 @@ function setupStudioWorkspace() {
     p.setAttribute('aria-labelledby', 'studioTab-' + key);
     $('studioTab-' + key).setAttribute('aria-controls', p.id);
   }
-  registerWidgetKey(tabs, (e) => {
+  Keymap.on(tabs, "workspace_ui.0", (e) => {
     if (
       !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) ||
       e.target.getAttribute('role') !== 'tab'
@@ -85,7 +85,7 @@ function setupStudioWorkspace() {
             : (i + (e.key === 'ArrowRight' ? 1 : -1) + bs.length) % bs.length;
     bs[next].click();
     bs[next].focus();
-  });
+  }, false);
   const props = document.querySelector('.properties');
   props.prepend($('selectedName'), $('selectedMeta'), $('selectionContext'));
   const behavior = make('details', 'studio-behavior');
@@ -258,7 +258,6 @@ function setupStudioSettings() {
   body.id = 'studioSettingsBody';
   const titles = {
       input: 'Điều khiển',
-      keymap: 'Phím tắt',
       appearance: 'Giao diện',
       viewport: 'Khung 3D',
       rig: 'Xương & Control Rig',
@@ -289,7 +288,7 @@ function setupStudioSettings() {
   }
   const targets = {
     appearance: ['layoutModeSettings', 'minimalThemeSettings', 'uiLanguage', 'theme', 'themeColor'],
-    input: ['mouseSettings', 'focusDistance'],
+    input: ['keymapSettings', 'mouseSettings', 'focusDistance'],
     viewport: [
       'viewportDisplaySettings',
       'renderSettings',
@@ -326,7 +325,7 @@ function setupStudioSettings() {
   layout.className = 'studio-settings-layout';
   layout.append(nav, body);
   form.append(layout);
-  registerWidgetKey(nav, (e) => {
+  Keymap.on(nav, "workspace_ui.1", (e) => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
     const bs = [...nav.children],
       i = bs.indexOf(e.target);
@@ -340,7 +339,7 @@ function setupStudioSettings() {
           : (i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length;
     bs[n].click();
     bs[n].focus();
-  });
+  }, false);
   selectStudioSettings('input');
 }
 
@@ -422,14 +421,14 @@ function setupStudioMenus() {
   document.addEventListener('pointerdown', (e) => {
     for (const m of document.querySelectorAll(selector)) if (!m.contains(e.target)) m.open = false;
   });
-  registerWidgetBubble(document, (e) => {
+  Keymap.on(document, "workspace_ui.2", (e) => {
     if (e.key !== 'Escape') return;
     for (const m of document.querySelectorAll(selector))
       if (m.open) {
         m.open = false;
         m.querySelector('summary').focus();
       }
-  });
+  }, false);
   for (const b of document.querySelectorAll('.studio-import-menu button,.studio-import-menu label'))
     b.addEventListener('click', () => {
       b.closest('details').open = false;
@@ -463,12 +462,12 @@ function setupStudioTextureDrag() {
     handle.addEventListener(ev, end);
   window.addEventListener('blur', end);
   $('textureClose').addEventListener('click', end);
-  registerWidgetKey(panel, (e) => {
+  Keymap.on(panel, "workspace_ui.3", (e) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
       $('textureClose').click();
     }
-  });
+  }, false);
 }
 
 // Keep the original nodes and listeners: advanced tools have one shared entry point.
@@ -748,8 +747,7 @@ function setupStudioPaneSizing() {
         },
         true,
       );
-    registerWidgetKey(handle,
-      (e) => {
+    Keymap.on(handle, "workspace_ui.4", (e) => {
         if (
           !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Escape'].includes(
             e.key,
@@ -779,8 +777,7 @@ function setupStudioPaneSizing() {
                   (spec.unit === '%' ? 0.1 : 1);
         sizes[sizeKey(kind)] = apply(kind, n);
         save();
-      },
-    );
+      }, true);
     window.addEventListener('blur', () => end());
   };
   bind(document.querySelector('[data-resize=right]'), 'right');

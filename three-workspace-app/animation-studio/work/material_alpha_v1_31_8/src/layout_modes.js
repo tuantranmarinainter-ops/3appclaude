@@ -1,3 +1,4 @@
+import * as Keymap from './keymap.js';
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Original App 3 layout implementation; no Blockbench source, branding or icons copied.
 export const LAYOUT_SETTINGS = 'animation-studio-settings';
@@ -56,7 +57,7 @@ export function panelState(value = {}) {
       if (typeof flag === 'boolean') result.collapsed[key] = flag;
   return result;
 }
-export function installModeLayout({ save, workflow, invalidate, restoreClassic, keyIs }) {
+export function installModeLayout({ save, workflow, invalidate, restoreClassic }) {
   const $ = (id) => document.getElementById(id),
     body = document.body;
   body.classList.add('layout-classic');
@@ -408,15 +409,22 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic, 
     persist();
   }
   preference.addEventListener('change', () => setLayout(preference.value));
-  function handleShortcut(event) {
-      const names = ['pose', 'animate', 'export'];
-      const name = names.find(name => keyIs ? keyIs('mode.' + name, event) : event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey && event.key === String(names.indexOf(name) + 1));
-      if (layout !== 'modes' || !name || event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]') || document.querySelector('dialog[open]')) return false;
+  Keymap.on(document, "layout_modes.0", (event) => {
+      if (
+        layout !== 'modes' ||
+        !event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        !['1', '2', '3'].includes(event.key) ||
+        event.target.closest('input,textarea,select,[contenteditable=true]') ||
+        document.querySelector('dialog[open]')
+      )
+        return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      selectTab(name, true);
-      return true;
-  }
+      selectTab(['pose', 'animate', 'export'][Number(event.key) - 1], true);
+    }, true);
   $('toggleTimeline').addEventListener(
     'click',
     (event) => {
@@ -477,7 +485,6 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic, 
   return {
     setLayout,
     selectTab,
-    handleShortcut,
     get layout() {
       return layout;
     },

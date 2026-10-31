@@ -1,57 +1,9 @@
-import { createKeymapRegistry, normalizeKey, matchesShortcut } from './keymap_registry.js';
-import { keymapActions, keymapPresets } from './keymap_catalog.js';
-import { createKeymapUI } from './keymap_ui.js';
-import { mousePreset } from './mouse_presets.js';
-import { widgetOwnsKey, timelineActionAllowed, registerWidgetKey, dispatchWidgetKey, registerWidgetCapture, dispatchWidgetCapture, registerWidgetBubble, dispatchWidgetBubble } from './shortcut_context.js';
+import * as Keymap from './keymap.js';
+import { installKeymapSettings } from './keymap_settings.js';
+Keymap.initialize();
+Keymap.install(() => ({ readOnly: mode === 'compare' || !!sourcePreview || (sceneMode && !sceneEditing) }));
 import { initializeLayoutPreference, installModeLayout } from './layout_modes.js';
 let modeLayout = null;
-const keymap = createKeymapRegistry(keymapActions, keymapPresets);
-const shortcutScope = event => event.target === graphEditor?.canvas ? 'graph' : ['timeline', 'timelineRuler'].includes(event.target?.id) ? 'timeline' : mode !== 'compare' && !sourcePreview && (modeLayout?.layout === 'modes' ? modeLayout.tab === 'pose' : document.body.dataset.workflowStep === 'blocking') && event.target?.matches?.('#viewportGrid canvas.studio-scene-canvas') ? 'viewport' : 'global';
-const keyIs = (id, event) => matchesShortcut(keymap, id, event, shortcutScope(event), mode === 'compare' || !!sourcePreview);
-let keymapUI = null, currentMousePreset = 'mouse';
-window.addEventListener('keydown', event => {
-  try {
-  if (keymapUI?.captureKey(event)) return;
-  if (dispatchWidgetCapture(event)) return;
-  const target = event.target;
-  // Widget navigation and cancellation belong to the focused control.
-  if (dispatchWidgetKey(event) || widgetOwnsKey(event)) return;
-  if (handleSilhouetteShortcut(event)) return;
-  if (modeLayout?.handleShortcut(event)) return;
-  if (handleViewShortcut(event)) return;
-  if (handleCompareShortcut(event)) return;
-  if (target === graphEditor?.canvas) { graphEditor.handleKey(event); if (event.cancelBubble) return; }
-  if (['timeline', 'timelineRuler'].includes(target?.id) && handleTimelineShortcut(event)) { event.stopImmediatePropagation(); return; }
-  if (event.key === 'Escape' && (numericDrag || motionHandDrag || timelineDrag || target?.closest?.('input,textarea,select,[contenteditable],dialog,[role=separator]'))) return;
-  handleMainShortcut(event);
-  } finally { if (!event.cancelBubble) dispatchWidgetBubble(event); }
-}, true);
-function handleViewShortcut(e) {
-  if (e.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]') || document.querySelector('dialog[open]')) return false;
-  const id = ['front','back','left','right','top','bottom','projection'].find(name => keyIs('view.' + name, e));
-  if (!id) return false;
-  const view = mode === 'compare' ? (activeCameraView === compareB ? compareB : compareA) : activeEditView;
-  e.preventDefault();
-  if (id === 'projection') { V.projection(view, !view.orthographic); syncProjectionButton(view); dirtyViews(); }
-  else {
-    if (!view.orthographic) { V.projection(view, true); syncProjectionButton(view); }
-    setupViewPreset(view, id === 'right' ? 'side' : id);
-  }
-  return true;
-}
-function setKeymapMousePreset(name) {
-  const values = mousePreset(name);
-  if (!values) return false;
-  currentMousePreset = name;
-  for (const [id, value] of Object.entries(values)) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    if (el.type === 'checkbox') el.checked = value; else el.value = value;
-  }
-  applyMouseSettings();
-  return true;
-}
-
 initializeLayoutPreference();
 import * as TimelineTools from './timeline_tools.js';
 let playbackElapsed = null,
@@ -566,7 +518,6 @@ function makeView(container, edit = false) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.outputColorSpace = T.SRGBColorSpace;
   renderer.domElement.classList.add('studio-scene-canvas');
-  if (edit) renderer.domElement.tabIndex = 0;
   container.appendChild(renderer.domElement);
   const orbit = new OrbitControls(camera, renderer.domElement);
   orbit.target.set(0, 0, 1);
@@ -700,7 +651,7 @@ function makeView(container, edit = false) {
   });
   renderer.domElement.addEventListener('pointerdown', (e) => {
     activeCameraView = v;
-    if (v.edit) { activeEditView = v; renderer.domElement.focus({ preventScroll: true }); }
+    if (v.edit) activeEditView = v;
     v.down = [e.clientX, e.clientY];
   });
   renderer.domElement.addEventListener('pointerup', (e) => {
@@ -2983,15 +2934,13 @@ for (const id of ['timelineRuler', 'timeline']) {
         stopTimelineScrub();
       }
     });
-  registerWidgetKey($(id), guard((e) => {
-    if (mode === 'compare' && blockedCompareTarget(e.target)) return;
-    if (sourcePreview && sourcePreviewBlocked(e.target, id)) return;
+  Keymap.on($(id), "app.0", guard((e) => {
     if (e.key === 'Escape' && timelineDrag) {
       e.preventDefault();
       if (timelineMarquee?.active) selectionKeys = timelineMarquee.selection;
       stopTimelineScrub();
     }
-  }));
+  }), false);
 }
 window.addEventListener('blur', () => {
   if (timelineMarquee?.active) selectionKeys = timelineMarquee.selection;
@@ -3114,6 +3063,7 @@ timelineKeyMenu.setAttribute('role', 'menu');
 timelineKeyMenu.hidden = true;
 const timelineDeleteItem = document.createElement('button');
 timelineDeleteItem.textContent = 'Xoá';
+timelineDeleteItem.dataset.keymapAction = 'key.delete';
 timelineDeleteItem.setAttribute('role', 'menuitem');
 timelineKeyMenu.append(timelineDeleteItem);
 for (const [index, color] of [...TimelineTools.KEY_COLORS, null].entries()) {
@@ -3179,9 +3129,9 @@ listen('timeline', 'contextmenu', (e) => {
 document.addEventListener('pointerdown', (e) => {
   if (!timelineKeyMenu.contains(e.target)) closeTimelineKeyMenu();
 });
-registerWidgetBubble(document, (e) => {
+Keymap.on(document, "app.1", (e) => {
   if (e.key === 'Escape') closeTimelineKeyMenu();
-});
+}, false);
 window.addEventListener('blur', closeTimelineKeyMenu);
 function selectTimelineHit(hit, additive = false) {
   cancelEasingPreview();
@@ -4567,6 +4517,7 @@ function minimalPalette(light, index) {
 setupMinimalDOM();
 setupDualEditor();
 const settingIds = [
+  'keymapState',
   'layoutMode',
   'layoutModePanels',
   ...Object.keys(V.defaults),
@@ -4740,16 +4691,11 @@ function readSettings(includeInterface = true) {
       settingIds.map((id) => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value]),
     ),
     coordinateSystem: 'blender-z-up',
-    keymap: JSON.parse(keymap.exportJSON()),
-    keymapMousePreset: currentMousePreset,
   };
-  if (!includeInterface) { delete result.keymap; delete result.keymapMousePreset; }
-  if (!includeInterface) { delete result.layoutMode; delete result.layoutModePanels; }
+  if (!includeInterface) { delete result.layoutMode; delete result.layoutModePanels; delete result.keymapState; }
   return result;
 }
 function applySettings(settings) {
-  if (settings.keymap && keymap.importJSON(settings.keymap).ok && keymapUI) { keymapUI.render(); updateKeymapTitles(); }
-  if (settings.keymapMousePreset && mousePreset(settings.keymapMousePreset)) currentMousePreset = settings.keymapMousePreset;
   settings = { ...settings, ...O.validate(settings) };
   const ground = Ground.normalize({ ...readSettings(), ...settings });
   for (const [id, value] of Object.entries(ground)) {
@@ -4815,6 +4761,7 @@ function applySettings(settings) {
   } catch {}
   applyLabLayout();
   modeLayout?.acceptSettings();
+  try { if ($('keymapState').value) Keymap.load($('keymapState').value, false); } catch {}
   refresh();
   if (editorSlots.A) {
     setDualTimeline($('dualTimelineModeSettings').value);
@@ -5258,7 +5205,7 @@ function setupModernUI() {
       handle.addEventListener(event, (e) => {
         if (resizing?.pointer === e.pointerId) cancelAreaResize();
       });
-    registerWidgetKey(handle, (e) => {
+    Keymap.on(handle, "app.2", (e) => {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
       e.preventDefault();
       if (workspace.dataset.maximized || (mobileLayout && kind !== 'timeline')) return;
@@ -5271,10 +5218,10 @@ function setupModernUI() {
       drawTimeline();
       drawCurve();
       editView.dirty = true;
-    });
+    }, false);
   }
   window.addEventListener('blur', cancelAreaResize);
-  registerWidgetBubble(window, (e) => {
+  Keymap.on(window, "app.3", (e) => {
     if (
       e.key !== 'Escape' ||
       document.querySelector('dialog[open]') ||
@@ -5287,7 +5234,7 @@ function setupModernUI() {
       cancelAreaResize();
     } else maximizeArea(null);
     sync();
-  });
+  }, false);
   for (const button of document.querySelectorAll('[data-maximize]'))
     button.addEventListener('click', () => {
       maximizeArea(button.dataset.maximize);
@@ -5358,7 +5305,7 @@ function setupModernUI() {
   for (const id of ['rx', 'ry', 'rz', 'px', 'py', 'pz', 'sx', 'sy', 'sz']) {
     const input = $(id);
     input.addEventListener('focus', () => (input.dataset.before = input.value));
-    registerWidgetKey(input, (e) => {
+    Keymap.on(input, "app.4", (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -5368,7 +5315,7 @@ function setupModernUI() {
         e.preventDefault();
         input.blur();
       }
-    });
+    }, false);
   }
   for (const details of document.querySelectorAll('details'))
     details.addEventListener('toggle', () => {
@@ -5578,26 +5525,23 @@ document.addEventListener(
   },
   true,
 );
-function handleCompareShortcut(e) {
-    if (mode !== 'compare' || e.target.closest?.('input,select,textarea,[contenteditable]:not([contenteditable=false]),[role=textbox]'))
-      return false;
+Keymap.on(document, "app.compare", (e) => {
+    if (mode !== 'compare' || e.target.closest?.('input,select,textarea,[contenteditable=true]'))
+      return;
     if (e.key === ' ' && e.target.closest?.('#compareWorkspace button,#compareWorkspace summary'))
-      return false;
-    if (keyIs('view.reset', e)) {
+      return;
+    if (e.key.toLowerCase() === 'q') {
       e.preventDefault();
       resetThreeQuarter(activeCameraView === compareB ? compareB : compareA);
     }
     if (
-      ['tool.move', 'tool.rotate', 'key.add', 'key.addDirect', 'motion.layer', 'view.reset', 'timeline.play', 'history.undo', 'history.redo'].some(id => keyIs(id, e)) ||
-      ((e.ctrlKey || e.metaKey) && ['a', 's'].includes(e.key.toLowerCase()))
+      ['g', 'r', 'i', 'n', 'k', 'q', ' '].includes(e.key.toLowerCase()) ||
+      ((e.ctrlKey || e.metaKey) && ['z', 'a', 's'].includes(e.key.toLowerCase()))
     ) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      return true;
     }
-
-  return false;
-}
+  }, true);
 let compareHeight = 0.55,
   compareResizeDrag = null;
 try {
@@ -5648,7 +5592,7 @@ const endCompareResize = (e) => {
 };
 for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'])
   compareResize.addEventListener(event, endCompareResize);
-registerWidgetKey(compareResize, (e) => {
+Keymap.on(compareResize, "app.6", (e) => {
   if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) {
     e.preventDefault();
     resizeCompare(
@@ -5664,7 +5608,7 @@ registerWidgetKey(compareResize, (e) => {
     endCompareResize();
     resizeCompare(original, true);
   }
-});
+}, false);
 window.addEventListener('resize', () => resizeCompare(compareHeight));
 async function loadCompare(side, bytes, name, resources = [], overrides = [], companions = []) {
   const token = (comparison[side].importToken || 0) + 1;
@@ -7439,9 +7383,9 @@ function setupPoseContextMenu() {
   document.addEventListener('pointerdown', (event) => {
     if (!menu.contains(event.target)) close();
   });
-  registerWidgetBubble(window, (event) => {
+  Keymap.on(window, "app.7", (event) => {
     if (event.key === 'Escape') close();
-  });
+  }, false);
   window.addEventListener('blur', close);
 }
 function motionBaseline() {
@@ -7889,7 +7833,13 @@ listen('undoBtn', 'click', () => restoreHistory(historyIndex - 1));
 listen('redoBtn', 'click', () => restoreHistory(historyIndex + 1));
 listen('saveBtn', 'click', saveProject);
 function jumpKey(direction) {
-  if (!project || mode === 'compare' || sourcePreview || (sceneMode && !sceneEditing)) return;
+  if (!project || mode === 'compare' || (sceneMode && !sceneEditing)) return;
+  if (sourcePreview) {
+    const times = [...new Set(rig.clips[sourcePreview.index].tracks.flatMap(track => Array.from(track.times)))].sort((a,b)=>a-b);
+    const next = direction > 0 ? times.find(t => t > time + 1e-6) : times.filter(t => t < time - 1e-6).at(-1);
+    if (next !== undefined) { playing = false; seekSourceClip(next); }
+    return;
+  }
   const scope = selected === 'root' ? null : selected; // Root is the whole-character control.
   const target = TimelineTools.adjacentKey(project, scope, time, direction);
   if (target !== null) {
@@ -8030,28 +7980,22 @@ listen('timelineRuler', 'click', (e) => {
       $('showMinecraftTicks').checked && e.clientY - rect.top < 22 ? 20 : timelineRate(),
     );
 });
-function handleTimelineShortcut(e) {
-  const action = ['timeline.frameBack', 'timeline.frameNext', 'timeline.start', 'timeline.end', 'timeline.setEnd', 'key.moveBack', 'key.moveForward'].find(id => keyIs(id, e));
-  if (!action) return false;
+Keymap.on($('timelineRuler'), "app.8", guard((e) => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
   e.preventDefault();
-  if (!timelineActionAllowed(action, mode === 'compare' || !!sourcePreview || (sceneMode && !sceneEditing))) return true;
-  if (action === 'key.moveBack' || action === 'key.moveForward') {
-    if (selectionKeys.length) {
-      const start = Math.min(...selectionKeys.map(k => k.time));
-      keyOperation('move', start + (action === 'key.moveBack' ? -1 : 1) / timelineRate());
-    }
-  } else if (action === 'timeline.setEnd') {
-    $('duration').value = time;
-    $('duration').dispatchEvent(new Event('change'));
-    $('duration').value = project.duration;
-  } else {
-    playing = false;
-    const end = sourcePreview ? sourcePreview.duration : sceneMode && !sceneEditing ? sceneProject.duration : project.duration;
-    seek(action === 'timeline.start' ? 0 : action === 'timeline.end' ? end :
-      T.MathUtils.clamp(time + (action === 'timeline.frameBack' ? -1 : 1) / timelineRate(), 0, end));
-  }
-  return true;
-}
+  playing = false;
+  seek(
+    e.key === 'Home'
+      ? 0
+      : e.key === 'End'
+        ? project.duration
+        : T.MathUtils.clamp(
+            time + (e.key === 'ArrowLeft' ? -1 : 1) / timelineRate(),
+            0,
+            project.duration,
+          ),
+  );
+}), false);
 listen('moveKey', 'click', () => keyOperation('move'));
 listen('copyKey', 'click', () => keyOperation('copy'));
 listen('deleteKey', 'click', deleteTimelineKeys);
@@ -8439,27 +8383,28 @@ window.addEventListener('beforeunload', (e) => {
     e.returnValue = '';
   }
 });
-const handleMainShortcut = guard((e) => {
+Keymap.on(window, "app.main", guard((e) => {
     if (mode === 'compare') return;
     if (sourcePreview) {
       if (
-        e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]') ||
+        e.target.closest('input,textarea,select,[contenteditable=true]') ||
         document.querySelector('dialog[open]')
       )
         return;
-      if (keyIs('timeline.play', e) && !e.target.closest('button,summary')) {
+      if ([',', '.'].includes(e.key)) { e.preventDefault(); jumpKey(e.key === '.' ? 1 : -1); }
+      else if (e.code === 'Space' && (!e.target.closest('button,summary') || !Keymap.nativeControlActivation(e))) {
         e.preventDefault();
         $('playBtn').click();
-      } else if (keyIs('view.reset', e)) resetThreeQuarter(activeEditView);
-      else if (keyIs('view.focus', e)) focusSelected();
+      } else if (e.key.toLowerCase() === 'q') resetThreeQuarter(activeEditView);
+      else if (e.key.toLowerCase() === 'e') focusSelected();
       else if (
-        ['tool.move', 'tool.rotate', 'key.add', 'key.addDirect', 'motion.layer', 'history.undo', 'history.redo'].some(id => keyIs(id, e)) ||
-        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a')
+        ['g', 'r', 'i', 'k', 'n'].includes(e.key.toLowerCase()) ||
+        ((e.ctrlKey || e.metaKey) && ['z', 'a'].includes(e.key.toLowerCase()))
       )
         e.preventDefault();
       return;
     }
-    if (keyIs('key.selectAll', e) && e.target.id === 'timeline') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && e.target.id === 'timeline') {
       e.preventDefault();
       selectionKeys = C.bodyKeyRefs(rig, project);
       drawTimeline();
@@ -8482,33 +8427,21 @@ const handleMainShortcut = guard((e) => {
       return;
     }
     if (
-      (e.code === 'Space' || e.key === 'Enter') &&
+      Keymap.nativeControlActivation(e) &&
       e.target.closest('button,summary,[role=separator]')
     )
       return;
     if (
-      e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=textbox]') ||
+      e.target.closest('input,textarea,select,[contenteditable=true]') ||
       document.querySelector('dialog[open]')
     )
       return;
-    if (e.target.id === 'timeline' && handleTimelineShortcut(e)) return;
-    if (!e.repeat && keyIs('file.openProject', e)) { e.preventDefault(); $('projectInput').click(); return; }
-    if (!e.repeat) {
-      const buttonActions = [['timeline.marker', 'labAddMarker'], ['pose.copy', 'copyPose'], ['pose.paste', 'pastePose']];
-      const buttonAction = buttonActions.find(([id]) => keyIs(id, e));
-      if (buttonAction) { e.preventDefault(); $(buttonAction[1]).click(); return; }
-      if (keyIs('graph.toggle', e)) {
-        e.preventDefault();
-        setAnimationEditor($('animationEditor').value === 'graph' ? 'timeline' : 'graph');
-        return;
-      }
-    }
-    if (keyIs('key.previous', e) || keyIs('key.next', e)) {
+    if ([',', '.'].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
-      jumpKey(keyIs('key.next', e) ? 1 : -1);
+      jumpKey(e.key === '.' ? 1 : -1);
       return;
     }
-    if (keyIs('key.delete', e) && !e.repeat) {
+    if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
       if (e.target.isContentEditable || e.target.closest('[role=textbox]')) return;
       e.preventDefault();
       closeTimelineKeyMenu();
@@ -8516,7 +8449,11 @@ const handleMainShortcut = guard((e) => {
       return;
     }
     if (
-      (keyIs('motion.layer', e) || keyIs('view.focus', e)) &&
+      ['n', 'e'].includes(e.key.toLowerCase()) &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
       !e.repeat &&
       mode !== 'compare' &&
       !rigDrag &&
@@ -8527,16 +8464,19 @@ const handleMainShortcut = guard((e) => {
       !editViews.some((v) => v.gizmo.dragging || v.moveGizmo.dragging)
     ) {
       e.preventDefault();
-      if (keyIs('view.focus', e)) focusSelected();
+      if (e.key.toLowerCase() === 'e') focusSelected();
       else if (studioMode === 'lab') $('motionLayerToggle').click();
       else info('Edit Motion Layer thuộc Animation Lab. Chọn bộ công cụ Animation Lab để dùng N.');
       return;
     }
-    if (keyIs('history.undo', e) || keyIs('history.redo', e)) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
-      restoreHistory(historyIndex + (keyIs('history.redo', e) ? 1 : -1));
+      restoreHistory(historyIndex + (e.shiftKey ? 1 : -1));
     } else if (
-      keyIs('view.reset', e) &&
+      e.key.toLowerCase() === 'q' &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
       !rigDrag &&
       !numericDrag &&
       !motionHandDrag &&
@@ -8552,7 +8492,11 @@ const handleMainShortcut = guard((e) => {
           : activeEditView,
       );
     } else if (
-      (keyIs('tool.move', e) || keyIs('tool.rotate', e) || keyIs('tool.swap', e) || keyIs('key.add', e)) &&
+      ['g', 'r', 'i'].includes(e.key.toLowerCase()) &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
       !e.repeat &&
       mode !== 'compare' &&
       !rigDrag &&
@@ -8563,7 +8507,7 @@ const handleMainShortcut = guard((e) => {
       !editViews.some((v) => v.gizmo.dragging || v.moveGizmo.dragging)
     ) {
       e.preventDefault();
-      const key = keyIs('key.add', e) ? 'i' : keyIs('tool.move', e) || (keyIs('tool.swap', e) && $('transformMode').value !== 'translate') ? 'g' : 'r';
+      const key = e.key.toLowerCase();
       if (key === 'i') {
         if (motionPanel && !motionPanel.root.hidden)
           motionAction('key', { tab: motionPanel.tab, mask: [...motionPanel.mask] });
@@ -8579,10 +8523,10 @@ const handleMainShortcut = guard((e) => {
     } else if (e.key === 'Escape' && timelineKeyDrag) {
       e.preventDefault();
       endTimelineKeyDrag(true);
-    } else if (keyIs('timeline.play', e)) {
+    } else if (e.code === 'Space') {
       e.preventDefault();
       $('playBtn').click();
-    } else if (keyIs('key.addDirect', e)) $('keyBtn').click();
+    } else if (e.key.toLowerCase() === 'k') $('keyBtn').click();
     else if (e.key === 'Escape' && rigDrag) {
       cancelRigDrag();
     } else if (
@@ -8603,7 +8547,7 @@ const handleMainShortcut = guard((e) => {
       }
       refresh();
     }
-  });
+  }), false);
 let hostActive = true;
 let lastStamp = performance.now(),
   playbackDiagnostics = { frames: 0, skipped: 0, last: 0, maxGap: 0 };
@@ -9202,12 +9146,12 @@ function setupSettingsWindow() {
   window.addEventListener('resize', () => {
     if (dialog.open) clampSettingsWindow();
   });
-  registerWidgetBubble(window, (e) => {
+  Keymap.on(window, "app.10", (e) => {
     if (e.key === 'Escape' && dialog.open) {
       e.preventDefault();
       dialog.close();
     }
-  });
+  }, false);
 }
 function cameraSnapshot(v) {
   return {
@@ -9304,15 +9248,6 @@ function loadSettingsPreset(data) {
     c.p.some((v, i) => Math.abs(v - c.target[i]) > 1e-6);
   for (const c of [...(cameras.edit || []), cameras.A, cameras.B].filter((c) => c !== undefined))
     if (!valid(c)) throw Error('Camera preset không hợp lệ.');
-  if (data.settings.keymap !== undefined) {
-    const probe = createKeymapRegistry(keymapActions, keymapPresets);
-    if (!probe.importJSON(data.settings.keymap).ok) throw Error('Bộ phím preset không hợp lệ.');
-    settings.keymap = data.settings.keymap;
-  }
-  if (data.settings.keymapMousePreset !== undefined) {
-    if (!mousePreset(data.settings.keymapMousePreset)) throw Error('Kiểu chuột preset không hợp lệ.');
-    settings.keymapMousePreset = data.settings.keymapMousePreset;
-  }
   // Validate everything before changing any setting; source units belong to the model.
   applySettings(data.coordinateSystem === 'blender-z-up' ? settings : V.blenderSettings(settings));
   if (data.workspaceLayout) loadWorkspaceLayout(data.workspaceLayout);
@@ -9346,7 +9281,7 @@ function setupNumericInputs() {
     input.inputMode = 'decimal';
     input.addEventListener('focus', () => input.select());
     input.addEventListener('click', () => input.select());
-    registerWidgetKey(input, (e) => {
+    Keymap.on(input, "app.11", (e) => {
       if (!['ArrowUp', 'ArrowDown'].includes(e.key)) return;
       const n = Number(input.value);
       if (!input.value.trim() || !Number.isFinite(n)) return;
@@ -9358,7 +9293,7 @@ function setupNumericInputs() {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.select();
-    });
+    }, false);
   }
   const kinds = { rx: 'q', ry: 'q', rz: 'q', px: 'p', py: 'p', pz: 'p', sx: 's', sy: 's', sz: 's' };
   const restore = (drag) => {
@@ -9431,15 +9366,13 @@ function setupNumericInputs() {
       if (numericDrag?.input === input) end(false);
     });
   }
-  registerWidgetCapture(
-    (e) => {
+  Keymap.on(window, "app.12", (e) => {
       if (e.key === 'Escape' && numericDrag) {
         e.preventDefault();
         e.stopImmediatePropagation();
         end(true);
       }
-    },
-  );
+    }, { capture: true });
   window.addEventListener('blur', () => end(true));
 }
 listen('saveSettingsPreset', 'click', () =>
@@ -9518,7 +9451,7 @@ motionPanel = new MotionPanel($('viewportGrid'), {
     syncMotionPanel();
   },
 });
-graphEditor = new GraphEditor($('graphPanel'), { state: graphState, action: graphAction, keyIs });
+graphEditor = new GraphEditor($('graphPanel'), { state: graphState, action: graphAction });
 $('timeline').addEventListener('pointerdown', (e) => {
   if (e.button === 0) $('timeline').focus({ preventScroll: true });
 });
@@ -9526,9 +9459,9 @@ $('timeline').addEventListener('pointerdown', (e) => {
 document.addEventListener('pointerdown', (e) => {
   if (!$('fileMenu').contains(e.target)) $('fileMenu').open = false;
 });
-registerWidgetBubble(window, (e) => {
+Keymap.on(window, "app.13", (e) => {
   if (e.key === 'Escape') $('fileMenu').open = false;
-});
+}, false);
 $('projectInput').addEventListener('change', () => {
   $('fileMenu').open = false;
 });
@@ -9665,13 +9598,13 @@ document.addEventListener('pointerdown', (e) => {
   }
   if (!e.target.closest('#rigPresetMenu')) $('rigPresetMenu').open = false;
 });
-registerWidgetBubble(window, (e) => {
+Keymap.on(window, "app.14", (e) => {
   if (e.key === 'Escape') {
     interpolationWindow.hidden = true;
     $('rigPresetMenu').open = false;
     $('interpolationPicker').setAttribute('aria-expanded', 'false');
   }
-});
+}, false);
 syncInterpolationChoice();
 
 function setSilhouette(enabled) {
@@ -9691,20 +9624,22 @@ function setSilhouette(enabled) {
   return result;
 }
 $('silhouetteBtn').onclick = () => setSilhouette(!silhouetteView.enabled);
-function handleSilhouetteShortcut(e) {
+Keymap.on(window, "app.15", (e) => {
     if (
-      !keyIs('view.silhouette', e) ||
+      e.code !== 'KeyS' ||
+      !e.shiftKey ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
       e.repeat ||
       e.target.closest?.('input,textarea,select,[contenteditable]') ||
       document.querySelector('dialog[open]')
     )
-      return false;
+      return;
     e.preventDefault();
     e.stopImmediatePropagation();
     setSilhouette(!silhouetteView.enabled);
-    return true;
-
-}
+  }, { capture: true });
 viewportToolbar = new ViewportToolbar($('viewportGrid'), {
   changed: (persist) => {
     dirtyViews();
@@ -9949,43 +9884,6 @@ window.__studio = {
 setupModernWorkspace();
 setupMinimalUX();
 setupStudioWorkspace();
-const shortcutTitles = [
-  ['playBtn', 'timeline.play', 'Phát / dừng'], ['keyBtn', 'key.addDirect', 'Ghi key'],
-  ['prevKey', 'key.previous', 'Key trước'], ['nextKey', 'key.next', 'Key sau'],
-  ['deleteKey', 'key.delete', 'Xoá key'], ['undoBtn', 'history.undo', 'Hoàn tác'],
-  ['redoBtn', 'history.redo', 'Làm lại'], ['silhouetteBtn', 'view.silhouette', 'Silhouette'],
-  ['motionLayerToggle', 'motion.layer', 'Edit Motion Layer'],
-  ['labAddMarker', 'timeline.marker', 'Thêm marker'], ['copyPose', 'pose.copy', 'Sao chép pose'],
-  ['pastePose', 'pose.paste', 'Dán pose'],
-];
-function updateKeymapTitles() {
-  for (const [id, action, title] of shortcutTitles) {
-    const el = $(id); if (!el) continue;
-    const keys = keymap.getBindings(action); el.title = title + (keys.length ? ' (' + keys.join(' / ') + ')' : '');
-  }
-  const deletionKeys = keymap.getBindings('key.delete');
-  timelineDeleteItem.textContent = 'Xoá' + (deletionKeys.length ? ' (' + deletionKeys.join(' / ') + ')' : '');
-  timelineDeleteItem.title = deletionKeys.join(' / ');
-}
-const keymapAdapter = Object.create(keymap);
-keymapAdapter.exportJSON = () => JSON.stringify({ ...JSON.parse(keymap.exportJSON()), mousePreset: currentMousePreset }, null, 2);
-keymapAdapter.importJSON = input => {
-  try {
-    const data = typeof input === 'string' ? JSON.parse(input) : input;
-    if (data.mousePreset !== undefined && !mousePreset(data.mousePreset)) return { ok: false, error: 'Kiểu chuột không hợp lệ' };
-    const result = keymap.importJSON(data);
-    if (result.ok && data.mousePreset !== undefined) setKeymapMousePreset(data.mousePreset);
-    return result;
-  } catch (error) { return { ok: false, error: error.message }; }
-};
-keymapUI = createKeymapUI({ registry: keymapAdapter, normalizeKey,
-  save: () => { updateKeymapTitles(); try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} },
-  availablePresets: Object.keys(keymapPresets),
-  download: (content, name, type) => download(content, name, type),
-  setMousePreset: setKeymapMousePreset, getMousePreset: () => currentMousePreset });
-document.getElementById('settingsPage-keymap').append(keymapUI.root);
-updateKeymapTitles();
-
 setupQuickAnimation();
 setupStudioDebug();
 await loadModel(sampleBytes(), 'Mixamo T-Pose.fbx', true);
@@ -10003,8 +9901,10 @@ syncWorkspaceTools();
 minimalBooting = false;
 syncMinimalUI();
 setupDirector();
-modeLayout = installModeLayout({ keyIs, save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
+modeLayout = installModeLayout({ save: () => { try { localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings())); } catch {} }, workflow: step => setWorkflowStep(step, true), invalidate: () => { dirtyViews(); drawTimeline(); drawCurve(); }, restoreClassic: () => applyWorkspaceLayout() });
 window.__studio.layoutModes = modeLayout;
+setupKeymapActions();
+window.__studio.keymap = Keymap;
 window.__studio.ready = true;
 requestAnimationFrame(frame);
 
@@ -10086,12 +9986,12 @@ function setupModernWorkspace() {
     if (drag) width(drag.w + drag.x - e.clientX);
   };
   resize.onpointerup = resize.onpointercancel = resize.onlostpointercapture = () => (drag = null);
-  registerWidgetKey(resize, (e) => {
+  Keymap.on(resize, "app.16", (e) => {
     if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault();
       width(sidebar.clientWidth + (e.key === 'ArrowLeft' ? 10 : -10));
     }
-  });
+  }, false);
   const update = () => {
     syncWorkspaceTools();
   };
@@ -10472,7 +10372,7 @@ function setupMinimalUX() {
   splitter.onpointerup = () => finish(false);
   splitter.onpointercancel = () => finish(true);
   splitter.onlostpointercapture = () => finish(false);
-  registerWidgetKey(splitter, (e) => {
+  Keymap.on(splitter, "app.17", (e) => {
     if (e.key === 'Escape') {
       finish(true);
       return;
@@ -10487,16 +10387,16 @@ function setupMinimalUX() {
     try {
       localStorage.setItem('animation-studio-settings', JSON.stringify(readSettings()));
     } catch {}
-  });
+  }, false);
   window.addEventListener('blur', () => finish(true));
   document.addEventListener('pointerdown', (e) => {
     for (const id of ['minimalViewMenu', 'minimalSpeed'])
       if (!e.target.closest('#' + id)) $(id).open = false;
   });
-  registerWidgetBubble(window, (e) => {
+  Keymap.on(window, "app.18", (e) => {
     if (e.key === 'Escape')
       for (const id of ['minimalViewMenu', 'minimalSpeed']) $(id).open = false;
-  });
+  }, false);
   syncMinimalUI();
   document
     .querySelectorAll('[data-workflow-step]')
@@ -10513,3 +10413,40 @@ document.addEventListener(
   },
   true,
 );
+
+function setupKeymapActions() {
+  const add = (id,name,group,scope,fn,extra={}) => Keymap.register({id,name,group,scope,defaults:[],...extra}, guard(e=>{e.preventDefault();fn(e);}));
+  const endTime=()=>sourcePreview?.duration ?? project.duration;
+  const navigate=fn=>{playing=false;fn();syncTime();drawTimeline();};
+  add('timeline.frameBack','Khung trước','Timeline','timeline',()=>navigate(()=>seek((Math.round(time*timelineRate())-1)/timelineRate())));
+  add('timeline.frameNext','Khung sau','Timeline','timeline',()=>navigate(()=>seek((Math.round(time*timelineRate())+1)/timelineRate())));
+  add('timeline.start','Về đầu timeline','Timeline','timeline',()=>navigate(()=>seek(0)));
+  add('timeline.end','Về cuối timeline','Timeline','timeline',()=>navigate(()=>seek(endTime())));
+  add('timeline.setEnd','Đặt điểm cuối tại đầu phát','Timeline','timeline',()=>{$('duration').value=String(Math.max(.1,time));$('duration').dispatchEvent(new Event('change'));},{mutates:true,selector:'#duration'});
+  add('timeline.marker','Thêm marker','Timeline','timeline',()=>{$('labAddMarker').click();},{mutates:true,selector:'#labAddMarker'});
+  add('timeline.graph','Bật/tắt Graph Editor','Timeline','timeline',()=>setAnimationEditor($('animationEditor').value==='graph'?'timeline':'graph'),{selector:'[data-editor-tab="graph"]'});
+  add('key.moveBack','Dời key sớm một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start-1/timelineRate());},{mutates:true});
+  add('key.moveNext','Dời key muộn một khung','Keyframe','timeline',()=>{const range=keySelectionRange();if(range)keyOperation('move',range.start+1/timelineRate());},{mutates:true});
+  add('key.invert','Đảo chọn key','Keyframe','timeline',()=>{const all=C.bodyKeyRefs(rig,project);selectionKeys=all.filter(a=>!selectionKeys.some(b=>a.id===b.id&&a.time===b.time&&(a.kind||'keys')===(b.kind||'keys')));drawTimeline();});
+  add('tool.swap','Đổi công cụ dời/xoay','Khung 3D','viewport',()=>{$('transformMode').value=$('transformMode').value==='rotate'?'translate':'rotate';$('transformMode').dispatchEvent(new Event('change'));},{enabled:()=>document.body.dataset.layoutTab==='pose'&&!sourcePreview&&mode!=='compare'});
+  add('file.open','Mở project','Tệp','global',()=>$('projectInput').click());
+  add('file.rename','Đổi tên clip','Tệp','global',()=>{$('clipName').focus();$('clipName').select();},{mutates:true,selector:'#clipName'});
+  add('view.fullscreen','Toàn màn hình','Khung 3D','global',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen());
+  add('view.sidebars','Ẩn/hiện hai thanh bên','Bố cục','global',()=>{if(modeLayout?.layout==='modes'){ $('layoutPane-left').click();$('layoutPane-right').click(); }else{$('uiSidebarOpen').checked=!$('uiSidebarOpen').checked;syncMinimalUI();}});
+  for(const [id,label,preset] of [['initial','Ban đầu','reset'],['top','Trên','top'],['south','Trước','front'],['north','Sau','back'],['east','Phải','side'],['west','Trái','left']])add('view.'+id,'Camera · '+label,'Khung 3D','global',()=>setupViewPreset(activeEditView,preset));
+  add('view.bottom','Camera · Dưới','Khung 3D','global',()=>{setupViewPreset(activeEditView,'top');const target=activeEditView.orbit.target;activeEditView.camera.position.z=target.z-Math.abs(activeEditView.camera.position.z-target.z);activeEditView.camera.lookAt(target);activeEditView.dirty=true;});
+  add('view.screenshot','Chụp ảnh khung 3D','Khung 3D','global',()=>{const view=activeEditView;view.renderer.render(view.scene,view.camera);const a=document.createElement('a');a.download='animation-studio.png';a.href=view.renderer.domElement.toDataURL('image/png');a.click();});
+  add('view.projection','Phối cảnh / Trực giao','Khung 3D','global',()=>$('projectionBtn').click(),{selector:'#projectionBtn'});
+  const ui = installKeymapSettings({ mouseChanged: (profile, bindings) => {
+    const defaults={orbit:['0','none'],pan:['1','none'],zoom:['2','none']};
+    const names={orbit:'preview_rotate',pan:'preview_drag',zoom:'preview_zoom'};
+    for(const id of cameraActions){const raw=bindings?.[names[id]];let [button,modifier]=defaults[id];
+      if(raw && Number.isInteger(raw.key) && raw.key>=1 && raw.key<=3){button=String(raw.key-1);modifier=raw.alt?'alt':raw.ctrl?'ctrl':raw.shift?'shift':'none';}
+      else if(profile==='trackpad'){[button,modifier]=id==='orbit'?['0','none']:id==='pan'?['0','shift']:['0','ctrl'];}
+      $(id+'Button').value=button;$(id+'Modifier').value=modifier;
+    }
+    $('zoomWheel').checked=true;applyMouseSettings();
+    try {localStorage.setItem('animation-studio-settings',JSON.stringify(readSettings()));}catch{}
+  }});
+  if(Keymap.state.mouse!=='default')ui.applyMouse();
+}

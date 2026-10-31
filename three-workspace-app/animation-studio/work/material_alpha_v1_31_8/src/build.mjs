@@ -4,11 +4,6 @@ const root = new URL('../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, 
   shared = path.resolve(root, '../..'),
   vendor = path.join(shared, 'vendor/three');
 const imports = {};
-for (const name of ['keymap_registry', 'keymap_actions', 'keymap_catalog', 'keymap_ui', 'mouse_presets', 'shortcut_context']) {
-  const source = (await fs.readFile(path.join(root, 'src', name + '.js'), 'utf8')).replace("'./keymap_actions.js'", "'@studio/keymap_actions'").replace("'./keymaps/generated.js'", "'@studio/keymaps-generated'");
-  imports['@studio/' + name] = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64');
-}
-imports['@studio/keymaps-generated'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/keymaps/generated.js'), 'utf8')).toString('base64');
 imports['@studio/layout-modes'] = 'data:text/javascript;base64,' + Buffer.from(await fs.readFile(path.join(root, 'src/layout_modes.js'), 'utf8')).toString('base64');
 imports['@studio/timeline-tools'] =
   'data:text/javascript;base64,' +
@@ -62,7 +57,7 @@ imports['@vendor/tween-easing'] =
 for (const [id, file] of [['smoothing-panel', 'smoothing_panel.js']])
   imports['@studio/' + id] =
     'data:text/javascript;base64,' +
-    Buffer.from((await fs.readFile(path.join(root, 'src', file), 'utf8')).replace("'./shortcut_context.js'", "'@studio/shortcut_context'")).toString('base64');
+    Buffer.from(await fs.readFile(path.join(root, 'src', file), 'utf8')).toString('base64');
 imports['@studio/easing'] =
   'data:text/javascript;base64,' +
   Buffer.from(
@@ -76,7 +71,6 @@ imports['@studio/easing-panel'] =
   Buffer.from(
     (await fs.readFile(path.join(root, 'src/easing_panel.js'), 'utf8'))
       .replace("'./easing.js'", "'@studio/easing'")
-      .replace("'./shortcut_context.js'", "'@studio/shortcut_context'")
       .replace("'./motion_smoothing.js'", "'@studio/motion-smoothing'"),
   ).toString('base64');
 imports['@studio/skin-shape'] =
@@ -105,7 +99,7 @@ imports['@studio/motion-smoothing'] =
     (await fs.readFile(path.join(root, 'src/motion_smoothing.js'), 'utf8')).replace(
       "'./graph_curves.js'",
       "'@studio/graph-curves'",
-    ).replace("'./shortcut_context.js'", "'@studio/shortcut_context'"),
+    ),
   ).toString('base64');
 imports['@studio/graph-editor'] =
   'data:text/javascript;base64,' +
@@ -113,7 +107,7 @@ imports['@studio/graph-editor'] =
     (await fs.readFile(path.join(root, 'src/graph_editor.js'), 'utf8')).replace(
       "'./graph_curves.js'",
       "'@studio/graph-curves'",
-    ).replace("'./shortcut_context.js'", "'@studio/shortcut_context'"),
+    ),
   ).toString('base64');
 imports['@studio/joint-limits'] =
   'data:text/javascript;base64,' +
@@ -170,12 +164,12 @@ imports['@studio/silhouette-view'] =
   );
 imports['@studio/viewport-toolbar'] =
   'data:text/javascript;base64,' +
-  Buffer.from((await fs.readFile(path.join(root, 'src/viewport_toolbar.js'), 'utf8')).replace("'./shortcut_context.js'", "'@studio/shortcut_context'")).toString(
+  Buffer.from(await fs.readFile(path.join(root, 'src/viewport_toolbar.js'), 'utf8')).toString(
     'base64',
   );
 imports['@studio/motion-panel'] =
   'data:text/javascript;base64,' +
-  Buffer.from((await fs.readFile(path.join(root, 'src/motion_panel.js'), 'utf8')).replace("'./shortcut_context.js'", "'@studio/shortcut_context'")).toString('base64');
+  Buffer.from(await fs.readFile(path.join(root, 'src/motion_panel.js'), 'utf8')).toString('base64');
 imports['@studio/animation-export'] =
   'data:text/javascript;base64,' +
   Buffer.from(await fs.readFile(path.join(root, 'src/animation_export.js'), 'utf8')).toString(
@@ -278,6 +272,15 @@ for (const file of ['shot_reverse', 'minecraft20_postprocess', 'minecraft20_expo
   imports['@studio/' + file.replaceAll('_', '-')] =
     'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 }
+for (const [id, file] of [['keymap-catalog','keymap_catalog.js'],['keymap-presets','keymaps/presets.js'],['keymap','keymap.js'],['keymap-settings','keymap_settings.js']]) {
+  let code = await fs.readFile(path.join(root, 'src', file), 'utf8');
+  code = code.replaceAll("'./keymap_catalog.js'", "'@studio/keymap-catalog'").replaceAll("'./keymaps/presets.js'", "'@studio/keymap-presets'").replaceAll("'./keymap.js'", "'@studio/keymap'");
+  imports['@studio/' + id] = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+}
+for (const [id, value] of Object.entries(imports)) if (value.startsWith('data:text/javascript;base64,')) {
+  const code = Buffer.from(value.slice('data:text/javascript;base64,'.length), 'base64').toString('utf8').replaceAll("'./keymap.js'", "'@studio/keymap'");
+  imports[id] = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+}
 let html = await fs.readFile(path.join(root, 'src/index.html'), 'utf8');
 const app = (
   (await fs.readFile(path.join(root, 'src/app.js'), 'utf8')) +
@@ -294,6 +297,8 @@ const app = (
   '\n' +
   (await fs.readFile(path.join(root, 'src/shot_controller.js'), 'utf8'))
 )
+  .replaceAll("'./keymap.js'", "'@studio/keymap'")
+  .replaceAll("'./keymap_settings.js'", "'@studio/keymap-settings'")
   .replace("'./keyframe_time.js'", "'@studio/keyframe-time'")
   .replace("'./pose_clipboard.js'", "'@studio/pose-clipboard'")
   .replace("'./minecraft20_export.js'", "'@studio/minecraft20-export'")
@@ -326,11 +331,6 @@ const app = (
   .replace("'./easing_panel.js'", "'@studio/easing-panel'")
   .replace("'./smoothing_panel.js'", "'@studio/smoothing-panel'")
   .replace("'./graph_editor.js'", "'@studio/graph-editor'")
-  .replace("'./keymap_registry.js'", "'@studio/keymap_registry'")
-  .replace("'./keymap_catalog.js'", "'@studio/keymap_catalog'")
-  .replace("'./keymap_ui.js'", "'@studio/keymap_ui'")
-  .replace("'./mouse_presets.js'", "'@studio/mouse_presets'")
-  .replace("'./shortcut_context.js'", "'@studio/shortcut_context'")
   .replace("'./ground_environment.js'", "'@studio/ground-environment'")
   .replace("'./scene_studio.js'", "'@studio/scene-studio'")
   .replace("'./scene_evaluator.js'", "'@studio/scene-evaluator'")

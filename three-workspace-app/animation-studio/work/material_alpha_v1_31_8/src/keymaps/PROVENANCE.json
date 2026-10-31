@@ -1,0 +1,1977 @@
+{
+  "upstream": "https://github.com/JannisX11/blockbench",
+  "commit": "ec0b2827104d0799c153bfb5f867579c0c44652f",
+  "SPDX": "GPL-3.0-or-later",
+  "method": "Static Action/Tool/KeybindItem and Keybind extraction; .bbkeymap overrides. No upstream code executed.",
+  "sourceSha256": {
+    "js/animations/animation.js": "7687395739a8c6da609e0f3273dcf8cd4c9478df06ec29e2bc3b1a2b52153f5a",
+    "js/animations/animation_codec.ts": "9b47a22406e6931568ec442c63e659122b68e041ffad95fc245efe3f71a4774b",
+    "js/animations/animation_controllers.js": "0622a477e6e27469e6713c9d70f103823d755e13e59a3217b6d094059a2cd6bc",
+    "js/animations/animation_mode.js": "42a94e917b9a28111b120d682ac18766c0a1b5e4f86fd923fdde8510efe7f13b",
+    "js/animations/animation_transform.js": "87946dffeae3bc1867f93a6c575059d29ee2eae52f34bde2dc625188c46adad3",
+    "js/animations/fabrik.ts": "670603b455801cdcb80ceae573b1a0a0e1c2eac549e277f7998990a4ff393ffd",
+    "js/animations/keyframe.js": "b1ba35bcb8222d578f2fe104292916ee87f833352303d089f165befba26d3063",
+    "js/animations/mirror_animating.ts": "52debc6ab8a82d5171553d5221a7b91b5b3c066d5de1492f32eee05d01150491",
+    "js/animations/molang.js": "b8c97476fc5ab2298f9ce96afc82c3bb3a1e25dff878de8b72ae82fcf28ba156",
+    "js/animations/molang_editor.ts": "51cc69df95cd8d819661c104c3d60d924d1a5c579d5bdc9423b769d3e38787af",
+    "js/animations/timeline.js": "8231cefc3de38c73ed9e6696df0e3bcd968c477e35beb8c76e15f302e5e5cf75",
+    "js/animations/timeline_animators.js": "aa173d3bd5b84979d7f074f211b352175b65bb4057add6531ebafab55a1515bc",
+    "js/api.ts": "1c477b80473f3422ea8a33d2e76aa7d067a5b4976ba4e8861aab15aba81ec92a",
+    "js/auto_backup.ts": "0d9494478cea7eeb07fb20f484358d9ddc22ceccf3c8a825764de22c78e9cc68",
+    "js/boot_loader.js": "a6f24502bc51524bedb9e6e1080c0c7c774ff95e2c1d660b145316dc946841e5",
+    "js/copy_paste.js": "9eff91299274313db7d1d43996157917d66c0ede0ca993f8a932e45a78d7c9b1",
+    "js/desktop.ts": "c1726cd435f18800f566dfa8c8691b84a46a08e60a70a1fe65e36cd11e54c795",
+    "js/display_mode/display_mode.js": "2debed5a0389c5d65dd29f611d1a80fc31cdc83c816c80be1db80bd9d26045e4",
+    "js/display_mode/display_references.ts": "d84b207363406afe47990624bb956a999030fd9dd2f380887ad37c00a3c503b9",
+    "js/edit_sessions.js": "57fa9496d7d494ff4700304b039f63510567aabb4d1f3340f7172f8e9c720cf3",
+    "js/file_system.ts": "a31c33ee9a48667e4166efcfb156e2fd9eab6b2d1d28a47fad2a667d8f4d0e0e",
+    "js/find_replace.ts": "14f81f44b504734bba48225a66388b21b0bec7975d2301839299ba9cd4030512",
+    "js/formats/bbmodel.js": "fac90000f26f16d9b9f7b4303d658b0f1b624d8d4b4b026ab8f4a31df1d42316",
+    "js/formats/bedrock/animation_controller_codec.js": "3bc171cd5febc64060de68d626a06d2d495d1606ef005e98d95a6421cde486c0",
+    "js/formats/bedrock/attachable_preview.js": "4cb27cdcedddae80420049c171bd1195e70f586bbf9947e33f026d3e01a283ae",
+    "js/formats/bedrock/bedrock.js": "d77fa9edfaaa042cd5f72211aea34cce19ff88ec477364d9bbc237355374d347",
+    "js/formats/bedrock/bedrock_animation.js": "087633fc23e682a15dc4922d5c1f40cb8f0896189aad9daeb944ebb6985f41e1",
+    "js/formats/bedrock/bedrock_multi_file.ts": "e61e5641121f6b750e41cbbd0f54f837409255d090a91b662f69433a42c90caf",
+    "js/formats/bedrock/bedrock_old.js": "aa3338b925ee1c454b9dbf9ab2460a1065c54a7fd707ba7c96ce4623a8c108d7",
+    "js/formats/bedrock/bedrock_voxel_shape.ts": "393c5c2d8bd04a1556d9955ce6196d63095a5d881ea7704d0a21dcc1c961cbe5",
+    "js/formats/generic.ts": "7fc5ef646b66058f8071d033a26c5fe29ddf6d71f1c98bf2c76fc4cc73ccc0f0",
+    "js/formats/image.ts": "2bcd838c751128667d059a5f1c09fd63ddefa6e674e3ad836f85364ed01d294b",
+    "js/formats/java/java_block.ts": "5a292b98b8b900ad20d585d6aac295eb6c45a0ebeabecdc86e8166e449ee71c6",
+    "js/formats/java/modded_entity.ts": "3e71bf2627512816d0e9712c4809ab6e3ad28b240773965cf0a899b38e5f5faa",
+    "js/formats/minecraft/skin.ts": "dd1b8e67a4758aeedaca02c5b5853a9a09b9bb23ad1a8f6b306c404964c5379c",
+    "js/formats/optifine/optifine_jem.js": "c333db18308097794086023eca4bca16c1805f3bf34d7e58b4718ffc777687c8",
+    "js/formats/optifine/optifine_jpm.js": "b746e325de9e561e23d36c1d5a7141b01915ee243554d3f7ab75d7e86b0065bd",
+    "js/formats/standards/collada.js": "637e856c208322e349436c253122b0aef150ea8a6097bfa012c6589181737a1b",
+    "js/formats/standards/fbx.ts": "c746bfff6f96a1300b8bb26661a2320736b6281e0a025d9b03cadc6b386f980a",
+    "js/formats/standards/gltf.js": "40e947031447999e006bea83326ab57d2c3b7742feeeb5f728aa73001a73a481",
+    "js/formats/standards/obj.js": "cf6311f8fe3db293578d65b0c7b76761693734a671025b09be9f8441793145d2",
+    "js/formats/standards/stl.js": "eccd6e9060158231a696ca951fc8e340e636a28cc84ea55faa54313aac760a02",
+    "js/globals.js": "a585bb22b22dc20956424267ac1ff7657c45bca3ef59882cfc5db61de9629bff",
+    "js/interface/about.ts": "69a36f0a9fdddac60c5235ede480d085eb13f74e99cd5c526495609e2ee7593b",
+    "js/interface/action_control.js": "026a0e9b02c6ba22a2894628d8915950e85b2666dead992ce02f2fcd27f2e9df",
+    "js/interface/actions.ts": "b04e29c3785585059d1bd86dfa7dcf7aa01cfccdf2df24b41dca3c8b3c43a67f",
+    "js/interface/dialog.ts": "c4606f96c0562629aecc1579f93d6374e8896f5352aabed02f5c116ffc649ed9",
+    "js/interface/experimental_settings.ts": "87512bcf647b65040df9114dffdfa8cfe65f3424afd4fdbac2967f2f2042b2a7",
+    "js/interface/form.ts": "eef53b8026943552a86c5386ddc62da2c80b8ae3fec74225852f731bdf9a24ba",
+    "js/interface/interface.js": "95be299cd324fdcbfb3c848a1084702b04a35052c381d6f2ac14eb6c02bf44aa",
+    "js/interface/keybinding.ts": "b4b1d6389dd0bdb93fdf7e25221c5ea8ef201ead924c69c93adb7c66d38cdb6a",
+    "js/interface/keyboard.js": "a6e365627b0bffea604eb0c5bd7110d50ffcdbe7c4ba5f2808ec8b94686b0b96",
+    "js/interface/main_tools.ts": "26c130112e04943839f8081291ce03a2c5268ae1a37805f70c3283b3aaad1db2",
+    "js/interface/menu.ts": "133c41e5ef5b6a2ba7efcc5479ab2805a5d48ab7f0ddc717bff32567f75c4bca",
+    "js/interface/menu_bar.ts": "e8a3b7716aad67a937ac396648f8ad69aeb2205ced6ed38a2d1ad9048eed57b9",
+    "js/interface/panels.ts": "37dca9ca3229abf7dd6ceafad1f7b7a621e54b4f325159837f628031e52624ad",
+    "js/interface/pointer_target.ts": "399a03c142c1ce0372fe49a77d66927671c738f1a351d6a406a38a3d71c284e2",
+    "js/interface/resize_lines.ts": "d807534152e7ec4b04a5337f2e2fd38a8f3a6c6195cca668f5c63c02f1388a10",
+    "js/interface/settings.ts": "6dea0f170883c857d482becdd81130e2d80e90f105752972f3468cdde7b3dde8",
+    "js/interface/settings_window.ts": "1ee515b8aa7794b1b39c37a58778549082cc3147a418229ed1cd6ce8b86a1555",
+    "js/interface/setup_settings.js": "acd06fc8a86dbbe1b77c2bff22908f477881dd7f4e76b54169e48b0a64311936",
+    "js/interface/shared_actions.ts": "0964afeae07f8c6c2d1288b318f68b49add773debfcc10c62ba0d5ea9c95c744",
+    "js/interface/start_screen.ts": "3b2d158f8440e06c02cce89244a7c9b4e91edfb347ff70cd0587c7d9867fffb0",
+    "js/interface/status_bar.ts": "ab2c8c9d093ecfe9b0e0f0c2bd3f6a32414b094bc7b0066b6e48d8ea6dfec421",
+    "js/interface/themes.ts": "7e5946d854840f07a2e80f0029b779e5277c2e5db519bb563a800878618209dd",
+    "js/interface/toast_notification.ts": "17caadf595b4823abf219258d0308071070c774204fc3edd86575b50908ee7e5",
+    "js/interface/toolbars.ts": "69fd198c38aac7b13ea8a022cecbe6316872f9f200be17c4b9c53417bcf544c6",
+    "js/interface/vue_components.js": "16264bc0545c4ba7e4b5da7c74e225389e1d25d7ebe4080aa554523abe9de32a",
+    "js/io/codec.ts": "c5163dfa41514189feb73d9696773d60f3cd6cfd3b9727d6b18454151591841f",
+    "js/io/extrude_image.js": "b0d6e58999caedc59cfb34b9b01921655d7b3c11e8f01d61316cd3a37c03b780",
+    "js/io/format.ts": "6e1fe2faf85aebbec01999979acec5d1c9be9aaa70898baf9d65b2d0c7435f1c",
+    "js/io/io.js": "e77b69f232cbfc2e27ce3afbfb2d939d551e76f5814f073f0b8d27adcc9b9f92",
+    "js/io/model_loader.ts": "8b9b2c26cf6950e7a8a04e8409053973496b2e0ee3efdf618107e2d7ec0739d5",
+    "js/io/project.ts": "04fa01f4a460229a85cd8b977fa5f06102a38d414226f6f3c7660bcb9c447de9",
+    "js/io/share.ts": "1c02fa2db6b0d1c01d90a33b72322b1f0762ed906b5e2e5039d242f8e1d68d4e",
+    "js/languages.ts": "aa06306b21c7291e8e0c6d6bd70b7b5dcf117cf7e049bafc1fe2e6e9c0070c8e",
+    "js/lib/CSS3DRenderer.js": "dfa98edcdeb7aed2f4bb7131a1d9226f0ef999689872b89386f2db3e7e4a2662",
+    "js/lib/CanvasFrame.ts": "6fed4f21c88658b199b7d881e4daa03f587ce1f26cd013c206d0dcb301f794a9",
+    "js/lib/GLTFExporter.js": "7b15c76593c17f51a56b71cb0dfd62debabdc753ec9840d1506ad31c3b24e614",
+    "js/lib/VuePrismEditor.min.js": "ae88f007e4697b1373a7f886709b80c9ed72a6d04bb04deaa171eaa772734611",
+    "js/lib/canvas2apng.js": "31c5416c719354bc0bd8b75936e34d6bba43f4c7a8808abdc7c170e0e93bfef0",
+    "js/lib/easing.js": "5aba2e41921678d44c6910af8e6f67e850d8062ab5db76d6bc5e9873e9851146",
+    "js/lib/gif.js": "659c73eb31b9f04b1a3ed6a2b84d26a6a7bce7b1e38f2c51dd8dbff6d6e9f7c8",
+    "js/lib/jquery-ui.min.js": "768f183688c89196fc703bf841e4f65cd367e3cc495c1e02abedf5cb1af4b50b",
+    "js/lib/libs.ts": "cbc654f7407d04a32ba168f2fa51ee340bb74cb9b887a912ac6a783899b14c53",
+    "js/lib/lzutf8.js": "b3ed89daa7de7a7448840fa9daae4adf4466eb4b2f5b4852959c4abca201f1fb",
+    "js/lib/molang-prism-syntax.js": "2428ee1b0e613fd4c4a7bd83a484181b78eea22558805f30e0f7f0ffa74d120f",
+    "js/lib/spectrum.js": "4314f93931bced9f22b52737e798586747b6e6100fc5ec5db187374038f18de1",
+    "js/main.ts": "26afba06647d3f38a9a2fc5fa5c1eb2a4e5a4db0bbe72a5fc8a5ea9b4fa6c322",
+    "js/marker_colors.ts": "3f28f88836538a905f69d71390af0c3023c6442cd5b28f8eb6e335d39b4abf35",
+    "js/misc.js": "f0d55bac0346e35009dca266fb9c0ea908f1d5bfa5a1f237907d9c76196d853b",
+    "js/modeling/edit.ts": "8232f24bf16c94eb00c93f87a457fdcc16c3030bbc1b89c5edefabe795fcb392",
+    "js/modeling/generate_bounding_box.ts": "0ea2467d52b173b720ab933f994eab57e556a427abd25385ff606a478890af99",
+    "js/modeling/mesh/add_mesh.ts": "af6d5977b433844f0f2904248bfc446d9ac47d59a5f2ee3cd79bd72da5b22e34",
+    "js/modeling/mesh/attach_armature.ts": "3523283f4083fe3d2fe888fb1b809dffd4a268e78ce50fb7aeba84d3462cfa79",
+    "js/modeling/mesh/auto_fix.ts": "e81abe3ce951e9faf3781a3b8e116866dec6703b27cedd34253c61fcb37296fe",
+    "js/modeling/mesh/import_obj.ts": "6d19146f1a086a6bd0222ac62eff9ab4911eda7fb3743dda96e9ab58eb771d7b",
+    "js/modeling/mesh/knife_tool.js": "7a0f59d588b2b663aba60548d9767846e09d48a1a774f60611b485b1e0a97718",
+    "js/modeling/mesh/loop_cut.ts": "2bdd8c281090c685ad83b11c27263847189540a9a218be7e24420c426a24f07c",
+    "js/modeling/mesh/merge_split.ts": "76dcbd38b059c480489d52aad34cd4692030cfa484e8ae573897d8e8aa9f8f5e",
+    "js/modeling/mesh/proportional_edit.ts": "5d1651ce49726136b6ac08d11a41687090fecde73723e0427d102817a6311ee3",
+    "js/modeling/mesh/seam_tool.ts": "fde4370a6be4bb302605bfd08f2797c7d4be4787582d16787ddcc13b4e235266",
+    "js/modeling/mesh/set_vertex_weights.ts": "2778b7518ffe8b63d5a0358965e826f44dd147040582feaa63a1277dfd98a829",
+    "js/modeling/mesh/util.ts": "6dbb9674c7f656cd513d89942a99e34a47692212bc61eacc7c83988ead44bde8",
+    "js/modeling/mesh_editing.js": "75ee8623002766c3595f2f28afafd3f03fff9eea3afa556d49b2aa1d4b594446",
+    "js/modeling/mirror_modeling.ts": "92260369d31fd547656bec0656b06fa93d91c07ae3ebcae0cd74782b182c5eed",
+    "js/modeling/scale.ts": "f59b58f1a561bdf0162173c0b2a94740f3c14d3460f649fbaba24a8ec2c66424",
+    "js/modeling/spline_editing.js": "636b385af30f0c5dc932c76face0f5006ac8a8dc082a54888332a6a3002f9702",
+    "js/modeling/transform/edit_transform.js": "b8a944c0dfddaf088745432085c541c61d38abde7429f515d7303afed5e2180c",
+    "js/modeling/transform/transform_gizmo.js": "610ee23c538a11b7da91d16ea0c45a44e9f549bf31739ad2cf883dbc61763874",
+    "js/modeling/transform/transform_modules.ts": "5edafdc842bc435cf604b29e1181cb79e59611d4f658e137bb32a3284dfd3f44",
+    "js/modeling/transform.js": "f248fc5e4afa51a4f9c078c64d6dee103febb58dceda543e0b801298bc37632d",
+    "js/modeling/vertex_snap.js": "435f39335590b7622817ce26a81fa2aa869646b8ecf99896fb2409f640bd7d20",
+    "js/modeling/weight_paint.ts": "aad7e341605e1e89577e708f1bb382fa62cb62312281bc960b092c41ee636bf9",
+    "js/modes.ts": "0a9773d2dd03b7a0587a65ff18255b4c5a0d98cd82a294987b16fc18ebe5d6ca",
+    "js/multi_file_editing.ts": "f4d0b8aeba2e1f13cceda1da531e76c601becd6e300b5613a7f43ad5c0ad6090",
+    "js/native_apis.ts": "4e01935ea5db00835690cde7037060e38e03d13192959e733917a3442b88fd64",
+    "js/native_apis_web.ts": "a89617a85c2e74c57ef2b440e4a9580ef447d812db2292febe81f9dd21e4fac1",
+    "js/outliner/abstract/face.ts": "8cc3204cb901a8f02577a4aa040c94700d927fbe76f0451555644e76a654ef0e",
+    "js/outliner/abstract/outliner_element.ts": "698b4c583d092b3896a266d81c436e97f8621049046fe78862d7eec4c47cf821",
+    "js/outliner/abstract/outliner_node.ts": "e180512918f20b77c46fe85832f4e99536eebd23267a767ffa8eebbd966e0c59",
+    "js/outliner/collections.ts": "bc2d2a70f3c514911162a72fab3406074c575f4293853f9fdd2c71e323e7c9f2",
+    "js/outliner/element_panel.ts": "aea02ed812afdb81f3d4d2f1043268e6935f09a9860c212933312ac224306c6a",
+    "js/outliner/outliner.js": "fc11f5e5aa36ba0dac3b7a3cd3cc4f1de0202951e9a6c4bffbeb7aa2268cde26",
+    "js/outliner/types/armature.ts": "7d331606baec6da7d1931bcec7f84426a87811307fda6c18310998f51a236a79",
+    "js/outliner/types/armature_bone.ts": "1c64f937861a32ca44e43743955316b2c724f9bbbc55b68970cb9ab87794a585",
+    "js/outliner/types/billboard.js": "450f3e1d0ad7e7197464205fef9c244d880c3ceea5c3307509dddc7b4b0de6c9",
+    "js/outliner/types/bounding_box.ts": "1334b9639631ca1db8f30eb595d7cb2f4229ff9fcdcb155665e9f58be530eeab",
+    "js/outliner/types/cube.js": "57cad3b3eb30af04fa54d7b41c2e3a58ad26098c8585eaf30344a7f3f1fe430d",
+    "js/outliner/types/group.js": "edc6a16fed27d9f4855e17df362c6d5e1efc5e8a8928c697ba0f257ab9ce98ff",
+    "js/outliner/types/locator.js": "b874da72fbdb3c8328565c57b6c9c478a4a5c661fb9781d9a548d90c9364d1e9",
+    "js/outliner/types/mesh.js": "c2c13291f6c68dbc4bd5c0fed8ab9573a4c0dee5818fd6a5bfd333a954028427",
+    "js/outliner/types/null_object.js": "8fca3f76b7709f8355d763b9152ff2d7fdf69ce082fd60d89d6e20b4fcfe3b78",
+    "js/outliner/types/spline_mesh.js": "8e96c2db733ea761fb7f412dd909af3d0ed563f62974da8d08d0b9c13a99941f",
+    "js/outliner/types/texture_mesh.js": "2beb29a5849dbfe52fbcb05e03190d12d4a8367b8e1e3f75574e17d49434e9f0",
+    "js/plugin_loader.ts": "3767507af753f96b2fa24f98ea04c97dfb5194a708e3ff7bee0cccb383689871",
+    "js/predicate_editor.js": "933945f7782fa71be2234ee15cb07454e000b31fca0cc10c4d5c59e45584a70f",
+    "js/preview/OrbitControls.js": "50b6da249989ce461618bb6c45c2b4b7ba1fd3be0a04c6338f84e1cf673f6d84",
+    "js/preview/canvas.js": "0de2354bf43c8918dd3354ebdd9a6aabcbd9029bf6f4fae5c857b297e07c9c19",
+    "js/preview/preview.ts": "6e05f840160f3455da14ef877cbd0bd2a00759f4af781d8f8c033b4279ca26f1",
+    "js/preview/preview_scenes.ts": "0df558114fdb04e795785da3e27a2893c403337520de892790c4174692fd2145",
+    "js/preview/reference_images.ts": "b0082428719e5dc57d5178f18198fa5e7f878d7988b218479106c283611c9376",
+    "js/preview/render_target.ts": "0c263e4e53153a2da8efee6c55f1149a126738cdaf734d192226e6f42c0adc8f",
+    "js/preview/screenshot.js": "bd16fc910c334126ce470e44a4475d2ac8ba126da9fc0b84f9c21f81504cb6c9",
+    "js/shaders/shader.ts": "ae56c981b2128d0148e4585d58b171c326d044245afbed613a9b805f081a8a1d",
+    "js/texturing/color.js": "e9d0767cba37a11c3e3af0992c38e744d3474adb071bd05a4d24b12ad0c88ae4",
+    "js/texturing/edit_image.js": "1a1476825f1cfe3838edbe9dda856c3aca42e775252d5c39a9056bb8094b06d3",
+    "js/texturing/layers.ts": "f5c11911f736ff29a4eeeadb33af19699d51c57abea65d4b56783652f1eac39c",
+    "js/texturing/painter.js": "e47b66726b9466e4b8c96ca63071bfb274a1a16b2c1569d8db07914b432c0244",
+    "js/texturing/texture_flipbook.js": "d5119294e1bb84a8d3240a5b726d9d97624028b45ee1862f459a62f544b4b355",
+    "js/texturing/texture_generator.js": "5830a42a3bf6836012df6b3aa983b6c71267fd6d164a35ecca9b7b6a79d16603",
+    "js/texturing/texture_groups.js": "3ed74755d502a3376a2de3f8fc918f8893b0e32e05ff40d2e777b6895ccc5fc1",
+    "js/texturing/textures.js": "8016bcb9742bb6c666ce085994a61f0a1afc80df280804255162565fcf1e3fa3",
+    "js/undo.js": "35b85b9499948c57845bd7f323260eb9214f189085197c93b6881da316bce366",
+    "js/util/array_util.js": "269a93beb02abb3e9d9774d66dccc8c8b13dfda2cc5172de775f4e03cb539385",
+    "js/util/color.ts": "8f885b1de444abd790e7fe63da67b90b063ef098329aaf86ebfd3c3d8446982a",
+    "js/util/drag_helper.ts": "2e5dcce4457d6021dfbded4de77e0739bf8e1af78dffcd80e5854d892d317ee9",
+    "js/util/dynamic_2d_map.ts": "f44931cef95bb4c5798e65280c5ad9b2dfe3aa8bacaa6a38c63df157eb63725c",
+    "js/util/event_system.ts": "f9cc11cb0168ec1e5941e2c7e467f835f9343d0889dcea28a48960d738fe21be",
+    "js/util/gif.ts": "f0de642337f0b1ec7185b6c3ba4f8b155ea5f6fe69b18f8a47c89a380256301f",
+    "js/util/global.d.ts": "5b104c873e3b6fa6462cd14d0c174b8ff060fd41d249f0cc411e62a91d12d421",
+    "js/util/json.ts": "9554db6380dec41eee5e52f74f7652d57c09f8dadb6f7f2d62e706c7846ab3e2",
+    "js/util/math_util.js": "f3c6189ce86f6adf2aade6468ea55692f0dbe0c9ffe3cfec9bcc8580f0932d17",
+    "js/util/molang.ts": "00537e8088f4baaa2629f5e7c3e7e47bc7b38a43cd59b5a8aaad33dfe2969f07",
+    "js/util/property.ts": "8271549bf459228686c913e7246079358f5dbcf23fe37ea956c0451a753b565c",
+    "js/util/scoped_fs.ts": "d39a8f1f44acb288d69a9079367116f1d7bd2e8b646903500f29bdb62a442851",
+    "js/util/state_memory.ts": "6375cdbf7d0cb7d761e160d1866458277f5e4179116c50e23e16859ee6bb612f",
+    "js/util/three_custom.js": "2e4d460ba30003e6906b474f4cbca547e8b5c2d1cdae7bd2737d91196be36131",
+    "js/util/util.js": "c86862d94d32d98343f61933901f61095241646496c526a14d25fb0c7acd6fe4",
+    "js/util/version_util.ts": "4e2c8a6ee1520946357822522808dcb083672ffc689473b88f5ca63b8c59a1bf",
+    "js/util/yaml.ts": "c326f517e964e0db70a9b44a84ad41336d98899c4c1047df9aeb3795fa057dd0",
+    "js/uv/uv.js": "10e260514240b291512e505f5e795cf11471e76b2c941e665df4e9a83914658b",
+    "js/uv/uv_size.ts": "1f1909942f1bd919bfdb71da396fdd04c73a13260854906fbc2c39761c96a043",
+    "js/validator.js": "6cc2b76714ac737c3b9cfb6bc06a73b67798a52749cdac540c9de454af50756f",
+    "js/web.ts": "9896b96d1ce8ac0a3ffd4f933e9e76721185362ff4f0a677b89c6d6b333d9bb5",
+    "keymaps/blender.bbkeymap": "33c4563b5a25549491fc07f8a566c039279183337b3537d1ea7d228b5bfdf647",
+    "keymaps/cinema4d.bbkeymap": "fcc317526834623e37777bf5a03c61279d71a3df7b2e3d6e77a3dd948c9b19dc",
+    "keymaps/maya.bbkeymap": "39be4ee40758525f4b560e1241c5d9e58a9af9b2a240d741b6570763547d90a8"
+  },
+  "omissions": "UV/mesh/paint, pivot tool (no editable pivot in App3), copy/cut/paste/duplicate and project close have no equivalent in this App3 version; future packages may register them.",
+  "presets": {
+    "blockbench": {
+      "mapped": {
+        "set_animation_end": {
+          "app3": "timeline.setEnd",
+          "source": "js/animations/animation.js",
+          "binding": {
+            "ctrl": true,
+            "key": 35
+          }
+        },
+        "add_keyframe": {
+          "app3": "key.add",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": "q"
+          }
+        },
+        "move_keyframe_back": {
+          "app3": "key.moveBack",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 37
+          }
+        },
+        "move_keyframe_forth": {
+          "app3": "key.moveNext",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 39
+          }
+        },
+        "timeline_graph_editor": {
+          "app3": "timeline.graph",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 114
+          }
+        },
+        "play_animation": {
+          "app3": "timeline.play",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 32
+          }
+        },
+        "jump_to_timeline_start": {
+          "app3": "timeline.start",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 36
+          }
+        },
+        "jump_to_timeline_end": {
+          "app3": "timeline.end",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 35
+          }
+        },
+        "timeline_frame_back": {
+          "app3": "timeline.frameBack",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 188
+          }
+        },
+        "timeline_frame_forth": {
+          "app3": "timeline.frameNext",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 190
+          }
+        },
+        "add_marker": {
+          "app3": "timeline.marker",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "ctrl": true,
+            "key": "m"
+          }
+        },
+        "move_tool": {
+          "app3": "tool.translate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": "v"
+          }
+        },
+        "rotate_tool": {
+          "app3": "tool.rotate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": "r"
+          }
+        },
+        "swap_tools": {
+          "app3": "tool.swap",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 32
+          }
+        },
+        "fullscreen": {
+          "app3": "view.fullscreen",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 122
+          }
+        },
+        "toggle_sidebars": {
+          "app3": "view.sidebars",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": "b",
+            "ctrl": true
+          }
+        },
+        "rename": {
+          "app3": "file.rename",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 113
+          }
+        },
+        "delete": {
+          "app3": "key.delete",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 46
+          }
+        },
+        "select_all": {
+          "app3": "key.selectAll",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": "a",
+            "ctrl": true
+          }
+        },
+        "invert_selection": {
+          "app3": "key.invert",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": "i",
+            "ctrl": true
+          }
+        },
+        "open_model": {
+          "app3": "file.open",
+          "source": "js/io/io.js",
+          "binding": {
+            "key": "o",
+            "ctrl": true
+          }
+        },
+        "toggle_camera_projection": {
+          "app3": "view.projection",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 101
+          }
+        },
+        "camera_initial": {
+          "app3": "view.initial",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 97
+          }
+        },
+        "camera_top": {
+          "app3": "view.top",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 104
+          }
+        },
+        "camera_bottom": {
+          "app3": "view.bottom",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 98
+          }
+        },
+        "camera_south": {
+          "app3": "view.south",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 100
+          }
+        },
+        "camera_north": {
+          "app3": "view.north",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 102
+          }
+        },
+        "camera_east": {
+          "app3": "view.east",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 103
+          }
+        },
+        "camera_west": {
+          "app3": "view.west",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 105
+          }
+        },
+        "screenshot_model": {
+          "app3": "view.screenshot",
+          "source": "js/preview/screenshot.js",
+          "binding": {
+            "key": "p",
+            "ctrl": true
+          }
+        },
+        "undo": {
+          "app3": "history.undo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": "z",
+            "ctrl": true
+          }
+        },
+        "redo": {
+          "app3": "history.redo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": "y",
+            "ctrl": true
+          }
+        }
+      },
+      "unmapped": [
+        "action_control",
+        "add_animation_controller_state",
+        "add_armature_bone",
+        "add_group",
+        "animated_texture_editor",
+        "brush_tool",
+        "cancel",
+        "close_project",
+        "confirm",
+        "copy",
+        "create_collection",
+        "create_face",
+        "create_texture",
+        "cut",
+        "draw_shape_tool",
+        "duplicate",
+        "eraser",
+        "export_over",
+        "extrude_mesh_selection",
+        "extrude_spline_selection",
+        "gradient_tool",
+        "group_elements",
+        "hide_everything_except_selection",
+        "import_texture",
+        "inset_mesh_selection",
+        "loop_cut",
+        "merge_vertices",
+        "move_down",
+        "move_graph_keyframes_down",
+        "move_graph_keyframes_up",
+        "move_layer_tool",
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_uv_to_cursor",
+        "open_dev_tools",
+        "outliner_toggle",
+        "painting_grid",
+        "paste",
+        "pivot_tool",
+        "pixel_grid",
+        "preview_checkerboard",
+        "resize_tool",
+        "save_project",
+        "save_project_as",
+        "save_project_incremental",
+        "select_window",
+        "selection_tool",
+        "stretch_tool",
+        "swap_colors",
+        "switch_tabs",
+        "vertex_snap_tool"
+      ],
+      "mouse": {
+        "preview_rotate": null,
+        "preview_drag": null,
+        "preview_zoom": null
+      }
+    },
+    "blender": {
+      "mapped": {
+        "set_animation_end": {
+          "app3": "timeline.setEnd",
+          "source": "js/animations/animation.js",
+          "binding": {
+            "key": 35,
+            "ctrl": true
+          }
+        },
+        "add_keyframe": {
+          "app3": "key.add",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 73
+          }
+        },
+        "move_keyframe_back": {
+          "app3": "key.moveBack",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 37
+          }
+        },
+        "move_keyframe_forth": {
+          "app3": "key.moveNext",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 39
+          }
+        },
+        "timeline_graph_editor": {
+          "app3": "timeline.graph",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 114,
+            "ctrl": true
+          }
+        },
+        "play_animation": {
+          "app3": "timeline.play",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 32
+          }
+        },
+        "jump_to_timeline_start": {
+          "app3": "timeline.start",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 36
+          }
+        },
+        "jump_to_timeline_end": {
+          "app3": "timeline.end",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 35
+          }
+        },
+        "timeline_frame_back": {
+          "app3": "timeline.frameBack",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 188
+          }
+        },
+        "timeline_frame_forth": {
+          "app3": "timeline.frameNext",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 190
+          }
+        },
+        "add_marker": {
+          "app3": "timeline.marker",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 77
+          }
+        },
+        "move_tool": {
+          "app3": "tool.translate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 71
+          }
+        },
+        "rotate_tool": {
+          "app3": "tool.rotate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 82
+          }
+        },
+        "swap_tools": {
+          "app3": "tool.swap",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 32
+          }
+        },
+        "fullscreen": {
+          "app3": "view.fullscreen",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 122
+          }
+        },
+        "toggle_sidebars": {
+          "app3": "view.sidebars",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 66,
+            "ctrl": true
+          }
+        },
+        "rename": {
+          "app3": "file.rename",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 113
+          }
+        },
+        "delete": {
+          "app3": "key.delete",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 46
+          }
+        },
+        "select_all": {
+          "app3": "key.selectAll",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 65
+          }
+        },
+        "invert_selection": {
+          "app3": "key.invert",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 73,
+            "ctrl": true
+          }
+        },
+        "open_model": {
+          "app3": "file.open",
+          "source": "js/io/io.js",
+          "binding": {
+            "key": 79,
+            "ctrl": true
+          }
+        },
+        "toggle_camera_projection": {
+          "app3": "view.projection",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 101
+          }
+        },
+        "camera_initial": {
+          "app3": "view.initial",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 97
+          }
+        },
+        "camera_top": {
+          "app3": "view.top",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 104
+          }
+        },
+        "camera_bottom": {
+          "app3": "view.bottom",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 98
+          }
+        },
+        "camera_south": {
+          "app3": "view.south",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 100
+          }
+        },
+        "camera_north": {
+          "app3": "view.north",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 102
+          }
+        },
+        "camera_east": {
+          "app3": "view.east",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 103
+          }
+        },
+        "camera_west": {
+          "app3": "view.west",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 105
+          }
+        },
+        "screenshot_model": {
+          "app3": "view.screenshot",
+          "source": "js/preview/screenshot.js",
+          "binding": {
+            "key": 80,
+            "ctrl": true
+          }
+        },
+        "undo": {
+          "app3": "history.undo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "ctrl": true
+          }
+        },
+        "redo": {
+          "app3": "history.redo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "ctrl": true,
+            "shift": true
+          }
+        }
+      },
+      "unmapped": [
+        "about_window",
+        "action_control",
+        "add_animation",
+        "add_animation_controller_state",
+        "add_armature_bone",
+        "add_cube",
+        "add_display_preset",
+        "add_group",
+        "add_locator",
+        "add_mesh",
+        "add_null_object",
+        "add_plugin",
+        "add_texture_mesh",
+        "add_to_palette",
+        "animate",
+        "animated_texture_editor",
+        "animated_texture_frame",
+        "animated_textures",
+        "apply_display_preset",
+        "auto_cullface",
+        "bone_reset_toggle",
+        "bring_up_all_animations",
+        "brush_tool",
+        "cancel",
+        "center_all",
+        "center_x",
+        "center_y",
+        "center_z",
+        "change_keyframe_file",
+        "change_textures_folder",
+        "clear_timeline",
+        "close_project",
+        "collapse_groups",
+        "color_erase_mode",
+        "color_picker",
+        "confirm",
+        "convert_project",
+        "convert_to_mesh",
+        "copy",
+        "copy_paste_tool",
+        "create_collection",
+        "create_face",
+        "create_texture",
+        "cube_counter",
+        "cullface",
+        "cut",
+        "display",
+        "dissolve_edges",
+        "draw_shape_tool",
+        "draw_shape_type",
+        "duplicate",
+        "edit",
+        "edit_bedrock_binding",
+        "edit_history",
+        "edit_material_instances",
+        "edit_session",
+        "element_colors",
+        "eraser",
+        "explode_skin_model",
+        "export_animation_file",
+        "export_bedrock",
+        "export_blockmodel",
+        "export_class_entity",
+        "export_entity",
+        "export_gltf",
+        "export_keymap",
+        "export_minecraft_skin",
+        "export_obj",
+        "export_optifine_full",
+        "export_optifine_part",
+        "export_over",
+        "export_palette",
+        "export_settings",
+        "export_theme",
+        "extrude_mesh_selection",
+        "extrude_spline_selection",
+        "extrude_texture",
+        "face_tint",
+        "fill_mode",
+        "fill_tool",
+        "find_replace",
+        "flip_animation",
+        "flip_x",
+        "flip_y",
+        "flip_z",
+        "focus_on_selection",
+        "fold_all_animations",
+        "generate_palette",
+        "gradient_tool",
+        "graph_editor_zero_line",
+        "group_elements",
+        "gui_light",
+        "hide_everything_except_selection",
+        "ik_enabled",
+        "import_java_block_model",
+        "import_keymap",
+        "import_obj",
+        "import_optifine_part",
+        "import_palette",
+        "import_project",
+        "import_settings",
+        "import_texture",
+        "import_theme",
+        "inset_mesh_selection",
+        "invert_face",
+        "keybindings_window",
+        "keyframe_interpolation",
+        "keyframe_uniform",
+        "load_animation_file",
+        "load_keymap",
+        "load_palette",
+        "load_plugin",
+        "load_plugin_from_url",
+        "lock_alpha",
+        "lock_motion_trail",
+        "loop_cut",
+        "merge_meshes",
+        "merge_vertices",
+        "mirror_painting",
+        "move_back",
+        "move_down",
+        "move_forth",
+        "move_graph_keyframes_down",
+        "move_graph_keyframes_up",
+        "move_layer_tool",
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_uv_to_cursor",
+        "next_keyframe",
+        "open_backup_folder",
+        "open_dev_tools",
+        "open_from_link",
+        "open_model_folder",
+        "origin_to_geometry",
+        "outliner_toggle",
+        "paint",
+        "painting_grid",
+        "paste",
+        "pick_screen_color",
+        "pivot_tool",
+        "pixel_grid",
+        "plugins_window",
+        "preview_area_select",
+        "preview_checkerboard",
+        "preview_drag",
+        "preview_rotate",
+        "preview_select",
+        "preview_zoom",
+        "previous_keyframe",
+        "project_window",
+        "record_model_gif",
+        "reload",
+        "reload_plugins",
+        "remove_blank_faces",
+        "remove_plugin",
+        "rescale_toggle",
+        "reset_keyframe",
+        "reset_layout",
+        "resize_tool",
+        "resolve_keyframe_expressions",
+        "reverse_keyframes",
+        "rotate_x_ccw",
+        "rotate_x_cw",
+        "rotate_y_ccw",
+        "rotate_y_cw",
+        "rotate_z_ccw",
+        "rotate_z_cw",
+        "rotation_space",
+        "save_all_animations",
+        "save_project",
+        "save_project_as",
+        "save_project_incremental",
+        "save_textures",
+        "scale",
+        "screenshot_app",
+        "select_effect_animator",
+        "select_window",
+        "selection_mode",
+        "selection_tool",
+        "settings_window",
+        "share_model",
+        "slider_animation_length",
+        "slider_animation_speed",
+        "slider_brush_opacity",
+        "slider_brush_size",
+        "slider_brush_softness",
+        "slider_color_h",
+        "slider_color_s",
+        "slider_color_v",
+        "slider_face_tint",
+        "slider_ik_chain_length",
+        "slider_inflate",
+        "slider_keyframe_time",
+        "slider_origin_x",
+        "slider_origin_y",
+        "slider_origin_z",
+        "slider_pos_x",
+        "slider_pos_y",
+        "slider_pos_z",
+        "slider_rotation_x",
+        "slider_rotation_y",
+        "slider_rotation_z",
+        "slider_size_x",
+        "slider_size_y",
+        "slider_size_z",
+        "slider_stretch_x",
+        "slider_stretch_y",
+        "slider_stretch_z",
+        "snap_uv_to_pixels",
+        "sort_outliner",
+        "sort_palette",
+        "split_mesh",
+        "stretch_tool",
+        "swap_colors",
+        "switch_tabs",
+        "theme_window",
+        "timelapse",
+        "timeline_focus",
+        "toggle_autouv",
+        "toggle_export",
+        "toggle_locked",
+        "toggle_mirror_uv",
+        "toggle_motion_trails",
+        "toggle_quad_view",
+        "toggle_shade",
+        "toggle_shading",
+        "toggle_skin_layer",
+        "toggle_uv_overlay",
+        "toggle_visibility",
+        "transform_space",
+        "unfold_groups",
+        "unlock_everything",
+        "update_autouv",
+        "upload_sketchfab",
+        "uv_apply_all",
+        "uv_auto",
+        "uv_checkerboard",
+        "uv_grid",
+        "uv_maximize",
+        "uv_mirror_x",
+        "uv_mirror_y",
+        "uv_rel_auto",
+        "uv_reset",
+        "uv_rotation",
+        "uv_transparent",
+        "uv_turn_mapping",
+        "vertex_snap_mode",
+        "vertex_snap_tool",
+        "view_mode",
+        "zoom_in",
+        "zoom_out",
+        "zoom_reset"
+      ],
+      "mouse": {
+        "preview_rotate": {
+          "key": 2
+        },
+        "preview_drag": {
+          "key": 2,
+          "shift": true
+        },
+        "preview_zoom": {
+          "key": 2,
+          "ctrl": true
+        }
+      }
+    },
+    "maya": {
+      "mapped": {
+        "set_animation_end": {
+          "app3": "timeline.setEnd",
+          "source": "js/animations/animation.js",
+          "binding": {
+            "key": 35,
+            "ctrl": true
+          }
+        },
+        "add_keyframe": {
+          "app3": "key.add",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 83
+          }
+        },
+        "move_keyframe_back": {
+          "app3": "key.moveBack",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 37
+          }
+        },
+        "move_keyframe_forth": {
+          "app3": "key.moveNext",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 39
+          }
+        },
+        "timeline_graph_editor": {
+          "app3": "timeline.graph",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 114
+          }
+        },
+        "play_animation": {
+          "app3": "timeline.play",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 32
+          }
+        },
+        "jump_to_timeline_start": {
+          "app3": "timeline.start",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 36
+          }
+        },
+        "jump_to_timeline_end": {
+          "app3": "timeline.end",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 35
+          }
+        },
+        "timeline_frame_back": {
+          "app3": "timeline.frameBack",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 188,
+            "alt": true
+          }
+        },
+        "timeline_frame_forth": {
+          "app3": "timeline.frameNext",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 190,
+            "alt": true
+          }
+        },
+        "add_marker": {
+          "app3": "timeline.marker",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 77,
+            "ctrl": true
+          }
+        },
+        "move_tool": {
+          "app3": "tool.translate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 87
+          }
+        },
+        "rotate_tool": {
+          "app3": "tool.rotate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 69
+          }
+        },
+        "swap_tools": {
+          "app3": "tool.swap",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 32
+          }
+        },
+        "fullscreen": {
+          "app3": "view.fullscreen",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 122
+          }
+        },
+        "toggle_sidebars": {
+          "app3": "view.sidebars",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 66,
+            "ctrl": true
+          }
+        },
+        "rename": {
+          "app3": "file.rename",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 113
+          }
+        },
+        "delete": {
+          "app3": "key.delete",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 46
+          }
+        },
+        "select_all": {
+          "app3": "key.selectAll",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 65,
+            "ctrl": true
+          }
+        },
+        "invert_selection": {
+          "app3": "key.invert",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 73,
+            "ctrl": true
+          }
+        },
+        "open_model": {
+          "app3": "file.open",
+          "source": "js/io/io.js",
+          "binding": {
+            "key": 79,
+            "ctrl": true
+          }
+        },
+        "toggle_camera_projection": {
+          "app3": "view.projection",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 101
+          }
+        },
+        "camera_initial": {
+          "app3": "view.initial",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 97
+          }
+        },
+        "camera_top": {
+          "app3": "view.top",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 104
+          }
+        },
+        "camera_bottom": {
+          "app3": "view.bottom",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 98
+          }
+        },
+        "camera_south": {
+          "app3": "view.south",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 100
+          }
+        },
+        "camera_north": {
+          "app3": "view.north",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 102
+          }
+        },
+        "camera_east": {
+          "app3": "view.east",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 103
+          }
+        },
+        "camera_west": {
+          "app3": "view.west",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 105
+          }
+        },
+        "screenshot_model": {
+          "app3": "view.screenshot",
+          "source": "js/preview/screenshot.js",
+          "binding": {
+            "key": 80,
+            "ctrl": true
+          }
+        },
+        "undo": {
+          "app3": "history.undo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "ctrl": true
+          }
+        },
+        "redo": {
+          "app3": "history.redo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "shift": true
+          }
+        }
+      },
+      "unmapped": [
+        "action_control",
+        "add_animation",
+        "add_animation_controller_state",
+        "add_armature_bone",
+        "add_cube",
+        "add_display_preset",
+        "add_group",
+        "add_locator",
+        "add_null_object",
+        "add_to_palette",
+        "animate",
+        "animated_texture_editor",
+        "animated_texture_frame",
+        "animated_textures",
+        "apply_display_preset",
+        "auto_cullface",
+        "bone_reset_toggle",
+        "bring_up_all_animations",
+        "brush_tool",
+        "cancel",
+        "center_all",
+        "center_x",
+        "center_y",
+        "center_z",
+        "change_keyframe_file",
+        "change_textures_folder",
+        "clear_timeline",
+        "close_project",
+        "collapse_groups",
+        "color_picker",
+        "confirm",
+        "convert_project",
+        "copy",
+        "copy_paste_tool",
+        "create_collection",
+        "create_face",
+        "create_texture",
+        "cube_counter",
+        "cullface",
+        "cut",
+        "display",
+        "draw_shape_tool",
+        "draw_shape_type",
+        "duplicate",
+        "edit",
+        "edit_bedrock_binding",
+        "edit_history",
+        "edit_material_instances",
+        "edit_session",
+        "element_colors",
+        "eraser",
+        "explode_skin_model",
+        "export_animation_file",
+        "export_bedrock",
+        "export_blockmodel",
+        "export_class_entity",
+        "export_entity",
+        "export_gltf",
+        "export_keymap",
+        "export_minecraft_skin",
+        "export_obj",
+        "export_optifine_full",
+        "export_optifine_part",
+        "export_over",
+        "export_palette",
+        "export_settings",
+        "export_theme",
+        "extrude_mesh_selection",
+        "extrude_spline_selection",
+        "extrude_texture",
+        "face_tint",
+        "fill_mode",
+        "fill_tool",
+        "flip_animation",
+        "flip_x",
+        "flip_y",
+        "flip_z",
+        "focus_on_selection",
+        "fold_all_animations",
+        "generate_palette",
+        "gradient_tool",
+        "graph_editor_zero_line",
+        "group_elements",
+        "gui_light",
+        "hide_everything_except_selection",
+        "ik_enabled",
+        "import_java_block_model",
+        "import_keymap",
+        "import_optifine_part",
+        "import_palette",
+        "import_project",
+        "import_settings",
+        "import_texture",
+        "import_theme",
+        "inset_mesh_selection",
+        "keybindings_window",
+        "keyframe_interpolation",
+        "load_animation_file",
+        "load_keymap",
+        "load_palette",
+        "load_plugin",
+        "load_plugin_from_url",
+        "lock_alpha",
+        "lock_motion_trail",
+        "loop_cut",
+        "merge_vertices",
+        "mirror_painting",
+        "move_back",
+        "move_down",
+        "move_forth",
+        "move_graph_keyframes_down",
+        "move_graph_keyframes_up",
+        "move_layer_tool",
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_uv_to_cursor",
+        "next_keyframe",
+        "open_backup_folder",
+        "open_dev_tools",
+        "open_model_folder",
+        "origin_to_geometry",
+        "outliner_toggle",
+        "paint",
+        "painting_grid",
+        "paste",
+        "pick_screen_color",
+        "pivot_tool",
+        "pixel_grid",
+        "plugins_window",
+        "preview_area_select",
+        "preview_checkerboard",
+        "preview_drag",
+        "preview_rotate",
+        "preview_select",
+        "preview_zoom",
+        "previous_keyframe",
+        "project_window",
+        "record_model_gif",
+        "reload",
+        "reload_plugins",
+        "remove_blank_faces",
+        "rescale_toggle",
+        "reset_keyframe",
+        "reset_layout",
+        "resize_tool",
+        "resolve_keyframe_expressions",
+        "reverse_keyframes",
+        "rotate_x_ccw",
+        "rotate_x_cw",
+        "rotate_y_ccw",
+        "rotate_y_cw",
+        "rotate_z_ccw",
+        "rotate_z_cw",
+        "rotation_space",
+        "save_all_animations",
+        "save_project",
+        "save_project_as",
+        "save_project_incremental",
+        "save_textures",
+        "scale",
+        "screenshot_app",
+        "select_effect_animator",
+        "select_window",
+        "selection_tool",
+        "settings_window",
+        "share_model",
+        "slider_animation_length",
+        "slider_animation_speed",
+        "slider_brush_opacity",
+        "slider_brush_size",
+        "slider_brush_softness",
+        "slider_color_h",
+        "slider_color_s",
+        "slider_color_v",
+        "slider_face_tint",
+        "slider_ik_chain_length",
+        "slider_inflate",
+        "slider_keyframe_time",
+        "slider_origin_x",
+        "slider_origin_y",
+        "slider_origin_z",
+        "slider_pos_x",
+        "slider_pos_y",
+        "slider_pos_z",
+        "slider_rotation_x",
+        "slider_rotation_y",
+        "slider_rotation_z",
+        "slider_size_x",
+        "slider_size_y",
+        "slider_size_z",
+        "slider_stretch_x",
+        "slider_stretch_y",
+        "slider_stretch_z",
+        "sort_outliner",
+        "sort_palette",
+        "start",
+        "stretch_tool",
+        "swap_colors",
+        "switch_tabs",
+        "theme_window",
+        "timelapse",
+        "timeline_focus",
+        "toggle_autouv",
+        "toggle_export",
+        "toggle_locked",
+        "toggle_mirror_uv",
+        "toggle_motion_trails",
+        "toggle_quad_view",
+        "toggle_shade",
+        "toggle_shading",
+        "toggle_skin_layer",
+        "toggle_uv_overlay",
+        "toggle_visibility",
+        "transform_space",
+        "unfold_groups",
+        "unlock_everything",
+        "update_autouv",
+        "upload_sketchfab",
+        "uv_apply_all",
+        "uv_auto",
+        "uv_checkerboard",
+        "uv_grid",
+        "uv_maximize",
+        "uv_mirror_x",
+        "uv_mirror_y",
+        "uv_rel_auto",
+        "uv_reset",
+        "uv_rotation",
+        "uv_select_all",
+        "uv_transparent",
+        "uv_turn_mapping",
+        "vertex_snap_mode",
+        "vertex_snap_tool",
+        "view_mode",
+        "zoom_in",
+        "zoom_out",
+        "zoom_reset"
+      ],
+      "mouse": {
+        "preview_rotate": {
+          "key": 1,
+          "alt": true
+        },
+        "preview_drag": {
+          "key": 2,
+          "alt": true
+        },
+        "preview_zoom": {
+          "key": 3,
+          "alt": true
+        }
+      }
+    },
+    "cinema4d": {
+      "mapped": {
+        "set_animation_end": {
+          "app3": "timeline.setEnd",
+          "source": "js/animations/animation.js",
+          "binding": {
+            "key": 35,
+            "ctrl": true
+          }
+        },
+        "add_keyframe": {
+          "app3": "key.add",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 73
+          }
+        },
+        "move_keyframe_back": {
+          "app3": "key.moveBack",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 37
+          }
+        },
+        "move_keyframe_forth": {
+          "app3": "key.moveNext",
+          "source": "js/animations/keyframe.js",
+          "binding": {
+            "key": 39
+          }
+        },
+        "timeline_graph_editor": {
+          "app3": "timeline.graph",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 114
+          }
+        },
+        "play_animation": {
+          "app3": "timeline.play",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 32
+          }
+        },
+        "jump_to_timeline_start": {
+          "app3": "timeline.start",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 70,
+            "shift": true
+          }
+        },
+        "jump_to_timeline_end": {
+          "app3": "timeline.end",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 35
+          }
+        },
+        "timeline_frame_back": {
+          "app3": "timeline.frameBack",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 188,
+            "alt": true
+          }
+        },
+        "timeline_frame_forth": {
+          "app3": "timeline.frameNext",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 190,
+            "alt": true
+          }
+        },
+        "add_marker": {
+          "app3": "timeline.marker",
+          "source": "js/animations/timeline.js",
+          "binding": {
+            "key": 77,
+            "ctrl": true
+          }
+        },
+        "move_tool": {
+          "app3": "tool.translate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 69
+          }
+        },
+        "rotate_tool": {
+          "app3": "tool.rotate",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 82
+          }
+        },
+        "swap_tools": {
+          "app3": "tool.swap",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 32
+          }
+        },
+        "fullscreen": {
+          "app3": "view.fullscreen",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 122
+          }
+        },
+        "toggle_sidebars": {
+          "app3": "view.sidebars",
+          "source": "js/interface/main_tools.ts",
+          "binding": {
+            "key": 66,
+            "ctrl": true
+          }
+        },
+        "rename": {
+          "app3": "file.rename",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 113
+          }
+        },
+        "delete": {
+          "app3": "key.delete",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 46
+          }
+        },
+        "select_all": {
+          "app3": "key.selectAll",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 65,
+            "ctrl": true
+          }
+        },
+        "invert_selection": {
+          "app3": "key.invert",
+          "source": "js/interface/shared_actions.ts",
+          "binding": {
+            "key": 73,
+            "ctrl": true
+          }
+        },
+        "open_model": {
+          "app3": "file.open",
+          "source": "js/io/io.js",
+          "binding": {
+            "key": 79,
+            "ctrl": true
+          }
+        },
+        "toggle_camera_projection": {
+          "app3": "view.projection",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 101
+          }
+        },
+        "camera_initial": {
+          "app3": "view.initial",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 97
+          }
+        },
+        "camera_top": {
+          "app3": "view.top",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 104
+          }
+        },
+        "camera_bottom": {
+          "app3": "view.bottom",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 98
+          }
+        },
+        "camera_south": {
+          "app3": "view.south",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 100
+          }
+        },
+        "camera_north": {
+          "app3": "view.north",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 102
+          }
+        },
+        "camera_east": {
+          "app3": "view.east",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 103
+          }
+        },
+        "camera_west": {
+          "app3": "view.west",
+          "source": "js/preview/preview.ts",
+          "binding": {
+            "key": 105
+          }
+        },
+        "screenshot_model": {
+          "app3": "view.screenshot",
+          "source": "js/preview/screenshot.js",
+          "binding": {
+            "key": 80,
+            "ctrl": true
+          }
+        },
+        "undo": {
+          "app3": "history.undo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "ctrl": true
+          }
+        },
+        "redo": {
+          "app3": "history.redo",
+          "source": "js/undo.js",
+          "binding": {
+            "key": 90,
+            "shift": true
+          }
+        }
+      },
+      "unmapped": [
+        "action_control",
+        "add_animation",
+        "add_animation_controller_state",
+        "add_armature_bone",
+        "add_cube",
+        "add_display_preset",
+        "add_group",
+        "add_locator",
+        "add_null_object",
+        "add_to_palette",
+        "animate",
+        "animated_texture_editor",
+        "animated_texture_frame",
+        "animated_textures",
+        "apply_display_preset",
+        "auto_cullface",
+        "bone_reset_toggle",
+        "bring_up_all_animations",
+        "brush_tool",
+        "cancel",
+        "center_all",
+        "center_x",
+        "center_y",
+        "center_z",
+        "change_keyframe_file",
+        "change_textures_folder",
+        "clear_timeline",
+        "close_project",
+        "collapse_groups",
+        "color_picker",
+        "confirm",
+        "convert_project",
+        "copy",
+        "copy_paste_tool",
+        "create_collection",
+        "create_face",
+        "create_texture",
+        "cube_counter",
+        "cullface",
+        "cut",
+        "display",
+        "draw_shape_tool",
+        "draw_shape_type",
+        "duplicate",
+        "edit",
+        "edit_bedrock_binding",
+        "edit_history",
+        "edit_material_instances",
+        "edit_session",
+        "element_colors",
+        "eraser",
+        "explode_skin_model",
+        "export_animation_file",
+        "export_bedrock",
+        "export_blockmodel",
+        "export_class_entity",
+        "export_entity",
+        "export_gltf",
+        "export_keymap",
+        "export_minecraft_skin",
+        "export_obj",
+        "export_optifine_full",
+        "export_optifine_part",
+        "export_over",
+        "export_palette",
+        "export_settings",
+        "export_theme",
+        "extrude_mesh_selection",
+        "extrude_spline_selection",
+        "extrude_texture",
+        "face_tint",
+        "fill_mode",
+        "fill_tool",
+        "flip_animation",
+        "flip_x",
+        "flip_y",
+        "flip_z",
+        "focus_on_selection",
+        "fold_all_animations",
+        "generate_palette",
+        "gradient_tool",
+        "graph_editor_zero_line",
+        "group_elements",
+        "gui_light",
+        "hide_everything_except_selection",
+        "ik_enabled",
+        "import_java_block_model",
+        "import_keymap",
+        "import_optifine_part",
+        "import_palette",
+        "import_project",
+        "import_settings",
+        "import_texture",
+        "import_theme",
+        "inset_mesh_selection",
+        "keybindings_window",
+        "keyframe_interpolation",
+        "load_animation_file",
+        "load_keymap",
+        "load_palette",
+        "load_plugin",
+        "load_plugin_from_url",
+        "lock_alpha",
+        "lock_motion_trail",
+        "loop_cut",
+        "merge_vertices",
+        "mirror_painting",
+        "move_back",
+        "move_down",
+        "move_forth",
+        "move_graph_keyframes_down",
+        "move_graph_keyframes_up",
+        "move_layer_tool",
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_uv_to_cursor",
+        "next_keyframe",
+        "open_backup_folder",
+        "open_dev_tools",
+        "open_model_folder",
+        "origin_to_geometry",
+        "outliner_toggle",
+        "paint",
+        "painting_grid",
+        "paste",
+        "pick_screen_color",
+        "pivot_tool",
+        "pixel_grid",
+        "plugins_window",
+        "preview_area_select",
+        "preview_checkerboard",
+        "preview_drag",
+        "preview_rotate",
+        "preview_select",
+        "preview_zoom",
+        "previous_keyframe",
+        "project_window",
+        "record_model_gif",
+        "reload",
+        "reload_plugins",
+        "remove_blank_faces",
+        "rescale_toggle",
+        "reset_keyframe",
+        "reset_layout",
+        "resize_tool",
+        "resolve_keyframe_expressions",
+        "reverse_keyframes",
+        "rotate_x_ccw",
+        "rotate_x_cw",
+        "rotate_y_ccw",
+        "rotate_y_cw",
+        "rotate_z_ccw",
+        "rotate_z_cw",
+        "rotation_space",
+        "save_all_animations",
+        "save_project",
+        "save_project_as",
+        "save_project_incremental",
+        "save_textures",
+        "scale",
+        "screenshot_app",
+        "select_effect_animator",
+        "select_window",
+        "selection_tool",
+        "settings_window",
+        "share_model",
+        "slider_animation_length",
+        "slider_animation_speed",
+        "slider_brush_opacity",
+        "slider_brush_size",
+        "slider_brush_softness",
+        "slider_color_h",
+        "slider_color_s",
+        "slider_color_v",
+        "slider_face_tint",
+        "slider_ik_chain_length",
+        "slider_inflate",
+        "slider_keyframe_time",
+        "slider_origin_x",
+        "slider_origin_y",
+        "slider_origin_z",
+        "slider_pos_x",
+        "slider_pos_y",
+        "slider_pos_z",
+        "slider_rotation_x",
+        "slider_rotation_y",
+        "slider_rotation_z",
+        "slider_size_x",
+        "slider_size_y",
+        "slider_size_z",
+        "slider_stretch_x",
+        "slider_stretch_y",
+        "slider_stretch_z",
+        "sort_outliner",
+        "sort_palette",
+        "start",
+        "stretch_tool",
+        "swap_colors",
+        "switch_tabs",
+        "theme_window",
+        "timelapse",
+        "timeline_focus",
+        "toggle_autouv",
+        "toggle_export",
+        "toggle_locked",
+        "toggle_mirror_uv",
+        "toggle_motion_trails",
+        "toggle_quad_view",
+        "toggle_shade",
+        "toggle_shading",
+        "toggle_skin_layer",
+        "toggle_uv_overlay",
+        "toggle_visibility",
+        "transform_space",
+        "unfold_groups",
+        "unlock_everything",
+        "update_autouv",
+        "upload_sketchfab",
+        "uv_apply_all",
+        "uv_auto",
+        "uv_checkerboard",
+        "uv_grid",
+        "uv_maximize",
+        "uv_mirror_x",
+        "uv_mirror_y",
+        "uv_rel_auto",
+        "uv_reset",
+        "uv_rotation",
+        "uv_select_all",
+        "uv_transparent",
+        "uv_turn_mapping",
+        "vertex_snap_mode",
+        "vertex_snap_tool",
+        "view_mode",
+        "zoom_in",
+        "zoom_out",
+        "zoom_reset"
+      ],
+      "mouse": {
+        "preview_rotate": {
+          "key": 1,
+          "alt": true
+        },
+        "preview_drag": {
+          "key": 2,
+          "alt": true
+        },
+        "preview_zoom": {
+          "key": 1,
+          "shift": true
+        }
+      }
+    }
+  }
+}

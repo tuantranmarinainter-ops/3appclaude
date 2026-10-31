@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ test(
     });
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const { chromium } = require('playwright');
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch(browserOptions({ headless: true }));
     try {
       const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }),
         errors = [];

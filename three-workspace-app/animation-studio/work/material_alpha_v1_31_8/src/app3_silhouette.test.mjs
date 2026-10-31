@@ -1,3 +1,4 @@
+import { browserOptions } from './browser_test_options.mjs';
 // Run against Studio with APP3_RUNTIME_BASE and its own BBS_UNIFIED_PROJECTS_DIR.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -84,10 +85,10 @@ test(
     assert.match(base, /^http:\/\/127\.0\.0\.1:\d+$/);
     const { chromium } = require('playwright'),
       { makeEmptyDraft } = await import(pathToFileURL(require.resolve('@topview/3d-builder')).href);
-    const browser = await chromium.launch({
+    const browser = await chromium.launch(browserOptions({
       headless: true,
       args: ['--enable-unsafe-swiftshader'],
-    });
+    }));
     const artifacts = path.join(workspace, 'editor/.test-results/app3-silhouette');
     mkdirSync(artifacts, { recursive: true });
     try {
