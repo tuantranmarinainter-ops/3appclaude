@@ -1,7 +1,7 @@
 # Task tổng: camera App 2 chạy đúng trong film BBS FS 2.7 (2026-11-01)
 
 > Người dùng giao 2026-11-01 ("camera chỉnh trong App 2 đưa vào BBS FS vẫn chưa nhận chuyển động camera"). Giao Codex.
-> Subagent dùng model **"sol 6.1" bản nhẹ**. Một nhánh + một PR vào `main`, **không tự merge**.
+> Subagent dùng model **tối đa "terra" mức cao** (không dùng model mạnh hơn). Một nhánh + một PR vào `main`, **không tự merge**.
 > Backlog liên quan: `docs/BACKLOG-2026-10-25.md` **B59** (task này), B32, B44, B46, B58.
 
 ## Vai trò người dùng

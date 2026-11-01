@@ -1,6 +1,6 @@
 # Task tổng: sửa toàn bộ backlog mở của App 2 (2026-11-01)
 
-> Người dùng giao 2026-11-01 ("xuất task sửa all backlog"). Giao Codex. Subagent dùng model **"sol 6.1" bản nhẹ**.
+> Người dùng giao 2026-11-01 ("xuất task sửa all backlog"). Giao Codex. Subagent dùng model **tối đa "terra" mức cao** (không dùng model mạnh hơn).
 > Chi tiết từng mục (số đo, file, đề xuất): `docs/BACKLOG-2026-10-25.md` mục **B<n>**. Đọc mục đó trước khi sửa.
 > **Mỗi đợt một nhánh + một PR** (dễ kiểm), theo thứ tự đợt; **không tự merge**. Báo bằng số đo thật, ghi rõ NOT_RUN.
 
