@@ -162,6 +162,7 @@ export const ru: LocaleDict = {
     "categoryPrimitives": "Примитивы",
     "collapseContent": "Свернуть боковую панель",
     "assignAnimation": "Назначить анимацию",
+    "debug": "Debug",
     "expandContent": "Развернуть боковую панель",
     "resizeLeftPanel": "Изменение размера левой панели",
     "emptyAssets": "Нет соответствующих активов",

@@ -210,6 +210,11 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     window.dispatchEvent(new CustomEvent('bbs-assign-animation', { detail: { documentId, characterNodeId } }))
   }
 
+  /** Nút "Debug" ở cột trái: mở bảng ghi thao tác của overlay. */
+  openDebug(): void {
+    window.dispatchEvent(new Event('bbs-open-debug'))
+  }
+
   async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {
     if (this.base !== '/api/unified/projects') throw new Error('Shared-library Actions can only be placed in an App 2 project')
     const project = (await loadUnifiedProject(documentId)).project

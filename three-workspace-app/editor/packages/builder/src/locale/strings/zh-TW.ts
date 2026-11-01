@@ -162,6 +162,7 @@ export const zhTW: LocaleDict = {
     "categoryPrimitives": "基礎形狀",
     "collapseContent": "收合左側面板",
     "assignAnimation": "指派動畫",
+    "debug": "Debug",
     "expandContent": "展開左側面板",
     "resizeLeftPanel": "調整左側欄寬度",
     "emptyAssets": "暫無符合素材",

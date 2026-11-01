@@ -162,6 +162,7 @@ export const de: LocaleDict = {
     "categoryPrimitives": "Primitive",
     "collapseContent": "Seitenleiste einklappen",
     "assignAnimation": "Animation zuweisen",
+    "debug": "Debug",
     "expandContent": "Seitenleiste ausklappen",
     "resizeLeftPanel": "Größe des linken Bereichs ändern",
     "emptyAssets": "Keine passenden Vermögenswerte",

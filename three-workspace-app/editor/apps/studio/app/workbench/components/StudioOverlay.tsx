@@ -28,6 +28,8 @@ import { useAudioPlayback } from './audio-cues/useAudioPlayback'
 import { useVfxPreview } from './vfx-cues/hooks/useVfxPreview'
 import { planReviewFrames, reviewStatusForSequence } from '../../../src/sceneReview'
 import { DiagnosticsPanel } from '../../../src/devtools/tools/DiagnosticsPanel'
+import { DebugRecorderPanel } from './debug-recorder'
+import { resumeDebugIfEnabled } from '../../../src/debugRecorder'
 import { LanguageMenu } from './LanguageMenu'
 import { WORKSPACE_PANELS, type Workspace } from '../../../src/workspaceNavigation'
 
@@ -96,7 +98,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign' | 'debug'
 
 function installDebugHooks(api: DirectorApi): void {
   const target = window as StudioWindow
@@ -543,6 +545,14 @@ export function StudioOverlay({
     window.addEventListener('bbs-assign-animation', onAssignRequest)
     return () => window.removeEventListener('bbs-assign-animation', onAssignRequest)
   }, [source])
+  // Nút "Debug" ở cột trái mở bảng ghi thao tác; bản ghi đang bật thì tiếp tục sau khi tải lại trang.
+  useEffect(() => {
+    if (source !== 'unified') return
+    resumeDebugIfEnabled()
+    const onDebugRequest = () => setDrawer('debug')
+    window.addEventListener('bbs-open-debug', onDebugRequest)
+    return () => window.removeEventListener('bbs-open-debug', onDebugRequest)
+  }, [source])
   // C27: after an assignment, reveal the new clip (scroll + zoom + flash) in the builder timeline.
   // Sources: the assign panel and adapter dispatch 'bbs-reveal-clip'; returning from the Library
   // page hands the clip over through sessionStorage because the workbench remounts.
@@ -660,6 +670,7 @@ export function StudioOverlay({
             <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
+          <HostDrawer open={drawer === 'debug'} title="Debug · ghi thao tác" closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DebugRecorderPanel /></HostDrawer>
           <HostDrawer open={drawer === 'assign'} title={vi ? 'Gán animation' : 'Assign animation'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             <AnimationAssignPanel key={`${documentId}-${assignRequest.nonce}`} projectId={documentId} project={project} initialNodeId={assignRequest.nodeId} />
           </HostDrawer>

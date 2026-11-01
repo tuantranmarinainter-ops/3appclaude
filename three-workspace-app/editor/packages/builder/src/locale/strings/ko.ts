@@ -162,6 +162,7 @@ export const ko: LocaleDict = {
     "categoryPrimitives": "기본 도형",
     "collapseContent": "패널 접기",
     "assignAnimation": "애니메이션 할당",
+    "debug": "Debug",
     "expandContent": "패널 펼치기",
     "resizeLeftPanel": "왼쪽 패널 너비 조절",
     "emptyAssets": "일치하는 에셋이 없습니다",

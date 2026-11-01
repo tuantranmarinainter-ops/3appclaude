@@ -162,6 +162,7 @@ export const ar: LocaleDict = {
     "categoryPrimitives": "البدائيون",
     "collapseContent": "طي اللوحة",
     "assignAnimation": "تعيين الحركة",
+    "debug": "Debug",
     "expandContent": "توسيع اللوحة",
     "resizeLeftPanel": "تغيير حجم اللوحة اليسرى",
     "emptyAssets": "لا توجد أصول مطابقة",

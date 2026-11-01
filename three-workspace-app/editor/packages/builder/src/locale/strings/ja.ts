@@ -162,6 +162,7 @@ export const ja: LocaleDict = {
     "categoryPrimitives": "基本形状",
     "collapseContent": "パネルを折りたたむ",
     "assignAnimation": "アニメーションを割り当て",
+    "debug": "Debug",
     "expandContent": "パネルを展開",
     "resizeLeftPanel": "左パネルの幅を変更",
     "emptyAssets": "一致するアセットがありません",

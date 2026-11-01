@@ -162,6 +162,7 @@ export const id: LocaleDict = {
     "categoryPrimitives": "Primitif",
     "collapseContent": "Ciutkan panel samping",
     "assignAnimation": "Tetapkan animasi",
+    "debug": "Debug",
     "expandContent": "Perluas panel samping",
     "resizeLeftPanel": "Ubah ukuran panel kiri",
     "emptyAssets": "Tidak ada aset yang cocok",

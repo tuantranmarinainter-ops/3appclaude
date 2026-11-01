@@ -162,6 +162,7 @@ export const tr: LocaleDict = {
     "categoryPrimitives": "İlkeller",
     "collapseContent": "Yan paneli daralt",
     "assignAnimation": "Animasyon ata",
+    "debug": "Debug",
     "expandContent": "Yan paneli genişlet",
     "resizeLeftPanel": "Sol paneli yeniden boyutlandır",
     "emptyAssets": "Eşleşen öğe yok",

@@ -85,6 +85,9 @@ interface HistoryRecord {
 interface RequestRecord { hash: string; response?: CommandSuccess; projectId?: string; splitProjectIds?: string[] }
 type MappingDraft = Omit<SkeletonMapping, 'calibration' | 'referencePose' | 'confirmed'>
 
+/** Folder that holds every unified project (and the App 2 debug logs). */
+export function unifiedProjectsRoot(): string { return root() }
+
 function root(): string {
   return path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects'))
 }

@@ -162,6 +162,7 @@ export const vi: LocaleDict = {
     "categoryPrimitives": "Nguyên Thủy",
     "collapseContent": "Thu gọn bảng bên",
     "assignAnimation": "Gán animation",
+    "debug": "Debug",
     "expandContent": "Mở rộng bảng bên",
     "resizeLeftPanel": "Thay đổi kích thước bảng bên trái",
     "emptyAssets": "Không có nội dung phù hợp",

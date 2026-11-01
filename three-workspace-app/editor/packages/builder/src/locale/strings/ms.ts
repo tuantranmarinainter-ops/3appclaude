@@ -162,6 +162,7 @@ export const ms: LocaleDict = {
     "categoryPrimitives": "Primitif",
     "collapseContent": "Runtuhkan panel sisi",
     "assignAnimation": "Tetapkan animasi",
+    "debug": "Debug",
     "expandContent": "Kembangkan panel sisi",
     "resizeLeftPanel": "Ubah saiz panel kiri",
     "emptyAssets": "Tiada aset yang sepadan",
