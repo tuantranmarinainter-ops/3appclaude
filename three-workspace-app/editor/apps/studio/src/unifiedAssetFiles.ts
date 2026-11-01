@@ -1,3 +1,4 @@
+import type { LibraryMotionConversionRecipe } from './libraryMotionConversion'
 import { createHash, randomUUID } from 'node:crypto'
 import { AUDIO_FORMATS } from './audioCues'
 import { mkdir, open, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
@@ -634,6 +635,18 @@ export function buildImportedAsset(upload: StagedAssetUpload, format: string, un
 export async function resolveUnifiedAssetFile(project: UnifiedProject, assetId: string, variant: string): Promise<{ bytes: Buffer; mediaType: string }> {
   const asset = project.assets[assetId as keyof typeof project.assets]
   if (!asset) throw new TypeError('Asset not found')
+  const recipe = (project.extensions?.libraryMotionConversions as Record<string, LibraryMotionConversionRecipe> | undefined)?.[assetId]
+  if (recipe) {
+    const recipeBytes = Buffer.from(canonicalJsonExact(recipe))
+    if (createHash('sha256').update(recipeBytes).digest('hex') !== asset.provenance.original.sha256 || recipeBytes.length !== asset.provenance.original.byteLength) throw new TypeError('Công thức chuyển động tác không khớp dữ liệu gốc')
+    const { materializeLibraryMotionConversion } = await import('./libraryMotionConversion')
+    const generated = await materializeLibraryMotionConversion(recipe)
+    const bytes = Buffer.from(generated.glb)
+    if (createHash('sha256').update(bytes).digest('hex') !== asset.source.sha256 || bytes.length !== asset.source.byteLength) throw new TypeError('Kết quả chuyển đã đổi — chuyển lại?')
+    if (variant === 'source') return { bytes, mediaType: 'model/gltf-binary' }
+    if (variant === 'native-bobj') return { bytes: Buffer.from(generated.bobj), mediaType: 'text/plain' }
+    if (variant === 'original') return { bytes: recipeBytes, mediaType: 'application/json' }
+  }
   const ref = variant === 'source' ? asset.source : asset.derivatives[variant]
   if (!ref) throw new TypeError('Asset variant not found')
   const projectRoot = await realpath(path.join(root(), project.projectId))
@@ -648,7 +661,11 @@ export async function resolveUnifiedAssetFile(project: UnifiedProject, assetId: 
   return { bytes, mediaType: ref.mediaType }
 }
 
-export async function persistImportedAssetFiles(projectId: string, imported: ImportedAsset, bytes: Buffer): Promise<void> {
+export async function persistImportedAssetFiles(projectId: string, imported: ImportedAsset, bytes: Buffer, recipe?: LibraryMotionConversionRecipe): Promise<void> {
+  if (recipe) {
+    await writeImmutable(projectId, imported.asset.provenance.original, Buffer.from(canonicalJsonExact(recipe)))
+    return
+  }
   await writeImmutable(projectId, imported.asset.source, bytes)
   await writeImmutable(projectId, imported.asset.provenance.original, bytes)
   if (imported.normalizationReport) await writeImmutable(projectId, imported.normalizationReport.ref, imported.normalizationReport.bytes)

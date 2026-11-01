@@ -1010,8 +1010,15 @@ export function setCameraFov(host: LibraryHost, fov: number, cameraId?: string):
   if (!doc) return 'no-doc'
   const cam = cameraById(doc, cameraId, host.editor.activeCameraId)
   if (!cam?.camera) return 'missing-camera'
+  if (!Number.isFinite(fov)) return null
+  const next = clampCameraFov(fov)
+  const current = host.editor.pendingKeyframes.find((entry) => entry.nodeId === cam.id)?.fov?.[0]
+    ?? host.engine.getNodeSnapshot(cam.id)?.fov
+    ?? cam.camera.fov
+  // mm ↔ degrees round trips and pointer release must not create another save.
+  if (Math.abs(next - current) < 1e-8) return null
   if (nodeHasUserXformKeys(host.docModel.userKeys, cam.id)) {
-    persistCameraFov(host, cam, fov)
+    persistCameraFov(host, cam, next)
     return null
   }
   const before = snapshotDocState(host.docModel)

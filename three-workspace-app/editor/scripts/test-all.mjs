@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const editor = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const workspace = resolve(editor, '..')
@@ -15,8 +15,13 @@ mkdirSync(output, { recursive: true })
 const pnpm = process.env.npm_execpath
   ? [process.execPath, process.env.npm_execpath]
   : [process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm']
-const files = (directory) => readdirSync(directory).filter(name => name.endsWith('.test.ts')).sort().map(name => join(directory, name))
+const files = (directory, suffix = '.test.ts') => readdirSync(directory).filter(name => name.endsWith(suffix)).sort().map(name => join(directory, name))
 const nodeTests = (directory) => [process.execPath, '--import', 'tsx', '--test', '--test-reporter=tap', '--test-concurrency=1', ...files(directory)]
+const app3SerialFiles = ['app3_mcp_demo.test.mjs', 'app3_mcp_demo_hook.test.mjs'].map(name => join(app3Work, 'src', name))
+const app3Tests = (testFiles, concurrency) => [process.execPath,
+  '--import', pathToFileURL(join(builder, 'node_modules/tsx/dist/loader.mjs')).href,
+  '--experimental-loader', pathToFileURL(join(app3Work, 'src/shot_test_loader.mjs')).href,
+  '--test', '--test-reporter=tap', `--test-concurrency=${concurrency}`, ...testFiles]
 const steps = [
   ['install', [...pnpm, 'install', '--frozen-lockfile'], editor],
   ['builder-build', [...pnpm, '--filter', '@topview/3d-builder', 'build'], editor],
@@ -25,12 +30,19 @@ const steps = [
   ['builder-tests', [...pnpm, 'test:evaluate'], editor, 'vitest'],
   ['retarget-tests', nodeTests(join(editor, 'packages/retarget/test')), builder, 'tap'],
   ['studio-tests', nodeTests(join(editor, 'apps/studio/test')), builder, 'tap'],
-  ['python-tests', [process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), '-m', 'unittest', '-v', 'agent.test_unified_cli', 'agent.test_unified_mcp', 'agent.test_shot_package'], workspace, 'python'],
+  ['python-tests', [process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), '-m', 'unittest', '-v', 'agent.test_unified_cli', 'agent.test_unified_mcp', 'agent.test_shot_package', 'agent.test_film_worker'], workspace, 'python'],
   ['app3-build', [process.execPath, 'src/build.mjs'], app3Work],
   ['app3-features', [process.execPath, 'tools/check-features.mjs', '../editor/apps/studio/public/animation-studio/v1.31.8/index.html', 'outputs/Animation_Studio_v1_33_0.html'], app3],
   // The previously embedded copy must not lose controls either (see apps/studio/src/app3Embed.ts).
   ['app3-features-previous-embed', [process.execPath, 'tools/check-features.mjs', '../editor/apps/studio/public/animation-studio/v1.33.0/index.html', 'outputs/Animation_Studio_v1_33_0.html'], app3],
-  ['app3-tests', [process.execPath, '--test', '--test-reporter=tap', 'src/shot_package.test.mjs', 'src/app3_workflow_steps.test.mjs', 'src/shot_lab.test.mjs'], app3Work, 'tap'],
+  // README's complete App 3 suite, including browser tests. CHROMIUM_PATH is
+  // honored by its existing test-only browser launcher when using a system browser.
+  // Browser-heavy layout cases also need isolation on constrained CI CPUs.
+  ['app3-tests', app3Tests(files(join(app3Work, 'src'), '.test.mjs').filter(file => !app3SerialFiles.includes(file)), 1), app3Work, 'tap'],
+  // Both E5 paths restore the same Studio tsconfig and write the same evidence
+  // directory, so retain both assertions but run them after the independent files.
+  ['app3-mcp-demo', app3Tests([app3SerialFiles[0]], 1), app3Work, 'tap'],
+  ['app3-mcp-demo-hook', app3Tests([app3SerialFiles[1]], 1), app3Work, 'tap'],
 ]
 
 function counts(text, format) {
