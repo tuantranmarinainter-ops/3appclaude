@@ -323,6 +323,7 @@ export const zhCN: LocaleDict = {
     "pilotCamera": "操控相机",
     "enterCamera": "进入相机",
     "pilotHint": "正在操控相机：移动调整构图，按 ESC 退出并保存",
+    "lockCamera": "锁定相机",
     "pilotExit": "保存并退出",
     "lookAt": "看向",
     "lookAtPick": "点选角色或物体作为看向目标",

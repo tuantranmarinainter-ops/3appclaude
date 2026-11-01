@@ -323,6 +323,7 @@ export const ar: LocaleDict = {
     "pilotCamera": "التحكم بالكاميرا",
     "enterCamera": "دخول الكاميرا",
     "pilotHint": "جارٍ التحكم بالكاميرا: حرّك لضبط الإطار، اضغط ESC للخروج والحفظ",
+    "lockCamera": "قفل الكاميرا",
     "pilotExit": "حفظ والخروج",
     "lookAt": "أنظر",
     "lookAtPick": "حدد شخصية أو كائنًا للنظر إليه",

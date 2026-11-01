@@ -190,12 +190,23 @@ public final class FilmExportWorker {
 
             JsonArray cameraMap = new JsonArray();
             Set<String> cameraIds = new HashSet<>();
+            // The bridge creates an origin idle solely to size an empty draft. Shot clips own the camera.
+            JsonObject listCameras = new JsonObject(); listCameras.addProperty("filmId", draft);
+            for (JsonElement existing : draftEditor.invoke("list_camera_clips", listCameras).getAsJsonArray()) {
+                JsonObject remove = new JsonObject(); remove.addProperty("filmId", draft);
+                remove.addProperty("clipId", existing.getAsJsonObject().get("clipId").getAsString());
+                draftEditor.invoke("remove_camera_clip", remove);
+            }
+            List<int[]> cameraRanges = new ArrayList<>();
             for (JsonElement cameraItem : cameras) {
                 JsonObject camera = cameraItem.getAsJsonObject(); String id = text(camera, "id");
                 if (id.isBlank() || id.length() > 128 || !cameraIds.add(id)) throw new IllegalArgumentException("Invalid or duplicate camera id");
                 int start = integer(camera, "startTick", 0, duration); int clipDuration = integer(camera, "durationTicks", 1, duration);
                 if (start + clipDuration > duration) throw new IllegalArgumentException("Camera clip exceeds Film duration");
+                for (int[] range : cameraRanges) if (start < range[1] && start + clipDuration > range[0]) throw new IllegalArgumentException("Camera clips overlap");
+                cameraRanges.add(new int[]{start, start + clipDuration});
                 JsonArray keys = array(camera, "keyframes", 1, 256); validateRelativeTicks(keys, clipDuration);
+                if (keys.get(0).getAsJsonObject().get("tick").getAsInt() != 0) throw new IllegalArgumentException("Camera needs a key at relative tick zero");
                 JsonObject clipArgs = new JsonObject(); clipArgs.addProperty("filmId", draft); clipArgs.addProperty("title", id); clipArgs.addProperty("startTick", start); clipArgs.addProperty("duration", clipDuration);
                 JsonObject clip = draftEditor.invoke("add_camera_clip", clipArgs).getAsJsonObject(); String clipId = require(clip, "clipId").getAsString();
                 for (JsonElement keyItem : keys) {
@@ -230,7 +241,25 @@ public final class FilmExportWorker {
             JsonObject decodedJson = BbsCodec.toJson(decoded).getAsJsonObject();
             if (array(decodedJson, "replays", 0, 256).size() != actors.size() + aaaEffects.size()) throw new IOException("Film actor count changed during native read-back");
             long emittedCameras = array(decodedJson, "camera", 0, 4096).asList().stream().filter(c -> c.isJsonObject() && c.getAsJsonObject().has("mcp_id") && c.getAsJsonObject().has("title") && cameraIds.contains(c.getAsJsonObject().get("title").getAsString())).count();
-            if (emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
+            if (decodedJson.getAsJsonArray("camera").size() != cameras.size() || emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
+            JsonObject cameraReadback = new JsonObject();
+            int cameraValues = 0; double cameraMaxError = 0;
+            for (JsonElement sourceElement : cameras) {
+                JsonObject source = sourceElement.getAsJsonObject(), actual = null;
+                for (JsonElement emitted : decodedJson.getAsJsonArray("camera")) if (text(emitted.getAsJsonObject(), "title").equals(text(source, "id"))) actual = emitted.getAsJsonObject();
+                if (actual == null || !text(actual, "type").equals("bbs:keyframe") || integer(actual, "tick", 0, duration) != integer(source, "startTick", 0, duration) || integer(actual, "duration", 1, duration) != integer(source, "durationTicks", 1, duration)) throw new IOException("Camera timing/type changed during native read-back");
+                for (String component : List.of("x", "y", "z", "yaw", "pitch", "roll", "fov")) {
+                    JsonArray sourceKeys = source.getAsJsonArray("keyframes"), actualKeys = actual.getAsJsonObject(component).getAsJsonArray("keyframes");
+                    if (actualKeys.size() != sourceKeys.size()) throw new IOException("Camera key count changed: " + component);
+                    for (int k=0;k<sourceKeys.size();k++) {
+                        JsonObject expected = sourceKeys.get(k).getAsJsonObject(), observed = actualKeys.get(k).getAsJsonObject();
+                        double error = Math.abs(finite(observed, "value") - finite(expected, component.equals("fov") ? "verticalFovDegrees" : component));
+                        cameraMaxError = Math.max(cameraMaxError, error); cameraValues++;
+                        if (finite(observed, "tick") != finite(expected, "tick") || error > (List.of("x", "y", "z").contains(component) ? 0.01 : 0.1)) throw new IOException("Camera channel changed during native read-back: " + component);
+                    }
+                }
+            }
+            cameraReadback.addProperty("valuesCompared", cameraValues); cameraReadback.addProperty("maxAbsoluteError", cameraMaxError);
             int actualPoseTracks = 0;
             JsonArray readActors = decodedJson.getAsJsonArray("replays"), modelFormTransforms = new JsonArray();
             for (int i=0;i<actors.size();i++) {
@@ -261,7 +290,7 @@ public final class FilmExportWorker {
             JsonObject exportManifest = new JsonObject(); exportManifest.addProperty("schemaVersion", 1); exportManifest.addProperty("targetVersion", "2.4"); exportManifest.addProperty("mode", mode); exportManifest.addProperty("filmName", filmName); exportManifest.addProperty("projectId", projectId); exportManifest.addProperty("sourceRevision", revision); exportManifest.add("film", filmFile); exportManifest.add("assets", exportedAssets); exportManifest.add("actors", actorMap); exportManifest.add("cameras", cameraMap);
             if (manifest.has("sourceHashes")) exportManifest.add("sourceHashes", manifest.get("sourceHashes").deepCopy());
             Files.writeString(stage.resolve("export-manifest.json"), JSON.toJson(exportManifest), StandardOpenOption.CREATE_NEW);
-            JsonObject report = new JsonObject(); report.addProperty("status", "success"); report.addProperty("nativeReadback", true); report.add("modelFormTransforms",modelFormTransforms); report.addProperty("actors", actors.size()); report.addProperty("cameras", cameras.size()); report.addProperty("poseTracks", actualPoseTracks); report.addProperty("mode", mode); report.addProperty("runtimeAcceptance", "not-run");
+            JsonObject report = new JsonObject(); report.addProperty("status", "success"); report.addProperty("nativeReadback", true); report.add("cameraReadback", cameraReadback); report.add("modelFormTransforms",modelFormTransforms); report.addProperty("actors", actors.size()); report.addProperty("cameras", cameras.size()); report.addProperty("poseTracks", actualPoseTracks); report.addProperty("mode", mode); report.addProperty("runtimeAcceptance", "not-run");
             Files.writeString(stage.resolve("export-report.json"), JSON.toJson(report), StandardOpenOption.CREATE_NEW);
             Files.writeString(stage.resolve("README.txt"), "BBS FS 2.4 local Film export. Copy films/ and assets/ into the matching BBS FS asset roots manually. This package was not installed or tested in a game.\n", StandardOpenOption.CREATE_NEW);
             try (var files = Files.list(filmsDir)) {

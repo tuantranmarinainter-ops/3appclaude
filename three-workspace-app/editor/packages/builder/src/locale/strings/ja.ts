@@ -323,6 +323,7 @@ export const ja: LocaleDict = {
     "pilotCamera": "カメラを操作",
     "enterCamera": "カメラに入る",
     "pilotHint": "カメラ操作中：移動して構図を調整し、ESC で終了して保存",
+    "lockCamera": "カメラをロック",
     "pilotExit": "保存して終了",
     "lookAt": "見てください",
     "lookAtPick": "見たいキャラクターやオブジェクトを選択",

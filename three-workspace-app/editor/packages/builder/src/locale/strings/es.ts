@@ -323,6 +323,7 @@ export const es: LocaleDict = {
     "pilotCamera": "Controlar cámara",
     "enterCamera": "Entrar en la cámara",
     "pilotHint": "Controlando la cámara: mueve para encuadrar, ESC para salir y guardar",
+    "lockCamera": "Bloquear cámara",
     "pilotExit": "Guardar y salir",
     "lookAt": "Mirar",
     "lookAtPick": "Seleccione un personaje u objeto para mirar",

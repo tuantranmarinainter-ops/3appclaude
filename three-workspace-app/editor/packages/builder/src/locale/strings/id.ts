@@ -323,6 +323,7 @@ export const id: LocaleDict = {
     "pilotCamera": "Kendalikan kamera",
     "enterCamera": "Masuk kamera",
     "pilotHint": "Mengendalikan kamera: geser untuk mengatur bingkai, ESC untuk keluar dan menyimpan",
+    "lockCamera": "Kunci kamera",
     "pilotExit": "Simpan dan keluar",
     "lookAt": "Lihatlah",
     "lookAtPick": "Pilih karakter atau objek untuk dilihat",

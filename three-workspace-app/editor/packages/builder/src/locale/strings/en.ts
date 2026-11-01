@@ -323,6 +323,7 @@ export const en: LocaleDict = {
     "pilotCamera": "Control camera",
     "enterCamera": "Enter camera",
     "pilotHint": "Controlling the camera: move to adjust the frame, press ESC to exit and save",
+    "lockCamera": "Lock camera",
     "pilotExit": "Save and exit",
     "lookAt": "Select from viewport",
     "lookAtPick": "Select a character or object to look at",

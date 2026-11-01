@@ -520,7 +520,8 @@ function applySceneOperations(project: UnifiedProject, value: unknown): { docume
         throw new UnifiedStoreError('VALIDATION_FAILED', 'Invalid document.replace operation', 400)
       }
       document = structuredClone(operation.document)
-      fcurves = structuredClone(operation.fcurves ?? null)
+      // Omitted curves mean the caller only replaced the scene; explicit null clears them.
+      if (Object.prototype.hasOwnProperty.call(operation, 'fcurves')) fcurves = structuredClone(operation.fcurves ?? null)
       const sourceNodeIds = new Set(project.scene.content.nodes.map((node) => node.id))
       const sourceMotionClipIds = new Set(project.scene.content.timeline.animation.motionClips.map((clip) => clip.id))
       const sourceNodeByCloneId = new Map<string, string>()

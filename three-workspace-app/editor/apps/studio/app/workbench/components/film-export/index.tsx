@@ -86,6 +86,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
             </div>
           : <p role="alert">{vi ? 'Chuỗi camera đang rỗng và dự án chưa có camera nào; hãy thêm một camera vào cảnh trước khi xuất.' : 'The camera sequence is empty and the project has no camera; add a camera to the scene before exporting.'}</p>)}
         {state.canUndoCreateCameraShot && <button type="button" onClick={() => void state.undoCreateCameraShot()} disabled={state.busy || state.creatingShot}>{vi ? 'Hoàn tác sửa camera' : 'Undo camera repair'}</button>}
+        {state.error && <p className="wb-scene-render-error" role="alert" aria-live="assertive">{vi ? 'Chưa xuất được: ' : 'Export stopped: '}{state.error}</p>}
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{state.busy ? (vi ? 'Đang xuất…' : 'Exporting…') : state.checkingPreflight ? (vi ? 'Đang kiểm tra…' : 'Checking…') : (vi ? 'Xuất gói' : 'Export package')}</button>
           <button type="button" className="primary" onClick={() => void state.exportFilm({ install: (job) => install.installJob(project.projectId, job.jobId) })}
@@ -109,7 +110,6 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
           {state.preflight && !state.checkingPreflight && state.preflight.errors.length === 0 && state.preflight.warnings.length === 0 &&
             <p>{vi ? 'Kiểm tra trước khi xuất đạt.' : 'Preflight passed.'}</p>}
         </div>
-        {state.error && <p className="wb-scene-render-error" role="alert">{state.error}</p>}
       </div>
     </section>
     <BbsInstallPanel state={install} />

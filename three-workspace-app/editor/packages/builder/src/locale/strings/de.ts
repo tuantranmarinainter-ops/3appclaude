@@ -323,6 +323,7 @@ export const de: LocaleDict = {
     "pilotCamera": "Kamera steuern",
     "enterCamera": "Kamera betreten",
     "pilotHint": "Kamera wird gesteuert: bewegen zum Bildausschnitt, ESC zum Beenden und Speichern",
+    "lockCamera": "Kamera sperren",
     "pilotExit": "Speichern und beenden",
     "lookAt": "Schau dir an",
     "lookAtPick": "Wählen Sie einen Charakter oder ein Objekt aus, das Sie betrachten möchten",

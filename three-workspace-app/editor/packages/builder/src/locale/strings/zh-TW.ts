@@ -323,6 +323,7 @@ export const zhTW: LocaleDict = {
     "pilotCamera": "操控相機",
     "enterCamera": "進入相機",
     "pilotHint": "正在操控相機：移動調整構圖，按 ESC 退出並儲存",
+    "lockCamera": "鎖定相機",
     "pilotExit": "儲存並退出",
     "lookAt": "看看",
     "lookAtPick": "選擇要查看的角色或對象",

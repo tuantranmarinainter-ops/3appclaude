@@ -323,6 +323,7 @@ export const tr: LocaleDict = {
     "pilotCamera": "Kamerayı yönet",
     "enterCamera": "Kameraya gir",
     "pilotHint": "Kamera yönetiliyor: kadraj için hareket edin, ESC ile çıkıp kaydedin",
+    "lockCamera": "Kamerayı kilitle",
     "pilotExit": "Kaydet ve çık",
     "lookAt": "Bak",
     "lookAtPick": "Bakılacak bir karakter veya nesne seçin",

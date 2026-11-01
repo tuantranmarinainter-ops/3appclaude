@@ -323,6 +323,7 @@ export const ko: LocaleDict = {
     "pilotCamera": "카메라 조작",
     "enterCamera": "카메라 들어가기",
     "pilotHint": "카메라 조작 중: 이동해 구도를 맞추고, ESC로 종료 후 저장",
+    "lockCamera": "카메라 잠금",
     "pilotExit": "저장 후 종료",
     "lookAt": "봐",
     "lookAtPick": "보고 싶은 캐릭터나 사물을 선택하세요.",

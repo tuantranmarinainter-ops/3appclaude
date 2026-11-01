@@ -87,6 +87,9 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   readonly readOnly: boolean
   private readonly base: string
   private readonly revisions = new Map<string, number>()
+  // Only a scene actually delivered to the editor may authorize a full replacement.
+  private readonly loadedRevisions = new Map<string, number>()
+  private readonly loadGenerations = new Map<string, number>()
   private readonly projects = new Map<string, UnifiedProject>()
   private readonly pendingSnapshots = new Map<string, UnifiedProject>()
 
@@ -109,13 +112,16 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
       this.saveDocumentState = async (documentId, doc, fcurves) => {
         window.dispatchEvent(new CustomEvent('bbs-unified-project-saving', { detail: { projectId: documentId } }))
         try {
-          const expectedRevision = this.revisions.get(documentId)
+          const expectedRevision = this.loadedRevisions.get(documentId)
           if (expectedRevision === undefined) throw new Error('Project revision is unavailable; reload before saving')
+          if (expectedRevision !== this.revisions.get(documentId)) throw new Error('Dự án đã thay đổi sau khi mở trình biên tập; tải lại trước khi lưu')
+          const generation = this.loadGenerations.get(documentId)
           const result = await sendUnifiedCommand({
             requestId: crypto.randomUUID(), projectId: documentId, expectedRevision,
             command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: doc, fcurves }] },
           })
-          this.revisions.set(documentId, result.revision)
+          this.revisions.set(documentId, Math.max(this.revisions.get(documentId) ?? -1, result.revision))
+          if (this.loadGenerations.get(documentId) === generation) this.loadedRevisions.set(documentId, result.revision)
           window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: documentId, revision: result.revision } }))
           window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: documentId } }))
         } catch (error) {
@@ -128,13 +134,17 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   async loadDocument(documentId: string): Promise<DirectorDocument> {
     if (this.base === '/api/unified/projects') {
+      const generation = (this.loadGenerations.get(documentId) ?? 0) + 1
+      this.loadGenerations.set(documentId, generation)
       const snapshot = this.pendingSnapshots.get(documentId)
       this.pendingSnapshots.delete(documentId)
       const project = snapshot && snapshot.revision >= (this.revisions.get(documentId) ?? -1)
         ? snapshot : (await loadUnifiedProject(documentId)).project
       if (project.type !== 'three-workspace-project' || project.scene.type !== 'biz/scene3d-director-document') throw new Error('Unified project document is invalid')
-      this.projects.set(documentId, project)
+      if (generation !== this.loadGenerations.get(documentId) || project.revision < (this.revisions.get(documentId) ?? -1)) throw new Error('Dự án đã thay đổi trong khi tải; tải lại trước khi chỉnh sửa')
+      this.projects.set(documentId, structuredClone(project))
       this.revisions.set(documentId, project.revision)
+      this.loadedRevisions.set(documentId, project.revision)
       return structuredClone(project.scene)
     }
     const doc = (await fetchJson(`${this.base}/${documentId}`)) as DirectorDocument
@@ -222,7 +232,6 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     if (!character) throw new Error('Select a Character in the current App 2 project first')
     const result = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
       command: 'library.place', args: { actionUuid, characterId: character.id } })
-    this.projects.set(project.projectId, { ...project, revision: result.revision })
     this.revisions.set(project.projectId, result.revision)
     window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: project.projectId, revision: result.revision } }))
     window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: project.projectId } }))
@@ -259,7 +268,7 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
     if (this.base === '/api/unified/projects') {
       const project = this.projects.get(documentId) ?? (await loadUnifiedProject(documentId)).project
       this.projects.set(documentId, project)
-      return project.extensions.topview?.fcurves ?? null
+      return structuredClone(project.extensions.topview?.fcurves ?? null)
     }
     try { return await fetchJson(`${this.base}/${documentId}/fcurves`) } catch { return null }
   }

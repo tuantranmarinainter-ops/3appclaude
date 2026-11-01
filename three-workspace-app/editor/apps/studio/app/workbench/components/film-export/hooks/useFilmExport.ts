@@ -1,7 +1,7 @@
 import type { FilmWorldAnchor } from '../../../../../src/filmWorldAnchor'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { loadUnifiedJob, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
+import { loadUnifiedJob, loadUnifiedProject, sendUnifiedCommand, type UnifiedJobView } from '../../../../../src/unifiedApi'
 import { chooseDirectory, saveJob } from '../../scene-render/utils'
 import { useStudioLocale } from '../../../../../src/devtools/localePreference'
 import { alignFilmRangeToTickGrid, readFilmFrameAspect } from '../../../../../src/filmFrame'
@@ -9,6 +9,8 @@ import { resolveTimelineInOutDefault, type FrameRange } from '../../../../../src
 import { selectExportShots, exportShotRepairRanges, planExportCameraRepair } from '../../../../../src/exportShotSelection'
 import type { FilmEffectsPolicy } from '../../../../../src/filmEffectsPolicy'
 import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src/filmPreflight'
+
+import { filmExportContentKey, prepareFilmExportRevision } from '../utils'
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
 
@@ -76,7 +78,8 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
       propIds: content === 'characters' ? [] : exportMode === 'series' && seriesPropSelection === 'auto' ? 'auto' as const : propIds,
       sequenceId, range, viewportAspect }
   }, [worldAnchor, effectsPolicy, content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, effectiveRange, viewportAspect])
-  const currentKey = JSON.stringify({ projectId: project.projectId, revision: project.revision, exportMode, ...selectionArgs })
+  const contentKey = filmExportContentKey(project)
+  const currentKey = JSON.stringify({ contentKey, exportMode, filmName, ...selectionArgs })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
   const passedKey = useRef<string | null>(null)
@@ -130,7 +133,6 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     if (busy) return
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
-    const sourceRevision = project.revision
     if (content !== 'backdrops' && !(exportMode === 'series' && seriesCharacterSelection === 'auto')) {
       if (!characterIds.length || new Set(characterIds).size !== characterIds.length || characterIds.some((id) => !project.characters[id])) { setError(vi ? 'Chọn ít nhất một nhân vật hợp lệ.' : 'Choose at least one valid character.'); return }
     }
@@ -146,10 +148,21 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     setStatus(options.install ? (vi ? 'Đang bắt đầu xuất…' : 'Starting export…') : (vi ? 'Chọn thư mục lưu ZIP…' : 'Choose a folder for the ZIP…'))
     try {
       const directory = options.install ? null : await chooseDirectory()
-      if (latestKey.current !== exportKey || passedKey.current !== exportKey || project.revision !== sourceRevision) {
-        throw new Error(vi ? 'Lựa chọn đã thay đổi trong lúc chọn thư mục; hãy đợi kiểm tra lại.' : 'The selection changed while choosing a folder; wait for preflight to finish again.')
-      }
-      const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: project.revision,
+      setStatus(vi ? 'Đang kiểm tra lại nội dung trước khi xuất…' : 'Checking current export content…')
+      const sourceRevision = await prepareFilmExportRevision({
+        contentKey,
+        selectionUnchanged: () => latestKey.current === exportKey,
+        load: async () => (await loadUnifiedProject(project.projectId)).project,
+        preflight: async (revision) => {
+          const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId,
+            expectedRevision: revision, command: 'film.preflight', args: { ...selectionArgs, mode: exportMode } })
+          return { revision: response.revision, sourceRevision: response.result.sourceRevision,
+            errors: (response.result.preflight as FilmPreflightResult).errors }
+        },
+        changedMessage: vi ? 'Chưa xuất: nội dung hoặc lựa chọn xuất đã thay đổi trong lúc chọn thư mục. Hãy kiểm tra và bấm Xuất gói lại.' : 'Export stopped: export content or selection changed while choosing a folder. Review it and export again.',
+        failedMessage: vi ? 'Chưa xuất: kiểm tra mới nhất chưa đạt. Hãy kiểm tra lỗi và thử lại.' : 'Export stopped: the latest preflight did not pass. Review the errors and try again.',
+      })
+      const started = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: project.projectId, expectedRevision: sourceRevision,
         command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
         args: exportMode === 'series'
           ? { content, effectsPolicy, worldAnchor, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,

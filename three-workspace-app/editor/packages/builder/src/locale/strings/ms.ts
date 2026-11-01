@@ -323,6 +323,7 @@ export const ms: LocaleDict = {
     "pilotCamera": "Kawal kamera",
     "enterCamera": "Masuk kamera",
     "pilotHint": "Mengawal kamera: gerakkan untuk laras bingkai, ESC untuk keluar dan simpan",
+    "lockCamera": "Kunci kamera",
     "pilotExit": "Simpan dan keluar",
     "lookAt": "Lihatlah",
     "lookAtPick": "Pilih watak atau objek untuk dilihat",
