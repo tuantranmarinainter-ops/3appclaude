@@ -996,6 +996,14 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   return { state: record.state, committed: false }
 }
 
+/** Absolute path of a succeeded job's ZIP, for "open containing folder" (B55). Verified like a download first. */
+export async function unifiedJobZipPath(jobId: string, projectId: string): Promise<string | null> {
+  const record = await readRecord(projectId, jobId)
+  const file = record?.state === 'succeeded' ? record.result?.files.find((item) => item.mimeType === 'application/zip') : undefined
+  if (!record || !file || !(await readUnifiedJobFile(jobId, projectId, file.id))) return null
+  return path.resolve(await realpath(jobRoot(projectId, jobId)), ...file.path.split('/'))
+}
+
 export async function readUnifiedJobFile(jobId: string, projectId: string, fileId: string): Promise<{ bytes: Buffer; name: string; mimeType: string } | null> {
   const record = await readRecord(projectId, jobId)
   const file = record?.state === 'succeeded' ? record.result?.files.find((item) => item.id === fileId) : undefined
