@@ -72,6 +72,7 @@ import {
 } from './transformEdit'
 import { remapFrame } from '../evaluate/timecode'
 import { findEditClip, pruneMissingCameraClips } from '../evaluate/editSequenceOps'
+import { duplicateGapStart, extendedClipEnd, splitMotionClip, type TimelineClipResult } from './timelineClipOps'
 import {
   pathArcLength,
   pathClipDurationFrames,
@@ -1382,6 +1383,54 @@ export class StudioSession implements StudioView {
     this.timelineClipboard = previous
     this.timelineClipboardDocument = previousDocument
     return id
+  }
+
+  private timelineClipsOf(kind: 'camera' | 'motion' | 'path') {
+    const animation = this.docModel.toContract()?.content.timeline.animation
+    return (kind === 'motion' ? animation?.motionClips : kind === 'camera' ? animation?.cameraMotionClips : animation?.pathMotionClips) ?? []
+  }
+
+  /** Duplicate into the nearest free gap after the clip (same target, inside its shot). */
+  duplicateTimelineClipToGap = (kind: 'camera' | 'motion' | 'path', clipId: string): TimelineClipResult => {
+    const live = this.docModel.toContract()
+    const clips = this.timelineClipsOf(kind)
+    const clip = clips.find((item) => item.id === clipId)
+    if (this.writeLocked || !live || !clip) return { id: null, error: 'unavailable' }
+    const start = duplicateGapStart(live, clip, clips)
+    if (start === null) return { id: null, error: 'no-gap' }
+    const id = this.duplicateTimelineClip(kind, clipId, start)
+    return { id, error: id ? null : 'unavailable' }
+  }
+
+  /** Cut a motion clip at `frame` into two continuous clips (one undo step). */
+  splitMotionClipAt = (clipId: string, frame: number): TimelineClipResult => {
+    const live = this.docModel.toContract()
+    const clip = live?.content.timeline.animation.motionClips.find((item) => item.id === clipId)
+    if (this.writeLocked || !live || !clip) return { id: null, error: 'unavailable' }
+    const parts = splitMotionClip(clip, frame, live.content.timeline.fps)
+    if (!parts) return { id: null, error: 'not-applicable' }
+    const before = snapshotDocState(this.docModel)
+    if (!before) return { id: null, error: 'unavailable' }
+    const id = crypto.randomUUID()
+    const clips = live.content.timeline.animation.motionClips
+    const index = clips.findIndex((item) => item.id === clipId)
+    clips.splice(index, 1, parts.first, { ...parts.second, id })
+    this.docModel.touch()
+    this.pushDocSnapshot('Cắt clip tại đầu phát', before)
+    this.select({ kind: 'clip', clipType: 'motion', clipId: id })
+    return { id, error: null }
+  }
+
+  /** Stretch a motion clip to the next clip of the same node or the shot end. */
+  extendMotionClipToShotEnd = (clipId: string): TimelineClipResult => {
+    const live = this.docModel.toContract()
+    const clips = live?.content.timeline.animation.motionClips ?? []
+    const clip = clips.find((item) => item.id === clipId)
+    if (this.writeLocked || !live || !clip) return { id: null, error: 'unavailable' }
+    const end = extendedClipEnd(live, clip, clips)
+    if (end <= clip.frameEnd) return { id: null, error: 'not-applicable' }
+    this.updateMotionClipConfig(clipId, { frameEnd: end })
+    return { id: clipId, error: null }
   }
 
   updateMotionClipConfig = (clipId: string, patch: Record<string, number | string | boolean>): void => {

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
 import { cx } from '../common/cx'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import { duplicateClipGesture } from './utils/clipGestures'
 import { clipRefsOf, nextClipSelection } from '../../stores/types'
+import { clampMenuPosition, emitTimelineNotice } from './utils/clipMenu'
 
 export function ClipBlock({
   kind,
@@ -39,6 +40,15 @@ export function ClipBlock({
   const { useStore, stage } = useDirector()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [duplicateFrame, setDuplicateFrame] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!menu || !el) return
+    const rect = el.getBoundingClientRect()
+    const next = clampMenuPosition(menu.x, menu.y, { width: rect.width, height: rect.height }, { width: window.innerWidth, height: window.innerHeight })
+    el.style.left = `${next.x}px`
+    el.style.top = `${next.y}px`
+  }, [menu])
   useEffect(() => {
     if (!menu) return
     const dismiss = () => setMenu(null)
@@ -164,15 +174,39 @@ export function ClipBlock({
 
   return (
     <>
-    {menu && <div role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 10000, background: 'var(--t3d-panel-bg, #222)', padding: 6 }}
+    {menu && <div ref={menuRef} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 10000, background: 'var(--t3d-panel-bg, #222)', padding: 6 }}
       onPointerDown={(e) => e.stopPropagation()} onMouseLeave={() => setMenu(null)}>
-      {[
-        ['Sao chép', () => useStore.getState().copyTimelineClip(kind, clipId)],
-        ['Dán tại đầu phát', () => useStore.getState().pasteTimelineClip(stage.currentFrame)],
-        ['Nhân bản', () => useStore.getState().duplicateTimelineClip(kind, clipId, frameEnd)],
-        ['Xoá', () => { const s = useStore.getState(); s.select({ kind: 'clip', clipType: kind, clipId }); s.deleteSelection() }],
-      ].map(([label, action]) => <button key={label as string} type="button" role="menuitem" disabled={writeLocked && label !== 'Sao chép'}
-        style={{ display: 'block' }} onClick={() => { (action as () => void)(); setMenu(null) }}>{label as string}</button>)}
+      {(() => {
+        const frame = Math.round(stage.currentFrame)
+        const isMotion = kind === 'motion'
+        const items: { label: string; action: () => void; disabled?: boolean }[] = [
+          { label: 'Sao chép', action: () => useStore.getState().copyTimelineClip(kind, clipId), disabled: false },
+          { label: 'Dán tại đầu phát', action: () => useStore.getState().pasteTimelineClip(stage.currentFrame) },
+          {
+            label: 'Nhân bản',
+            action: () => {
+              const result = useStore.getState().duplicateTimelineClipToGap(kind, clipId)
+              if (result.error === 'no-gap') emitTimelineNotice(t('timeline.clipNoGap'))
+            },
+          },
+          {
+            label: t('timeline.clipSplit'),
+            action: () => { useStore.getState().splitMotionClipAt(clipId, frame) },
+            disabled: !isMotion || frame <= frameStart || frame >= frameEnd,
+          },
+          {
+            label: t('timeline.clipExtend'),
+            action: () => {
+              const result = useStore.getState().extendMotionClipToShotEnd(clipId)
+              if (result.error === 'not-applicable') emitTimelineNotice(t('timeline.clipExtendNoRoom'))
+            },
+            disabled: !isMotion,
+          },
+          { label: 'Xoá', action: () => { const s = useStore.getState(); s.select({ kind: 'clip', clipType: kind, clipId }); s.deleteSelection() } },
+        ]
+        return items.map((item) => <button key={item.label} type="button" role="menuitem" disabled={item.disabled || (writeLocked && item.label !== 'Sao chép')}
+          style={{ display: 'block' }} onClick={() => { item.action(); setMenu(null) }}>{item.label}</button>)
+      })()}
     </div>}
     {duplicateFrame !== null && <div className="t3d-timeline-clip t3d-timeline-clip-drop-preview" aria-hidden="true"
       style={{ left: left + (duplicateFrame - frameStart) * pxPerFrame, width: displayWidth }}>{label}</div>}

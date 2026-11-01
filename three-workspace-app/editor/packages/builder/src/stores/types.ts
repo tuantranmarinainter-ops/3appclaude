@@ -3,6 +3,7 @@ import type { ClipMoveLayout } from '../document/clipMove'
 import type { FCurveSet } from '../evaluate/curves/FCurveSet'
 import type { Interpolation, TrackProp, UserKeys } from '../evaluate/curves/KeyframeTrack'
 import type { CharacterLibEntry } from '../host/types'
+import type { TimelineClipResult } from '../sync/timelineClipOps'
 
 export type DuplicateTransform = {
   position: { x: number; y: number; z: number }
@@ -432,6 +433,9 @@ export interface StudioView {
   copyTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string) => void
   pasteTimelineClip: (frame: number) => string | null
   duplicateTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string, frame: number) => string | null
+  duplicateTimelineClipToGap: (kind: 'camera' | 'motion' | 'path', clipId: string) => TimelineClipResult
+  splitMotionClipAt: (clipId: string, frame: number) => TimelineClipResult
+  extendMotionClipToShotEnd: (clipId: string) => TimelineClipResult
   updateMotionClipConfig: (clipId: string, patch: Record<string, number | string | boolean>) => void
   addCameraFromPreset: (presetId: string, name?: string) => string | null
   canSave: boolean

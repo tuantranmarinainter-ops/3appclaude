@@ -146,7 +146,7 @@ export async function linkStoryboardNodesToLibrary(input: { projectId: string; e
  * Place an Action on one scene node. MC20 uses project conversion recipes or
  * direct same-rig placement; other rigs retain the existing library assignment flow.
  */
-export async function placeLibraryActionForNode(input: { projectId: string; actionUuid: string; nodeId: string; frameStart?: number; reconvert?: boolean }) {
+export async function placeLibraryActionForNode(input: { projectId: string; actionUuid: string; nodeId: string; frameStart?: number; reconvert?: boolean; replaceClipId?: string }) {
   const project = await readUnifiedProject(input.projectId)
   const character = Object.values(project.characters).find((item) => item.nodeId === input.nodeId)
   const node = project.scene.content.nodes.find((item) => item.id === input.nodeId)
@@ -155,16 +155,19 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
   if (!libraryCharacterId) throw new Error('Node chưa nối với nhân vật thư viện; hãy nối node này trước (C25) rồi gán lại')
   const action = getAction({ actionUuid: input.actionUuid })
   // Reject occupied ranges before any copy or cross-rig conversion writes library files.
-  if (input.frameStart !== undefined) {
+  const replaced = input.replaceClipId ? project.scene.content.timeline.animation.motionClips.find((clip) => clip.id === input.replaceClipId && clip.target.nodeId === input.nodeId) : undefined
+  if (input.replaceClipId && !replaced) throw new UnifiedStoreError('NOT_FOUND', 'Clip cần thay không còn trong cảnh hoặc không thuộc nhân vật này', 404)
+  const frameStartWanted = replaced ? replaced.frameStart : input.frameStart
+  if (frameStartWanted !== undefined) {
     const duration = project.motions[action.uuid]?.durationSeconds ?? action.durationSeconds
-    const frameEnd = input.frameStart + Math.max(1, Math.round(duration * project.scene.content.timeline.fps)) - 1
-    if (!Number.isSafeInteger(input.frameStart) || input.frameStart < 0 || !Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
-    if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.target.nodeId === input.nodeId && clip.frameStart <= frameEnd && clip.frameEnd >= input.frameStart!)) {
+    const frameEnd = frameStartWanted + Math.max(1, Math.round(duration * project.scene.content.timeline.fps)) - 1
+    if (!Number.isSafeInteger(frameStartWanted) || frameStartWanted < 0 || !Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
+    if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.id !== replaced?.id && clip.target.nodeId === input.nodeId && clip.frameStart <= frameEnd && clip.frameEnd >= frameStartWanted)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
     }
   }
   const place = async (actionUuid: string, revision: number) => executeUnifiedCommand({ requestId: randomUUID(), projectId: input.projectId, expectedRevision: revision,
-    command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.reconvert ? { reconvert: true } : {}), ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}) } })
+    command: 'library.place', args: { actionUuid, characterId: character.id, ...(input.reconvert ? { reconvert: true } : {}), ...(input.frameStart !== undefined ? { frameStart: input.frameStart } : {}), ...(replaced ? { replaceClipId: replaced.id } : {}) } })
   try {
     const placed = await place(input.actionUuid, project.revision)
     const placement = placed.result.libraryPlacement as { motionId: string; clipId: string; frameStart: number; frameEnd: number }

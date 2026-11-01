@@ -567,7 +567,7 @@
 
 .t3d-timeline-grid {
   position: absolute;
-  top: 30px;
+  top: var(--t3d-rulers-h, 30px);
   bottom: 0;
   background-image: linear-gradient(to right, var(--t3d-sheet-grid) 1px, transparent 1px);
   background-size: var(--t3d-sheet-grid-step) 100%;
@@ -624,7 +624,7 @@
 
 .t3d-timeline-playhead {
   position: absolute;
-  top: 30px;
+  top: var(--t3d-rulers-h, 30px);
   bottom: 0;
   width: 11px;
   transform: translateX(-5px);
@@ -874,4 +874,47 @@
   background: rgba(255, 255, 255, 0.12);
   color: var(--t3d-text-muted);
   pointer-events: none;
+}
+
+.t3d-timeline-ruler-toggle.is-active {
+  background: var(--t3d-sheet-accent);
+  color: #111;
+}
+
+.t3d-timeline-notice {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: calc(var(--t3d-z-sticky) + 5);
+  max-width: min(420px, 80%);
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--t3d-bg-header);
+  border: 1px solid var(--t3d-sheet-accent);
+  color: var(--t3d-text, #eee);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.t3d-timeline-pin {
+  flex: none;
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t3d-text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.t3d-timeline-pin:hover,
+.t3d-timeline-pin.is-pinned {
+  opacity: 1;
+  color: var(--t3d-sheet-accent);
 }
