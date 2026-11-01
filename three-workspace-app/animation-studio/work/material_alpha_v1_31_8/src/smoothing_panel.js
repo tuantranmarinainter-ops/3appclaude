@@ -1,13 +1,91 @@
-export class SmoothingPanel{
- constructor(host,{state,action}){
- this.state=state;this.action=action;this.root=document.createElement('section');this.root.id='smoothingPanel';this.root.className='easing-panel smoothing-panel';this.root.hidden=true;this.root.setAttribute('role','dialog');this.root.setAttribute('aria-modal','false');this.root.setAttribute('aria-labelledby','smoothingTitle');
- this.root.innerHTML=`<div class="easing-header"><b id="smoothingTitle">Làm mượt · Auto / Cubic / Filter</b><button data-action="close" aria-label="Đóng làm mượt">×</button></div><div class="easing-body"><label>Phương pháp<select id="smoothMethod"><option value="auto">Auto · hạn chế vượt đích</option><option value="cubic">Cubic · tiếp tuyến liên tục</option><option value="filter">Smooth Filter · giảm rung</option></select></label><p id="smoothHelp"></p><div class="easing-controls"><label>Phạm vi<select id="smoothScope"><option value="joint">Khớp / control chọn</option><option value="body">Toàn thân</option></select></label><label>Dữ liệu<select id="smoothSource"><option value="layer">Layer chỉnh hiện tại</option><option value="base">Clip nguồn gốc (Lab)</option></select></label></div><div class="easing-controls"><label>A · frame<input id="smoothA" type="number" min="0" step="1"></label><label>B · frame<input id="smoothB" type="number" min="1" step="1"></label></div><label id="smoothTensionRow">Tension %<input id="smoothTension" type="number" min="0" max="100" value="0"></label><div id="smoothFilterRows" hidden><div class="easing-controls"><label>Strength %<input id="smoothStrength" type="number" min="0" max="100" value="50"></label><label>Window · frame<input id="smoothWindow" type="number" min="1" max="12" step="1" value="3"></label></div><label><input id="smoothP" type="checkbox" checked> Position · di chuyển</label><label><input id="smoothQ" type="checkbox" checked> Rotation · xoay</label><label><input id="smoothS" type="checkbox"> Scale · tỉ lệ</label></div><p>Clip nguồn: A–B theo thời gian gốc; thay đổi ảnh hưởng các clip dùng chung nguồn. Giữ thời gian key và ranh giới Step. Lọc mạnh có thể làm mềm động tác hoặc trượt chân.</p><div id="smoothStatus" role="status"></div></div><div class="easing-footer"><button data-action="original">Xem bản gốc</button><button data-action="preview">Xem bản xử lý</button><button data-action="apply">Áp dụng</button><button data-action="cancel">Hủy</button></div>`;host.append(this.root);
- this.root.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(b)try{this.action(b.dataset.action,['close','cancel'].includes(b.dataset.action)?{}:this.args());}catch(e){this.action('error',{message:e.message});}});
- this.root.addEventListener('change',()=>{this.action('cancel');this.sync();});
- this.root.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();this.action('close');}});
- }
- args(){const get=id=>this.root.querySelector('#'+id),value=id=>Number(get(id).value);for(const id of ['smoothA','smoothB',...(get('smoothMethod').value==='filter'?['smoothStrength','smoothWindow']:['smoothTension'])])if(!get(id).value.trim()||!get(id).checkValidity())throw Error('Giá trị làm mượt ngoài giới hạn.');return{method:get('smoothMethod').value,scope:get('smoothScope').value,source:get('smoothSource').value,start:value('smoothA'),end:value('smoothB'),tension:get('smoothMethod').value==='filter'?0:value('smoothTension')/100,strength:get('smoothMethod').value==='filter'?value('smoothStrength')/100:1,window:get('smoothMethod').value==='filter'?value('smoothWindow'):3,channels:get('smoothMethod').value==='filter'?['p','q','s'].filter(c=>get('smooth'+c.toUpperCase()).checked):['p','q','s']};}
- open(){const s=this.state();this.root.hidden=false;this.root.querySelector('#smoothA').value=Math.round(s.loop[0]*s.fps);this.root.querySelector('#smoothB').value=Math.round(s.loop[1]*s.fps);this.root.querySelector('#smoothSource').value='layer';this.sync();}
- hide(){this.root.hidden=true;}
- sync(){if(this.root.hidden)return;const s=this.state(),filter=this.root.querySelector('#smoothMethod').value==='filter';this.root.querySelector('#smoothFilterRows').hidden=!filter;this.root.querySelector('#smoothTensionRow').hidden=filter;this.root.querySelector('#smoothSource option[value=base]').disabled=!s.lab;this.root.querySelector('#smoothHelp').textContent=filter?'Gaussian theo thời gian, trộn với key gốc. Không đổi số lượng key.':'Nối qua nhiều key; Rotation dùng quaternion, không lọc góc Euler.';this.root.querySelector('#smoothStatus').textContent=s.preview?'Đang xem tạm · chưa lưu':'Áp dụng mới đổi dữ liệu · hỗ trợ Undo';}
+import * as Keymap from './keymap.js';
+export class SmoothingPanel {
+  constructor(host, { state, action }) {
+    this.state = state;
+    this.action = action;
+    this.root = document.createElement('section');
+    this.root.id = 'smoothingPanel';
+    this.root.className = 'easing-panel smoothing-panel';
+    this.root.hidden = true;
+    this.root.setAttribute('role', 'dialog');
+    this.root.setAttribute('aria-modal', 'false');
+    this.root.setAttribute('aria-labelledby', 'smoothingTitle');
+    this.root.innerHTML = `<div class="easing-header"><b id="smoothingTitle">Làm mượt · Auto / Cubic / Filter</b><button data-action="close" aria-label="Đóng làm mượt">×</button></div><div class="easing-body"><label>Phương pháp<select id="smoothMethod"><option value="auto">Auto · hạn chế vượt đích</option><option value="cubic">Cubic · tiếp tuyến liên tục</option><option value="filter">Smooth Filter · giảm rung</option></select></label><p id="smoothHelp"></p><div class="easing-controls"><label>Phạm vi<select id="smoothScope"><option value="joint">Khớp / control chọn</option><option value="body">Toàn thân</option></select></label><label>Dữ liệu<select id="smoothSource"><option value="layer">Layer chỉnh hiện tại</option><option value="base">Clip nguồn gốc (Lab)</option></select></label></div><div class="easing-controls"><label>A · frame<input id="smoothA" type="number" min="0" step="1"></label><label>B · frame<input id="smoothB" type="number" min="1" step="1"></label></div><label id="smoothTensionRow">Tension %<input id="smoothTension" type="number" min="0" max="100" value="0"></label><div id="smoothFilterRows" hidden><div class="easing-controls"><label>Strength %<input id="smoothStrength" type="number" min="0" max="100" value="50"></label><label>Window · frame<input id="smoothWindow" type="number" min="1" max="12" step="1" value="3"></label></div><label><input id="smoothP" type="checkbox" checked> Position · di chuyển</label><label><input id="smoothQ" type="checkbox" checked> Rotation · xoay</label><label><input id="smoothS" type="checkbox"> Scale · tỉ lệ</label></div><p>Clip nguồn: A–B theo thời gian gốc; thay đổi ảnh hưởng các clip dùng chung nguồn. Giữ thời gian key và ranh giới Step. Lọc mạnh có thể làm mềm động tác hoặc trượt chân.</p><div id="smoothStatus" role="status"></div></div><div class="easing-footer"><button data-action="original">Xem bản gốc</button><button data-action="preview">Xem bản xử lý</button><button data-action="apply">Áp dụng</button><button data-action="cancel">Hủy</button></div>`;
+    host.append(this.root);
+    this.root.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-action]');
+      if (b)
+        try {
+          this.action(
+            b.dataset.action,
+            ['close', 'cancel'].includes(b.dataset.action) ? {} : this.args(),
+          );
+        } catch (e) {
+          this.action('error', { message: e.message });
+        }
+    });
+    this.root.addEventListener('change', () => {
+      this.action('cancel');
+      this.sync();
+    });
+    Keymap.on(this.root, "smoothing_panel.0", (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.action('close');
+      }
+    }, false);
+  }
+  args() {
+    const get = (id) => this.root.querySelector('#' + id),
+      value = (id) => Number(get(id).value);
+    for (const id of [
+      'smoothA',
+      'smoothB',
+      ...(get('smoothMethod').value === 'filter'
+        ? ['smoothStrength', 'smoothWindow']
+        : ['smoothTension']),
+    ])
+      if (!get(id).value.trim() || !get(id).checkValidity())
+        throw Error('Giá trị làm mượt ngoài giới hạn.');
+    return {
+      method: get('smoothMethod').value,
+      scope: get('smoothScope').value,
+      source: get('smoothSource').value,
+      start: value('smoothA'),
+      end: value('smoothB'),
+      tension: get('smoothMethod').value === 'filter' ? 0 : value('smoothTension') / 100,
+      strength: get('smoothMethod').value === 'filter' ? value('smoothStrength') / 100 : 1,
+      window: get('smoothMethod').value === 'filter' ? value('smoothWindow') : 3,
+      channels:
+        get('smoothMethod').value === 'filter'
+          ? ['p', 'q', 's'].filter((c) => get('smooth' + c.toUpperCase()).checked)
+          : ['p', 'q', 's'],
+    };
+  }
+  open() {
+    const s = this.state();
+    this.root.hidden = false;
+    this.root.querySelector('#smoothA').value = Math.round(s.loop[0] * s.fps);
+    this.root.querySelector('#smoothB').value = Math.round(s.loop[1] * s.fps);
+    this.root.querySelector('#smoothSource').value = 'layer';
+    this.sync();
+  }
+  hide() {
+    this.root.hidden = true;
+  }
+  sync() {
+    if (this.root.hidden) return;
+    const s = this.state(),
+      filter = this.root.querySelector('#smoothMethod').value === 'filter';
+    this.root.querySelector('#smoothFilterRows').hidden = !filter;
+    this.root.querySelector('#smoothTensionRow').hidden = filter;
+    this.root.querySelector('#smoothSource option[value=base]').disabled = !s.lab;
+    this.root.querySelector('#smoothHelp').textContent = filter
+      ? 'Gaussian theo thời gian, trộn với key gốc. Không đổi số lượng key.'
+      : 'Nối qua nhiều key; Rotation dùng quaternion, không lọc góc Euler.';
+    this.root.querySelector('#smoothStatus').textContent = s.preview
+      ? 'Đang xem tạm · chưa lưu'
+      : 'Áp dụng mới đổi dữ liệu · hỗ trợ Undo';
+  }
 }

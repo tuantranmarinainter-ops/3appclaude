@@ -1,0 +1,19 @@
+{
+  "sample": "three-workspace-app/builtin-assets/animation-studio/sample.fbx",
+  "fixtureSha256": "0c3fd77e693707a1f6c99da95070d482c568b3b91d1f9a060f3b5b53db77768d",
+  "equal": true,
+  "hashes": {
+    "before": {
+      "bytes": 117932,
+      "sha256": "414f42596174969ec5c4c5120b66c53ee62ffbb6e1f4f098166deb7607cbf2b1"
+    },
+    "candidate-legacy": {
+      "bytes": 117932,
+      "sha256": "414f42596174969ec5c4c5120b66c53ee62ffbb6e1f4f098166deb7607cbf2b1"
+    },
+    "candidate-metadata": {
+      "bytes": 117932,
+      "sha256": "414f42596174969ec5c4c5120b66c53ee62ffbb6e1f4f098166deb7607cbf2b1"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "exactModifiers": true,
+  "readonly": true,
+  "conflictCancelReplace": true,
+  "manualWins": true,
+  "exportImport": true,
+  "mouseProfiles": [
+    "blender",
+    "maya"
+  ],
+  "layouts": [
+    "classic",
+    "modes"
+  ],
+  "errors": []
+}

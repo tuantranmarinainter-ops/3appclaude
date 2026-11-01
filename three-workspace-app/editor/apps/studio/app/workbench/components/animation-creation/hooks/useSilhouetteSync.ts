@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef, type RefObject } from 'react'
-
-const CHANNEL = 'bbs-animation-studio-v1.33.0'
+import { APP3_BRIDGE_CHANNEL as CHANNEL } from '../../../../../src/app3Embed'
 
 /** App 2 owns the shared preference; local App 3 toggles do not push it back. */
 export function useSilhouetteSync(frame: RefObject<HTMLIFrameElement>) {

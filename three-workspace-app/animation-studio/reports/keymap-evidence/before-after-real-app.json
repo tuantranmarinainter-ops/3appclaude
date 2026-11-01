@@ -1,0 +1,20 @@
+{
+  "result": "PASS",
+  "layouts": [
+    "classic",
+    "modes"
+  ],
+  "commands": [
+    "K",
+    "I",
+    ",",
+    ".",
+    "Ctrl+Z",
+    "Ctrl+Shift+Z",
+    "G",
+    "R",
+    "Shift+S",
+    "Graph Ctrl+A",
+    "Graph ArrowLeft"
+  ]
+}
