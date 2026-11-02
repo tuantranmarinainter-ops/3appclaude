@@ -80,3 +80,41 @@ test('opt-in curve scaling preserves relative scale, Bezier handles, unrelated c
   assert.deepEqual(scaled.userKeys.actor.scale[0]!.value, [2, 4, 2])
   assert.deepEqual(scaled.userKeys.actor.position, payload.userKeys.actor.position)
 })
+
+test('B31: after a re-link leaves the old model scale on the node, the update targets the profile height instead of multiplying', { concurrency: false }, async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'library-height-relink-'))
+  const beforeLibrary = process.env.W01_LIBRARY, beforeProjects = process.env.BBS_UNIFIED_PROJECTS_DIR
+  process.env.W01_LIBRARY = path.join(dir, 'library'); process.env.BBS_UNIFIED_PROJECTS_DIR = path.join(dir, 'projects')
+  try {
+    const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
+    const modelFile = path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
+    const base = registerBaseModel({ name: 'Synthetic MC20 relink test', rig: 'minecraft20', modelFile })
+    const character = createCharacter({ charId: 'relink-test', name: 'Relink test', baseModelId: base.modelId })
+    const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'Relink', scene: makeEmptyDraft('Relink', 30, 60) } })
+    const added = await addLibraryCharacterToProject({ projectId: created.projectId, expectedRevision: created.revision, charId: character.charId })
+    const project = await readUnifiedProject(created.projectId)
+    const snapshot = libraryHeightSnapshot(character, readFileSync(modelFile))
+    // What "nối thư viện" leaves behind: the new snapshot in metadata, the old model's scale (0.9 / 0.886 of it) on the node.
+    const document = structuredClone(project.scene)
+    const node = document.content.nodes.find(n => n.id === added.nodeId)!
+    const oldScale = node.transform.scale.y * 0.9 / 0.886
+    node.transform.scale = { x: oldScale, y: oldScale, z: oldScale }
+    const relinked = await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: project.revision, command: 'scene.apply', args: { operations: [{ type: 'document.replace', document, fcurves: null }] } })
+    await updateLibraryCharacterHeights(created.projectId, relinked.revision)
+    let resized = (await readUnifiedProject(created.projectId)).scene.content.nodes.find(n => n.id === added.nodeId)!
+    assert.ok(Math.abs(resized.transform.scale.y * snapshot.librarySourceHeightMeters - 1.8) < 1e-9, 'same profile height: stale scale corrected to 1.8 blocks')
+    setCharacterProfile({ charId: character.charId, heightBlocks: 3.6 })
+    const again = await readUnifiedProject(created.projectId)
+    const doc2 = structuredClone(again.scene)
+    const n2 = doc2.content.nodes.find(n => n.id === added.nodeId)!
+    n2.transform.scale = { x: oldScale, y: oldScale, z: oldScale }
+    const relinked2 = await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: again.revision, command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: doc2, fcurves: null }] } })
+    await updateLibraryCharacterHeights(created.projectId, relinked2.revision)
+    resized = (await readUnifiedProject(created.projectId)).scene.content.nodes.find(n => n.id === added.nodeId)!
+    assert.ok(Math.abs(resized.transform.scale.y * snapshot.librarySourceHeightMeters - 3.6) < 1e-9, 'new profile height: exactly 3.6 blocks, not 3.6 × 0.9/0.886')
+  } finally {
+    if (beforeLibrary === undefined) delete process.env.W01_LIBRARY; else process.env.W01_LIBRARY = beforeLibrary
+    if (beforeProjects === undefined) delete process.env.BBS_UNIFIED_PROJECTS_DIR; else process.env.BBS_UNIFIED_PROJECTS_DIR = beforeProjects
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

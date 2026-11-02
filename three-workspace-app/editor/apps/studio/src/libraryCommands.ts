@@ -279,9 +279,15 @@ export async function updateLibraryCharacterHeights(projectId: string, expectedR
     if (typeof id !== 'string') continue
     const resolved = resolveCharacter(id)
     const height = libraryHeightSnapshot(resolved.character, await libraryBaseGlb(id))
-    if (height.libraryHeightBlocks === node.metadata?.libraryHeightBlocks) continue
+    const recorded = Number(node.metadata?.libraryHeightScale ?? 1)
+    // B31: "nối thư viện" swaps the model and its height snapshot but keeps the node's old scale (e.g. 0.9 from the old
+    // model while the snapshot says 0.886). Rescale from the scale the node really has, not from the snapshot.
+    const actual = node.transform.scale.y
+    const stale = Number.isFinite(actual) && actual > 0 && Math.abs(actual - recorded) > 1e-6 * Math.max(1, recorded)
+      && Math.abs(node.transform.scale.x - actual) < 1e-9 && Math.abs(node.transform.scale.z - actual) < 1e-9
+    if (height.libraryHeightBlocks === node.metadata?.libraryHeightBlocks && !stale) continue
     if (node.locked) throw new Error(`Nhân vật ${node.name} đang khóa; hãy mở khóa trước khi cập nhật chiều cao`)
-    const previous = Number(node.metadata?.libraryHeightScale ?? 1)
+    const previous = stale ? actual : recorded
     if (!(previous > 0) || !Number.isFinite(previous)) throw new Error('Hệ số chiều cao cũ không hợp lệ')
     const ratio = height.libraryHeightScale / previous
     ratios.set(node.id, ratio)

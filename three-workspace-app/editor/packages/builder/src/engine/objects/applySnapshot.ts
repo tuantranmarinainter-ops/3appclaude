@@ -116,7 +116,9 @@ export function applyMotionAndPose(graph: StageGraph, snapshot: FrameSnapshot): 
       // 坐 / 蹲 / 跪的骨架根下沉。挂在 inner 上而不是 root：root.position 每帧被
       // 求值结果覆盖，写这里等于 applyRootPositionOffset，节点坐标保持干净。
       // 姿势库 hips 按参考成人骨架烘焙，按腿长缩放；旧旋钮预设的 rootOffsetY 已按内置人物调好。
-      const off = anim.rootPositionOffset
+      // 没有姿势预设 id 的偏移是残留：库角色链接会删掉 posePresetId（库姿势不在该角色上），
+      // 骨架此时是 rest 姿势，再套旧的坐/蹲下沉会让脚陷进地面（B24，Gỗ Xưa −0.607）。
+      const off = anim.posePresetId ? anim.rootPositionOffset : undefined
       const scale = anim.posePresetId && POSE_PRESET_BY_ID[anim.posePresetId] ? 1 : poseRootOffsetScale(ch.legLength)
       ch.inner.position.set((off?.x ?? 0) * scale, (off?.y ?? 0) * scale, (off?.z ?? 0) * scale)
     } else {
