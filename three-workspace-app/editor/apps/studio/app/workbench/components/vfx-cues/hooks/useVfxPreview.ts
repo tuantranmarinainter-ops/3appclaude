@@ -13,21 +13,27 @@ export function useVfxPreview(project: UnifiedProject | null): void {
   useEffect(() => {
     let cancelled = false
     let scheduled = false
-    let first = 0, second = 0
+    let first = 0, second = 0, fallback: ReturnType<typeof setTimeout> | undefined
+    let loaded = false
+    const load = () => {
+      if (loaded || cancelled) return
+      loaded = true
+      void loadVfxPreviews().then(body => {
+        if (cancelled) return
+        const used = new Set(cues.map(cue => cue.effect))
+        setSheets(Object.fromEntries(Object.entries(body.sheets ?? {}).filter(([effect]) => used.has(effect)).map(([effect, meta]) => [effect, { url: `${VFX_PREVIEWS_URL}/${encodeURIComponent(effect)}`, meta }])))
+      }).catch(() => { /* Keep labelled placeholders when previews are unavailable. */ })
+    }
     const schedule = () => {
       if (!cues.length || !getLiveStudio() || scheduled) return
       scheduled = true
-      first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
-        void loadVfxPreviews().then(body => {
-          if (cancelled) return
-          const used = new Set(cues.map(cue => cue.effect))
-          setSheets(Object.fromEntries(Object.entries(body.sheets ?? {}).filter(([effect]) => used.has(effect)).map(([effect, meta]) => [effect, { url: `${VFX_PREVIEWS_URL}/${encodeURIComponent(effect)}`, meta }])))
-        }).catch(() => { /* Keep labelled placeholders when previews are unavailable. */ })
-      }) })
+      first = requestAnimationFrame(() => { second = requestAnimationFrame(load) })
+      // Background tabs pause animation frames; never leave the effects unloaded.
+      fallback = setTimeout(load, 500)
     }
     schedule()
     const unsubscribe = subscribeLiveStudio(schedule)
-    return () => { cancelled = true; cancelAnimationFrame(first); cancelAnimationFrame(second); unsubscribe() }
+    return () => { cancelled = true; cancelAnimationFrame(first); cancelAnimationFrame(second); clearTimeout(fallback); unsubscribe() }
     // The serialized cue list represents its contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])

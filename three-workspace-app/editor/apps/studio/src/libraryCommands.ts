@@ -13,6 +13,7 @@ import {
   searchLibrary,
   setCharacterActionStatus,
   setCharacterProfile,
+  withIndexSnapshot,
   type CharacterActionStatus,
   type CharacterMetadata,
   type RequiredAction,
@@ -81,7 +82,8 @@ export async function describeLibraryCharacter(character: CharacterMetadata) {
 }
 
 export async function listLibraryCharacterDetails() {
-  return Promise.all(listLibraryCharacters().map(describeLibraryCharacter))
+  // describeLibraryCharacter resolves synchronously before its first await, so the whole list shares one index check.
+  return Promise.all(withIndexSnapshot(() => listLibraryCharacters().map(describeLibraryCharacter)))
 }
 
 export function characterActions(charId: string, status?: CharacterActionStatus) {
@@ -89,13 +91,15 @@ export function characterActions(charId: string, status?: CharacterActionStatus)
 }
 
 export function rawActions(text?: string) {
-  const items: ReturnType<typeof searchLibrary>['items'] = []
-  for (let offset = 0; ; offset += 100) {
-    const page = searchLibrary({ text, limit: 100, offset })
-    items.push(...page.items)
-    if (offset + page.items.length >= page.total || !page.items.length) break
-  }
-  return items.filter((action) => !action.ownerCharId)
+  return withIndexSnapshot(() => {
+    const items: ReturnType<typeof searchLibrary>['items'] = []
+    for (let offset = 0; ; offset += 100) {
+      const page = searchLibrary({ text, limit: 100, offset })
+      items.push(...page.items)
+      if (offset + page.items.length >= page.total || !page.items.length) break
+    }
+    return items.filter((action) => !action.ownerCharId)
+  })
 }
 
 export function approveCharacterAction(charId: string, actionUuid: string) {

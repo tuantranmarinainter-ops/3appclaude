@@ -152,6 +152,19 @@ export function readPackMetadata(root: string): { packs: MotionPackMetadata[]; w
 }
 
 const indexCache = new Map<string, { fingerprint: string; index: LibraryIndex }>()
+const verifiedThisTurn = new Set<string>()
+let snapshotDepth = 0
+function markVerified(key: string): void {
+  if (snapshotDepth) verifiedThisTurn.add(key)
+}
+
+/** B43: a read-only batch (character list, raw action pages) checks the ~400 library folders once instead of per call.
+ * Only the synchronous part of `read` shares the check; writes through writeIndex still invalidate it. */
+export function withIndexSnapshot<T>(read: () => T): T {
+  snapshotDepth++
+  try { return read() }
+  finally { if (!--snapshotDepth) verifiedThisTurn.clear() }
+}
 
 /** Check directory listings and metadata stamps, including edits by other processes. */
 function indexFingerprint(root: string): string {
@@ -177,7 +190,11 @@ function indexFingerprint(root: string): string {
 
 /** Read-only snapshot: never initializes directories, acquires a disk lock or writes index.json. */
 export function readIndex(root: string): LibraryIndex {
-  const key = resolve(root), fingerprint = indexFingerprint(key), cached = indexCache.get(key)
+  const key = resolve(root), cached = indexCache.get(key)
+  // B43: one request resolves many characters/pages synchronously; stat the ~400 folders once per turn, not per call.
+  if (cached && verifiedThisTurn.has(key)) return cached.index
+  const fingerprint = indexFingerprint(key)
+  markVerified(key)
   if (cached?.fingerprint === fingerprint) return cached.index
   const index = buildIndex(key)
   // Bound memory when CLI/MCP hosts inspect many distinct libraries.
@@ -188,6 +205,7 @@ export function readIndex(root: string): LibraryIndex {
 
 export function writeIndex(root: string): LibraryIndex {
   indexCache.delete(resolve(root))
+  verifiedThisTurn.delete(resolve(root))
   const index = buildIndex(root)
   writeJsonAtomic(safeChild(root, 'index.json'), index)
   return index
