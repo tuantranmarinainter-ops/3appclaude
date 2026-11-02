@@ -32,15 +32,19 @@ export function useHostControlsDock() {
 #bbsHostControls .wb-animation-creation-error { color:#ff9d9d; }
 `
     doc.head.append(style)
+    // Animation Studio 1.34 "layout-modes" hides #minimalSidebar and shows panels in #layoutLeft;
+    // dock into whichever column is visible and re-dock if the editor rebuilds its layout.
+    const target = () => doc.body.classList.contains('layout-modes')
+      ? doc.getElementById('layoutLeft') ?? doc.getElementById('minimalSidebar')
+      : doc.getElementById('minimalSidebar') ?? doc.getElementById('layoutLeft')
     const attach = () => {
-      const sidebar = doc.getElementById('minimalSidebar')
-      if (!sidebar) return
-      sidebar.prepend(dock)
+      const column = target()
+      if (!column) return
+      if (dock.parentElement !== column) column.prepend(dock)
       setControlsDock(dock)
-      observer.disconnect()
     }
     const observer = new MutationObserver(attach)
-    observer.observe(doc.body, { childList: true, subtree: true })
+    observer.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
     attach()
     cleanup.current = () => { observer.disconnect(); dock.remove(); style.remove() }
   }, [])

@@ -639,10 +639,13 @@ export async function resolveUnifiedAssetFile(project: UnifiedProject, assetId: 
   if (recipe) {
     const recipeBytes = Buffer.from(canonicalJsonExact(recipe))
     if (createHash('sha256').update(recipeBytes).digest('hex') !== asset.provenance.original.sha256 || recipeBytes.length !== asset.provenance.original.byteLength) throw new TypeError('Công thức chuyển động tác không khớp dữ liệu gốc')
-    const { materializeLibraryMotionConversion } = await import('./libraryMotionConversion')
+    const { materializeLibraryMotionConversion, isCurrentConverter } = await import('./libraryMotionConversion')
     const generated = await materializeLibraryMotionConversion(recipe)
     const bytes = Buffer.from(generated.glb)
-    if (createHash('sha256').update(bytes).digest('hex') !== asset.source.sha256 || bytes.length !== asset.source.byteLength) throw new TypeError('Kết quả chuyển đã đổi — chuyển lại?')
+    // B60: with the same source action and target model, a newer converter's output is the motion (GLB and BOBJ come from
+    // one run); only an unexplained change under the same converter is refused.
+    const changed = createHash('sha256').update(bytes).digest('hex') !== asset.source.sha256 || bytes.length !== asset.source.byteLength
+    if (changed && isCurrentConverter(recipe)) throw new TypeError('Kết quả chuyển đã đổi — chuyển lại?')
     if (variant === 'source') return { bytes, mediaType: 'model/gltf-binary' }
     if (variant === 'native-bobj') return { bytes: Buffer.from(generated.bobj), mediaType: 'text/plain' }
     if (variant === 'original') return { bytes: recipeBytes, mediaType: 'application/json' }

@@ -214,17 +214,22 @@ export async function createLibraryMotionConversion(input: LibraryMotionConversi
   return { version: 1, sourceActionUuid: data.source.uuid, sourceSha256: data.sourceSha256, sourceAnimationIndex: data.source.glbAnimationIndex, sourceActionName: data.source.name, sourceRig: 'mixamo65', targetCharId: input.targetCharId,
     targetRig: 'minecraft20', targetBaseModelSha256: data.targetSha256, converterVersion: converterVersion(), parameters }
 }
+export function isCurrentConverter(recipe: Pick<LibraryMotionConversionRecipe, 'converterVersion'>): boolean {
+  return recipe.converterVersion === converterVersion()
+}
 export async function materializeLibraryMotionConversion(recipe: LibraryMotionConversionRecipe, options: LibraryMotionConversionOptions = {}): Promise<MaterializedLibraryMotionConversion> {
   if (recipe.version !== 1 || recipe.sourceRig !== 'mixamo65' || recipe.targetRig !== 'minecraft20'
     || !['inPlace', 'follow'].includes(recipe.parameters?.rootTravelMode) || recipe.parameters.ground !== 'off') throw new Error('Công thức chuyển động tác không hợp lệ — cần chuyển lại')
   const data = inputs(recipe.sourceActionUuid, recipe.targetCharId, options, recipe)
   if (recipe.sourceSha256 !== data.sourceSha256 || recipe.sourceAnimationIndex !== data.source.glbAnimationIndex || recipe.sourceActionName !== data.source.name) throw new LibraryMotionConversionRequiredError('Động tác gốc đã đổi — chuyển lại?')
   if (recipe.targetBaseModelSha256 !== data.targetSha256) throw new LibraryMotionConversionRequiredError('Model nhân vật đã đổi — chuyển lại?')
-  if (recipe.converterVersion !== converterVersion()) throw new LibraryMotionConversionRequiredError('Bộ chuyển đã đổi — chuyển lại?')
+  // B60: the source action and target model are unchanged (checked above), so a newer converter simply converts again into
+  // the disposable cache — the same as "chuyển lại" — instead of reporting the motion file as missing after every code update.
+  const currentConverter = converterVersion()
   // Reconstruct canonical field order; untrusted extra JSON keys cannot alter the cache key.
   const canonicalRecipe = { version: 1, sourceActionUuid: recipe.sourceActionUuid, sourceSha256: recipe.sourceSha256, sourceAnimationIndex: recipe.sourceAnimationIndex, sourceActionName: recipe.sourceActionName, sourceRig: recipe.sourceRig,
     targetCharId: recipe.targetCharId, targetRig: recipe.targetRig, targetBaseModelSha256: recipe.targetBaseModelSha256,
-    converterVersion: recipe.converterVersion, parameters: { rootTravelMode: recipe.parameters.rootTravelMode, ground: recipe.parameters.ground } }
+    converterVersion: currentConverter, parameters: { rootTravelMode: recipe.parameters.rootTravelMode, ground: recipe.parameters.ground } }
   const cacheKey = sha(JSON.stringify(canonicalRecipe)), cacheRoot = resolve(options.cacheRoot ?? join(tmpdir(), 'w01-motion-conversion-cache'))
   const rel = relative(data.root, cacheRoot)
   if (rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))) throw new Error('Conversion cache must be outside the library')

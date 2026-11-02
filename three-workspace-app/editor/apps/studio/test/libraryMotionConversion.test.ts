@@ -67,7 +67,8 @@ test('real reverse solver produces MC20 motion and cache deletion regenerates wi
 test('source/version/target drift and output symlinks cannot hide behind cache', async (t) => {
   const f = fixture(t), recipe = await createLibraryMotionConversion({ ...f.options, actionUuid: f.uuid, targetCharId: 'den' })
   const result = await materializeLibraryMotionConversion(recipe, f.options)
-  await assert.rejects(materializeLibraryMotionConversion({ ...recipe, converterVersion: 'old' }, f.options), /Bộ chuyển đã đổi/)
+  // B60: a recipe from an older converter re-converts with the current one (same output as a fresh recipe), never "missing".
+  assert.equal(sha((await materializeLibraryMotionConversion({ ...recipe, converterVersion: 'old' }, f.options)).glb), sha(result.glb))
   await assert.rejects(materializeLibraryMotionConversion({ ...recipe, targetBaseModelSha256: 'old' }, f.options), /Model nhân vật đã đổi/)
   await assert.rejects(materializeLibraryMotionConversion({ ...recipe, sourceAnimationIndex: 1 }, f.options), /Động tác gốc đã đổi/)
   rmSync(result.glbPath)
