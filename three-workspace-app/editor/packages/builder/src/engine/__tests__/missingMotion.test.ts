@@ -9,7 +9,7 @@ function characterGraph(loadedClip: THREE.AnimationClip | null) {
   const node = {
     id: 'hero', name: 'Hero', type: 'character' as const, visible: true, locked: false,
     transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
-    character: { animation: { mode: 'pose', controlValues: {}, rootPositionOffset: { x: 0, y: -0.3, z: 0 } } },
+    character: { animation: { mode: 'pose', posePresetId: 'sit', controlValues: {}, rootPositionOffset: { x: 0, y: -0.3, z: 0 } } },
   }
   const root = new THREE.Group()
   const inner = new THREE.Group()

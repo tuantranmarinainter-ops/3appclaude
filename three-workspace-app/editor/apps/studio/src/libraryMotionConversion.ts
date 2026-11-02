@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { Matrix4, Vector3 } from 'three'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { getAction } from '../../../packages/library/library'
 import { resolveCharacter } from '../../../packages/library/characters'
@@ -12,7 +13,7 @@ const { decodeGlb, encodeGlb } = require('../../../packages/retarget/cli/glb') a
   encodeGlb(json: GlbJson, bin: Uint8Array): Uint8Array
 }
 interface GlbJson {
-  extras?: { libraryMotionConversion?: string }
+  extras?: { libraryMotionConversion?: string; libraryMotionConversionFloor?: unknown }
   nodes?: Array<{ name?: string; children?: number[] }>
   skins?: Array<{ joints: number[] }>
   animations?: Array<{ name?: string; channels: unknown[] }>
@@ -23,7 +24,14 @@ const { parseBobjModel, bobjModelToGlb, bobjModelNodeName } = require('../../../
   bobjModelToGlb(model: Model, options?: { faceForward: boolean }): { bytes: Uint8Array }
   bobjModelNodeName(name: string): string
 }
-const { parseBobjActions } = require('../../../packages/retarget/src/index') as { parseBobjActions(text: string): Model['actions'] }
+interface BobjActionLite { name: string; durationTicks: number; groups: Map<string, { channels: Array<{ path: string; index: number; keys: Array<{ t: number; v: number }> }> }> }
+const { parseBobjActions, evaluateBobjAction } = require('../../../packages/retarget/src/index') as {
+  parseBobjActions(text: string): Map<string, BobjActionLite>
+  evaluateBobjAction(armature: unknown, action: unknown, tick: number): Array<{ name: string; worldMatrix: number[] }>
+}
+const { parseBobjArmature } = require('../../../packages/retarget/src/reverse') as {
+  parseBobjArmature(text: string): { bones: Array<{ name: string; parent: string | null; restWorld: number[]; restLocal: number[] }> }
+}
 const { MIXAMO65_BONE_PARENTS } = require('../../../packages/retarget/src/mixamo65') as { MIXAMO65_BONE_PARENTS: Array<[string, string | null]> }
 const { exportMinecraft20 } = require('../../../packages/retarget/cli/toMinecraft20') as {
   exportMinecraft20(glb: Uint8Array, text: string, settings: { rootTravelMode: 'inPlace' | 'follow' }): Promise<{ bobj: string; report: { status: string } }>
@@ -41,6 +49,83 @@ export interface LibraryMotionConversionRecipe {
   targetBaseModelSha256: string
   converterVersion: string
   parameters: { rootTravelMode: 'inPlace' | 'follow'; ground: 'off' }
+}
+/** Bump to rebuild cached conversions; b10 = shin tips shifted onto the target rest floor. */
+const FLOOR_FIT_VERSION = 'b10-floor-v1'
+/** Same guard as groundAdjust.MAX_GROUND_OFFSET_HIPS_RATIO: a larger shift means wrong units, not wrong ground. */
+const MAX_FLOOR_OFFSET_HIPS_RATIO = 0.5
+export interface MinecraftFloorFit {
+  applied: boolean
+  /** Native BOBJ units added to the anchor along world +Y. */
+  offsetNative: number
+  restFloorNative: number | null
+  clipLowestNative: number | null
+  skipped?: 'NO_SHIN' | 'NO_ANCHOR' | 'OFFSET_TOO_LARGE'
+}
+/** Lowest shin tip (native units) over every tick; tip = shin origin extended by the rest knee-to-shin offset, in the shin's frame. */
+export function minecraftShinTipFloor(armatureText: string, bobj: string): { restFloor: number; clipLowest: number } | undefined {
+  const armature = parseBobjArmature(armatureText)
+  const shins = ['low_left_leg', 'low_leg_right'].map((name) => armature.bones.find((bone) => bone.name === name)!)
+  if (shins.some((bone) => !bone || !bone.parent)) return undefined
+  const mat = (values: number[]) => new Matrix4().fromArray(values)
+  const tipLocal = shins.map((shin) => {
+    const parent = armature.bones.find((bone) => bone.name === shin.parent)!
+    const origin = new Vector3().setFromMatrixPosition(mat(shin.restWorld)), parentOrigin = new Vector3().setFromMatrixPosition(mat(parent.restWorld))
+    return origin.clone().multiplyScalar(2).sub(parentOrigin).applyMatrix4(mat(shin.restWorld).invert())
+  })
+  const restFloor = Math.min(...shins.map((shin, i) => tipLocal[i]!.clone().applyMatrix4(mat(shin.restWorld)).y))
+  const action = [...parseBobjActions(bobj).values()][0]
+  if (!action) return undefined
+  let clipLowest = Infinity
+  for (let tick = 0; tick <= action.durationTicks; tick++) {
+    const posed = evaluateBobjAction(armature, action, tick)
+    for (const [i, shin] of shins.entries()) {
+      const bone = posed.find((item) => item.name === shin.name)!
+      clipLowest = Math.min(clipLowest, tipLocal[i]!.clone().applyMatrix4(mat(bone.worldMatrix)).y)
+    }
+  }
+  return { restFloor, clipLowest }
+}
+/**
+ * B10: Mixamo hips sit above the Minecraft20 legs. Shift the anchor (root) by ONE constant per clip so the lowest shin tip
+ * lands on the target's rest floor. Constant only, so jumps keep their height; skipped when the shift is unreasonably large.
+ */
+export function fitMinecraftFloor(armatureText: string, bobj: string): { bobj: string; fit: MinecraftFloorFit } {
+  const none = (fit: Partial<MinecraftFloorFit>): { bobj: string; fit: MinecraftFloorFit } => ({ bobj, fit: { applied: false, offsetNative: 0, restFloorNative: null, clipLowestNative: null, ...fit } })
+  const floor = minecraftShinTipFloor(armatureText, bobj)
+  if (!floor) return none({ skipped: 'NO_SHIN' })
+  const offset = floor.restFloor - floor.clipLowest
+  const base = { restFloorNative: floor.restFloor, clipLowestNative: floor.clipLowest }
+  const armature = parseBobjArmature(armatureText)
+  const anchor = armature.bones.find((bone) => !bone.parent)
+  const body = armature.bones.find((bone) => bone.name === 'body')
+  if (!anchor) return none({ ...base, skipped: 'NO_ANCHOR' })
+  if (Math.abs(offset) < 1e-6) return none(base)
+  const hips = body ? new Vector3().setFromMatrixPosition(new Matrix4().fromArray(body.restWorld)).y : 0
+  if (hips && Math.abs(offset) > MAX_FLOOR_OFFSET_HIPS_RATIO * hips) return none({ ...base, offsetNative: offset, skipped: 'OFFSET_TOO_LARGE' })
+  // A world +Y shift is a location delta expressed in the anchor's rest frame (anchor has no parent).
+  const restLinear = new Matrix4().fromArray(anchor.restLocal); restLinear.setPosition(0, 0, 0)
+  const shift = new Vector3(0, offset, 0).applyMatrix4(restLinear.invert()).toArray()
+  const action = [...parseBobjActions(bobj).values()][0]!
+  const ticks = Math.max(0, Math.round(action.durationTicks))
+  const channels = new Map((action.groups.get(anchor.name)?.channels ?? []).map((channel) => [`${channel.path} ${channel.index}`, channel]))
+  const fmt = (value: number) => (Math.abs(value) < 5e-7 ? 0 : value).toFixed(6)
+  const lines: string[] = [`ao ${anchor.name}`]
+  for (const path of ['location', 'rotation', 'scale'] as const) {
+    for (let axis = 0; axis < 3; axis++) {
+      const channel = channels.get(`${path} ${axis}`), add = path === 'location' ? shift[axis]! : 0
+      if (!channel && Math.abs(add) < 1e-9) continue
+      const keys = channel?.keys ?? Array.from({ length: ticks + 1 }, (_, t) => ({ t, v: path === 'scale' ? 1 : 0 }))
+      lines.push(`ag ${path} ${axis}`)
+      for (const key of keys) lines.push(`kf ${key.t} ${fmt(key.v + add)} LINEAR ${key.t} ${fmt(key.v + add)} ${key.t} ${fmt(key.v + add)}`)
+    }
+  }
+  const rows = bobj.split('\n'), start = rows.findIndex((row) => row === `ao ${anchor.name}`)
+  let end = rows.length
+  if (start >= 0) { const next = rows.findIndex((row, i) => i > start && /^(ao|an) /.test(row)); if (next >= 0) end = next }
+  const at = start >= 0 ? start : Math.max(0, rows.findIndex((row) => row.startsWith('ao ')))
+  const rebuilt = start >= 0 ? [...rows.slice(0, at), ...lines, ...rows.slice(end)] : [...rows.slice(0, at < 0 ? rows.length : at), ...lines, ...rows.slice(at < 0 ? rows.length : at)]
+  return { bobj: rebuilt.join('\n'), fit: { applied: true, offsetNative: offset, ...base } }
 }
 export class LibraryMotionConversionRequiredError extends Error {
   readonly code = 'CONVERSION_REQUIRED'
@@ -72,7 +157,7 @@ const cliRoot = resolve(editorRoot(), 'packages/retarget')
 function converterVersion(): string {
   const walk = (directory: string): string[] => readdirSync(join(cliRoot, directory), { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(`${directory}/${entry.name}`) : entry.name.endsWith('.ts') ? [`${directory}/${entry.name}`] : [])
   const files = ['cli', 'src'].flatMap(walk).sort()
-  return `b34-v1:${sha([...files.map((file) => `${file}\n${sha(readFileSync(join(cliRoot, file)))}`), sha(readFileSync(join(editorRoot(), 'apps/studio/src/libraryMotionConversion.ts'))), sha(readFileSync(resolve(cliRoot, '../../pnpm-lock.yaml')))].join('\n'))}`
+  return `b34-v1:${FLOOR_FIT_VERSION}:${sha([...files.map((file) => `${file}\n${sha(readFileSync(join(cliRoot, file)))}`), sha(readFileSync(join(editorRoot(), 'apps/studio/src/libraryMotionConversion.ts'))), sha(readFileSync(resolve(cliRoot, '../../pnpm-lock.yaml')))].join('\n'))}`
 }
 function noSymlinks(path: string): void {
   let current = resolve(path)
@@ -161,14 +246,17 @@ export async function materializeLibraryMotionConversion(recipe: LibraryMotionCo
     conversionInput.json.animations![0]!.name = actionName
     const exported = await exportMinecraft20(encodeGlb(conversionInput.json, conversionInput.bin), data.targetText, { rootTravelMode: recipe.parameters.rootTravelMode })
     if (exported.report.status !== 'PASS') throw new Error('Chuyển Minecraft20 thất bại')
+    const floored = fitMinecraftFloor(data.targetText, exported.bobj)
+    exported.bobj = floored.bobj
     const model = parseBobjModel(data.targetText)
-    model.actions = parseBobjActions(exported.bobj)
+    model.actions = parseBobjActions(exported.bobj) as unknown as Model['actions']
     if (model.armature.bones.length !== 20 || model.actions.size !== 1) throw new Error('Kết quả chuyển phải có 20 xương và một động tác')
     const output = decodeGlb(bobjModelToGlb(model, { faceForward: true }).bytes), nodes = output.json.nodes ?? []
     const joints = model.armature.bones.map((bone) => nodes.findIndex((node) => node.name === bobjModelNodeName(bone.name)))
     if (joints.some((index) => index < 0)) throw new Error('Kết quả chuyển thiếu xương Minecraft20')
     output.json.extras = { ...output.json.extras, libraryMotionConversion: cacheKey }
     output.json.skins = [...(output.json.skins ?? []), { joints }]
+    output.json.extras = { ...output.json.extras, libraryMotionConversionFloor: floored.fit }
     glb = encodeGlb(output.json, output.bin); bobj = `${data.targetText}\n${exported.bobj}`
     // Recheck immediately before writes; never follow pre-existing output symlinks.
     for (const path of [glbPath, bobjPath, manifestPath]) noSymlinks(path)

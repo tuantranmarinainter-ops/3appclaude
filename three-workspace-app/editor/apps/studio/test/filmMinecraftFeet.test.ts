@@ -78,7 +78,8 @@ test('MC20 rest-axis rotations are undone before applying the animated world mat
 
 test('missing, malformed, ambiguous or non-MC20 profiles never invent floor contact', () => {
   const sample = { metersPerUnit: 0.01, bones: [{ name: 'low_left_leg', worldMatrix: new Matrix4().toArray() }] }
-  for (const invalid of [undefined, { ...profile, family: 'custom-preserved' }, { ...profile, family: 'mixamo65' }, { ...profile, metersPerUnit: 1 },
+  for (const invalid of [undefined, { ...profile, metersPerUnit: 1 },
+    { ...profile, family: 'custom-preserved', bones: bones.map((bone) => bone.id === 'left' ? { ...bone, name: 'actor:thigh_l' } : bone) },
     { ...profile, bones: [...bones, bones[2]!] }, { ...profile, bones: bones.map((bone) => ({ ...bone, rest: {} })) }]) {
     const feet = measureFilmFeet(sample, invalid as SkeletonProfile | undefined)
     assert.deepEqual(feet, {}); assert.ok(preflight(feet).includes('FOOT_EVALUATION_UNAVAILABLE'))
@@ -114,4 +115,22 @@ test('bundled MC20 rest armature: inferred tips match the BOBJ-authored tail hei
   close(feet.leftY, armature.bones.find((bone) => bone.name === 'low_left_leg')!.tail[1])
   close(feet.rightY, armature.bones.find((bone) => bone.name === 'low_leg_right')!.tail[1])
   close(feet.leftY, 0); close(feet.rightY, 0)
+})
+
+test('B28: library MC20 models (custom-preserved: BOBJ wrapper + misc bones) are measured; Đen standing = 0 ± 1 cm', () => {
+  // Bone list of Đen in the Tập 15 project: bobj-model wrapper, MC20 chain, misc_bone_* extras, metersPerUnit 1.
+  const den = { family: 'custom-preserved', metersPerUnit: 0.01, bones: [
+    { id: 'bobj', name: 'bobj-model', parentId: null, rest: rest([0, -0.5, 0]), deform: false },
+    { id: 'anchor', name: 'anchor', parentId: 'bobj', rest: rest([0, 0, 0]), deform: true },
+    ...bones.slice(1).map((bone) => ({ ...bone, name: bone.name.replace('actor:', ''), parentId: bone.parentId === 'wrapper' ? 'anchor' : bone.parentId })),
+    { id: 'misc1', name: 'misc_bone_1', parentId: 'anchor', rest: rest([0, 120, 0]), deform: true },
+  ] } as SkeletonProfile
+  const wrapper = new Matrix4().makeTranslation(3, 0, -2).multiply(new Matrix4().makeScale(0.01, 0.01, 0.01))
+  const world = (x: number, y: number) => wrapper.clone().multiply(new Matrix4().makeTranslation(x, y, 0)).toArray()
+  // Standing: knees at 37.5 units, shin tips (2 × the knee offset) at 0.
+  const standing = measureFilmFeet({ metersPerUnit: 0.01, bones: [
+    { name: 'low_left_leg', worldMatrix: world(12.5, 37.5) }, { name: 'low_leg_right', worldMatrix: world(-12.5, 37.5) },
+    { name: 'misc_bone_1', worldMatrix: world(0, 120) }] }, den)
+  assert.ok(Math.abs(standing.leftY!) < 0.01 && Math.abs(standing.rightY!) < 0.01, JSON.stringify(standing))
+  assert.ok(!preflight(standing).includes('FOOT_EVALUATION_UNAVAILABLE'))
 })

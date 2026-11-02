@@ -2685,6 +2685,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
             libraryBaseModelId: link.library.libraryBaseModelId, librarySkin: link.library.librarySkin, libraryHiddenObjects: [],
             storyboardName }
           delete node.character?.animation.posePresetId
+          delete node.character?.animation.rootPositionOffset // B24: pose sink belongs to the removed pose
           changedIds.push(`character:${characterId}`, `node:${node.id}`)
           const replacedClips: Array<Record<string, unknown>> = []
           for (const replacement of plan.replacements) {
