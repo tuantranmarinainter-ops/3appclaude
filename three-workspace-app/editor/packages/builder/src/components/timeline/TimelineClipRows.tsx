@@ -5,6 +5,7 @@ import { isClipSelected, type Selection } from '../../stores/types'
 import { displayCameraMotionName } from '../displayNames'
 import type { ComponentProps } from 'react'
 import { ClipBlock } from './ClipBlock'
+import { ClipBlendBands } from './ClipBlendBands'
 import { useDirector } from '../../bridge/DirectorContext'
 import { formatDurationInUnit } from './utils/timeUnit'
 
@@ -71,21 +72,26 @@ export function MotionClips({
   onSelect: (next: Selection) => void
 }) {
   const t = useT()
-  return clips.map((c) => (
-    <MotionClipBlock
-      key={c.id}
-      kind="motion"
-      ghost={ghost}
-      selected={!ghost && isClipSelected(selection, c.id)}
-      {...box(frameStart, pxPerFrame, c.frameStart, c.frameEnd)}
-      label={assetNameLabel(t, c.motion.name, 'motion')}
-      clipId={c.id}
-      frameStart={c.frameStart}
-      frameEnd={c.frameEnd}
-      pxPerFrame={pxPerFrame}
-      onSelect={ghost ? undefined : () => onSelect({ kind: 'clip', clipType: 'motion', clipId: c.id })}
-    />
-  ))
+  return (
+    <>
+      {clips.map((c) => (
+        <MotionClipBlock
+          key={c.id}
+          kind="motion"
+          ghost={ghost}
+          selected={!ghost && isClipSelected(selection, c.id)}
+          {...box(frameStart, pxPerFrame, c.frameStart, c.frameEnd)}
+          label={assetNameLabel(t, c.motion.name, 'motion')}
+          clipId={c.id}
+          frameStart={c.frameStart}
+          frameEnd={c.frameEnd}
+          pxPerFrame={pxPerFrame}
+          onSelect={ghost ? undefined : () => onSelect({ kind: 'clip', clipType: 'motion', clipId: c.id })}
+        />
+      ))}
+      {!ghost && <ClipBlendBands clips={clips} frameStart={frameStart} pxPerFrame={pxPerFrame} />}
+    </>
+  )
 }
 
 export function PathClips({

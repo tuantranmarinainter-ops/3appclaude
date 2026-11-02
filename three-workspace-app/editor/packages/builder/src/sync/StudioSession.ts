@@ -1,9 +1,18 @@
 import { computed, makeObservable, observable, runInAction } from 'mobx'
 import { previewClipMove } from '../document/clipMove'
+import {
+  applyBlendDrag,
+  blendWithPrevious,
+  normalizeBlendIns,
+  previewBlendDrag,
+  removeBlend,
+  setBlendCurve,
+  setBlendFrames,
+} from '../document/clipBlend'
 import { rippleResizeClip } from '../document/clipRipple'
 import { cameraNumericAspect } from '../contract/cameraAspect'
 import { normalizeAspectRatio, widthFromAspectHeight } from '../contract/aspectRatio'
-import type { DirectorDocument, DraftNode } from '../contract/types'
+import type { DirectorDocument, DraftNode, MotionClip } from '../contract/types'
 import { makeEmptyDraft } from '../contract/emptyDraft'
 import { nodesOfType } from '../contract/parser'
 import { hydrateSkyColor } from '../contract/skyColor'
@@ -203,6 +212,9 @@ export class StudioSession implements StudioView {
   }
   get timelineSnap(): boolean {
     return this.editor.timelineSnap
+  }
+  get clipBlendOverlap(): boolean {
+    return this.editor.clipBlendOverlap
   }
   get viewportLocked(): boolean {
     return this.editor.viewportLocked
@@ -484,6 +496,7 @@ export class StudioSession implements StudioView {
   toggleAutoKeyframe = (): void => this.editor.toggleAutoKeyframe()
 
   toggleTimelineSnap = (): void => this.editor.toggleTimelineSnap()
+  setClipBlendOverlap = (enabled: boolean): void => this.editor.setClipBlendOverlap(enabled)
   toggleViewportLocked = (): void => {
     this.editor.toggleViewportLocked()
     this.engine.setViewLocked(this.editor.viewportLocked)
@@ -2885,6 +2898,17 @@ export class StudioSession implements StudioView {
     const track = clipType === 'path'
       ? timelinePathClips(animation.pathMotionClips, clip.target.nodeId)
       : source.filter((c) => c.target.nodeId === clip.target.nodeId)
+    if (clipType === 'motion' && this.editor.clipBlendOverlap) {
+      // K1: kéo đè lên clip kề -> tạo/cập nhật blendIn, không đẩy clip khác.
+      const blend = previewBlendDrag(track as MotionClip[], clipId, frame, base.doc.content.timeline.frameStart)
+      if (blend) {
+        this.editor.setClipMovePreview({
+          positions: blend.positions, pointerFrame: blend.pointerFrame, frameEnd: blend.frameEnd,
+          clipType, clipId, blend: { clipId: blend.blendClipId, frames: blend.frames },
+        })
+        return
+      }
+    }
     const layout = previewClipMove(
       track,
       clipId, frame, base.doc.content.timeline.frameStart, 6 / this.editor.pxPerFrame,
@@ -2922,15 +2946,53 @@ export class StudioSession implements StudioView {
       animation.pathMotionClips = apply(animation.pathMotionClips)
     }
     else if (key === 'cameraMotionClips') animation.cameraMotionClips = apply(animation.cameraMotionClips)
-    else if (key === 'motionClips') animation.motionClips = apply(animation.motionClips)
+    else if (key === 'motionClips') {
+      animation.motionClips = preview.blend
+        ? applyBlendDrag(animation.motionClips, {
+          positions: preview.positions, pointerFrame: preview.pointerFrame, frameEnd: preview.frameEnd,
+          blendClipId: preview.blend.clipId, frames: preview.blend.frames,
+        })
+        : normalizeBlendIns(apply(animation.motionClips))
+    }
     else animation.pathMotionClips = apply(animation.pathMotionClips)
+    if (preview.clips) animation.motionClips = normalizeBlendIns(animation.motionClips)
     runInAction(() => {
       this.cancelClipMove()
       if (JSON.stringify(before.doc.content) === JSON.stringify(next.content)) return
       this.docModel.applyContent(next)
-      this.pushDocSnapshot('移动片段', before)
+      this.pushDocSnapshot(preview.blend ? 'Kéo đè để trộn clip' : '移动片段', before)
     })
   }
+
+  /** Thay toàn bộ danh sách MotionClip bằng `next` trong một bước Undo (dùng cho thao tác trộn). */
+  private commitMotionClips(label: string, compute: (clips: MotionClip[], fps: number, minFrame: number) => MotionClip[] | null): boolean {
+    if (this.writeLocked) return false
+    const live = this.docModel.toContract()
+    const before = snapshotDocState(this.docModel)
+    if (!live || !before) return false
+    const timeline = live.content.timeline
+    const next = compute([...timeline.animation.motionClips], timeline.fps, timeline.frameStart)
+    if (!next) return false
+    const clips = timeline.animation.motionClips
+    clips.splice(0, clips.length, ...next)
+    this.docModel.touch()
+    this.pushDocSnapshot(label, before)
+    return true
+  }
+
+  blendMotionClipWithPrevious = (clipId: string): boolean =>
+    this.commitMotionClips('Trộn với clip trước', (clips, fps, minFrame) => blendWithPrevious(clips, clipId, fps, minFrame))
+
+  setMotionClipBlend = (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear' }): boolean =>
+    this.commitMotionClips('Đổi thông số trộn', (clips, _fps, minFrame) => {
+      let current: MotionClip[] | null = clips
+      if (patch.frames !== undefined) current = setBlendFrames(current, clipId, patch.frames, minFrame)
+      if (current && patch.curve !== undefined) current = setBlendCurve(current, clipId, patch.curve) ?? current
+      return current
+    })
+
+  removeMotionClipBlend = (clipId: string): boolean =>
+    this.commitMotionClips('Bỏ trộn', (clips) => removeBlend(clips, clipId))
 
   deletePathNode = (id: string): void => {
     const n = this.docModel.snapshot?.content.nodes.find((x) => x.id === id)

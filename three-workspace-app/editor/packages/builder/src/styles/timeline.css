@@ -918,3 +918,80 @@
   opacity: 1;
   color: var(--t3d-sheet-accent);
 }
+
+/* K1: dải X ở vùng trộn giữa hai clip chồng nhau (kiểu iClone). */
+.t3d-timeline-clip-blend {
+  position: absolute;
+  top: 4px;
+  height: 22px;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 3px;
+  cursor: pointer;
+  background-color: rgba(10, 12, 16, 0.55);
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.75) 0, rgba(255, 255, 255, 0.75) 1px, transparent 1px, transparent 6px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.75) 0, rgba(255, 255, 255, 0.75) 1px, transparent 1px, transparent 6px);
+}
+
+.t3d-timeline-clip-blend:hover,
+.t3d-timeline-clip-blend:focus-visible {
+  border-color: #f5a623;
+  outline: none;
+}
+
+.t3d-timeline-blend-panel {
+  position: fixed;
+  z-index: 10000;
+  min-width: 220px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--t3d-panel-bg, #1e2026);
+  color: var(--t3d-text, #e8eaed);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+}
+
+.t3d-timeline-blend-title {
+  font-weight: 600;
+}
+
+.t3d-timeline-blend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.t3d-timeline-blend-row input,
+.t3d-timeline-blend-row select {
+  background: #15171c;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  width: 112px;
+}
+
+.t3d-timeline-blend-row input[aria-invalid='true'] {
+  border-color: #e5484d;
+}
+
+.t3d-timeline-blend-note {
+  color: #f5a623;
+}
+
+.t3d-timeline-blend-remove {
+  align-self: flex-end;
+  background: #2a2d35;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
