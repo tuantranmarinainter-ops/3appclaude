@@ -18,7 +18,7 @@ export type { RegisterBaseModelOptions, CreateCharacterOptions } from './charact
 export type { BaseModelMetadata, CharacterWarning, ResolvedCharacter } from './types'
 export {
   addConvertedDraftToCharacter, addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, removeCharacterAction,
-  saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile,
+  addCharacterActionFromGlb, saveCharacterActionVersion, setCharacterActionStatus, setCharacterProfile,
 } from './characterActions'
 
 export { characterHeightBlocks } from './characterHeight'

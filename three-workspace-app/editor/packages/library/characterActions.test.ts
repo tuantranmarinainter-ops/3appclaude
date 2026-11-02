@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { MIXAMO65_BONE_PARENTS } from '../retarget/src/mixamo65'
 import {
-  addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, listLibraryCharacters,
+  addCharacterActionFromGlb, addDraftToCharacter, copyActionToCharacter, coverageMatrix, listCharacterActions, listLibraryCharacters,
   getAction, importPack, removeCharacterAction, saveCharacterActionVersion, searchLibrary, setCharacterActionStatus, setCharacterProfile,
 } from './index'
 import { callLibraryTool } from './mcp'
@@ -215,4 +215,29 @@ test('imports the explicit Verity scene-node contract and preserves it through d
   const tailManifest = readJsonFile<{ version: string; extraBoneMode?: string; extraBones?: unknown[] }>(join(root, 'packs', tailDraft.packId, 'anim.manifest.json'))
   assert.equal(tailManifest.version, '1.1.0'); assert.equal(tailManifest.extraBoneMode, undefined)
   assert.deepEqual(tailManifest.extraBones, [sceneExtras[0]])
+})
+
+test('addCharacterActionFromGlb creates a standalone action (version 1, own variant chain) with its own name and description', (t) => {
+  const { root, temporary } = fixture(t)
+  const draft = addDraftToCharacter({ root, charId: 'verity-a', actionUuid: rawUuid, favorite: true })
+  const file = join(temporary, 'merged.glb'); writeFileSync(file, editedGlb(2.5, 'merged clip'))
+  assert.throws(() => addCharacterActionFromGlb({ root, charId: 'verity-b', templateUuid: draft.uuid, glbFile: file, name: 'X' }), /does not belong/)
+  assert.throws(() => addCharacterActionFromGlb({ root, charId: 'verity-a', templateUuid: draft.uuid, glbFile: file, name: '  ' }), /1-120/)
+  const merged = addCharacterActionFromGlb({ root, charId: 'verity-a', templateUuid: draft.uuid, glbFile: file, name: 'Gộp thử', description: 'Hai clip nối nhau' })
+  assert.equal(merged.version, 1); assert.equal(merged.variantOf, merged.uuid); assert.notEqual(merged.variantOf, draft.variantOf)
+  assert.equal(merged.ownerCharId, 'verity-a'); assert.equal(merged.status, 'edited'); assert.equal(merged.name, 'Gộp thử')
+  assert.equal(merged.nameVi, 'Gộp thử'); assert.equal(merged.notes, 'Hai clip nối nhau'); assert.equal(merged.durationSeconds, 2.5)
+  assert.equal(merged.loop, false); assert.equal(merged.favorite, undefined, 'standalone action does not inherit the pin')
+  assert.equal(merged.sourceName, undefined); assert.equal(merged.rig, 'mixamo65')
+  assert.deepEqual(readFileSync(join(root, 'packs', merged.packId, 'anim.glb')), editedGlb(2.5, 'merged clip'))
+  // The first chain is untouched; the new action is its own latest entry.
+  assert.deepEqual(listCharacterActions({ root, charId: 'verity-a' }).map((action) => [action.uuid, action.version]).sort(), [[draft.uuid, 1], [merged.uuid, 1]].sort())
+  assert.equal(listCharacterActions({ root, charId: 'verity-a', latestOnly: true }).length, 2)
+  // A new version of the first clip still goes to ITS chain, not the merged one.
+  const edited = saveCharacterActionVersion({ root, charId: 'verity-a', baseUuid: draft.uuid, glbFile: file, status: 'edited' })
+  assert.equal(edited.version, 2); assert.equal(edited.variantOf, draft.uuid)
+  // Same actionUuid + same GLB is idempotent; a different action under that uuid is refused.
+  const again = addCharacterActionFromGlb({ root, charId: 'verity-a', templateUuid: draft.uuid, glbFile: file, name: 'Gộp thử', actionUuid: merged.uuid })
+  assert.equal(again.uuid, merged.uuid)
+  assert.throws(() => addCharacterActionFromGlb({ root, charId: 'verity-a', templateUuid: draft.uuid, glbFile: file, name: 'Khác', actionUuid: merged.uuid }), /different action/)
 })

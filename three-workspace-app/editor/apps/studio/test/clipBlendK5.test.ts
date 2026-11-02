@@ -12,7 +12,7 @@ import test from 'node:test'
 import { Matrix4, Quaternion, Vector3 } from 'three'
 import { createFrameSnapshot, evaluateFrame } from '@topview/3d-builder/evaluate'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { getAction, resolveCharacter, resolveLibraryPath } from '../../../packages/library/index'
+import { getAction, listCharacterActions, resolveCharacter, resolveLibraryPath } from '../../../packages/library/index'
 import { createShotPackage, saveShotExport } from '../src/shotExchange'
 import { jsonBytes, sha256, zipPackage } from '../src/shotPackage'
 import { sampleChainFrames } from '../src/shotBake'
@@ -23,6 +23,8 @@ import { projectEvaluationScene, sampleProjectSkeletonRange } from '../src/unifi
 
 const projectId = 'e901aadb-453f-4f69-b6f7-8eceda1f41f3'
 const characterId = '49199c34-e125-4c4b-8f35-baf6a1945a5d'
+const goXuaId = characterId
+const denId = 'f2fd9323-4db3-4968-a813-ae7e0a4d2b6f'
 const libraryCharacterId = '3bc37c74-0209-4413-90f4-c69302a43625'
 const cameraNodeId = 'user_cam_uf9phu05'
 const projectFixture = process.env.K5_PROJECT_FIXTURE || path.join('S:/Claude/w01-samples/clip-blend-k2-projects', projectId)
@@ -71,7 +73,7 @@ async function worldPoses(project: UnifiedProject, start: number, end: number) {
 }
 
 /** shot.export -> App 3 returns the baked animation unedited -> shot.result.import (optionally with merge info). */
-async function exportAndReturn(project: UnifiedProject, merge: unknown, range = { frameStart: 10, frameEnd: 100 }) {
+async function exportAndReturn(project: UnifiedProject, merge: unknown, range = { frameStart: 10, frameEnd: 100 }, characterId = goXuaId) {
   const built = await createShotPackage(project, { cameraNodeId, ...range, editableCharacterIds: [characterId] })
   await saveShotExport(project, built)
   const shotCharacter = built.shot.characters[0]!
@@ -161,6 +163,7 @@ test('return as merged clip: one clip, poses unchanged, library Action under the
   const localBefore = await sampleChainFrames(before, characterId, [0, 134])
 
   const name = 'Gộp thử K5', description = 'Gộp thử từ hai clip Gỗ Xưa, trộn 15 khung, khóa chân'
+  const chainsBefore = listCharacterActions({ charId: libraryCharacterId }).map((a) => [a.uuid, a.version, a.variantOf, a.name])
   const flow = await exportAndReturn(before, { name, description })
   const imported = await flow.run()
   assert.deepEqual(imported.result.motionIds, [flow.newActionUuid])
@@ -183,7 +186,14 @@ test('return as merged clip: one clip, poses unchanged, library Action under the
   assert.equal(saved.ownerCharId, libraryCharacterId)
   assert.equal(resolveCharacter(libraryCharacterId).character.name, 'Gỗ Xưa')
   assert.equal(saved.name, name); assert.equal(saved.nameVi, name); assert.equal(saved.notes, description)
-  assert.equal(saved.status, 'edited'); assert.ok((saved.version ?? 0) >= 2)
+  assert.equal(saved.status, 'edited')
+  // Standalone Action: version 1 of its OWN variant chain, not version 2 of the first clip's chain; the other chains are untouched.
+  assert.equal(saved.version, 1); assert.equal(saved.variantOf, saved.uuid)
+  assert.equal(saved.favorite, undefined)
+  const chainsAfter = listCharacterActions({ charId: libraryCharacterId }).map((a) => [a.uuid, a.version, a.variantOf, a.name])
+  assert.deepEqual(chainsAfter.filter((a) => a[0] !== saved.uuid), chainsBefore, 'existing Action chains unchanged')
+  assert.equal(chainsAfter.length, chainsBefore.length + 1)
+  assert.ok(!chainsBefore.some((a) => a[2] === saved.uuid))
 
   // Pose equality (<= 0.5 deg, <= 2 mm) over the whole range, scene placement unchanged, root stored as the first clip's.
   const posesAfter = await worldPoses(after, 0, 134)
@@ -227,3 +237,29 @@ test('merged clip defaults and invalid merge arguments', { skip }, async () => {
 })
 
 function t_diag(message: string) { console.log(`# ${message}`) }
+
+// Needs Đen's own library character (the small K5 fixture library only holds Gỗ Xưa); runs when K5_LIBRARY_FIXTURE has both.
+const denLibrary = (() => { try { return available && existsSync(path.join(libraryFixture, 'characters', '5747a1ad-06fd-4021-b304-788f85554ba3')) } catch { return false } })()
+test('B66: two characters of one project are each opened as a shot, edited and returned in turn', { skip: skip || (denLibrary ? false : 'Đen library character absent from the fixture library') }, async () => {
+  // App 3 edits ONE character per shot (App 2 panel asks to return/discard before switching), so the contract is: shot 1 for Gỗ Xưa,
+  // returned; shot 2 for Đen opened on the NEW revision, returned; both characters' clips point at their own new Actions.
+  const start = await readUnifiedProject(projectId)
+  const first = await exportAndReturn(start, { name: 'Gộp Gỗ Xưa', description: 'B66' }, { frameStart: 10, frameEnd: 100 }, goXuaId)
+  const r1 = await first.run()
+  assert.deepEqual(r1.result.motionIds, [first.newActionUuid])
+  const mid = await readUnifiedProject(projectId)
+  assert.ok(mid.revision > start.revision)
+  const denClips = mid.scene.content.timeline.animation.motionClips.filter((c) => c.target.nodeId === mid.characters[denId]!.nodeId)
+  const denRange = { frameStart: denClips[0]!.frameStart, frameEnd: denClips[0]!.frameStart + 10 }
+  const second = await exportAndReturn(mid, undefined, denRange, denId)
+  assert.deepEqual(second.built.shot.characters.filter((c) => c.editable).map((c) => c.characterId), [denId])
+  const r2 = await second.run().catch((error: Error) => error)
+  const done = await readUnifiedProject(projectId)
+  const goXuaClips = done.scene.content.timeline.animation.motionClips.filter((c) => c.target.nodeId === done.characters[goXuaId]!.nodeId)
+  assert.equal(goXuaClips.length, 1, 'first character keeps its merged clip')
+  assert.equal(goXuaClips[0]!.motion.assetId, first.newActionUuid)
+  if (r2 instanceof Error) assert.fail('second character return failed: ' + r2.message)
+  assert.deepEqual(r2.result.motionIds, [second.newActionUuid])
+  const denAfter = done.scene.content.timeline.animation.motionClips.filter((c) => c.target.nodeId === done.characters[denId]!.nodeId)
+  assert.ok(denAfter.some((c) => c.motion.assetId === second.newActionUuid), 'second character clip points at its edited Action')
+})
