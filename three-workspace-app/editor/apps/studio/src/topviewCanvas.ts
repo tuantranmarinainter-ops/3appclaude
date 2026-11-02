@@ -44,7 +44,7 @@ function cacheDir(): string {
   if (override) return override
   if (process.platform === 'darwin') return path.join(homedir(), 'Library', 'Caches', 'topview-3d-cli')
   if (process.platform === 'win32') {
-    const base = process.env.LOCALAPPDATA || path.join(homedir(), 'AppData', 'Local')
+    const base = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || homedir(), 'AppData', 'Local')
     return path.join(base, 'topview-3d-cli', 'Cache')
   }
   return path.join(process.env.XDG_CACHE_HOME || path.join(homedir(), '.cache'), 'topview-3d-cli')

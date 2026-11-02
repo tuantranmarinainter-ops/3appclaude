@@ -664,7 +664,7 @@ export function StudioOverlay({
             {reviewSequence ? <><p className="wb-review-capture"><button type="button" disabled={reviewCapturing !== null} onClick={() => void captureAllReview()}>{reviewCapturing ? (vi ? 'Đang chụp…' : 'Capturing…') : (vi ? 'Chụp tất cả cảnh chưa có ảnh (Xem như BBS)' : 'Capture all shots without stills (BBS look)')}</button></p><SceneReviewPanel clips={reviewClips} images={reviewImages} onSet={(clipId, status, note) => void setReview(clipId, status, note)} onPlay={playReviewClip} onCapture={(clipId, frames) => void captureReview(clipId, frames)} /></> : <p>{vi ? 'Dự án chưa có danh sách cảnh biên tập.' : 'This project has no editorial shot list.'}</p>}
           </HostDrawer>
           <HostDrawer open={drawer === 'vfx'} title={vi ? 'Hiệu ứng' : 'Effects'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
-            <VfxCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'vfx'} />
+            {drawer === 'vfx' && <VfxCueHost key={documentId} projectId={documentId} project={project} active />}
           </HostDrawer>
           <HostDrawer open={drawer === 'audio'} title={vi ? 'Thoại và âm thanh' : 'Voice and sound'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />

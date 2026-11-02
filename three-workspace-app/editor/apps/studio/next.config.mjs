@@ -54,7 +54,18 @@ const nextConfig = {
 
 // dev 与 build/start 不共享产物，避免构建覆盖正在运行的 webpack runtime/chunks。
 // 第二份开发服务（例如 mock 与 ms 并存）仍可用 NEXT_DIST_DIR 单独指定目录。
+// B25: two dev servers in one checkout must not share webpack chunks, so each port gets its own folder
+// (.next-dev for the default 3002 keeps existing caches).
+function devPort() {
+  const args = process.argv
+  const index = args.findIndex((arg) => arg === '--port' || arg === '-p')
+  const flag = args.find((arg) => arg.startsWith('--port='))
+  return (index >= 0 ? args[index + 1] : flag?.slice('--port='.length)) || process.env.PORT || ''
+}
+export function devDistDir(port = devPort()) {
+  return /^\d+$/.test(port) && port !== '3002' ? `.next-dev-${port}` : '.next-dev'
+}
 export default (phase) => ({
   ...nextConfig,
-  distDir: process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next'),
+  distDir: process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? devDistDir() : '.next'),
 })

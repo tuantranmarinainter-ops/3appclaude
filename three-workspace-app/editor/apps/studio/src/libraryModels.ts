@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import { resolveCharacter } from '../../../packages/library/index'
+import { readFile, stat } from 'node:fs/promises'
+import path from 'node:path'
+import { resolveLibraryPath, resolveCharacter } from '../../../packages/library/index'
 import { bobjModelToGlb, bobjModelNodeName, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 
 /** Library BOBJ models face +Z at rest like Minecraft20; native clips already carry the Root turn. */
@@ -87,7 +88,7 @@ export async function libraryBaseGlb(charId: string, faceForward = true): Promis
 }
 
 /** The URL fingerprint covers actual model and texture bytes, not mutable profile fields. */
-export async function libraryCharacterModel(charId: string, faceForward = true) {
+async function buildLibraryCharacterModel(charId: string, faceForward = true) {
   const resolved = resolveCharacter(charId), base = await libraryBaseGlb(charId, faceForward)
   const textures = await Promise.all(Object.entries(resolved.textures).sort(([a], [b]) => a.localeCompare(b)).map(async ([object, file]) => ({ object, bytes: await readFile(file) })))
   const hash = createHash('sha256').update(base)
@@ -119,6 +120,68 @@ export async function libraryCharacterModel(charId: string, faceForward = true) 
   }
   json.buffers[0].byteLength = bin.length
   return { bytes: packLibraryGlb(json, bin), fingerprint }
+}
+
+const modelRequests = new Map<string, Promise<ModelResult>>()
+export function libraryCharacterModel(charId: string, faceForward = true): Promise<ModelResult> {
+  const key = JSON.stringify([resolveLibraryPath(), charId, faceForward])
+  const prior = modelRequests.get(key)
+  if (prior) return prior
+  const request = cachedLibraryCharacterModel(charId, faceForward)
+  modelRequests.set(key, request)
+  const clear = () => { if (modelRequests.get(key) === request) modelRequests.delete(key) }
+  void request.then(clear, clear)
+  return request
+}
+
+type ModelResult = Awaited<ReturnType<typeof buildLibraryCharacterModel>>
+type ModelEntry = { signature: string; dependencies: string[]; result: Promise<ModelResult>; size: number; charId: string }
+const modelCache = new Map<string, ModelEntry>()
+const MODEL_CACHE_BYTES = 200 * 1024 * 1024
+
+export function invalidateLibraryModels(charId?: string): void {
+  for (const [key, entry] of modelCache) if (!charId || entry.charId === charId) modelCache.delete(key)
+}
+
+async function dependencySignature(files: string[]): Promise<string> {
+  return JSON.stringify(await Promise.all(files.map(async file => {
+    try { const info = await stat(file); return [file, info.mtimeMs, info.ctimeMs, info.size] }
+    catch { return [file, null] }
+  })))
+}
+
+/** Preserve the byte fingerprint while skipping reads/hashes/conversion for unchanged inputs. */
+async function cachedLibraryCharacterModel(charId: string, faceForward = true): Promise<ModelResult> {
+  const root = resolveLibraryPath()
+  const key = JSON.stringify([root, charId, faceForward])
+  const cached = modelCache.get(key)
+  if (cached && cached.signature === await dependencySignature(cached.dependencies)) {
+    modelCache.delete(key); modelCache.set(key, cached)
+    return cached.result
+  }
+  const resolved = resolveCharacter(charId)
+  const directory = path.join(root, 'characters', resolved.character.charId)
+  const modelDirectory = resolved.baseModel ? path.join(root, 'models', resolved.baseModel.modelId) : directory
+  const dependencies = [path.join(directory, 'meta.json'), path.join(modelDirectory, 'meta.json'), resolved.modelPath]
+  for (const object of resolved.baseModel?.objects ?? []) {
+    dependencies.push(path.join(modelDirectory, 'textures', object, 'default.png'))
+    if (resolved.character.skin) dependencies.push(path.join(directory, resolved.character.skin, object, 'default.png'))
+  }
+  dependencies.push(...Object.values(resolved.textures))
+  const entry: ModelEntry = { charId, dependencies, signature: await dependencySignature(dependencies), result: buildLibraryCharacterModel(charId, faceForward), size: 0 }
+  modelCache.set(key, entry)
+  try {
+    const model = await entry.result
+    entry.size = model.bytes.byteLength
+    // A concurrent edit must never poison the reusable entry.
+    if (entry.signature !== await dependencySignature(dependencies)) { if (modelCache.get(key) === entry) modelCache.delete(key) }
+    let total = [...modelCache.values()].reduce((sum, item) => sum + item.size, 0)
+    for (const [oldKey, old] of modelCache) {
+      if (modelCache.size <= 16 && total <= MODEL_CACHE_BYTES) break
+      modelCache.delete(oldKey); total -= old.size
+    }
+    return model
+  } catch (error) { if (modelCache.get(key) === entry) modelCache.delete(key); throw error }
 }
 
 /**

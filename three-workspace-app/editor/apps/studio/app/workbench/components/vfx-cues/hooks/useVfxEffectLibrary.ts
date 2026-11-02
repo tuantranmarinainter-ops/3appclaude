@@ -3,7 +3,8 @@ import type { VfxSheetMeta } from '@topview/3d-builder'
 import type { VfxEffectOption } from '../types'
 import { vfxEffectOptions } from '../utils'
 
-export const VFX_PREVIEWS_URL = '/api/unified/vfx-previews'
+import { loadVfxPreviews, VFX_PREVIEWS_URL } from '../../../../../src/vfxPreviewClient'
+export { VFX_PREVIEWS_URL } from '../../../../../src/vfxPreviewClient'
 
 /**
  * The App 4 baked preview library for the effect picker. An unreachable or
@@ -14,8 +15,7 @@ export function useVfxEffectLibrary(): { options: VfxEffectOption[]; loading: bo
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let cancelled = false
-    void fetch(VFX_PREVIEWS_URL, { credentials: 'same-origin' })
-      .then((response) => response.ok ? response.json() : { sheets: {} })
+    void loadVfxPreviews()
       .then((body: { sheets?: Record<string, VfxSheetMeta> }) => {
         if (!cancelled) setOptions(vfxEffectOptions(body.sheets, VFX_PREVIEWS_URL))
       })
