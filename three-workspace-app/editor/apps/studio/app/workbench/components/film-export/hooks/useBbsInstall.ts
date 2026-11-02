@@ -3,6 +3,9 @@ import { ensureUnifiedSession } from '../../../../../src/unifiedApi'
 import type { InstallPlan } from '../../../../../src/bbsInstall'
 
 import type { BbsGameCapabilities } from '../../../../../src/bbsGameCapabilities'
+import { GAME_DIR_KEY, pickWorld, recentGameDirs, rememberGameDir, rememberWorld } from '../../../../../src/gameFolderMemory'
+
+const browserStore = () => typeof window === 'undefined' ? undefined : window.localStorage
 
 interface InstallWorld { name: string }
 interface InstallRecord { installId: string; installedAt: string; packageName: string; files: number }
@@ -15,8 +18,13 @@ async function responseBody<T>(response: Response, vi: boolean): Promise<T> {
 
 export function useBbsInstall(vi: boolean) {
   // NEXT_PUBLIC_BBS_GAME_DIR pre-fills the game folder on a fresh browser; a folder the user picked (localStorage) wins.
-  const [gameDir, setGameDirState] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('topview-bbs-game-dir') ?? process.env.NEXT_PUBLIC_BBS_GAME_DIR ?? '')
+  const [gameDir, setGameDirState] = useState(() => { try { return browserStore()?.getItem(GAME_DIR_KEY) ?? process.env.NEXT_PUBLIC_BBS_GAME_DIR ?? '' } catch { return '' } })
+  const [recentDirs, setRecentDirs] = useState<string[]>(() => recentGameDirs(browserStore()))
   const [capabilities, setCapabilities] = useState<BbsGameCapabilities | null>(null)
+  /** B33: Minecraft running from this folder; null = unknown. */
+  const [gameRunning, setGameRunning] = useState<boolean | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scannedDir, setScannedDir] = useState('')
   const [worlds, setWorlds] = useState<InstallWorld[]>([])
   const [installs, setInstalls] = useState<InstallRecord[]>([])
   const [worldName, setWorldName] = useState('')
@@ -33,12 +41,11 @@ export function useBbsInstall(vi: boolean) {
   const setGameDir = (value: string) => {
     gameDirRef.current = value; refreshRevision.current++
     invalidatePreview()
-    setGameDirState(value); setCapabilities(null)
-    if (typeof window !== 'undefined') localStorage.setItem('topview-bbs-game-dir', value)
+    setGameDirState(value); setCapabilities(null); setGameRunning(null); setScannedDir(''); setError('')
     setWorlds([]); setInstalls([]); worldRef.current = ''; setWorldName('')
   }
 
-  const setSelectedWorld = (value: string) => { worldRef.current = value; invalidatePreview(); setWorldName(value) }
+  const setSelectedWorld = (value: string) => { worldRef.current = value; invalidatePreview(); setWorldName(value); rememberWorld(browserStore(), gameDirRef.current, value) }
   const setSelectedFile = (value: File | null) => { fileRef.current = value; invalidatePreview(); setPackageFile(value) }
 
   const refresh = async (folder = gameDir) => {
@@ -48,29 +55,51 @@ export function useBbsInstall(vi: boolean) {
     const send = () => fetch(`/api/unified/bbs-install?gameDir=${encodeURIComponent(folder)}`, { cache: 'no-store' })
     let response = await send()
     if (response.status === 401) { await ensureUnifiedSession(true); response = await send() }
-    const body = await responseBody<{ worlds: InstallWorld[]; installs: InstallRecord[]; capabilities: BbsGameCapabilities }>(response, vi)
-    if (revision !== refreshRevision.current || gameDirRef.current !== folder) return
-    setCapabilities(body.capabilities)
-    if (body.capabilities.corrected) {
-      gameDirRef.current = body.capabilities.gameDir; setGameDirState(body.capabilities.gameDir)
-      localStorage.setItem('topview-bbs-game-dir', body.capabilities.gameDir)
-    }
+    const body = await responseBody<{ worlds: InstallWorld[]; installs: InstallRecord[]; capabilities: BbsGameCapabilities; gameRunning?: boolean | null }>(response, vi)
+    if (revision !== refreshRevision.current || gameDirRef.current !== folder) return null
+    setCapabilities(body.capabilities); setGameRunning(body.gameRunning ?? null)
+    // B50: a sub-folder (configbs\…, saves, mods) was walked back to the game root; show and keep the root.
+    const root = body.capabilities.gameDir
+    if (root !== folder) { gameDirRef.current = root; setGameDirState(root) }
+    setRecentDirs(rememberGameDir(browserStore(), root)); setScannedDir(root)
     setWorlds(body.worlds); setInstalls(body.installs)
-    const nextWorld = body.worlds.some((world) => world.name === worldRef.current) ? worldRef.current : body.worlds[0]?.name ?? ''
+    const nextWorld = pickWorld(browserStore(), root, body.worlds, worldRef.current)
     worldRef.current = nextWorld; setWorldName(nextWorld)
+    return body
   }
 
+  // B51: read worlds and mods by itself once a folder is typed, picked or remembered — no "Đọc world" click.
   useEffect(() => {
-    if (!gameDir.trim()) return
-    void refresh().catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-    // Initial read uses the saved folder; users can refresh explicitly after changing it.
+    const folder = gameDir.trim()
+    if (!folder || folder === scannedDir) return
+    const timer = setTimeout(() => {
+      setScanning(true); setError('')
+      void refresh(gameDir).catch((cause) => { if (gameDirRef.current === gameDir) setError(cause instanceof Error ? cause.message : String(cause)) })
+        .finally(() => setScanning(false))
+      // Long enough that a half-typed path is not walked back to its parent while the user is still typing.
+    }, 1000)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [gameDir, scannedDir])
 
   const loadWorlds = async () => {
-    setError('')
+    setError(''); setScanning(true)
     try { await refresh() }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setScanning(false) }
+  }
+
+  /** B50: native folder dialog on this computer. */
+  const chooseFolder = async () => {
+    setError('')
+    try {
+      await ensureUnifiedSession()
+      const send = () => fetch('/api/unified/bbs-install/choose-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initial: gameDirRef.current }) })
+      let response = await send()
+      if (response.status === 401) { await ensureUnifiedSession(true); response = await send() }
+      const body = await responseBody<{ path: string | null }>(response, vi)
+      if (body.path) setGameDir(body.path)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
   }
 
   const preview = async () => {
@@ -122,8 +151,16 @@ export function useBbsInstall(vi: boolean) {
   const installJob = async (projectId: string, jobId: string): Promise<string> => {
     const folder = gameDirRef.current, world = worldRef.current
     if (!folder.trim() || !world) throw new Error(vi ? 'Chọn thư mục game và world trong mục Cài vào game.' : 'Choose a game folder and world under Install into game.')
-    setBusy(true); setError(''); setPlan(null); setStatus(vi ? 'Đang xem trước gói vừa xuất…' : 'Previewing the exported package…')
+    setBusy(true); setError(''); setPlan(null); setStatus(vi ? 'Đang kiểm tra game…' : 'Checking the game…')
     try {
+      // B33: re-check right before writing; BBS has crashed when a Film appeared while its Film panel was open.
+      const fresh = await refresh(folder)
+      if (fresh?.gameRunning && !window.confirm(vi
+        ? 'Minecraft đang chạy từ thư mục game này. Cài film lúc game mở có thể làm BBS bị lỗi.\n\nNên thoát world (hoặc đóng bảng Film trong BBS) rồi bấm Xuất lại.\n\nVẫn cài ngay?'
+        : 'Minecraft is running from this game folder. Installing now can crash BBS.\n\nLeave the world (or close the BBS Film panel) and export again.\n\nInstall anyway?')) {
+        throw new Error(vi ? 'Chưa cài vì game đang chạy. Gói đã xuất vẫn được giữ; thoát world rồi cài lại.' : 'Not installed because the game is running. The exported package is kept.')
+      }
+      setStatus(vi ? 'Đang xem trước gói vừa xuất…' : 'Previewing the exported package…')
       await ensureUnifiedSession()
       const post = (url: string, body: unknown) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const call = async (url: string, body: unknown) => { let response = await post(url, body); if (response.status === 401) { await ensureUnifiedSession(true); response = await post(url, body) } return response }
@@ -161,5 +198,5 @@ export function useBbsInstall(vi: boolean) {
     finally { setBusy(false) }
   }
 
-  return { capabilities, gameDir, setGameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, installJob, uninstall }
+  return { capabilities, gameDir, setGameDir, recentDirs, chooseFolder, gameRunning, scanning, scanned: !!scannedDir && scannedDir === gameDir, worlds, installs, worldName, setWorldName: setSelectedWorld, packageFile, setPackageFile: setSelectedFile, plan, busy, error, status, refresh, loadWorlds, preview, apply, installJob, uninstall }
 }

@@ -35,3 +35,34 @@ export async function prepareFilmExportRevision(options: {
   if (result.revision !== project.revision || result.sourceRevision !== project.revision || result.errors.length) throw new Error(options.failedMessage)
   return project.revision
 }
+
+/** B49: familiar frame shapes; the decimal value stays internal. */
+export const ASPECT_PRESETS = [
+  { label: '16:9', value: 16 / 9, hint: 'màn hình ngang (YouTube)' },
+  { label: '9:16', value: 9 / 16, hint: 'màn hình dọc (Shorts, TikTok)' },
+  { label: '1:1', value: 1, hint: 'vuông' },
+  { label: '4:3', value: 4 / 3, hint: 'ti vi cũ' },
+  { label: '2.39:1', value: 2.39, hint: 'màn ảnh rộng điện ảnh' },
+] as const
+
+export function aspectPreset(value: number): (typeof ASPECT_PRESETS)[number] | undefined {
+  return ASPECT_PRESETS.find((preset) => Math.abs(preset.value - value) < 1e-3)
+}
+
+export function aspectLabel(value: number): string {
+  return aspectPreset(value)?.label ?? `≈ ${value.toFixed(2).replace('.', ',')}:1`
+}
+
+/** B48: characters whose motion clips overlap the export range. */
+export function charactersInRange(project: UnifiedProject, range: { startFrame: number; endFrame: number }): string[] {
+  const clips = project.scene.content.timeline.animation.motionClips
+  return Object.values(project.characters)
+    .filter((character) => clips.some((clip) => clip.target.nodeId === character.nodeId && clip.frameEnd >= range.startFrame && clip.frameStart <= range.endFrame))
+    .map((character) => character.id)
+}
+
+/** B48: tick every character that acts in the shot; with no clips at all, tick everyone so nobody is silently left out. */
+export function defaultExportCharacterIds(project: UnifiedProject, range: { startFrame: number; endFrame: number }): string[] {
+  const acting = charactersInRange(project, range)
+  return acting.length ? acting : Object.keys(project.characters)
+}

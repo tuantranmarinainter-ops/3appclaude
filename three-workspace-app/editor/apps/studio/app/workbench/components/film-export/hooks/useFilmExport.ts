@@ -10,7 +10,9 @@ import { selectExportShots, exportShotRepairRanges, planExportCameraRepair } fro
 import type { FilmEffectsPolicy } from '../../../../../src/filmEffectsPolicy'
 import type { FilmPreflightIssue, FilmPreflightResult } from '../../../../../src/filmPreflight'
 
-import { filmExportContentKey, prepareFilmExportRevision } from '../utils'
+import { readFilmAnchorLocations } from '../../../../../src/filmAnchorLocations'
+import { charactersInRange, defaultExportCharacterIds, filmExportContentKey, prepareFilmExportRevision } from '../utils'
+import { ensureUnifiedSession } from '../../../../../src/unifiedApi'
 
 function isSeriesJob(job: UnifiedJobView): boolean { return typeof job.result?.provenance.segmentCount === 'number' }
 
@@ -20,11 +22,20 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
   const props = project.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string')
   const sequences = project.scene.content.editorial?.sequences ?? []
   const [effectsPolicy, setEffectsPolicy] = useState<FilmEffectsPolicy>({ mode: 'omit' })
-  useEffect(() => { setEffectsPolicy({ mode: 'omit' }) }, [capabilities])
+  // Effects are part of the film once the game can play them (AAA found); without AAA they stay out.
+  useEffect(() => {
+    setEffectsPolicy(capabilities?.effectsCompatible
+      ? { mode: 'include', target: { runtime: 'bbs-fs-2.7', aaaRendererAvailable: true, compatibleAddonConfirmed: true, gameDir: capabilities.gameDir } }
+      : { mode: 'omit' })
+  }, [capabilities])
   const [worldAnchorInputValid, setWorldAnchorInputValid] = useState(true)
-  const [worldAnchor, setWorldAnchor] = useState<FilmWorldAnchor>({ mode: 'local-origin', destination: [0, 64, 0] })
+  // Start from the place last remembered in this project instead of (0, 64, 0).
+  const [worldAnchor, setWorldAnchor] = useState<FilmWorldAnchor>(() => readFilmAnchorLocations(project.extensions).at(-1)?.anchor ?? { mode: 'local-origin', destination: [0, 64, 0] })
   const [content, setContent] = useState<'characters' | 'backdrops' | 'both'>('characters')
-  const [characterIds, setCharacterIds] = useState<string[]>(characters[0] ? [characters[0].id] : [])
+  const [characterIds, setCharacterIdsRaw] = useState<string[]>([])
+  // B48: tick every acting character until the user changes the list by hand.
+  const charactersEdited = useRef(false)
+  const setCharacterIds = (ids: string[]) => { charactersEdited.current = true; setCharacterIdsRaw(ids) }
   const [propIds, setPropIds] = useState<string[]>(props.map((node) => node.id))
   const [seriesCharacterSelection, setSeriesCharacterSelection] = useState<'auto' | 'selected'>('auto')
   const [seriesPropSelection, setSeriesPropSelection] = useState<'auto' | 'selected'>('auto')
@@ -68,6 +79,16 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     ? alignFilmRangeToTickGrid({ startFrame, endFrame }, timeline.fps, timeline)
     : null, [exportMode, startFrame, endFrame, timeline])
   const effectiveRange = useMemo(() => rangeAlignment?.range ?? { startFrame, endFrame }, [rangeAlignment, startFrame, endFrame])
+  const actingCharacterIds = useMemo(() => charactersInRange(project, effectiveRange), [project, effectiveRange])
+  const actingKey = actingCharacterIds.join('|')
+  useEffect(() => {
+    if (!charactersEdited.current) setCharacterIdsRaw(defaultExportCharacterIds(project, effectiveRange))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actingKey, project.projectId])
+  const actingButUnselected = actingCharacterIds.filter((id) => !characterIds.includes(id)).map((id) => project.characters[id]!.name)
+  const selectAllCharacters = () => setCharacterIds(characters.map((character) => character.id))
+  const clearCharacters = () => setCharacterIds([])
+  const toggleCharacter = (id: string, on: boolean) => setCharacterIds(on ? [...new Set([...characterIds, id])] : characterIds.filter((item) => item !== id))
   const rangeNotice = rangeAlignment?.changed
     ? { from: { startFrame, endFrame }, to: rangeAlignment.range }
     : null
@@ -129,7 +150,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
   }
 
   /** `install` (B27) skips the ZIP folder picker and hands the finished job to the game installer instead. */
-  const exportFilm = async (options: { install?: (job: UnifiedJobView) => Promise<string> } = {}) => {
+  const exportFilm = async (options: { install?: (job: UnifiedJobView) => Promise<string>; datOnly?: boolean } = {}) => {
     if (busy) return
     if (!canExport) { setError(vi ? 'Kiểm tra trước khi xuất chưa đạt cho lựa chọn hiện tại.' : 'Preflight has not passed for the current selection.'); return }
     const exportKey = currentKey
@@ -188,6 +209,11 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
         setStatus(await options.install(job))
         return
       }
+      if (options.datOnly) {
+        setStatus(vi ? 'Xuất xong · đang lưu file .dat…' : 'Export complete · saving the .dat file…')
+        setStatus(await saveFilmDat(job, directory!))
+        return
+      }
       setStatus(vi ? 'Xuất xong · đang lưu ZIP đã xác minh…' : 'Export complete · saving the verified ZIP…')
       const prefix = isSeriesJob(job) ? 'film-series' : 'film'
       await saveJob(project.projectId, job, directory!, prefix)
@@ -198,6 +224,32 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     } finally { setBusy(false); setActiveJobId(null) }
   }
 
+  /** B56: copy only `films/<name>.dat` out of the verified package. */
+  const saveFilmDat = async (job: UnifiedJobView, directory: Awaited<ReturnType<typeof chooseDirectory>>): Promise<string> => {
+    await ensureUnifiedSession()
+    const response = await fetch(`/api/unified/projects/${encodeURIComponent(project.projectId)}/jobs/${encodeURIComponent(job.jobId)}/film-dat`, { cache: 'no-store' })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+      throw new Error(body?.error?.message ?? (vi ? 'Không lấy được file .dat.' : 'Could not read the .dat file.'))
+    }
+    const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? `${filmName}.dat`
+    if ((await directory.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await directory.requestPermission({ mode: 'readwrite' })) !== 'granted') throw new Error(vi ? 'Chưa được cấp quyền ghi vào thư mục đã chọn.' : 'No permission to write to that folder.')
+    const handle = await directory.getFileHandle(name, { create: true })
+    const writable = await handle.createWritable()
+    await writable.write(await response.blob()); await writable.close()
+    return vi ? `Đã lưu ${name} (chỉ file phim; tự chép nhân vật/hiệu ứng nếu cần).` : `Saved ${name} (film only).`
+  }
+
+  /** B55: the ZIP stays in the project; open its folder on this computer. */
+  const revealZip = async (job: UnifiedJobView) => {
+    setError('')
+    try {
+      await ensureUnifiedSession()
+      const response = await fetch(`/api/unified/projects/${encodeURIComponent(project.projectId)}/jobs/${encodeURIComponent(job.jobId)}/reveal`, { method: 'POST' })
+      if (!response.ok) throw new Error(vi ? 'Không mở được thư mục chứa ZIP.' : 'Could not open the ZIP folder.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+  }
+
   // A fresh project ships a camera sequence with no shots, which blocks every Film export. Offer to create
   // one Main Camera shot covering the current (grid-aligned) export range right here in the panel.
   const selectedSequence = sequences.find((sequence) => sequence.id === sequenceId)
@@ -206,11 +258,18 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
   const shotSelection = useMemo(() => selectExportShots(selectedSequence?.clips ?? [], effectiveRange, timeline.fps), [selectedSequence, effectiveRange, timeline.fps])
   const shotRepairs = useMemo(() => exportShotRepairRanges(selectedSequence?.clips ?? [], effectiveRange, timeline.fps), [selectedSequence, effectiveRange, timeline.fps])
   const applyShotRepair = (range: FrameRange) => { setStartFrame(range.startFrame); setEndFrame(range.endFrame) }
+  const [shotNotice, setShotNotice] = useState('')
   const chooseShot = (shotId: string) => {
     const shot = selectedSequence?.clips.find((clip) => clip.id === shotId)
     if (!shot) return
     setStartFrame(shot.sourceFrameStart); setEndFrame(shot.sourceFrameEnd)
+    setShotNotice(vi ? `Đã đặt khoảng ${shot.sourceFrameStart}–${shot.sourceFrameEnd} theo ${shot.id}.` : `Range set to ${shot.sourceFrameStart}–${shot.sourceFrameEnd} from ${shot.id}.`)
   }
+  // B57: show the shot the current range already matches instead of a blank picker.
+  const matchingShotId = selectedSequence?.clips.find((clip) => clip.sourceFrameStart === effectiveRange.startFrame && clip.sourceFrameEnd === effectiveRange.endFrame)?.id ?? ''
+  // B47: "several films" only means something with more than one shot in the chain.
+  const canSeries = (selectedSequence?.clips.length ?? 0) > 1
+  useEffect(() => { if (!canSeries && exportMode === 'series') setExportMode('film') }, [canSeries, exportMode])
   const [createdShotRevision, setCreatedShotRevision] = useState<number | null>(null)
   const [creatingShot, setCreatingShot] = useState(false)
   const createCameraShot = async () => {
@@ -269,5 +328,5 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
     viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot, shotSelection, chooseShot, shotRepairs, applyShotRepair,
-    selectedSequence, repairCameraChain, hasPerspectiveCamera: project.scene.content.nodes.some((node) => node.camera?.projection === 'perspective'), undoCreateCameraShot, canUndoCreateCameraShot: createdShotRevision === project.revision }
+    selectedSequence, matchingShotId, shotNotice, canSeries, actingCharacterIds, actingButUnselected, selectAllCharacters, clearCharacters, toggleCharacter, revealZip, repairCameraChain, hasPerspectiveCamera: project.scene.content.nodes.some((node) => node.camera?.projection === 'perspective'), undoCreateCameraShot, canUndoCreateCameraShot: createdShotRevision === project.revision }
 }
