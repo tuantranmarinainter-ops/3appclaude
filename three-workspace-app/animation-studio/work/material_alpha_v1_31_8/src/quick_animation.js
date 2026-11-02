@@ -473,6 +473,9 @@ function debugRoleList(m) {
     .filter(([, map]) => map)
     .map(([role, map]) => ({ role, map }));
 }
+// B65 (cần xem lại): selecting UV froze the app. Cause: prepareRender() ran drawUV() every frame (all triangles of all meshes redrawn).
+// drawUV now caches by geometry; the option stays hidden until the user re-tests it on dense meshes.
+const DEBUG_UV_HIDDEN_B65 = true;
 function refreshDebugModes(v) {
   const select = v.debugControls?.querySelector('select');
   if (!select) return;
@@ -486,6 +489,8 @@ function refreshDebugModes(v) {
   for (const option of select.options) {
     const ok = available.has(option.value);
     option.disabled = !ok;
+    // B65: "UV · đường UV" is hidden until it is reviewed (cần xem lại, B65); the code stays.
+    if (option.value === 'uv') option.hidden = DEBUG_UV_HIDDEN_B65;
     option.textContent =
       option.value === 'shaded'
         ? 'Shaded'
@@ -514,6 +519,9 @@ function drawUV(v) {
   const w = canvas.clientWidth || 300,
     h = canvas.clientHeight || 220,
     dpr = Math.min(devicePixelRatio || 1, 2);
+  const uvKey = [w, h, dpr, ...(v.rig.mesh || []).map((m) => m.geometry.uuid + ':' + (m.geometry.getAttribute('uv')?.version ?? '') + ':' + (m.geometry.index?.version ?? ''))].join('|');
+  if (v.debugUVKey === uvKey) return; // unchanged: do not redraw every frame
+  v.debugUVKey = uvKey;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   const c = canvas.getContext('2d');

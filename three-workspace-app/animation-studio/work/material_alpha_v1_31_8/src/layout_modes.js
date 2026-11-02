@@ -73,7 +73,8 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     drawerSmall = innerWidth <= 1024,
     allowedSmall = false,
     applying = false;
-  let classicVariables = {};
+  let classicVariables = {},
+    workflowWasOpen = false;
   let nativeOpen = new Map();
   const anchors = new Map(),
     slots = new Map(),
@@ -170,7 +171,11 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
   summary.setAttribute('aria-label', 'Công cụ khác');
   const overflow = make('div', 'layoutMoreContent');
   more.append(summary, overflow);
-  main.append(tools, playback, more);
+  // B69: frequently used viewport tools sit on this row (icons + Vietnamese tooltips); rare ones stay in "…".
+  const quick = make('div', 'layoutQuickTools');
+  quick.setAttribute('role', 'toolbar');
+  quick.setAttribute('aria-label', 'Công cụ khung 3D');
+  main.append(tools, playback, quick, more);
   stage.prepend(main);
   const material = make('button', 'layoutMaterial', 'Vật liệu / Texture');
   material.type = 'button';
@@ -181,6 +186,34 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
     persist();
   };
   overflow.append(material);
+  // B67: the "…" menu is grouped; each group has a heading (filled in setLayout).
+  const moreGroup = (id, label) => {
+    const group = make('section', 'layoutMore-' + id);
+    group.className = 'layout-more-group';
+    group.setAttribute('aria-label', label);
+    group.append(make('h4', null, label));
+    overflow.append(group);
+    return group;
+  };
+  const groupMode = moreGroup('mode', 'Chế độ làm việc'),
+    groupDual = moreGroup('dual', 'Hai nhân vật'),
+    groupToolset = moreGroup('toolset', 'Bộ công cụ'),
+    groupPanes = moreGroup('panes', 'Cột & cửa sổ');
+  // [id or selector, icon, Vietnamese tooltip] for controls that keep their node and listeners.
+  const quickIcons = [
+    ['#silhouetteBtn', '◐', 'Silhouette · hiện hình bóng nhân vật (Shift+S)'],
+    ['#projectionBtn', '◫', 'Chuyển Phối cảnh / Trực giao'],
+    ['#modeRig', '◎', 'Control Rig · điều khiển rig'],
+    ['#onionToggle', '❂', 'Bóng pose (onion skin) · bật/tắt'],
+    ['#layoutMaterial', '▦', 'Vật liệu / Texture'],
+    ['#minimalViewMenu > summary', '◈', 'Hiển thị · điểm, cạnh, bề mặt, cài đặt khung 3D'],
+  ];
+  const quickTitles = [
+    ['#cameraPreset', 'Góc camera'],
+    ['#viewportLayout', 'Bố cục khung 3D · 1 / 2 / 3 / 4 khung'],
+    ['#rigOptions', 'Chọn kiểu Control Rig'],
+    ['#onionOptions', 'Tùy chỉnh Bóng pose'],
+  ];
   const back = make('button', 'layoutDefaultTools', 'Về công cụ chế độ');
   back.type = 'button';
   back.onclick = () => {
@@ -369,7 +402,40 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
       );
       for (const node of nativeOpen.keys()) node.open = true;
       move(stageToolbar, overflow);
-      move(workflowTools, overflow);
+          // B69: viewport tools go to the main row; rig/onion/view menus keep their popup behavior.
+      move($('silhouetteBtn'), quick);
+      for (const label of ['Camera và bố cục', 'Điều khiển rig', 'Hiển thị'])
+        move(stageToolbar.querySelector(`.studio-group[aria-label="${label}"]`), quick);
+      move($('onionToggle')?.closest('.onion-actions'), quick);
+      move(stageToolbar.querySelector('[aria-label="Phóng lớn khung 3D"]'), quick);
+      move(material, quick);
+      for (const [selector, icon, title] of quickIcons) {
+        const node = quick.querySelector(selector);
+        if (!node) continue;
+        node.dataset.quickIcon = icon;
+        node.title = title;
+        node.setAttribute('aria-label', title);
+      }
+      for (const [selector, title] of quickTitles) {
+        const node = quick.querySelector(selector);
+        if (node) {
+          node.title = title;
+          node.setAttribute('aria-label', title);
+        }
+      }
+      const fullscreen = quick.querySelector('[aria-label="Phóng lớn khung 3D"]');
+      if (fullscreen) fullscreen.title = 'Phóng lớn khung 3D';
+      // B67: rarely used items stay in "…", grouped; the advanced tools expand inline instead of a clipped popup.
+      workflowWasOpen = workflowTools.open;
+      workflowTools.open = true; // its summary is hidden in this layout; the content is always shown in the group
+      move(workflowTools, groupMode);
+      move($('dualCharacterToggle'), groupDual);
+      move($('dualTimelineToolbarLabel'), groupDual);
+      move($('dualActiveLabel'), groupDual);
+      move(stageToolbar.querySelector('.studio-switch'), groupToolset);
+      move($('labLayoutControl'), groupToolset);
+      move($('motionLayerToggle'), groupToolset);
+      move($('toggleTree')?.closest('.studio-group'), groupPanes);
       move($('transformTools'), tools);
       for (const id of ['restartBtn', 'prevFrame', 'prevKey', 'playBtn', 'nextKey', 'nextFrame'])
         move($(id), playback);
@@ -396,6 +462,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
       body.classList.add('layout-classic');
       for (const [node, anchor] of [...anchors].reverse()) anchor.after(node);
       for (const [node, open] of nativeOpen) node.open = open;
+      workflowTools.open = workflowWasOpen;
       if (leftGrip) leftGrip.style.removeProperty('grid-column');
       if (rightGrip) rightGrip.style.removeProperty('grid-column');
       for (const [key, value] of Object.entries(classicVariables)) {
