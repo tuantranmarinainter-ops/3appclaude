@@ -49,7 +49,13 @@ export function planShotCoverage<T extends ShotChainClip>(allClips: readonly T[]
   const suggestions = shotRangeSuggestions(nodeClips)
   const suggestText = suggestions.length ? ` Khoảng hợp lệ: ${suggestions.map(([a, b]) => `${a}–${b}`).join(', ')}.` : ''
   const fail = (reason: string): ShotCoverage<T> => ({ ok: false, suggestions, message: `Nhân vật ${characterName} cần đúng một MotionClip phủ hết frame ${start}–${end} (hoặc một chuỗi clip nối nhau bằng vùng trộn): ${reason}${suggestText}` })
-  const touching = nodeClips.filter((clip) => clip.frameStart <= end && clip.frameEnd >= start).sort((a, b) => a.frameStart - b.frameStart)
+  const overlapping = nodeClips.filter((clip) => clip.frameStart <= end && clip.frameEnd >= start)
+  // Clip liền kề dùng chung khung biên (0–22 rồi 22–76): clip chỉ chạm đúng khung đầu/cuối của khoảng
+  // không tính nếu một clip khác đã phủ khung đó và đi tiếp vào trong khoảng.
+  const touching = overlapping.filter((clip) => !(
+    (clip.frameEnd === start && start < end && overlapping.some((other) => other !== clip && other.frameStart <= start && other.frameEnd > start))
+    || (clip.frameStart === end && start < end && overlapping.some((other) => other !== clip && other.frameEnd >= end && other.frameStart < end))
+  )).sort((a, b) => a.frameStart - b.frameStart)
   const existing = nodeClips.length ? [...nodeClips].sort((a, b) => a.frameStart - b.frameStart).map(clipLabel).join(', ') : 'chưa có clip nào trên timeline'
   if (!touching.length) return fail(`không có clip nào trong khoảng này; clip hiện có: ${existing}.`)
   if (touching.length === 1) {

@@ -37,6 +37,17 @@ test('shot coverage: unconnected clips are rejected with Vietnamese clip list an
   assert.deepEqual(shotRangeSuggestions([clip('A', 0, 58), clip('B', 44, 134, blend(15)), clip('C', 200, 260)]), [[0, 134], [200, 260]])
 })
 
+test('shot coverage: neighbour clip that only shares the boundary frame is ignored', () => {
+  // Đen: 0–22 then 22–76, and 68–142 blended into 22–76.
+  const clips = [clip('stand', 0, 22), clip('stun', 22, 76), clip('stun2', 68, 142, blend(9))]
+  const chain = planShotCoverage(clips, 'actor', 22, 142, 'Đen')
+  assert.ok(chain.ok && chain.kind === 'chain' && chain.clips.map((c) => c.id).join() === 'stun,stun2')
+  const single = planShotCoverage(clips, 'actor', 22, 60, 'Đen')
+  assert.ok(single.ok && single.kind === 'single' && single.clips[0].id === 'stun')
+  const head = planShotCoverage(clips, 'actor', 0, 22, 'Đen')
+  assert.ok(head.ok && head.kind === 'single' && head.clips[0].id === 'stand')
+})
+
 test('shot coverage: no clip, outside range, bad overlaps', () => {
   assert.match((planShotCoverage([], 'actor', 0, 10, 'Đen') as { message: string }).message, /chưa có clip nào trên timeline/)
   assert.match((planShotCoverage([clip('A', 0, 58)], 'actor', 100, 120, 'Đen') as { message: string }).message, /không có clip nào trong khoảng này/)
