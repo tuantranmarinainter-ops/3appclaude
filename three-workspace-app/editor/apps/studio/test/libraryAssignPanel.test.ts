@@ -75,10 +75,10 @@ test('N1: library.place honors an explicit frameStart and place-for-node routes 
     /đã có clip khác|overlap/i)
   assert.equal((await readUnifiedProject(projectId)).revision, revision)
 
-  // Another character's same-rig Draft is copied into the target's set, then placed (appended).
+  // B34: another Minecraft20 character's Draft is placed directly (no library copy), appended.
   const copied = await placeLibraryActionForNode({ projectId, actionUuid: den.draftUuid, nodeId })
-  assert.equal(copied.converted, true)
-  assert.notEqual(copied.placedActionUuid, den.draftUuid)
+  assert.equal(copied.converted, false)
+  assert.equal(copied.placedActionUuid, den.draftUuid)
   assert.equal(copied.frameStart, own.frameEnd + 1, 'no frameStart appends after the last clip')
   revision = copied.revision
 

@@ -441,6 +441,7 @@
 .t3d-workspace {
   flex: 1;
   display: flex;
+  min-width: 0;
   min-height: 0;
   position: relative;
 }

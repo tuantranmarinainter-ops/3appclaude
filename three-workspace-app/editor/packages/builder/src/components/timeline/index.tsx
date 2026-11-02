@@ -1,3 +1,4 @@
+import { timelineClipboardCommand } from './utils/clipGestures'
 import { TimelineFrameField, TimelineRangeField, TransportButton } from './TimelineControls'
 import { useTimelineMarquee } from './hooks/useTimelineMarquee'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -17,6 +18,7 @@ import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
 import {
   IconAutoKeyframe,
   IconChevron,
+  IconLock,
   IconPause,
   IconPlay,
   IconSnapMagnet,
@@ -64,6 +66,7 @@ function SceneTimeline() {
   const userKeysEnabled = useStore((s) => s.userKeysEnabled)
   const autoKeyframe = useStore((s) => s.autoKeyframe)
   const timelineSnap = useStore((s) => s.timelineSnap)
+  const viewportLocked = useStore((s) => s.viewportLocked)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
   const timelineUnit = useStore((s) => s.timelineUnit)
@@ -83,6 +86,7 @@ function SceneTimeline() {
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
+    toggleViewportLocked,
     addKeyframes,
     addTransformKeyframes,
     moveKeyframes,
@@ -367,6 +371,18 @@ function SceneTimeline() {
     <div
       className={cx('t3d-timeline', !timelineOpen && 'is-collapsed')}
       data-tutorial-anchor="timeline"
+      tabIndex={0}
+      onPointerDownCapture={(e) => { if (!(e.target as HTMLElement).closest('input, textarea, select, button, [contenteditable="true"]')) e.currentTarget.focus() }}
+      onKeyDown={(e) => {
+        const command = timelineClipboardCommand(e, Boolean((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')))
+        if (!command) return
+        const s = useStore.getState()
+        if (command === 'copy' && s.selection?.kind === 'clip') {
+          e.preventDefault(); e.stopPropagation(); s.copyTimelineClip(s.selection.clipType, s.selection.clipId)
+        } else if (command === 'paste') {
+          e.preventDefault(); e.stopPropagation(); s.pasteTimelineClip(stage.currentFrame)
+        }
+      }}
       style={{ ['--t3d-timeline-height' as string]: `${timelineHeight}px` }}
     >
       <Tooltip label={timelineOpen ? t('timeline.collapse') : t('timeline.expand')} side="top">
@@ -422,6 +438,17 @@ function SceneTimeline() {
           >
             <IconSnapMagnet />
             {t('timeline.snap')}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('timeline.lockViewTitle')} side="top">
+          <button
+            type="button"
+            className={cx('t3d-timeline-auto-key', viewportLocked && 'is-active')}
+            aria-pressed={viewportLocked}
+            onClick={toggleViewportLocked}
+          >
+            <IconLock />
+            {t('timeline.lockView')}
           </button>
         </Tooltip>
         <label className="t3d-timeline-field">
