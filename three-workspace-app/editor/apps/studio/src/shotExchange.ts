@@ -1,4 +1,6 @@
 import { libraryCharacterBoundingBoxHeight } from './libraryCharacterSpacing'
+import { planShotCoverage, type ShotCoverage } from './shotChain'
+import { bakeShotChain } from './shotBake'
 import { app3HeightHint } from './app3Height'
 import { shotClipPayload } from './shotClip'
 import { randomUUID } from 'node:crypto'
@@ -13,8 +15,10 @@ import { jsonBytes, sha256, validateShot, zipPackage, unzipPackage, readPackageJ
 import { getAction, resolveCharacter } from '../../../packages/library/index'
 import { composeLibraryActionGlb, libraryCharacterModel, libraryNativeAction } from './libraryModels'
 
+type MotionClip=UnifiedProject['scene']['content']['timeline']['animation']['motionClips'][number]
 export interface ShotExportArgs { cameraNodeId: string; frameStart: number; frameEnd: number; editableCharacterIds: string[] }
-export interface SavedShot { sourceRevision: number; zipSha256: string; shot: Shot; clips: Record<string, { clipId: string; motionId: string }> }
+export interface SavedShotClip { clipId: string; motionId: string; /** K5: shot nướng từ chuỗi clip trộn; motionId là Action đã nướng (không có trong project). */ chain?: Array<{ clipId: string; motionId: string; frameStart: number; frameEnd: number }> }
+export interface SavedShot { sourceRevision: number; zipSha256: string; shot: Shot; clips: Record<string, SavedShotClip> }
 function shotRoot(projectId: string) {
   if (!/^[0-9a-f-]{36}$/i.test(projectId)) throw new TypeError('Invalid project ID')
   return path.join(path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects')), projectId, '.shots')
@@ -23,10 +27,21 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
   const timeline=project.scene.content.timeline
   if(Object.keys(args).some(key=>!['cameraNodeId','frameStart','frameEnd','editableCharacterIds'].includes(key)) || timeline.fps!==30 || !Number.isSafeInteger(args.frameStart)||!Number.isSafeInteger(args.frameEnd)||args.frameStart<timeline.frameStart||args.frameEnd<args.frameStart||args.frameEnd>timeline.frameEnd || args.frameEnd-args.frameStart>9000 || !Array.isArray(args.editableCharacterIds)||!args.editableCharacterIds.length||new Set(args.editableCharacterIds).size!==args.editableCharacterIds.length || args.editableCharacterIds.some(id=>!Object.hasOwn(project.characters,id))) throw new TypeError('Shot requires 30 FPS, a valid inclusive range and unique editable Character IDs')
   if(!project.scene.content.nodes.some(n=>n.type==='camera'&&n.id===args.cameraNodeId))throw new TypeError('Shot camera does not exist')
+  // K5: mỗi nhân vật được phủ bởi một clip hoặc một chuỗi clip nối nhau bằng vùng trộn; chuỗi được nướng cho cả khoảng,
+  // nên khoảng shot mở rộng ra đúng [đầu clip đầu, cuối clip cuối] của chuỗi (clip gộp phủ trọn khoảng này).
+  const coverage=new Map<string,Extract<ShotCoverage<MotionClip>,{ok:true}>>()
+  let rangeStart=args.frameStart,rangeEnd=args.frameEnd
+  for(const character of Object.values(project.characters)) {
+    const plan=planShotCoverage(timeline.animation.motionClips,character.nodeId,args.frameStart,args.frameEnd,character.name)
+    if(!plan.ok) { if(args.editableCharacterIds.includes(character.id)) throw new TypeError(plan.message); continue }
+    coverage.set(character.id,plan)
+    if(plan.kind==='chain'&&args.editableCharacterIds.includes(character.id)){rangeStart=Math.min(rangeStart,plan.span[0]);rangeEnd=Math.max(rangeEnd,plan.span[1])}
+  }
+  if(rangeStart<timeline.frameStart||rangeEnd>timeline.frameEnd||rangeEnd-rangeStart>9000)throw new TypeError(`Chuỗi clip đã trộn (${rangeStart}–${rangeEnd}) vượt ra ngoài timeline hoặc dài quá 9000 khung`)
   const files: PackageFiles={},clips: SavedShot['clips']={},scene=projectEvaluationScene(project),snapshot=createFrameSnapshot()
-  const shot: Shot={version:'1.0.0',shotId:randomUUID(),sceneId:project.projectId,fps:30,frameRange:[args.frameStart,args.frameEnd],camera:{keys:[]},characters:[],references:[]}
+  const shot: Shot={version:'1.0.0',shotId:randomUUID(),sceneId:project.projectId,fps:30,frameRange:[rangeStart,rangeEnd],camera:{keys:[]},characters:[],references:[]}
   const xyz=(v:{x:number;y:number;z:number})=>[v.x,v.y,v.z]
-  for(let frame=args.frameStart;frame<=args.frameEnd;frame++) {
+  for(let frame=rangeStart;frame<=rangeEnd;frame++) {
     evaluateFrame(scene,frame,snapshot)
     const camera=snapshot.transforms.get(args.cameraNodeId)
     if(!camera)throw new TypeError('Camera could not be evaluated')
@@ -34,14 +49,26 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     if(!look)throw new TypeError('Camera lookAt is unavailable')
     shot.camera.keys.push({frame,position:xyz(camera.position),lookAt:xyz(look),fovYDegrees:camera.fov??50})
   }
-  evaluateFrame(scene,args.frameStart,snapshot)
+  evaluateFrame(scene,rangeStart,snapshot)
   for(const character of Object.values(project.characters)) {
-    const covering=timeline.animation.motionClips.filter(c=>c.target.nodeId===character.nodeId&&c.frameStart<=args.frameEnd&&c.frameEnd>=args.frameStart)
-    if(covering.length!==1||covering[0]!.frameStart>args.frameStart||covering[0]!.frameEnd<args.frameEnd) {
-      if(args.editableCharacterIds.includes(character.id)) { const own=timeline.animation.motionClips.filter(c=>c.target.nodeId===character.nodeId); throw new TypeError(`Nhân vật ${character.name} cần đúng một MotionClip phủ hết frame ${args.frameStart}–${args.frameEnd}; clip hiện có của nhân vật: ${own.length?own.map(c=>`${c.frameStart}–${c.frameEnd}`).join(', '):'chưa có clip nào trên timeline'}`) }
+    const plan=coverage.get(character.id)
+    if(!plan||plan.kind==='single'&&(plan.clips[0].frameStart>rangeStart||plan.clips[0].frameEnd<rangeEnd))continue
+    if(plan.kind==='chain'){
+      const node=project.scene.content.nodes.find(n=>n.id===character.nodeId)
+      const libraryCharacterId=typeof node?.metadata?.libraryCharacterId==='string'?node.metadata.libraryCharacterId:null
+      const baked=await bakeShotChain(project,character,plan.clips,[rangeStart,rangeEnd],libraryCharacterId)
+      const prefix=`characters/${character.id}`,glb=prefix+'.glb',manifestPath=prefix+'.manifest.json'
+      files[glb]=baked.bytes;files[manifestPath]=jsonBytes(baked.manifest)
+      const t=snapshot.transforms.get(character.nodeId);if(!t)throw new TypeError('Character placement is unavailable')
+      const height=app3HeightHint(node?.metadata)
+      if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-(height?.heightScale??1))>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
+      let shotHeight=height
+      if(height) { try { shotHeight={...height,heightScale:height.heightBlocks/libraryCharacterBoundingBoxHeight(Buffer.from(baked.bytes))} } catch { /* Animation-only GLB retains the source model's canonical units. */ } }
+      shot.characters.push({...shotHeight,characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(baked.bytes),actionUuid:baked.actionUuid,clip:{sourceStartSeconds:0,sourceEndSeconds:baked.durationSeconds,speed:1,loop:false,reverse:false},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:'skeletal',editable:args.editableCharacterIds.includes(character.id)})
+      clips[character.id]={clipId:plan.clips[0]!.id,motionId:baked.actionUuid,chain:plan.clips.map(c=>({clipId:c.id,motionId:project.bindings[c.id]?.motionId??c.motion.assetId,frameStart:c.frameStart,frameEnd:c.frameEnd}))}
       continue
     }
-    const clip=covering[0]!,motion=project.motions[clip.motion.assetId],binding=project.bindings[clip.id]
+    const clip=plan.clips[0],motion=project.motions[clip.motion.assetId],binding=project.bindings[clip.id]
     if(!motion||!binding)throw new TypeError('Shot Motion or Binding is missing')
     const source=motion.edit?await resolveProjectBlob(project.projectId,motion.sourceClip):(await resolveUnifiedAssetFile(project,motion.assetId,'source')).bytes
     const manifests=project.extensions.app1Manifests
@@ -83,7 +110,7 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     const height = app3HeightHint(node?.metadata)
     if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-(height?.heightScale??1))>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
     // B20: sourceEndSeconds luôn bị kẹp trong thời lượng Action; Giãn chậm đổi thành speed, Giữ khung cuối/Lặp giữ nguyên đoạn nguồn.
-    const payload=shotClipPayload(clip,binding,30,args.frameStart,motion.durationSeconds)
+    const payload=shotClipPayload(clip,binding,30,rangeStart,motion.durationSeconds)
     const shotClip={sourceStartSeconds:payload.sourceStartSeconds,sourceEndSeconds:payload.sourceEndSeconds,speed:payload.speed,loop:payload.loop,reverse:payload.reverse}
     let shotHeight=height
     if(height) {

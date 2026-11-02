@@ -9,6 +9,8 @@ import { libraryAnimationEntry } from './utils'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 import { resolveTimelineInOutDefault } from '../../../../src/timelineInOut'
+import { BLEND_EDIT_REQUEST_EVENT, takePendingBlendEditRequest, type BlendEditRequest } from '../../../../src/blendEditRequest'
+import { defaultMergedClipInfo, planShotCoverage } from '../../../../src/shotChain'
 import { APP3_BRIDGE_CHANNEL as CHANNEL, APP3_BRIDGE_URL as BRIDGE_URL, APP3_FRAME_URL as FRAME_URL, APP3_TITLE } from '../../../../src/app3Embed'
 
 type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { state?: { project?: Record<string, unknown> }; nativeProject?: Record<string, unknown>; derivativeBase64?: string; fps?: number; duration?: number; shotId?: string; characterId?: string; zip?: ArrayBuffer }; error?: string }
@@ -53,12 +55,38 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, projectId])
   const [shotId, setShotId] = useState('')
+  // K5: shot mở từ chuỗi clip trộn -> trả về sẽ gộp thành một clip; hộp thoại "Lưu clip gộp" hỏi tên + mô tả.
+  const [chainInfo, setChainInfo] = useState<{ defaults: { name: string; description: string }; characterName: string; span: [number, number] } | null>(null)
+  const [mergeDialog, setMergeDialog] = useState<{ name: string; description: string } | null>(null)
+  const [blendRequest, setBlendRequest] = useState<BlendEditRequest | null>(null)
   const [withBobj, setWithBobj] = useState(false)
   const nativeMotions = useMemo(() => Object.values(project.motions).filter((motion) => {
     const asset = project.assets[motion.assetId]
     const boundToCharacter = Object.values(project.bindings).some((binding) => binding.motionId === motion.id && binding.characterId === characterId)
     return asset?.source.mediaType === 'model/gltf-binary' && (motion.edit || boundToCharacter)
   }), [characterId, project])
+
+  // K5: yêu cầu "Sửa chỗ nối trong App 3" từ dải X (sự kiện hoặc sessionStorage khi panel mount muộn).
+  useEffect(() => {
+    const take = () => { const request = takePendingBlendEditRequest(projectId); if (request) setBlendRequest(request) }
+    take()
+    window.addEventListener(BLEND_EDIT_REQUEST_EVENT, take)
+    return () => window.removeEventListener(BLEND_EDIT_REQUEST_EVENT, take)
+  }, [projectId])
+  useEffect(() => {
+    if (!blendRequest || !active || !bridgeReady || busy) return
+    const request = blendRequest
+    const character = Object.values(project.characters).find((item) => item.nodeId === request.characterNodeId)
+    setBlendRequest(null)
+    if (!character) { setError('Không tìm thấy nhân vật của dải trộn trong project.'); return }
+    if (shotId || editorDirty) { setError('Đang có shot mở hoặc bản sửa chưa lưu: hãy "Trả kết quả về cảnh" hoặc "Bỏ sửa" trước khi mở chỗ nối khác.'); return }
+    shotRangeEdited.current = true; setShotRangeFromInOut(false)
+    setCharacterId(character.id)
+    shotRangeSyncedFor.current = character.id
+    setShotRange([request.frameStart, request.frameEnd])
+    void openShot([request.frameStart, request.frameEnd], false, character.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blendRequest, active, bridgeReady, busy])
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
@@ -147,26 +175,27 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }
 
   /** App 2 → App 3: export the shot from the scene (shot.export), then open its ZIP in the editor. */
-  async function openShot(range: [number, number] = shotRange, blank = false) {
-    if (busy || !characterId || !cameraId) return
+  async function openShot(range: [number, number] = shotRange, blank = false, forCharacterId?: string) {
+    const shotCharacterId = forCharacterId ?? characterId
+    if (busy || !shotCharacterId || !cameraId) return
+    let chain: typeof chainInfo = null
     if (!blank) {
-      // E10: chặn ngay tại client với thông báo tiếng Việt khi khoảng chọn không nằm trọn
-      // trong đúng một MotionClip của nhân vật (khớp điều kiện shotExchange kiểm tra phía server).
-      const character = project.characters[characterId]
-      const overlapping = selectedClips.filter((clip) => clip.frameStart <= range[1] && clip.frameEnd >= range[0])
-      const covered = overlapping.length === 1 && overlapping[0]!.frameStart <= range[0] && overlapping[0]!.frameEnd >= range[1]
-      if (character && !covered) {
-        const existing = selectedClips.length ? selectedClips.map((clip) => `${clip.frameStart}–${clip.frameEnd}`).join(', ') : 'chưa có clip nào trên timeline'
-        setError(`Nhân vật ${character.name} cần đúng một MotionClip phủ hết khoảng shot ${range[0]}–${range[1]}; clip hiện có của nhân vật: ${existing}. Hãy chọn khoảng nằm trọn trong một clip.`)
-        setStatus('Không mở được shot.')
-        return
+      // K5: một clip HOẶC chuỗi clip nối nhau bằng vùng trộn; lỗi tiếng Việt nêu clip hiện có và khoảng gợi ý (cùng hàm với server).
+      const character = project.characters[shotCharacterId]
+      if (character) {
+        const plan = planShotCoverage(timeline.animation.motionClips, character.nodeId, range[0], range[1], character.name)
+        if (!plan.ok) { setError(plan.message); setStatus('Không mở được shot.'); return }
+        if (plan.kind === 'chain') {
+          chain = { defaults: defaultMergedClipInfo(plan.clips as never), characterName: character.name, span: plan.span }
+          range = plan.span
+        }
       }
     }
     setBusy(true); setError(''); setStatus('Đang xuất gói shot từ cảnh…')
     try {
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.export',
-        args: { cameraNodeId: cameraId, frameStart: range[0], frameEnd: range[1], editableCharacterIds: [characterId] } })
+        args: { cameraNodeId: cameraId, frameStart: range[0], frameEnd: range[1], editableCharacterIds: [shotCharacterId] } })
       const job = await loadUnifiedJob(projectId, String(response.result.jobId))
       const file = job.result?.files.find((item) => item.name.endsWith('.zip')) ?? job.result?.files[0]
       if (!file) throw new Error('shot.export không trả file ZIP.')
@@ -175,17 +204,22 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       await request('shotOpen', { bytes, blank })
       setShotRange(range)
       setMotionId(''); setClipId(''); setRevisionConflict(false)
+      setChainInfo(chain)
       setShotId(String(response.result.shotId))
       openedRevision.current = latest.project.revision
       setOpened(true)
-      setStatus(`Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
+      setStatus(chain
+        ? `Đã mở chuỗi clip đã trộn (nướng sẵn) · shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh key xong bấm "Trả kết quả về cảnh" để gộp thành một clip.`
+        : `Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
   }
 
   /** App 3 → App 2: result package ZIP from the editor → upload → shot.result.import (new Motion, one Undo step). */
-  async function returnShot() {
+  async function returnShot(merge?: { name: string; description: string }) {
     if (busy || !shotId) return
+    if (chainInfo && !merge) { setMergeDialog({ ...chainInfo.defaults }); return }
+    setMergeDialog(null)
     setBusy(true); setError(''); setStatus('Đang xuất gói kết quả…')
     try {
       let zip: ArrayBuffer | undefined
@@ -197,11 +231,13 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       if (!zip) throw new Error('Editor không trả gói kết quả.')
       const upload = await uploadUnifiedAsset(new File([zip], `${shotId}.result.zip`, { type: 'application/zip' }))
       const latest = await loadUnifiedProject(projectId)
-      const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId } })
-      setShotId('')
+      const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId, ...(merge ? { merge } : {}) } })
+      setShotId(''); setChainInfo(null)
       const updated = await loadUnifiedProject(projectId).catch(() => null)
       if (updated) onProject(updated.project)
-      setStatus(`Đã trả kết quả về cảnh · revision ${response.revision}. Clip đã trỏ sang Action mới; Action gốc vẫn giữ.`)
+      setStatus(merge
+        ? `Đã gộp thành một clip "${merge.name}" · revision ${response.revision}. Action gốc vẫn giữ; Ctrl+Z một lần trả lại hai clip và vùng trộn. Clip gộp đã lưu vào Thư viện của nhân vật.`
+        : `Đã trả kết quả về cảnh · revision ${response.revision}. Clip đã trỏ sang Action mới; Action gốc vẫn giữ.`)
       window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId } }))
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
@@ -268,7 +304,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       <button type="button" disabled={!bridgeReady || !characterId || busy || editorDirty} onClick={() => void openEditor(motionId || undefined)}>{motionId ? 'Chỉnh animation' : 'Tạo animation'}</button>
       <button type="button" className="wb-host-primary" disabled={busy || !characterId || !opened} onClick={() => void saveMotion()}>Lưu vào project</button>
       {revisionConflict && editorDirty && <button type="button" disabled={busy} onClick={() => void saveMotion(true)}>Lưu thành animation mới</button>}
-      {editorDirty && <button type="button" disabled={busy} onClick={() => { setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
+      {editorDirty && <button type="button" disabled={busy} onClick={() => { setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); setChainInfo(null); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
     </header>
     <header className="wb-animation-creation-toolbar" aria-label="Shot từ cảnh">
       <label>Camera<select value={cameraId} onChange={(event) => setCameraId(event.target.value)} disabled={busy || !!shotId || !cameras.length}>
@@ -280,6 +316,17 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       <label><input type="checkbox" checked={withBobj} disabled={busy} onChange={(event) => setWithBobj(event.target.checked)} />Kèm .bobj</label>
       <button type="button" className="wb-host-primary cross-app-button" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
     </header>
+    {mergeDialog && chainInfo && <div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
+      <h3>Lưu clip gộp</h3>
+      <label>Nhân vật<input type="text" value={chainInfo.characterName} readOnly disabled /></label>
+      <label>Tên<input type="text" value={mergeDialog.name} maxLength={120} autoFocus onChange={(event) => setMergeDialog({ ...mergeDialog, name: event.target.value })} /></label>
+      <label>Mô tả<textarea value={mergeDialog.description} rows={4} maxLength={1000} onChange={(event) => setMergeDialog({ ...mergeDialog, description: event.target.value })} /></label>
+      <p className="wb-animation-creation-status">Hai clip trên timeline sẽ được thay bằng một clip phủ khung {chainInfo.span[0]}–{chainInfo.span[1]}; clip gốc vẫn còn trong project và Ctrl+Z một lần trả lại. Clip gộp cũng được lưu vào Thư viện của nhân vật.</p>
+      <div className="wb-merge-dialog-actions">
+        <button type="button" onClick={() => setMergeDialog(null)} disabled={busy}>Hủy</button>
+        <button type="button" className="wb-host-primary" disabled={busy || !mergeDialog.name.trim()} onClick={() => void returnShot({ name: mergeDialog.name.trim(), description: mergeDialog.description.trim() })}>Lưu clip gộp</button>
+      </div>
+    </div>}
     {shotRangeFromInOut && <p className="wb-animation-creation-status" role="status">Khoảng shot đang dùng mặc định In/Out của timeline (đã làm tròn về lưới 20 tick).</p>}
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>

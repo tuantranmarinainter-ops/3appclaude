@@ -152,3 +152,36 @@ Ghi chú: ví dụ vùng trộn trong báo cáo job: "Gỗ Xưa · Shot 01: tr�
 - Builder vitest 128 file, 738 test pass, 1 skipped (thêm `findInvalidMotionOverlaps`, cập nhật mặc định 1 s ở `clipBlend.test.ts` và `clipBlendSession.test.ts`). `pnpm typecheck` toàn workspace sạch.
 - Studio `tsx --test`: `clipBlendK4.test.ts` (2 test: preflight vùng trộn / lỗi chồng clip / ba clip / clip sát nhau; splitShots qua vùng trộn khớp từng khung với dự án gốc, nguồn không bị sửa, bỏ blendIn mồ côi) cùng filmPreflight, splitShots, sceneBbsPreview, bbsPreview, filmMinecraftFeet, b10MinecraftFloor, filmManifest, filmPoseBake, filmRotationKeys, exportShotSelection, shotClip, sceneBbsFilm, filmSeries, skeletonMappingCommand: 92 test, 91 pass, 1 skipped, 0 fail.
 - Giật xương ở vùng 15 khung vẫn FAIL như K3 (3,85x); vùng 30 khung PASS (1,37x) nên mặc định 1 s là cách xử lý. Chưa đo lại sau khi đổi vì cặp mẫu chỉ cho 29 khung.
+
+## Đợt K5 — App 3 mở shot trên chuỗi clip trộn, trả về thành một clip gộp, lưu Thư viện
+
+Script: `apps/studio/scripts/measureClipBlendK5.mts` (bản sao `S:\Claude\w01-samples\clip-blend-k5-projects` + thư viện nhỏ `S:\Claude\w01-samples\clip-blend-lib` gồm nhân vật Gỗ Xưa và hai pack A/B; script từ chối đường dẫn kho thật). Mỗi lần chạy cần bản sao mới của `clip-blend-k2-projects` (script ghi vào project và thư viện bản sao) rồi:
+
+```powershell
+pnpm --filter @topview/3d-builder exec tsx <đường dẫn tuyệt đối>\apps\studio\scripts\measureClipBlendK5.mts --projects S:/Claude/w01-samples/clip-blend-k5-projects --library S:/Claude/w01-samples/clip-blend-lib
+```
+
+### Luồng
+
+1. `shot.export` (`shotExchange.ts` + `shotChain.ts`): `planShotCoverage` quyết định một clip (đường cũ, không đổi) hoặc chuỗi clip nối nhau bằng `blendIn` hợp lệ. Chuỗi: khoảng shot mở rộng thành `[đầu clip đầu, cuối clip cuối]`; `shotBake.ts` lấy mẫu 30 FPS qua đúng `sampleProjectSkeletonRange` của App 2/film (trộn slerp, K2 căn chỗ đứng + khóa chân, K3 đảo chân/dời nhịp) rồi ghi một animation lên model có skin của nhân vật (quay mọi xương, vị trí các xương có đổi, và nút bọc `bobj-model` suy từ ma trận thế giới vì phép căn K2 nằm ở đó). Khoảng đi qua clip chưa nối: lỗi tiếng Việt nêu tên + khung từng clip, "Khoảng hợp lệ: 0–58, 59–149" và cách trộn.
+2. Dải X: nút "Sửa chỗ nối trong App 3" -> `adapter.editBlendInAnimation` (builder không fetch) -> `LocalHostAdapter` phát sự kiện `bbs-edit-blend-in-app3` + sessionStorage -> `StudioOverlay` chuyển workspace Animation -> `AnimationCreationPanel` chọn nhân vật, đặt khoảng `[blendChainSpan]` và tự gọi "Mở shot từ cảnh".
+3. "Trả kết quả về cảnh" với shot chuỗi: hộp thoại "Lưu clip gộp" (Tên mặc định `A + B`, Mô tả mặc định "Gộp từ A (khung a–b) + B (khung c–d), trộn N khung, khóa chân[, đảo chân]", nhân vật cố định). `shot.result.import` nhận `args.merge {name, description}`: tạo Motion/Action mới, thay các clip trong chuỗi bằng MỘT clip `[A.frameStart, B.frameEnd]` không còn `blendIn` (giữ id clip A, bỏ binding của B), Action gốc giữ trong `project.motions`; một bước history nên Ctrl+Z trả lại A, B, blendIn. Với nhân vật thư viện native: `saveCharacterActionVersion` (gốc phiên bản = Action của clip đầu chuỗi, `notes` = mô tả) rồi `setActionMetadata` đặt tên.
+
+### Số đo (Gỗ Xưa, A 0–58, B 44–134 blendIn 15 khung; yêu cầu 10–124 -> shot 0–134, 135 khung, 84 xương)
+
+| Tiêu chí | Ngưỡng | Kết quả | Trạng thái |
+| --- | --- | --- | --- |
+| Tư thế clip gộp so với tư thế trộn trước khi gộp (11340 mẫu xương-khung, vị trí thế giới) | <= 0,5° / <= 2 mm | tối đa 0,0012 mm; 0,057° (lượng tử float32) | PASS |
+| Vị trí node đặt trong cảnh (khung 0, 60, 134) | không đổi | giống hệt (test) | PASS |
+| Gốc (Root/COG/Pelvis cục bộ) ở khung đầu Action gộp so với Action của clip A | không dịch | chênh < 1e-5 (Action gộp giữ quy ước gốc của A, A không bị kéo về gốc) | PASS |
+| Undo một bước | project giống hệt (hash không tính revision) | `3309a1c7…e016` trước = sau; hai clip 0–58 và 44–134 + blendIn 15/smooth/footLock trở lại | PASS |
+| Thư viện (bản sao) | tên + mô tả + chủ sở hữu | Action mới thuộc Gỗ Xưa, `name`/`nameVi` = "Gộp thử K5", `notes` = mô tả, version 2, status edited | PASS |
+| Ghi vào kho thật | không | không: `W01_LIBRARY` luôn trỏ thư mục tạm/bản sao (test khẳng định) | PASS |
+
+Ghi chú: "gốc tương đối khung đầu" (§10.3) được hiểu là giữ quy ước của Action thư viện hiện có (gốc của clip A, đã chuẩn hóa ở App 1); không trừ thêm vị trí khung đầu vì như vậy tư thế trong cảnh sẽ lệch trừ khi bù bằng key đặt chỗ. Trả về từ App 3 là bản nướng chưa sửa (mô phỏng); chưa chạy trên giao diện trình duyệt.
+
+### Kiểm thử
+
+- `clipBlendK5.pure.test.ts` (7 test): chọn clip/chuỗi, mở rộng khoảng, từ chối clip chưa nối (thông điệp + khoảng gợi ý), tên/mô tả mặc định, nhận yêu cầu từ dải X, ghi animation GLB (liên tục quaternion, kênh nút bọc).
+- `clipBlendK5.test.ts` (5 test, dùng bản sao tạm của fixture, bỏ qua khi thiếu): xuất chuỗi (khoảng mở rộng, 135 khóa camera, COG khớp sampler), từ chối chuỗi chưa nối, gộp + thư viện + tư thế + vị trí + Undo, đối số `merge` sai, mặc định tên/mô tả.
+- Builder vitest 128 file, 741 test pass, 1 skipped (thêm `blendChainSpan`). `pnpm typecheck` sạch. Studio `tsx --test`: nativeCharacterShot, app1Import, shotClip, splitShots, clipBlendK4, filmPreflight, sceneBbsFilm, filmManifest, library*… không hỏng.
