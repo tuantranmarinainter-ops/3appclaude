@@ -1,4 +1,6 @@
 import { browserOptions } from './browser_test_options.mjs';
+import { useClassicLayout } from './classic_test_layout.mjs';
+import { APP3_FRAME_URL } from '../../../../editor/apps/studio/src/app3Embed.ts';
 // Explicit runtime gate: APP3_RUNTIME_BASE=http://127.0.0.1:3013 node --test src/app3_browser.test.mjs
 // Run against an isolated Studio server (BBS_UNIFIED_PROJECTS_DIR), after rebuilding/publishing App3.
 import { test } from 'node:test';
@@ -74,6 +76,7 @@ test(
         page = await context.newPage(),
         errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
+      await useClassicLayout(page);
       const request = context.request,
         headers = { Origin: base };
       assert.equal(
@@ -213,8 +216,9 @@ test(
         .click();
       const locator = page.locator('.wb-animation-creation-frame');
       await locator.waitFor();
-      const frame = page.frame({ url: /animation-studio\/v1\.33\.0\/index\.html/ });
+      const frame = await (await locator.elementHandle()).contentFrame();
       assert.ok(frame);
+      await frame.waitForURL((url) => url.pathname === APP3_FRAME_URL);
       await frame.waitForFunction(() => window.__studio?.ready && window.__app3LocalBridge, null, {
         timeout: 60000,
       });
@@ -773,12 +777,13 @@ test(
         .getByRole('button', { name: /Animation/ })
         .click();
       await page.locator('.wb-animation-creation-frame').waitFor();
-      await page.waitForFunction(() =>
+      await page.waitForFunction((frameUrl) =>
         document
           .querySelector('.wb-animation-creation-frame')
-          ?.contentWindow?.location.pathname.endsWith('/animation-studio/v1.33.0/index.html'),
+          ?.contentWindow?.location.pathname.endsWith(frameUrl),
+        APP3_FRAME_URL,
       );
-      const frame2 = page.frame({ url: /animation-studio\/v1\.33\.0\/index\.html/ });
+      const frame2 = page.frames().find((child) => child.url().endsWith(APP3_FRAME_URL));
       await frame2.waitForFunction(() => window.__studio?.ready && window.__app3LocalBridge, null, {
         timeout: 60000,
       });

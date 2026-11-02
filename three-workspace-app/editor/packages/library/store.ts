@@ -106,6 +106,7 @@ export function withLibraryLock<T>(root: string, operation: () => T): T {
   const token = acquireLock(lockPath)
   try { return operation() }
   finally {
+    indexCache.delete(resolve(root))
     try {
       const current = readJsonFile<{ token?: string }>(lockPath)
       if (current.token === token) rmSync(lockPath, { force: true })
@@ -131,6 +132,7 @@ export function initializeLibrary(root: string): LibraryConfig {
 export function readPackMetadata(root: string): { packs: MotionPackMetadata[]; warnings: string[] } {
   const packsRoot = safeChild(root, 'packs')
   const found: MotionPackMetadata[] = []
+  if (!existsSync(packsRoot)) return { packs: [], warnings: [] }
   for (const entry of readdirSync(packsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^[a-f0-9]{16}$/.test(entry.name)) continue
     const metaPath = safeChild(packsRoot, entry.name, 'meta.json')
@@ -149,7 +151,49 @@ export function readPackMetadata(root: string): { packs: MotionPackMetadata[]; w
   return { packs, warnings }
 }
 
+const indexCache = new Map<string, { fingerprint: string; index: LibraryIndex }>()
+
+/** Check directory listings and metadata stamps, including edits by other processes. */
+function indexFingerprint(root: string): string {
+  const stamps: string[] = []
+  for (const folder of ['packs', 'characters', 'models']) {
+    const directory = join(root, folder)
+    if (!existsSync(directory)) { stamps.push(`${folder}:missing`); continue }
+    const info = statSync(directory)
+    stamps.push(`${folder}:${info.mtimeMs}:${info.ctimeMs}`)
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isDirectory()) continue
+      const child = join(directory, entry.name), meta = join(child, 'meta.json')
+      const childInfo = statSync(child)
+      stamps.push(`${entry.name}:${childInfo.mtimeMs}:${childInfo.ctimeMs}`)
+      if (existsSync(meta)) {
+        const metadata = statSync(meta)
+        stamps.push(`${metadata.mtimeMs}:${metadata.ctimeMs}:${metadata.size}`)
+      }
+    }
+  }
+  return stamps.join('|')
+}
+
+/** Read-only snapshot: never initializes directories, acquires a disk lock or writes index.json. */
+export function readIndex(root: string): LibraryIndex {
+  const key = resolve(root), fingerprint = indexFingerprint(key), cached = indexCache.get(key)
+  if (cached?.fingerprint === fingerprint) return cached.index
+  const index = buildIndex(key)
+  // Bound memory when CLI/MCP hosts inspect many distinct libraries.
+  if (indexCache.size >= 16) indexCache.delete(indexCache.keys().next().value!)
+  indexCache.set(key, { fingerprint, index })
+  return index
+}
+
 export function writeIndex(root: string): LibraryIndex {
+  indexCache.delete(resolve(root))
+  const index = buildIndex(root)
+  writeJsonAtomic(safeChild(root, 'index.json'), index)
+  return index
+}
+
+function buildIndex(root: string): LibraryIndex {
   const { packs, warnings } = readPackMetadata(root)
   const characters = readCharacters(root)
   const index: LibraryIndex = {
@@ -161,7 +205,6 @@ export function writeIndex(root: string): LibraryIndex {
     characters: characters.map((character) => ({ ...character, actionCount: character.actions?.length ?? packs.reduce((count, pack) => count + (pack.boundCharacter === character.charId ? pack.actions.length : 0), 0) })),
     ...(warnings.length ? { warnings } : {}),
   }
-  writeJsonAtomic(safeChild(root, 'index.json'), index)
   return index
 }
 

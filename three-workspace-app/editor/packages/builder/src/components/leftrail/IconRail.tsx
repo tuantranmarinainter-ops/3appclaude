@@ -4,7 +4,7 @@ import type { LibraryTab } from '../../stores/types'
 import { cx } from '../common/cx'
 import { Tooltip } from '../common/Tooltip'
 import { TAB_LABEL, TAB_ORDER } from './constants'
-import { IconChevron, TAB_ICON } from './icons'
+import { IconBug, IconChevron, TAB_ICON } from './icons'
 
 function textWidth(sample: HTMLElement, text: string, size: number) {
   const style = getComputedStyle(sample)
@@ -106,6 +106,7 @@ export function IconRail({
   onToggle,
   tabs = TAB_ORDER,
   assignAction,
+  debugAction,
 }: {
   tab: LibraryTab
   open: boolean
@@ -115,6 +116,8 @@ export function IconRail({
   tabs?: readonly LibraryTab[]
   /** Cross-app action under the tabs (N1 "Gán animation"), highlighted via the shared cross-app-button class (C23 standard, --cross-app-accent) with bbs-cross-app-action as the local fallback. */
   assignAction?: { label: string; onClick: () => void }
+  /** Host debug recorder (ghi thao tác để gỡ lỗi), shown under the assign action. */
+  debugAction?: { label: string; onClick: () => void }
 }): ReactElement {
   return (
     <div className="t3d-leftrail-rail">
@@ -132,6 +135,11 @@ export function IconRail({
       {assignAction ? (
         <div className="t3d-leftrail-rail-item">
           <RailTabButton label={assignAction.label} active={false} icon={TAB_ICON.motion} onSelect={assignAction.onClick} className="bbs-cross-app-action cross-app-button" />
+        </div>
+      ) : null}
+      {debugAction ? (
+        <div className="t3d-leftrail-rail-item">
+          <RailTabButton label={debugAction.label} active={false} icon={IconBug} onSelect={debugAction.onClick} className="bbs-debug-action" />
         </div>
       ) : null}
       {open ? null : (

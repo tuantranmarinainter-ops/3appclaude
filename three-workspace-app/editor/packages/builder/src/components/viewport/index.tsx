@@ -134,6 +134,12 @@ export function Viewport() {
       {cameraPilotId ? (
         <div className="t3d-pose-editor-hint" role="status" onPointerDown={(e) => e.stopPropagation()}>
           <span>{t('viewport.pilotHint')}</span>
+          <button type="button" className="t3d-hint-action" onClick={() => {
+            useStore.getState().setCameraPilot(null)
+            useStore.getState().setFollowMode(true)
+          }}>
+            {t('viewport.lockCamera')}
+          </button>
           <button type="button" className="t3d-hint-action" onClick={() => useStore.getState().setCameraPilot(null)}>
             {t('viewport.pilotExit')}（Esc）
           </button>
