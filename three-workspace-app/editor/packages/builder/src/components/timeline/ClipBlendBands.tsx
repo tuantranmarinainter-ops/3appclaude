@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
+import { blendLockText, blendOffsetText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
 import { blendBandLabel, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
 import { motionBlendInOf, motionBlendPartner } from '../../evaluate/clips'
 import { clampMenuPosition } from './utils/clipMenu'
@@ -27,6 +28,11 @@ export function ClipBlendBands({
   const preview = useStore((s) => s.clipMovePreview)
   const writeLocked = useStore((s) => s.writeLocked)
   const [panel, setPanel] = useState<{ clipId: string; x: number; y: number } | null>(null)
+  useSyncExternalStore(subscribeBlendStatus, blendStatusVersion, blendStatusVersion)
+  const bandTitle = (band: Band) => {
+    const status = getBlendStatus(band.clip.id)
+    return [blendBandLabel(band.blend), blendOffsetText(status), blendLockText(status, 0)].filter(Boolean).join(' · ')
+  }
 
   // Khi đang kéo, vẽ dải theo vị trí xem trước để người dùng thấy ngay vùng trộn.
   const live = clips.map((clip) => {
@@ -61,8 +67,8 @@ export function ClipBlendBands({
           data-blend-clip-id={band.clip.id}
           data-blend-frames={band.blend.frames}
           style={{ left: band.left, width: band.width }}
-          title={blendBandLabel(band.blend)}
-          aria-label={blendBandLabel(band.blend)}
+          title={bandTitle(band)}
+          aria-label={bandTitle(band)}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
@@ -161,6 +167,17 @@ function BlendPanel({
           <option value="linear">Tuyến tính</option>
         </select>
       </label>
+      {(() => {
+        const status = getBlendStatus(band.clip.id)
+        const offset = blendOffsetText(status)
+        const lock = blendLockText(status, 0)
+        return (offset || lock) ? (
+          <div className="t3d-timeline-blend-note" data-blend-status>
+            {offset && <div>{offset}</div>}
+            {lock && <div>{lock}</div>}
+          </div>
+        ) : null
+      })()}
       {invalid && <div className="t3d-timeline-blend-note">Số khung không hợp lệ (2 – {Math.max(MIN_BLEND_FRAMES, maxFrames)}) hoặc đụng clip khác.</div>}
       <button type="button" className="t3d-timeline-blend-remove" disabled={disabled} onClick={remove}>Bỏ trộn</button>
     </div>

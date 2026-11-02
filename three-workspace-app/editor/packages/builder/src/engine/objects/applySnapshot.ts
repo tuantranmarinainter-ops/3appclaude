@@ -12,6 +12,8 @@ import { clearSkinnedRaycastBounds } from './skinnedBounds'
 import { applyNodeVisibility } from './visibility'
 import { applyEvaluatedCamera } from './cameraTransform'
 import { evaluateRootTrajectory } from './rootMotion'
+import { motionBlendInOf } from '../../evaluate/clips'
+import { applyBlendAlignment, applyBlendFootLock, ensureBlendPlans, resetBlendAlignment } from './clipBlendPlan'
 
 const D2R = THREE.MathUtils.degToRad
 const R2D = THREE.MathUtils.radToDeg
@@ -53,6 +55,8 @@ function applyMotionCommand(graph: StageGraph, cmd: MotionPlaybackCommand): bool
         // Reset both channels: removing only translation leaves root turns in an in-place clip.
         if (bone && position && rotation) { bone.position.copy(position); bone.quaternion.copy(rotation) }
       }
+      // K2: clip sau của vùng trộn được dời + xoay cứng để nối tiếp chỗ đứng của clip trước (cả clip, không chỉ vùng trộn).
+      if (motionBlendInOf(clip)) applyBlendAlignment(graph, ch, clip, cmd.timeSeconds)
       return true
     }
   }
@@ -63,11 +67,12 @@ function applyMotionCommand(graph: StageGraph, cmd: MotionPlaybackCommand): bool
  * Trộn hai clip trong vùng `blendIn`: lấy mẫu `from`, nhớ xương cục bộ, lấy mẫu `to`, rồi
  * quaternion slerp + lerp vị trí theo trọng số của `to`. Một clip chưa nạp thì dùng clip còn lại.
  */
-function applyBlendedMotion(graph: StageGraph, from: MotionPlaybackCommand, to: MotionPlaybackCommand): boolean {
+function applyBlendedMotion(graph: StageGraph, from: MotionPlaybackCommand, to: MotionPlaybackCommand, frame?: number): boolean {
   const ch = graph.characters.get(from.nodeId)
   if (!ch) return false
   const bones: THREE.Object3D[] = []
-  ch.inner.traverse((object) => { if ((object as THREE.Bone).isBone) bones.push(object) })
+  // Cả nút không phải xương (vd. nút gốc bọc skeleton BOBJ) có thể mang track và nhận phép căn K2.
+  ch.inner.traverse((object) => { if (object !== ch.inner && !(object as THREE.Mesh).isMesh) bones.push(object) })
   const okFrom = applyMotionCommand(graph, from)
   if (!okFrom) return applyMotionCommand(graph, to)
   const savedQ = bones.map((bone) => bone.quaternion.clone())
@@ -88,11 +93,16 @@ function applyBlendedMotion(graph: StageGraph, from: MotionPlaybackCommand, to: 
     bones[i].quaternion.copy(blendedQ[i])
     bones[i].position.copy(blendedP[i])
   }
+  // K2: khóa chân luôn bật trong vùng trộn (giữ cổ chân đang chạm đất, IK 2 xương, nhả êm).
+  const toClip = graph.doc?.content.timeline.animation.motionClips.find((c) => c.id === to.clipId)
+  if (toClip && frame !== undefined && motionBlendInOf(toClip)) applyBlendFootLock(graph, ch, toClip, frame)
   return true
 }
 
 export function applyMotionAndPose(graph: StageGraph, snapshot: FrameSnapshot): void {
   const playing = new Set<string>()
+  resetBlendAlignment()
+  ensureBlendPlans(graph)
   for (const [, character] of graph.characters) {
     if (character.motionRoot) { character.motionRoot.matrix.identity(); character.motionRoot.matrixWorldNeedsUpdate = true }
     character.motionRootDelta = character.rig === 'direct' && snapshot.frame !== undefined && graph.doc
@@ -107,7 +117,7 @@ export function applyMotionAndPose(graph: StageGraph, snapshot: FrameSnapshot): 
     // Vùng trộn (clip chồng nhau): evaluateCharacters phát đúng 2 lệnh liên tiếp cho cùng nhân vật,
     // lệnh sau mang trọng số của clip sau. Đường một lệnh bên dưới giữ nguyên như trước.
     if (next && next.nodeId === cmd.nodeId) {
-      if (applyBlendedMotion(graph, cmd, next)) playing.add(cmd.nodeId)
+      if (applyBlendedMotion(graph, cmd, next, snapshot.frame)) playing.add(cmd.nodeId)
       i += 1
       continue
     }
