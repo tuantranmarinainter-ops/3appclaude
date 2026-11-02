@@ -79,3 +79,5 @@ export function createSkeletonEvaluator(
     },
   }
 }
+export { getBlendStatus, blendOffsetText, blendLockText } from '../engine/objects/blendStatus'
+export type { BlendStatus, BlendLockRun } from '../engine/objects/blendStatus'
