@@ -1,5 +1,6 @@
 import { filmAnchorPlacement, type FilmAnchorPlacement } from './filmAnchorPreflight'
 import { filmCharacterHeight } from './filmCharacterHeight'
+import { filmCameraWarnings } from './filmCameraWarnings'
 import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
@@ -23,7 +24,9 @@ export function measureFilmFeet(skeleton: { metersPerUnit: number; bones: Array<
   for (const side of ['left', 'right'] as const) {
     const foot = skeleton.bones.find((bone) => [side + 'foot', 'foot' + side, side[0] + 'foot', 'foot' + side[0]].includes(canonicalFootBone(bone.name)))
     if (foot) { result[side === 'left' ? 'leftY' : 'rightY'] = foot.worldMatrix[13]; continue }
-    if (profile?.family !== 'minecraft20' || !Number.isFinite(profile.metersPerUnit) || profile.metersPerUnit <= 0 || profile.metersPerUnit !== skeleton.metersPerUnit) continue
+    // B28: library MC20 models arrive as custom-preserved (BOBJ wrapper + misc bones); the shin/parent checks below
+    // still require the exact MC20 leg chain, so the family label itself is not needed.
+    if (!profile || !Number.isFinite(profile.metersPerUnit) || profile.metersPerUnit <= 0 || profile.metersPerUnit !== skeleton.metersPerUnit) continue
     const shinName = side === 'left' ? 'lowleftleg' : 'lowlegright'
     const shins = profile.bones.filter((bone) => canonicalFootBone(bone.name) === shinName)
     const samples = skeleton.bones.filter((bone) => canonicalFootBone(bone.name) === shinName || shins.some((shin) => bone.name === PropertyBinding.sanitizeNodeName(shin.name)))
@@ -205,6 +208,7 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
   }
 
   const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
+  if (args.range) result.warnings.push(...filmCameraWarnings(project, args.sequenceId, args.range, args.viewportAspect))
   if (sequence) for (const clip of sequence.clips) {
     if (range && (clip.sourceFrameEnd < range.startFrame || clip.sourceFrameStart > range.endFrame)) continue
     const status = reviewStatusForSequence(project, sequence.id, clip.id)

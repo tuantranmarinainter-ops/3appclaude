@@ -133,6 +133,15 @@ export function IconLock({ className }: { className?: string }): ReactElement {
   )
 }
 
+export function IconBug({ className }: { className?: string }): ReactElement {
+  return (
+    <Svg className={className}>
+      <rect x="8" y="8" width="8" height="11" rx="4" />
+      <path d="M12 8V6M9.5 6.5 8 5M14.5 6.5 16 5M8 12H5M19 12h-3M8 16H5.5M18.5 16H16" />
+    </Svg>
+  )
+}
+
 export function IconUnlock({ className }: { className?: string }): ReactElement {
   return (
     <Svg className={className}>

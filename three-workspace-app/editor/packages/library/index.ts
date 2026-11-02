@@ -6,7 +6,7 @@ export type {
   CoverageCell, IndexedAction, LibraryConfig, LibraryIndex, LibraryLicense, LibraryOptions, MotionPackMetadata,
   NormalizedAction, NormalizedManifest, RequiredAction, SearchOptions,
 } from './types'
-export { defaultLibraryPath, resolveLibraryPath } from './store'
+export { defaultLibraryPath, resolveLibraryPath, withIndexSnapshot } from './store'
 export { importNormalizedPack, updateActionMetadata, validatePackAssetPath } from './importPack'
 export type { ImportPackOptions, ImportPackResult } from './importPack'
 export { getAction, importPack, listLibraryCharacters, rebuildLibraryIndex, registerLibraryCharacter, searchLibrary, setActionMetadata, setActionPreview } from './library'

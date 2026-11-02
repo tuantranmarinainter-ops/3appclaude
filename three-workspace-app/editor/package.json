@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "pnpm --filter @topview/3d-builder build && pnpm --filter @topview/3d-studio dev",
     "build": "pnpm --filter @topview/3d-builder build && pnpm --filter @topview/3d-studio build",
+    "prod": "pnpm build && pnpm --filter @topview/3d-studio start",
+    "prod:start": "pnpm --filter @topview/3d-studio start",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint . && pnpm check:locales",
     "check:locales": "node scripts/check-locales.cjs",

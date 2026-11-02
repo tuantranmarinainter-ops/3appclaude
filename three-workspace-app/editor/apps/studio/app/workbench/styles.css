@@ -1080,3 +1080,56 @@
 .wb-assign-footer { display: flex; justify-content: flex-end; }
 .wb-assign-message { margin: 0; font-size: 13px; color: #ffd58a; }
 .wb-assign-note { margin: 0; font-size: 13px; color: #9a9aa5; }
+
+/* Debug recorder (nút "Debug" ở cột trái App 2). */
+.wb-debug-panel { display: grid; gap: 10px; }
+.wb-debug-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wb-debug-actions input { flex: 1; min-width: 0; }
+.wb-debug-panel .danger { background: #c62828; color: #fff; }
+.wb-debug-log { margin: 0; padding: 0; list-style: none; max-height: 52vh; overflow: auto; font: 11px/1.45 ui-monospace, Consolas, monospace; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; }
+.wb-debug-log li { padding: 2px 6px; border-bottom: 1px solid rgba(255,255,255,.06); overflow-wrap: anywhere; }
+.wb-debug-log li time { opacity: .6; margin-right: 4px; }
+.wb-debug-log li[data-kind="error"] { color: #ff8a80; }
+.wb-debug-log li[data-kind="note"] { color: #ffd54f; font-weight: 600; }
+.wb-debug-log li[data-kind="api"] { color: #90caf9; }
+body.bbs-debug-recording .bbs-debug-action { position: relative; }
+body.bbs-debug-recording .bbs-debug-action::after { content: ""; position: absolute; top: 4px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #e53935; box-shadow: 0 0 6px #e53935; }
+/* B54: Film export as three steps + one big button; advanced options folded. */
+.wb-film-steps { display: flex; flex-direction: column; gap: 12px; }
+.wb-film-step { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 10px 12px 12px; border: 1px solid var(--wb-border, rgba(255,255,255,.12)); border-radius: 8px; background: rgba(255,255,255,.02); }
+.wb-film-step > legend { display: flex; align-items: center; gap: 8px; padding: 0 6px; font-weight: 600; color: var(--wb-text, #f3f4f6); }
+.wb-film-step-no { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #3b82f6; color: #fff; font-size: 11px; }
+.wb-film-step label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wb-film-step input:not([type=checkbox]),.wb-film-step select,.wb-film-step textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; border: 1px solid var(--wb-border, rgba(255,255,255,.12)); border-radius: 6px; background: #121418; color: var(--wb-text, #f3f4f6); font: inherit; }
+.wb-film-step select[multiple] { min-height: 90px; }
+.wb-film-step textarea { resize: vertical; font-family: ui-monospace, monospace; font-size: 11px; }
+.wb-film-step small,.wb-film-muted { color: var(--wb-muted, rgba(255,255,255,.5)); font-size: 11px; line-height: 1.4; }
+.wb-film-step button,.wb-film-go button,.wb-film-checklist-head button { min-height: 34px; padding: 0 12px; border: 1px solid var(--wb-border, rgba(255,255,255,.12)); border-radius: 6px; background: #25272d; color: var(--wb-text, #f3f4f6); cursor: pointer; white-space: nowrap; }
+.wb-film-step button:disabled,.wb-film-go button:disabled { opacity: .5; cursor: not-allowed; }
+.wb-film-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; min-width: 0; }
+.wb-film-row > label { flex: 1 1 90px; }
+.wb-film-row > input { flex: 1 1 200px; }
+.wb-film-step-note { margin: 0; padding: 6px 8px; border-radius: 6px; background: rgba(59,130,246,.1); color: var(--wb-text, #f3f4f6); }
+/* B53: checkbox rows sit beside their text instead of stretching to a full-width field. */
+.wb-film-step label.wb-check,.wb-film-checklist label.wb-check { flex-direction: row; align-items: flex-start; gap: 8px; cursor: pointer; }
+.wb-check > input[type=checkbox] { flex: 0 0 auto; width: 16px; height: 16px; min-height: 0; margin: 1px 0 0; accent-color: #3b82f6; }
+.wb-check > span { display: flex; flex-direction: column; gap: 2px; }
+.wb-film-checklist { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--wb-border, rgba(255,255,255,.12)); border-radius: 6px; }
+.wb-film-checklist-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wb-film-checklist-head > span { flex: 1 1 180px; }
+.wb-film-checklist-head button { min-height: 28px; padding: 0 8px; }
+.wb-film-warn { margin: 0; padding: 6px 8px; border-radius: 6px; background: rgba(245,158,11,.12); color: #fcd34d; }
+.wb-film-error { margin: 0; color: #fca5a5; }
+.wb-film-go { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wb-film-go > small,.wb-film-go > p { flex-basis: 100%; margin: 0; }
+.wb-film-go .wb-film-go-main { flex: 1 1 260px; min-height: 44px; border-color: #2563eb; background: #2563eb; color: #fff; font-size: 14px; font-weight: 600; }
+.wb-film-preflight p { margin: 2px 0; }
+.wb-film-advanced { display: grid; gap: 10px; }
+.wb-film-advanced > summary { cursor: pointer; padding: 6px 0; color: var(--wb-muted, rgba(255,255,255,.6)); }
+.wb-film-advanced[open] > summary { margin-bottom: 8px; }
+.wb-film-advanced .wb-film-export-controls { display: grid; gap: 8px; padding: 0; }
+
+.wb-assign-list li { flex-wrap: wrap; }
+.wb-assign-feedback { flex: 1 1 100%; display: flex; flex-direction: column; gap: 6px; }
+.wb-assign-feedback p { margin: 0; font-size: 13px; color: #ff9d8a; }
+.wb-assign-placement label.is-disabled { opacity: 0.55; }

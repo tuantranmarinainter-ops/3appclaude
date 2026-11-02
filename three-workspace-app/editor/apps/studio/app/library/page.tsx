@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { loadUnifiedProject } from '../../src/unifiedApi'
 import { ActionPreview } from './ActionPreview'
@@ -8,10 +8,13 @@ import { AutoPreviewVideo } from './AutoPreviewVideo'
 import { WorkspaceNavigationSlot } from '../workbench/components/feature-navigation/WorkspaceNavigation'
 import { ACTION_CATEGORIES } from '../../../../packages/library/types'
 import { formatBilingual } from '../../../../packages/library/actionNames'
+import { ASSIGNMENT_GROUPS, assignmentActions, assignmentGroup, loadAssignmentPages } from './components/assignment/utils'
+import { notifyCharacterProfileChanged } from '../workbench/components/character-height/utils'
 import { filterLibraryActions } from '../../src/libraryFilters'
+import { libraryJson as json, invalidateLibrary } from '../../src/libraryClient'
 
 type Status = 'draft' | 'edited' | 'approved'
-type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; favorite?: boolean; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
+type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; skeletonKind?: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; favorite?: boolean; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
 type Character = { charId: string; name: string; rig: string; previewUrl: string; baseModelId?: string; defaultAction?: string; heightBlocks?: number; personality?: { summary: string; traits: string[] }; requiredActions?: Array<{ key: string; label: string }> }
 type Coverage = { charId: string; name: string; cells: Array<{ key: string; label: string; action: Action | null; status: Status | null }> }
 
@@ -22,13 +25,6 @@ const DETAIL_WIDTH_MAX = 720
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
 
-async function json(url: string, init?: RequestInit) {
-  const response = await fetch(url, { cache: 'no-store', ...init })
-  const body = await response.json()
-  if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`)
-  return body
-}
-
 export default function LibraryPage() {
   const [tab, setTab] = useState<'actions' | 'favorites' | 'characters' | 'coverage'>('actions')
   const [actions, setActions] = useState<Action[]>([]), [characters, setCharacters] = useState<Character[]>([])
@@ -36,6 +32,7 @@ export default function LibraryPage() {
   const [status, setStatus] = useState<'' | Status>(''), [warehouse, setWarehouse] = useState(true)
   const [query, setQuery] = useState(''), [category, setCategory] = useState(''), [sourceFilter, setSourceFilter] = useState(''), [inPlaceOnly, setInPlaceOnly] = useState(false), [sortOrder, setSortOrder] = useState<'name' | 'newest'>('name')
   const [selected, setSelected] = useState<Action | null>(null), [copyTarget, setCopyTarget] = useState('')
+  const actionLoadSequence = useRef(0)
   const previousPreviewJobs = useRef<Record<string, { state: string; message?: string }>>({})
   const [message, setMessage] = useState(''), [previewJobs, setPreviewJobs] = useState<Record<string, { state: string; message?: string }>>({}), [assignTarget, setAssignTarget] = useState('')
   const [projectId, setProjectId] = useState(''), [hasOpener, setHasOpener] = useState(false), [adding, setAdding] = useState(false)
@@ -55,8 +52,9 @@ export default function LibraryPage() {
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
   }
   const [sceneConflict, setSceneConflict] = useState<{ charId: string; names: string[] } | null>(null)
-  const [assignTo, setAssignTo] = useState<{ nodeId: string; displayName: string; libraryCharacterId: string | null } | null>(null)
+  const [assignTo, setAssignTo] = useState<{ nodeId: string; displayName: string; libraryCharacterId: string | null; targetRig?: string } | null>(null)
   const [placingForNode, setPlacingForNode] = useState(false)
+  const [reconvertAction, setReconvertAction] = useState<Action | null>(null)
 
   const loadCharacters = useCallback(async () => {
     const body = await json('/api/library?characters=1')
@@ -67,8 +65,13 @@ export default function LibraryPage() {
     setCopyTarget(current => rows.some(item => item.charId === current) ? current : rows[0]?.charId ?? '')
   }, [])
   const loadActions = useCallback(async () => {
+    const sequence = ++actionLoadSequence.current
     let fetched: Action[]
-    if (tab === 'favorites') {
+    if (assignTo?.targetRig === 'minecraft20' && assignTo.libraryCharacterId) {
+      fetched = assignmentActions(await loadAssignmentPages<Action>(offset => json(`/api/library?assignmentActions=1&offset=${offset}`)), assignTo.libraryCharacterId)
+      if (tab === 'favorites') fetched = fetched.filter(action => action.favorite)
+      if (status) fetched = fetched.filter(action => action.status === status)
+    } else if (tab === 'favorites') {
       const [rawBody, ...charBodies] = await Promise.all([
         json('/api/library?raw=1'),
         ...characters.map(item => json(`/api/library?charId=${encodeURIComponent(item.charId)}`)),
@@ -85,22 +88,25 @@ export default function LibraryPage() {
     if (sourceFilter) rows = rows.filter(action => sourceFilter === 'mixamo' ? /mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) : !/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`))
     if (inPlaceOnly) rows = rows.filter(action => action.inPlace)
     rows = [...rows].sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (sortOrder === 'newest' ? b.createdAt.localeCompare(a.createdAt) : a.name.localeCompare(b.name)))
+    if (sequence !== actionLoadSequence.current) return
     setActions(rows); setSelected(current => rows.find(item => item.uuid === current?.uuid) ?? rows[0] ?? null)
-  }, [category, characterId, characters, inPlaceOnly, query, sortOrder, sourceFilter, status, tab, warehouse])
+  }, [assignTo, category, characterId, characters, inPlaceOnly, query, sortOrder, sourceFilter, status, tab, warehouse])
 
   useEffect(() => {
+    invalidateLibrary()
     setHasOpener(!!window.opener)
     const params = new URLSearchParams(window.location.search)
     const requested = params.get('unified')
     const assignNodeId = params.get('assignTo')
-    if (requested) void loadUnifiedProject(requested).then(({ project }) => {
+    if (requested) void loadUnifiedProject(requested).then(async ({ project }) => {
       setProjectId(project.projectId)
       // N1: opened from App 2's "Mở trong Thư viện" — preselect the node's role and offer per-Action assign buttons.
       if (assignNodeId) {
         const node = project.scene.content.nodes.find(item => item.id === assignNodeId)
         if (node) {
           const libraryCharacterId = typeof node.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : null
-          setAssignTo({ nodeId: node.id, displayName: node.name, libraryCharacterId })
+          const context = await json(`/api/library?assignmentNodeId=${encodeURIComponent(node.id)}&projectId=${encodeURIComponent(project.projectId)}`)
+          setAssignTo({ nodeId: node.id, displayName: node.name, libraryCharacterId, targetRig: context.targetRig })
           if (libraryCharacterId) { setCharacterId(libraryCharacterId); setWarehouse(false) }
         }
       }
@@ -113,6 +119,8 @@ export default function LibraryPage() {
   useEffect(() => { if (tab === 'coverage') void json('/api/library?coverage=1').then(body => setCoverage(body.coverage)).catch(error => setMessage(String(error))) }, [tab])
 
   const missingPreviews = useMemo(() => actions.filter(action => !action.preview && previewJobs[action.uuid]?.state !== 'queued' && previewJobs[action.uuid]?.state !== 'running'), [actions, previewJobs])
+  const minecraftAssignment = assignTo?.targetRig === 'minecraft20' && !!assignTo.libraryCharacterId
+  const actionGroups = minecraftAssignment ? ASSIGNMENT_GROUPS.map(group => ({ ...group, actions: actions.filter(action => assignmentGroup(action, assignTo!.libraryCharacterId!) === group.id) })) : [{ id: 'all', label: '', actions }]
   const selectedCharacter = characters.find(item => item.charId === characterId)
   const compatibleTargets = useMemo(() => characters.filter(item => (item.rig === selected?.rig || item.rig === 'verity' && selected?.rig === 'mixamo65+verity') && item.charId !== selected?.ownerCharId), [characters, selected])
   const effectiveCopyTarget = compatibleTargets.some(item => item.charId === copyTarget) ? copyTarget : compatibleTargets[0]?.charId ?? ''
@@ -125,7 +133,7 @@ export default function LibraryPage() {
       const response = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'add-to-scene', charId, projectId, expectedRevision: project.revision, ...(policy ? { existingNodePolicy: policy } : {}) }) })
       const body = await response.json()
       if (response.status === 409 && body.code === 'LIBRARY_CHARACTER_ALREADY_IN_SCENE') { setSceneConflict({ charId, names: body.existingNodeNames ?? [] }); return }
-      if (!response.ok) throw new Error(body.error ?? `HTTP ${response.status}`)
+      if (!response.ok) throw Object.assign(new Error(body.error ?? `HTTP ${response.status}`), { code: body.code })
       setSceneConflict(null)
       setMessage(body.reused ? 'Đã dùng node có sẵn của vai này trong cảnh.' : 'Đã thêm nhân vật vào cảnh App 2.')
     } finally { setAdding(false) }
@@ -160,15 +168,19 @@ export default function LibraryPage() {
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actionUuid: selected.uuid, name, nameVi }) })
     await loadActions(); setMessage('Đã lưu tên động tác.')
   }
-  async function placeForNode(action: Action) {
+  async function placeForNode(action: Action, reconvert = false) {
     if (!assignTo || !projectId) return
     setPlacingForNode(true)
     try {
-      const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: assignTo.nodeId }) })
+      const body = await json('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'place-for-node', projectId, actionUuid: action.uuid, nodeId: assignTo.nodeId, ...(reconvert ? { reconvert: true } : {}) }) })
+      setReconvertAction(null)
       // C27: hand the placed clip to the workbench so its timeline reveals it on return.
       if (body.clipId) { try { sessionStorage.setItem('bbs-reveal-clip', JSON.stringify({ projectId, clipId: body.clipId, nodeId: assignTo.nodeId, frameStart: body.frameStart, frameEnd: body.frameEnd })) } catch { /* storage unavailable */ } }
-      setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}.${body.warning ? ` ${body.warning}` : ''} Quay lại cảnh App 2 để xem.`)
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+      setMessage(`Đã gán “${formatBilingual(action.name, action.nameVi)}” cho ${body.displayName ?? assignTo.displayName} tại khung ${body.frameStart}–${body.frameEnd}${body.converted ? assignTo.targetRig === 'minecraft20' ? ' (đã tự chuyển sang Minecraft20)' : ' (đã tạo Nháp trong bộ của nhân vật đích)' : ''}.${body.warning ? ` ${body.warning}` : ''} Quay lại cảnh App 2 để xem.`)
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'CONVERSION_REQUIRED') setReconvertAction(action)
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
     finally { setPlacingForNode(false) }
   }
   function notifyOpener(type: string) {
@@ -186,19 +198,19 @@ export default function LibraryPage() {
         : <> — node này chưa nối với nhân vật thư viện; hãy nối node trong App 2 (bảng Gán animation) trước khi gán.</>}
     </div>}
     {(tab === 'actions' || tab === 'favorites') && <><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-      <select aria-label="Nhân vật" value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
-      <select aria-label="Trạng thái" value={status} disabled={warehouse} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
-      <button onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
+      <select aria-label="Nhân vật" disabled={minecraftAssignment} value={characterId} onChange={event => { setCharacterId(event.target.value); setWarehouse(false) }}>{characters.map(item => <option key={item.charId} value={item.charId}>{item.name}</option>)}</select>
+      <select aria-label="Trạng thái" value={status} disabled={warehouse && !minecraftAssignment} onChange={event => setStatus(event.target.value as '' | Status)}><option value="">Mọi trạng thái</option><option value="draft">Nháp</option><option value="edited">Đã chỉnh</option><option value="approved">Đã duyệt</option></select>
+      <button disabled={minecraftAssignment} onClick={() => setWarehouse(value => !value)}>{warehouse ? `Bộ của ${selectedCharacter?.name ?? 'nhân vật'}` : 'Xem cả kho'}</button>
       <button disabled={!missingPreviews.length} title={`Mỗi lần bấm tạo tối đa ${MISSING_PREVIEW_CAP} video`} onClick={() => void queueMissingPreviews().catch(error => setMessage(String(error)))}>{`Tạo video còn thiếu (${missingPreviews.length}, tối đa ${MISSING_PREVIEW_CAP}/lần)`}</button>
       <input aria-label="Tìm động tác" placeholder="Tìm" value={query} onChange={event => setQuery(event.target.value)} />
       <select aria-label="Loại động tác" value={category} onChange={event => setCategory(event.target.value)}><option value="">Mọi loại</option>{ACTION_CATEGORIES.map(value => <option key={value}>{value}</option>)}</select><select aria-label="Nguồn" value={sourceFilter} onChange={event => setSourceFilter(event.target.value)}><option value="">Mọi nguồn</option><option value="mixamo">Mixamo</option><option value="other">Khác</option></select><label><input type="checkbox" checked={inPlaceOnly} onChange={event => setInPlaceOnly(event.target.checked)} /> In Place</label><select aria-label="Sắp xếp" value={sortOrder} onChange={event => setSortOrder(event.target.value as 'name' | 'newest')}><option value="name">Theo tên</option><option value="newest">Mới nhập</option></select>
     </div><div style={{ display: 'grid', gridTemplateColumns: `minmax(0,1fr) 10px ${detailWidth}px`, gap: 10, height: 'calc(100vh - 235px)', minHeight: 340 }}>
       <section aria-label="Danh sách động tác" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(165px,1fr))', gap: 12, alignContent: 'start', overflowY: 'auto', minHeight: 0, paddingRight: 4 }}>
-        {actions.map(action => <article key={action.uuid} onClick={event => { if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return; setSelected(action) }} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left', cursor: 'pointer' }}>
+        {actionGroups.map(group => <Fragment key={group.id}>{group.label && <h2 style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>{group.label} ({group.actions.length})</h2>}{group.actions.map(action => <article key={action.uuid} onClick={event => { if ((event.target as HTMLElement).closest('button, a, input, select, textarea')) return; setSelected(action) }} style={{ color: 'inherit', background: '#20242c', border: selected?.uuid === action.uuid ? '2px solid #68a9ff' : '1px solid #444', padding: 8, textAlign: 'left', cursor: 'pointer' }}>
           {action.preview ? <AutoPreviewVideo uuid={action.uuid} onClick={() => setSelected(action)} /> : <div style={{ height: 120, background: '#16191f', display: 'grid', placeItems: 'center' }}>{action.coverPath ? <Image src={`/api/library/cover/${encodeURIComponent(action.uuid)}`} alt="Ảnh bìa dự phòng" width={220} height={90} unoptimized /> : 'Đang tạo video…'}</div>}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}><button type="button" onClick={() => setSelected(action)} style={{ border: 0, padding: '8px 0', color: 'inherit', background: 'transparent', textAlign: 'left', cursor: 'pointer', flex: 1 }}><strong>{formatBilingual(action.name, action.nameVi)}</strong></button><button type="button" aria-label={action.favorite ? `Bỏ yêu thích ${action.name}` : `Đánh dấu yêu thích ${action.name}`} aria-pressed={!!action.favorite} title={action.favorite ? 'Bỏ yêu thích' : 'Đánh dấu yêu thích'} onClick={() => void toggleFavorite(action)} style={{ border: 0, padding: '6px 2px', background: 'transparent', cursor: 'pointer', fontSize: 17, lineHeight: 1, color: action.favorite ? '#f2c14e' : '#8a8f98' }}>{action.favorite ? '★' : '☆'}</button></div><div>{action.durationSeconds.toFixed(1)} giây · {action.tags.join(', ') || action.category}</div><small>{/mixamo/i.test(`${action.licenseId} ${action.licenseSource ?? ''}`) ? 'Mixamo' : 'Khác'}{action.inPlace ? ' · In Place' : ''}</small>{action.status && <div><small style={{ background: STATUS_COLOR[action.status], padding: '2px 5px' }}>{STATUS_LABEL[action.status]} · v{action.version ?? 1}</small></div>}{!action.preview && previewJobs[action.uuid]?.state === 'failed' && <small role="status">Video lỗi: {previewJobs[action.uuid].message}</small>}
           {assignTo?.libraryCharacterId && <button type="button" disabled={placingForNode} onClick={() => void placeForNode(action)} style={{ marginTop: 6, border: '2px solid #f5a623', background: 'rgba(245,166,35,.12)', color: '#ffd58a', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontWeight: 600 }}>{placingForNode ? 'Đang gán…' : `Gán cho ${assignTo.displayName}`}</button>}
-        </article>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
+        </article>)}</Fragment>)}{!actions.length && <p>Chưa có động tác phù hợp.</p>}
       </section>
       <div role="separator" aria-orientation="vertical" aria-label="Kéo để đổi độ rộng khung chi tiết" title="Kéo để đổi độ rộng khung chi tiết" onPointerDown={startResizeDetail} style={{ cursor: 'col-resize', background: '#2c313a', borderRadius: 4, touchAction: 'none' }} />
       <aside style={{ padding: 16, background: '#20242c', overflowY: 'auto', minHeight: 0 }}>{selected ? <><h2>{formatBilingual(selected.name, selected.nameVi)}</h2>{selectedCharacter && <ActionPreview uuid={selected.uuid} animationIndex={selected.glbAnimationIndex} characterUrl={selectedCharacter.previewUrl} />}
@@ -226,6 +238,7 @@ export default function LibraryPage() {
     {tab === 'coverage' && <CoverageMatrix rows={coverage} onMissing={(key, charId) => { setCharacterId(charId); setQuery(key); setWarehouse(true); setTab('actions') }} />}
     {projectId && <a className="cross-app-button" style={{ display: 'inline-block', padding: '4px 10px', marginTop: 12, color: 'inherit', textDecoration: 'none' }} href={`/?unified=${encodeURIComponent(projectId)}`}>Quay lại cảnh App 2</a>}
     {message && <p role="status">{message}</p>}
+    {reconvertAction && <p>Động tác “{formatBilingual(reconvertAction.name, reconvertAction.nameVi)}” cần chuyển lại. <button disabled={placingForNode} onClick={() => void placeForNode(reconvertAction, true)}>Chuyển lại và gán</button> <button onClick={() => setReconvertAction(null)}>Huỷ</button></p>}
   </main>
 }
 
@@ -286,6 +299,7 @@ function CharacterProfiles({ characters, onSaved, setMessage, onAdd, adding }: {
     const personality = { summary: String(data.get('summary') ?? ''), traits: String(data.get('traits') ?? '').split(',').map(value => value.trim()).filter(Boolean) }
     const requiredActions = String(data.get('required') ?? '').split('\n').map(line => line.split(':', 2)).filter(parts => parts[0]?.trim() && parts[1]?.trim()).map(([key, label]) => ({ key: key!.trim(), label: label!.trim() }))
     await json('/api/library', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'profile', charId: character.charId, personality, requiredActions, ...(String(data.get('heightBlocks') ?? '').trim() ? { heightBlocks: Number(data.get('heightBlocks')) } : {}) }) })
+    notifyCharacterProfileChanged(character.charId)
     await onSaved(); setMessage(`Đã lưu hồ sơ ${character.name}.`)
   }
   return <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 14 }}>{characters.map(character => <form key={character.charId} onSubmit={event => { event.preventDefault(); void save(character, event.currentTarget).catch(error => setMessage(String(error))) }} style={{ padding: 14, background: '#20242c' }}>

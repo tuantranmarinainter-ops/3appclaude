@@ -1,3 +1,4 @@
+import { timelineClipboardCommand } from './utils/clipGestures'
 import { TimelineFrameField, TimelineRangeField, TransportButton } from './TimelineControls'
 import { useTimelineMarquee } from './hooks/useTimelineMarquee'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -17,6 +18,7 @@ import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
 import {
   IconAutoKeyframe,
   IconChevron,
+  IconLock,
   IconPause,
   IconPlay,
   IconSnapMagnet,
@@ -36,6 +38,9 @@ import { Playhead } from './Playhead'
 import { InOutOverlay } from './InOutOverlay'
 import { formatFrameInUnit } from './utils/timeUnit'
 import { Ruler } from './Ruler'
+import { orderPinnedRows, readPinnedRows, togglePinned, writePinnedRows } from './utils/pinnedRows'
+import { RULER_HEIGHT, readRulerVisibility, toggleRuler, visibleRulers, writeRulerVisibility, type RulerVisibility } from './utils/rulers'
+import { TIMELINE_NOTICE_EVENT } from './utils/clipMenu'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
 import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
@@ -64,6 +69,7 @@ function SceneTimeline() {
   const userKeysEnabled = useStore((s) => s.userKeysEnabled)
   const autoKeyframe = useStore((s) => s.autoKeyframe)
   const timelineSnap = useStore((s) => s.timelineSnap)
+  const viewportLocked = useStore((s) => s.viewportLocked)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
   const timelineUnit = useStore((s) => s.timelineUnit)
@@ -83,6 +89,7 @@ function SceneTimeline() {
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
+    toggleViewportLocked,
     addKeyframes,
     addTransformKeyframes,
     moveKeyframes,
@@ -100,6 +107,34 @@ function SceneTimeline() {
   } = useStore()
   const timelineRevealClip = useStore((s) => s.timelineRevealClip)
   const [onlySelectedCharacter, setOnlySelectedCharacter] = useState(false)
+  const draftId = useStore((s) => s.draftId)
+  const [pinnedState, setPinnedState] = useState<{ draftId: string; ids: string[] } | null>(null)
+  const pinnedRows = pinnedState?.draftId === draftId ? pinnedState.ids : readPinnedRows(browserPanelStorage(), draftId)
+  const togglePin = (nodeId: string) => {
+    const ids = togglePinned(pinnedRows, nodeId)
+    writePinnedRows(browserPanelStorage(), draftId, ids)
+    setPinnedState({ draftId, ids })
+  }
+  const [rulers, setRulers] = useState<RulerVisibility>(() => readRulerVisibility(browserPanelStorage(), timelineUnit))
+  const shownRulers = visibleRulers(rulers)
+  const toggleRulerUnit = (unit: TimelineUnit) => {
+    const next = toggleRuler(rulers, unit)
+    if (next === rulers) return
+    writeRulerVisibility(browserPanelStorage(), next)
+    setRulers(next)
+    setTimelineUnit(visibleRulers(next)[0])
+  }
+  const [notice, setNotice] = useState<string | null>(null)
+  useEffect(() => {
+    let timer = 0
+    const onNotice = (event: Event) => {
+      setNotice(String((event as CustomEvent).detail ?? ''))
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setNotice(null), 5000)
+    }
+    window.addEventListener(TIMELINE_NOTICE_EVENT, onNotice)
+    return () => { window.removeEventListener(TIMELINE_NOTICE_EVENT, onNotice); window.clearTimeout(timer) }
+  }, [])
   const trackAvailRef = useRef(0)
   const revealNonceRef = useRef(0)
   const clampAvailableHeight = (value: number) => {
@@ -315,7 +350,8 @@ function SceneTimeline() {
     isOpen,
   )
 
-  const rows = onlySelectedCharacter && selectedNodeId ? allRows.filter((item) => item.row.nodeId === selectedNodeId) : allRows
+  const filteredRows = onlySelectedCharacter && selectedNodeId ? allRows.filter((item) => item.row.nodeId === selectedNodeId) : allRows
+  const rows = orderPinnedRows(filteredRows, pinnedRows)
 
   const trackW = frameCount * scale
   const frame = stage.currentFrame
@@ -367,6 +403,18 @@ function SceneTimeline() {
     <div
       className={cx('t3d-timeline', !timelineOpen && 'is-collapsed')}
       data-tutorial-anchor="timeline"
+      tabIndex={0}
+      onPointerDownCapture={(e) => { if (!(e.target as HTMLElement).closest('input, textarea, select, button, [contenteditable="true"]')) e.currentTarget.focus() }}
+      onKeyDown={(e) => {
+        const command = timelineClipboardCommand(e, Boolean((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')))
+        if (!command) return
+        const s = useStore.getState()
+        if (command === 'copy' && s.selection?.kind === 'clip') {
+          e.preventDefault(); e.stopPropagation(); s.copyTimelineClip(s.selection.clipType, s.selection.clipId)
+        } else if (command === 'paste') {
+          e.preventDefault(); e.stopPropagation(); s.pasteTimelineClip(stage.currentFrame)
+        }
+      }}
       style={{ ['--t3d-timeline-height' as string]: `${timelineHeight}px` }}
     >
       <Tooltip label={timelineOpen ? t('timeline.collapse') : t('timeline.expand')} side="top">
@@ -422,6 +470,17 @@ function SceneTimeline() {
           >
             <IconSnapMagnet />
             {t('timeline.snap')}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('timeline.lockViewTitle')} side="top">
+          <button
+            type="button"
+            className={cx('t3d-timeline-auto-key', viewportLocked && 'is-active')}
+            aria-pressed={viewportLocked}
+            onClick={toggleViewportLocked}
+          >
+            <IconLock />
+            {t('timeline.lockView')}
           </button>
         </Tooltip>
         <label className="t3d-timeline-field">
@@ -484,14 +543,15 @@ function SceneTimeline() {
               onEditEnd={endTimelineRangeEdit}
             />
           </label>
-          <div className="t3d-timeline-unit-switch" role="group" aria-label={t('timeline.unit')}>
+          <div className="t3d-timeline-unit-switch" role="group" aria-label={t('timeline.rulersGroup')}>
             {(['seconds', 'frames', 'ticks'] as TimelineUnit[]).map((unit) => (
               <button
                 key={unit}
                 type="button"
-                className={cx('t3d-timeline-unit-btn', timelineUnit === unit && 'is-active')}
-                aria-pressed={timelineUnit === unit}
-                onClick={() => setTimelineUnit(unit)}
+                className={cx('t3d-timeline-unit-btn t3d-timeline-ruler-toggle', shownRulers.includes(unit) && 'is-active')}
+                aria-pressed={shownRulers.includes(unit)}
+                title={t(unit === 'seconds' ? 'timeline.rulerSeconds' : unit === 'frames' ? 'timeline.rulerFrames' : 'timeline.rulerTicks')}
+                onClick={() => toggleRulerUnit(unit)}
               >
                 {t(unit === 'seconds' ? 'timeline.unitSeconds' : unit === 'frames' ? 'timeline.unitFrames' : 'timeline.unitTicks')}
               </button>
@@ -574,6 +634,7 @@ function SceneTimeline() {
               width: LEFT_W + TRACK_INSET + trackW,
               minWidth: '100%',
               ['--t3d-sheet-grid-step' as string]: `${sheet.step * scale}px`,
+              ['--t3d-rulers-h' as string]: `${shownRulers.length * RULER_HEIGHT}px`,
             }}
             onPointerDown={onKfBoxPointerDown}
             onPointerMove={onKfBoxPointerMove}
@@ -582,17 +643,21 @@ function SceneTimeline() {
             onKeyDownCapture={onKfBoxKeyDown}
             tabIndex={-1}
           >
-            <Ruler
-              frameStart={tl.frameStart}
-              frameEnd={tl.frameEnd}
-              fps={tl.fps}
-              unit={timelineUnit}
-              pxPerFrame={scale}
-              currentFrame={frame}
-              ariaLabel={t('timeline.frame')}
-              rulerRef={rulerRef}
-              scrubHandlers={scrubHandlers}
-            />
+            {shownRulers.map((unit, index) => (
+              <Ruler
+                key={unit}
+                frameStart={tl.frameStart}
+                frameEnd={tl.frameEnd}
+                fps={tl.fps}
+                unit={unit}
+                pxPerFrame={scale}
+                currentFrame={frame}
+                ariaLabel={`${t('timeline.frame')} · ${t(unit === 'seconds' ? 'timeline.unitSeconds' : unit === 'frames' ? 'timeline.unitFrames' : 'timeline.unitTicks')}`}
+                rulerRef={index === 0 ? rulerRef : undefined}
+                scrubHandlers={scrubHandlers}
+                top={index * RULER_HEIGHT}
+              />
+            ))}
             <div
               className="t3d-timeline-grid"
               style={{ left: LEFT_W + TRACK_INSET, width: trackW }}
@@ -629,6 +694,8 @@ function SceneTimeline() {
                 fcurves={fcurves}
                 onSelect={select}
                 onToggle={(key) => setOpenMap((m) => ({ ...m, [key]: !isOpen(row) }))}
+                pinned={depth === 0 && row.kind === 'node' ? pinnedRows.includes(row.nodeId) : undefined}
+                onTogglePin={depth === 0 && row.kind === 'node' ? togglePin : undefined}
                 onAddKeyframe={onAddKeyframe}
                 onMoveKeyframes={moveKeyframes}
                 onRemoveKeyframe={removeKeyframe}
@@ -652,6 +719,7 @@ function SceneTimeline() {
           </KeyframeDragPreviewProvider>
         </div>
       ) : null}
+      {notice ? <div className="t3d-timeline-notice" role="status">{notice}</div> : null}
     </div>
   )
 }
