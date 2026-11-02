@@ -123,6 +123,12 @@ export function motionClipOverrunSeconds(clip: MotionClip, fps: number): number 
   return Math.max(0, clipSeconds - playedSeconds)
 }
 
+/** Độ dời nhịp bước (giây động tác gốc) của clip sau; 0 khi không có. */
+export function motionPhaseOffsetSeconds(clip: MotionClip): number {
+  const phase = clip.playback.blendIn?.phaseOffsetSeconds
+  return typeof phase === 'number' && Number.isFinite(phase) ? phase : 0
+}
+
 export function motionTimeSeconds(clip: MotionClip, frame: number, fps: number, leftLimit = false, clampSource = false): number {
   const mode = motionExtendMode(clip.playback)
   const loops = mode === 'loop'
@@ -136,7 +142,11 @@ export function motionTimeSeconds(clip: MotionClip, frame: number, fps: number, 
     const clipSeconds = (clip.frameEnd - clip.frameStart + 1) / fps
     if (clipSeconds > 0) speed = sourceLength / clipSeconds
   }
-  const elapsed = ((Math.max(clip.frameStart, frame) - clip.frameStart) / fps) * speed
+  // K3: "Khớp nhịp bước" dời điểm bắt đầu đọc động tác gốc của clip sau (giây của động tác gốc, sau tốc độ).
+  const phase = motionPhaseOffsetSeconds(clip)
+  const elapsed = phase === 0
+    ? ((Math.max(clip.frameStart, frame) - clip.frameStart) / fps) * speed
+    : Math.max(0, ((Math.max(clip.frameStart, frame) - clip.frameStart) / fps) * speed + phase)
   const wrapped = elapsed % (2 * sourceLength)
   let offset = pingPong
     ? (wrapped <= sourceLength ? wrapped : 2 * sourceLength - wrapped)

@@ -15,7 +15,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three'
 import { getBlendStatus } from '@topview/3d-builder/skeleton'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
-const { values } = parseArgs({ options: { project: { type: 'string' }, out: { type: 'string' }, 'hashes-only': { type: 'boolean' }, dir: { type: 'string' } } })
+const { values } = parseArgs({ options: { project: { type: 'string' }, out: { type: 'string' }, 'hashes-only': { type: 'boolean' }, dir: { type: 'string' }, 'zone-frames': { type: 'string' }, 'phase-seconds': { type: 'string' }, mirror: { type: 'boolean' } } })
 const projectId = values.project ?? 'e901aadb-453f-4f69-b6f7-8eceda1f41f3'
 const dir = values.dir ?? process.env.BBS_UNIFIED_PROJECTS_DIR
 if (!dir) throw new TypeError('Set BBS_UNIFIED_PROJECTS_DIR to a COPY of the projects folder')
@@ -39,10 +39,26 @@ function variant(name: string, edit: Variant): UnifiedProject {
   void name
   return copy
 }
-const blended = variant('blended', (c) => c)
+// K3 experiments (in memory only, never written): --zone-frames N moves B so the zone ends at the same frame;
+// --mirror / --phase-seconds set the K3 blendIn fields on B.
+const zoneArg = values['zone-frames'] ? Number(values['zone-frames']) : null
+const blended = variant('blended', (c) => c.map((x) => {
+  if (x.id !== clipB) return x
+  if (zoneArg && x.playback.blendIn) {
+    const delta = zoneArg - x.playback.blendIn.frames
+    x.frameStart -= delta; x.frameEnd -= delta; x.playback.blendIn.frames = zoneArg
+  }
+  if (values.mirror) x.playback.blendIn.mirror = true
+  if (values['phase-seconds']) x.playback.blendIn.phaseOffsetSeconds = Number(values['phase-seconds'])
+  return x
+}))
 const aOnly = variant('A only', (c) => c.filter((x) => x.id === clipA))
 // B alone, same placement and no blend: the raw (un-aligned) B path.
-const bOnly = variant('B only', (c) => c.filter((x) => x.id === clipB).map((x) => { delete x.playback.blendIn; return x }))
+const bOnly = variant('B only', (c) => c.filter((x) => x.id === clipB).map((x) => {
+  const placed = blended.scene.content.timeline.animation.motionClips.find((y) => y.id === clipB)!
+  delete x.playback.blendIn; x.frameStart = placed.frameStart; x.frameEnd = placed.frameEnd
+  return x
+}))
 // Same two clips without blendIn at the original 59 placement: a "no blend" project.
 const noBlend = variant('no blend', (c) => c.map((x) => { if (x.id === clipB) { delete x.playback.blendIn; x.frameStart = 59; x.frameEnd = 149 } return x }))
 

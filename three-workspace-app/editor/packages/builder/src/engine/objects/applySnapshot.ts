@@ -13,6 +13,7 @@ import { applyNodeVisibility } from './visibility'
 import { applyEvaluatedCamera } from './cameraTransform'
 import { evaluateRootTrajectory } from './rootMotion'
 import { motionBlendInOf } from '../../evaluate/clips'
+import { directAnimationFor } from './clipMirror'
 import { applyBlendAlignment, applyBlendFootLock, ensureBlendPlans, resetBlendAlignment } from './clipBlendPlan'
 
 const D2R = THREE.MathUtils.degToRad
@@ -44,7 +45,7 @@ function applyMotionCommand(graph: StageGraph, cmd: MotionPlaybackCommand): bool
       return true
     }
   } else {
-    const ac = graph.motionPlayer.getClipForDirectBind(clip.motion.assetId, ch.inner, ch.restPose, ch.restPos, clipIndex)
+    const ac = directAnimationFor(graph.motionPlayer, ch, clip)
     if (ac) {
       ch.animator.playAt(clip.id, ac, cmd.timeSeconds, cmd.clampSource ? false : clip.playback.loop)
       if (clip.motion.rootMotion?.policy === 'in-place' || clip.motion.rootMotion?.policy === 'trajectory' && ch.motionRootDelta) {

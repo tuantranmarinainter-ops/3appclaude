@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { MotionClip } from '../../contract/types'
-import { motionBlendInOf, motionBlendPartner, motionBlendWeight } from '../../evaluate/clips'
+import { motionBlendInOf, motionBlendPartner, motionBlendWeight, motionPhaseOffsetSeconds } from '../../evaluate/clips'
+import { directAnimationFor } from './clipMirror'
 import type { MotionPlayer } from './MotionPlayer'
 import type { CharInstance } from './types'
 
@@ -111,7 +112,8 @@ function trajectoryState(character: CharInstance, player: MotionPlayer, nodeClip
   const root = clip.motion.rootMotion
   if (!root) return { result: null, endpoint: null }
   if (root.policy === 'in-place') return { result: null, endpoint: new THREE.Matrix4() }
-  const animation = player.getClipForDirectBind(clip.motion.assetId, character.inner, character.restPose, character.restPos, clip.motion.clipIndex ?? 0)
+  // K3: clip sau có blendIn.mirror dùng clip đã lật trái-phải nên đường đi/hướng root cũng lật.
+  const animation = directAnimationFor(player, character, clip)
   if (!animation) return null
   const start = clip.motion.time
   const length = clip.motion.sourceLengthSeconds ?? clip.sourceDuration - start
@@ -122,12 +124,21 @@ function trajectoryState(character: CharInstance, player: MotionPlayer, nodeClip
   const last = sampleRootDelta(character, animation, root.boneName, sourceEnd)
   if (!first || !last || !(length > 0)) return null
   const duration = (clip.frameEnd - clip.frameStart + 1) / fps
-  const elapsed = Math.min(Math.max(0, (frame - clip.frameStart) / fps), duration) * clip.playback.speed
+  // K3: Khớp nhịp bước dời điểm bắt đầu đọc động tác gốc: cộng vào thời gian đã nhân tốc độ.
+  const phase = motionPhaseOffsetSeconds(clip)
+  const elapsed = Math.min(Math.max(0, (frame - clip.frameStart) / fps), duration) * clip.playback.speed + (phase === 0 ? 0 : Math.max(0, phase))
   const cycles = clip.playback.loop ? Math.floor(elapsed / length) : 0
   const offset = clip.playback.loop ? elapsed % length : Math.min(elapsed, length)
   const current = sampleRootDelta(character, animation, root.boneName, reverse ? sourceStart - offset : sourceStart + offset)!
   if (root.policy === 'skeletal') return { result: null, endpoint: current }
   const inverseFirst = first.clone().invert()
+  // Chuyển động tương đối từ khung đầu của động tác gốc tới thời điểm `e` (giây động tác gốc, đã tính vòng lặp).
+  const relative = (e: number): THREE.Matrix4 => {
+    const k = clip.playback.loop ? Math.floor(e / length) : 0
+    const o = clip.playback.loop ? e % length : Math.min(e, length)
+    const at = sampleRootDelta(character, animation, root.boneName, reverse ? sourceStart - o : sourceStart + o)!
+    return power(inverseFirst.clone().multiply(last), k).multiply(inverseFirst).multiply(at)
+  }
   let endpoint: THREE.Matrix4 | null = null
   const partner = motionBlendPartner(nodeClips, clip)
   const index = nodeClips.indexOf(clip)
@@ -138,7 +149,10 @@ function trajectoryState(character: CharInstance, player: MotionPlayer, nodeClip
     endpoint = state.endpoint
   }
   const anchor: THREE.Matrix4 = root.alignment !== 'origin' && endpoint ? endpoint : first
-  const trajectory: THREE.Matrix4 = anchor.clone().multiply(power(inverseFirst.clone().multiply(last), cycles)).multiply(inverseFirst).multiply(current)
+  // Có độ dời nhịp: neo tại điểm bắt đầu đọc (relative(phase)) để root clip sau vẫn khởi đầu đúng tại neo.
+  const trajectory: THREE.Matrix4 = phase === 0
+    ? anchor.clone().multiply(power(inverseFirst.clone().multiply(last), cycles)).multiply(inverseFirst).multiply(current)
+    : anchor.clone().multiply(relative(Math.max(0, phase)).invert()).multiply(relative(elapsed))
   if (!trajectory.elements.every(Number.isFinite)) throw new RangeError('Root-motion trajectory exceeds numerical range')
   return { result: trajectory, endpoint: trajectory }
 }

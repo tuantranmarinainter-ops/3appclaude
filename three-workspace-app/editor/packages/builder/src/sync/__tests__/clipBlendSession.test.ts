@@ -105,6 +105,27 @@ describe('context menu and panel actions are single undo steps', () => {
     expect(JSON.stringify(doc)).toBe(original)
   })
 
+  it('Dao chan and Khop nhip buoc are one undo step each; they restore exactly', () => {
+    const { session, doc, history, byId } = fixture()
+    expect(session.blendMotionClipWithPrevious('B')).toBe(true)
+    const before = JSON.stringify(doc)
+    const depth = history.undoStack.length
+    expect(session.setMotionClipBlend('B', { mirror: true })).toBe(true)
+    expect(byId('B').playback.blendIn!.mirror).toBe(true)
+    expect(history.undoStack.length).toBe(depth + 1)
+    expect(session.setMotionClipBlend('B', { mirror: true })).toBe(false)
+    expect(history.undoStack.length).toBe(depth + 1)
+    expect(session.setMotionClipBlend('B', { phaseOffsetSeconds: 0.34 })).toBe(true)
+    expect(byId('B').playback.blendIn).toMatchObject({ mirror: true, phaseOffsetSeconds: 0.34 })
+    expect(history.undoStack.length).toBe(depth + 2)
+    expect(session.setMotionClipBlend('B', { phaseOffsetSeconds: null })).toBe(true)
+    expect(byId('B').playback.blendIn!.phaseOffsetSeconds).toBeUndefined()
+    history.undo(); history.undo()
+    expect(byId('B').playback.blendIn!.mirror).toBe(true)
+    history.undo()
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
   it('unavailable without a touching predecessor', () => {
     const { session, history } = fixture([motion('A', 0, 58), motion('B', 80, 149)])
     expect(session.blendMotionClipWithPrevious('B')).toBe(false)
