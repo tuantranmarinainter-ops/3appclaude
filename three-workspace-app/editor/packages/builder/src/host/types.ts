@@ -132,6 +132,11 @@ export interface HostAdapter<TDocument = unknown> {
   assignAnimation?(documentId: string, characterNodeId: string | null): Promise<void>
   /** Host debug recorder panel: records the user's actions and app errors to a log for troubleshooting. */
   openDebug?(): void
+  /**
+   * K5 "Sửa chỗ nối trong App 3": the host opens its animation workspace on the Character and the span [A.frameStart, B.frameEnd]
+   * and exports the baked blend chain as a shot. The builder only emits the intent (no fetch here).
+   */
+  editBlendInAnimation?(documentId: string, request: { characterNodeId: string; clipId: string; frameStart: number; frameEnd: number }): void
   /** 按需拉一条姿势 JSON。包内不 fetch。 */
   loadPoseAsset?(modelUrl: string): Promise<PoseBonesPayload | null>
   /** 目录未加载时，按 pose id 取 `a3d_pose_<id>` 再拉 JSON。 */

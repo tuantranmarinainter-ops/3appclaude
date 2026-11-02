@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
 import { blendLockText, blendOffBeatText, blendOffsetText, blendPhaseText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
-import { blendBandLabel, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
+import { blendBandLabel, blendChainSpan, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
 import { motionBlendInOf, motionBlendPartner } from '../../evaluate/clips'
 import { clampMenuPosition } from './utils/clipMenu'
 
@@ -24,7 +24,7 @@ export function ClipBlendBands({
   frameStart: number
   pxPerFrame: number
 }) {
-  const { useStore } = useDirector()
+  const { useStore, adapter, documentId } = useDirector()
   const preview = useStore((s) => s.clipMovePreview)
   const writeLocked = useStore((s) => s.writeLocked)
   const [panel, setPanel] = useState<{ clipId: string; x: number; y: number } | null>(null)
@@ -94,6 +94,13 @@ export function ClipBlendBands({
           onClose={() => setPanel(null)}
           apply={(patch) => useStore.getState().setMotionClipBlend(opened.clip.id, patch)}
           remove={() => { useStore.getState().removeMotionClipBlend(opened.clip.id); setPanel(null) }}
+          editInHost={adapter.editBlendInAnimation ? () => {
+            // K5: chuỗi A + B (+ các clip nối tiếp) -> host mở App 3 trên khoảng [đầu A, cuối clip cuối chuỗi].
+            const span = blendChainSpan(clips, opened.clip.id)
+            if (!span) return
+            adapter.editBlendInAnimation?.(documentId, { characterNodeId: opened.clip.target.nodeId, clipId: opened.clip.id, frameStart: span.frameStart, frameEnd: span.frameEnd })
+            setPanel(null)
+          } : undefined}
         />
       )}
     </>
@@ -101,7 +108,7 @@ export function ClipBlendBands({
 }
 
 function BlendPanel({
-  band, x, y, disabled, maxFrames, onClose, apply, remove,
+  band, x, y, disabled, maxFrames, onClose, apply, remove, editInHost,
 }: {
   band: Band
   x: number
@@ -111,6 +118,7 @@ function BlendPanel({
   onClose: () => void
   apply: (patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
   remove: () => void
+  editInHost?: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState(String(band.blend.frames))
@@ -200,6 +208,11 @@ function BlendPanel({
         )
       })()}
       {invalid && <div className="t3d-timeline-blend-note">Số khung không hợp lệ (2 – {Math.max(MIN_BLEND_FRAMES, maxFrames)}) hoặc đụng clip khác.</div>}
+      {editInHost && (
+        <button type="button" className="t3d-timeline-blend-edit" data-blend-edit-app3
+          title="Mở chuỗi clip đã trộn (nướng sẵn) trong App 3 để chỉnh key, rồi trả về thành một clip gộp"
+          onClick={editInHost}>Sửa chỗ nối trong App 3</button>
+      )}
       <button type="button" className="t3d-timeline-blend-remove" disabled={disabled} onClick={remove}>Bỏ trộn</button>
     </div>
   )

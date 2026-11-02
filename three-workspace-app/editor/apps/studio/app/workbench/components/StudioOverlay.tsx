@@ -32,6 +32,7 @@ import { DebugRecorderPanel } from './debug-recorder'
 import { resumeDebugIfEnabled } from '../../../src/debugRecorder'
 import { LanguageMenu } from './LanguageMenu'
 import { WORKSPACE_PANELS, type Workspace } from '../../../src/workspaceNavigation'
+import { BLEND_EDIT_REQUEST_EVENT } from '../../../src/blendEditRequest'
 
 function StudioChunkFallback() {
   const t = useStudioT()
@@ -533,6 +534,17 @@ export function StudioOverlay({
     }
     window.addEventListener('bbs-workspace-request', onWorkspaceRequest)
     return () => window.removeEventListener('bbs-workspace-request', onWorkspaceRequest)
+  }, [openPanel, source])
+  // K5: dải X "Sửa chỗ nối trong App 3" -> chuyển sang workspace Animation; panel Animation tự nhận yêu cầu và mở shot.
+  useEffect(() => {
+    if (source !== 'unified') return
+    const onBlendEdit = () => {
+      openAnimationOnSwitch.current = false
+      setDrawer(null)
+      void openPanel(WORKSPACE_PANELS.animation)
+    }
+    window.addEventListener(BLEND_EDIT_REQUEST_EVENT, onBlendEdit)
+    return () => window.removeEventListener(BLEND_EDIT_REQUEST_EVENT, onBlendEdit)
   }, [openPanel, source])
   // N1: the builder rail's "Gán animation" button reaches the overlay through the host adapter event.
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { translateStudio } from './locale'
 import { navigationHintPreference } from './navigationHintPreference'
+import { BLEND_EDIT_REQUEST_EVENT, BLEND_EDIT_REQUEST_KEY } from './blendEditRequest'
 import {
   normalizeAssetKey,
   type AssetFacets,
@@ -223,6 +224,14 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   /** Nút "Debug" ở cột trái: mở bảng ghi thao tác của overlay. */
   openDebug(): void {
     window.dispatchEvent(new Event('bbs-open-debug'))
+  }
+
+  /** K5: dải X "Sửa chỗ nối trong App 3" -> overlay chuyển sang workspace Animation, panel tự xuất shot đã nướng. */
+  editBlendInAnimation(documentId: string, request: { characterNodeId: string; clipId: string; frameStart: number; frameEnd: number }): void {
+    const detail = { projectId: documentId, ...request }
+    // Panel Animation có thể chưa được mount: giữ yêu cầu ở sessionStorage cho tới khi nó nhận (xem blendEditRequest.ts).
+    try { sessionStorage.setItem(BLEND_EDIT_REQUEST_KEY, JSON.stringify(detail)) } catch { /* storage unavailable */ }
+    window.dispatchEvent(new CustomEvent(BLEND_EDIT_REQUEST_EVENT, { detail }))
   }
 
   async placeLibraryAction(documentId: string, actionUuid: string, characterNodeId: string): Promise<void> {

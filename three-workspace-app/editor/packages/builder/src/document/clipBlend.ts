@@ -292,3 +292,22 @@ export function setBlendOptions(clips: readonly MotionClip[], clipId: string, pa
   const next: MotionBlendIn = { ...rest, ...(mirror ? { mirror: true } : {}), ...(phaseValue !== null ? { phaseOffsetSeconds: phaseValue } : {}) }
   return clips.map((item) => (item.id === clipId ? withBlend(item, next) : item))
 }
+
+/**
+ * K5 "Sửa chỗ nối trong App 3": chuỗi clip nối nhau bằng vùng trộn chứa clip `clipId` (clip sau của một dải X) và khoảng
+ * [đầu clip đầu, cuối clip cuối] mà App 3 cần mở. null nếu `clipId` không có blendIn hợp lệ.
+ */
+export function blendChainSpan(clips: readonly MotionClip[], clipId: string): { clipIds: string[]; frameStart: number; frameEnd: number } | null {
+  const clip = clips.find((item) => item.id === clipId)
+  const first = clip && motionBlendPartner(clips, clip)
+  if (!clip || !first) return null
+  const chain: MotionClip[] = [first, clip]
+  const sameNode = clips.filter((item) => item.target.nodeId === clip.target.nodeId)
+  for (let guard = 0; guard < clips.length; guard++) {
+    const tail = chain[chain.length - 1]
+    const next = sameNode.find((item) => !chain.includes(item) && item.playback.blendIn && motionBlendPartner(clips, item) === tail)
+    if (!next) break
+    chain.push(next)
+  }
+  return { clipIds: chain.map((item) => item.id), frameStart: Math.min(...chain.map((item) => item.frameStart)), frameEnd: Math.max(...chain.map((item) => item.frameEnd)) }
+}

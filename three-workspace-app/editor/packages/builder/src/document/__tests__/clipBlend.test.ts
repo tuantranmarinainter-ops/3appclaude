@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import {
   applyBlendDrag,
+  blendChainSpan,
   blendWithPrevious,
   defaultBlendFrames,
   findInvalidMotionOverlaps,
@@ -173,4 +174,20 @@ describe('findInvalidMotionOverlaps (K4 preflight)', () => {
       else expect(found).toEqual([])
     })
   }
+})
+
+describe('blendChainSpan (K5 "Sửa chỗ nối trong App 3")', () => {
+  const b = (frames: number): MotionBlendIn => ({ frames, curve: 'smooth', footLock: true })
+  it('A + B: span from A start to B end', () => {
+    expect(blendChainSpan([clip('A', 0, 58), clip('B', 44, 134, b(15))], 'B')).toEqual({ clipIds: ['A', 'B'], frameStart: 0, frameEnd: 134 })
+  })
+  it('follows the chain to later clips connected by blendIn', () => {
+    const clips = [clip('A', 0, 58), clip('B', 44, 134, b(15)), clip('C', 120, 200, b(15))]
+    expect(blendChainSpan(clips, 'B')).toEqual({ clipIds: ['A', 'B', 'C'], frameStart: 0, frameEnd: 200 })
+  })
+  it('ignores clips of other characters and clips without a valid blend', () => {
+    const clips = [clip('A', 0, 58), clip('B', 44, 134, b(15)), clip('X', 120, 200, b(15), 'other'), clip('D', 135, 200)]
+    expect(blendChainSpan(clips, 'B')).toEqual({ clipIds: ['A', 'B'], frameStart: 0, frameEnd: 134 })
+    expect(blendChainSpan(clips, 'D')).toBeNull()
+  })
 })

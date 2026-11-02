@@ -1025,6 +1025,15 @@
   color: #f5a623;
 }
 
+.t3d-timeline-blend-edit {
+  background: rgba(245, 166, 35, 0.18);
+  color: inherit;
+  border: 1px solid #f5a623;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
 .t3d-timeline-blend-remove {
   align-self: flex-end;
   background: #2a2d35;
