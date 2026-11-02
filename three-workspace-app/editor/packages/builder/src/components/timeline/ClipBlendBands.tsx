@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
 import { blendLockText, blendOffBeatText, blendOffsetText, blendPhaseText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
 import { blendBandLabel, blendChainSpan, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
 import { motionBlendInOf, motionBlendPartner } from '../../evaluate/clips'
-import { clampMenuPosition } from './utils/clipMenu'
+import { placeAnchoredPanel, type AnchorRect } from './utils/clipMenu'
 
 interface Band {
   clip: MotionClip
@@ -27,7 +28,7 @@ export function ClipBlendBands({
   const { useStore, adapter, documentId } = useDirector()
   const preview = useStore((s) => s.clipMovePreview)
   const writeLocked = useStore((s) => s.writeLocked)
-  const [panel, setPanel] = useState<{ clipId: string; x: number; y: number } | null>(null)
+  const [panel, setPanel] = useState<{ clipId: string; anchor: AnchorRect } | null>(null)
   useSyncExternalStore(subscribeBlendStatus, blendStatusVersion, blendStatusVersion)
   const bandTitle = (band: Band) => {
     const status = getBlendStatus(band.clip.id)
@@ -74,21 +75,20 @@ export function ClipBlendBands({
           onClick={(event) => {
             event.stopPropagation()
             const rect = event.currentTarget.getBoundingClientRect()
-            setPanel({ clipId: band.clip.id, x: rect.left, y: rect.bottom + 4 })
+            setPanel({ clipId: band.clip.id, anchor: { left: rect.left, top: rect.top, bottom: rect.bottom } })
           }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
             const rect = event.currentTarget.getBoundingClientRect()
-            setPanel({ clipId: band.clip.id, x: rect.left, y: rect.bottom + 4 })
+            setPanel({ clipId: band.clip.id, anchor: { left: rect.left, top: rect.top, bottom: rect.bottom } })
           }}
         />
       ))}
       {panel && opened && (
         <BlendPanel
           band={opened}
-          x={panel.x}
-          y={panel.y}
+          anchor={panel.anchor}
           disabled={writeLocked}
           maxFrames={maxBlendFrames(opened.partner, opened.clip)}
           onClose={() => setPanel(null)}
@@ -108,11 +108,10 @@ export function ClipBlendBands({
 }
 
 function BlendPanel({
-  band, x, y, disabled, maxFrames, onClose, apply, remove, editInHost,
+  band, anchor, disabled, maxFrames, onClose, apply, remove, editInHost,
 }: {
   band: Band
-  x: number
-  y: number
+  anchor: AnchorRect
   disabled: boolean
   maxFrames: number
   onClose: () => void
@@ -124,14 +123,24 @@ function BlendPanel({
   const [draft, setDraft] = useState(String(band.blend.frames))
   const [invalid, setInvalid] = useState(false)
   useEffect(() => { setDraft(String(band.blend.frames)); setInvalid(false) }, [band.blend.frames])
-  useEffect(() => {
+  // Đặt bảng dưới dải (hoặc trên nếu không đủ chỗ), luôn nằm gọn trong cửa sổ; đo lại khi nội dung đổi cao.
+  useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const next = clampMenuPosition(x, y, { width: rect.width, height: rect.height }, { width: window.innerWidth, height: window.innerHeight })
-    el.style.left = `${next.x}px`
-    el.style.top = `${next.y}px`
-  }, [x, y])
+    const place = () => {
+      el.style.maxHeight = ''
+      const rect = el.getBoundingClientRect()
+      const next = placeAnchoredPanel(anchor, { width: rect.width, height: rect.height }, { width: window.innerWidth, height: window.innerHeight })
+      el.style.left = `${next.x}px`
+      el.style.top = `${next.y}px`
+      el.style.maxHeight = `${next.maxHeight}px`
+    }
+    place()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
+    observer?.observe(el)
+    window.addEventListener('resize', place)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', place) }
+  }, [anchor])
   useEffect(() => {
     const down = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) onClose() }
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
@@ -146,8 +155,9 @@ function BlendPanel({
     setInvalid(!ok)
     if (!ok) setDraft(String(band.blend.frames))
   }
-  return (
-    <div ref={ref} className="t3d-timeline-blend-panel" role="dialog" aria-label="Trộn clip" style={{ left: x, top: y }}
+  // Portal ra body: hàng công cụ sticky của timeline có z-index riêng nên che bảng nếu bảng nằm trong cây timeline.
+  const panel = (
+    <div ref={ref} className="t3d-timeline-blend-panel" role="dialog" aria-label="Trộn clip" style={{ left: anchor.left, top: anchor.bottom + 4 }}
       onPointerDown={(event) => event.stopPropagation()}>
       <div className="t3d-timeline-blend-title">Trộn clip</div>
       <label className="t3d-timeline-blend-row">
@@ -216,4 +226,5 @@ function BlendPanel({
       <button type="button" className="t3d-timeline-blend-remove" disabled={disabled} onClick={remove}>Bỏ trộn</button>
     </div>
   )
+  return typeof document === 'undefined' ? panel : createPortal(panel, document.body)
 }

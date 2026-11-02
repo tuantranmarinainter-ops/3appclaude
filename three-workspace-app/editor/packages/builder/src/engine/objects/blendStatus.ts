@@ -79,8 +79,9 @@ function emit(): void {
   for (const listener of [...listeners]) listener()
 }
 
-function vnNumber(value: number, digits: number): string {
-  return value.toFixed(digits).replace('.', ',')
+export function vnNumber(value: number, digits: number): string {
+  const text = value.toFixed(digits)
+  return (Number(text) === 0 ? text.replace(/^-/, '') : text).replace('.', ',')
 }
 
 export function blendPhaseText(status: BlendStatus | null | undefined): string {
