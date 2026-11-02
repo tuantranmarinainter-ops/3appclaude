@@ -30,7 +30,6 @@
     ".next-mock/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-dev-3034/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
