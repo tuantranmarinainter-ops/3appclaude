@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { createFrameSnapshot, evaluateFrame } from '@topview/3d-builder/evaluate'
+import { createFrameSnapshot, evaluateFrame, motionBlendInOf, motionBlendPartner } from '@topview/3d-builder/evaluate'
 import { projectEvaluationScene } from './unifiedSkeletonEvaluation'
 import { readVfxCueExtension } from './vfxCues'
 import { readAudioCueExtension } from './audioCues'
@@ -82,13 +82,28 @@ export function planSplitShots(source: UnifiedProject, args: { sequenceId?: stri
     const keptClips = animation.motionClips.filter((clip) => keep.has(clip.target.nodeId) && overlaps(clip, start, end))
     nextAnimation.motionClips = []
     project.bindings = {}
+    // K4: a cut through a clip blend zone (blendIn) keeps BOTH clips whole, shifted together. Trimming either one would
+    // break the zone (it must stay inside the earlier clip) and the K2 alignment is measured from the original start.
+    const blendCut = new Set<string>(), orphanBlend = new Set<string>()
+    for (const original of keptClips) {
+      const blend = motionBlendInOf(original)
+      if (!blend) continue
+      const partner = motionBlendPartner(animation.motionClips, original)
+      // Partner not in this shot: the blend no longer exists here, so the stored blendIn would be stale.
+      if (!partner || !keptClips.some((item) => item.id === partner.id)) { orphanBlend.add(original.id); continue }
+      if (original.frameStart < start || partner.frameEnd > end) {
+        blendCut.add(original.id); blendCut.add(partner.id)
+        warnings.push(`Shot cắt qua vùng trộn clip ${partner.id} → ${original.id}: giữ nguyên cả hai clip để vùng trộn không đổi.`)
+      }
+    }
     for (const original of keptClips) {
       if (original.frameStart < start || original.frameEnd > end) warnings.push(`Clip ${original.id} vắt qua ranh giới shot — đã cắt theo khoảng.`)
       const clip = structuredClone(original), first = Math.max(start, clip.frameStart), last = Math.min(end, clip.frameEnd)
-      if (clip.playback.loop || clip.motion.rootMotion?.policy === 'trajectory') {
+      if (orphanBlend.has(original.id)) delete clip.playback.blendIn
+      if (clip.playback.loop || clip.motion.rootMotion?.policy === 'trajectory' || blendCut.has(clip.id)) {
         // Loop phase and trajectory alignment are measured from the original start. Leading timing support
         // is intentionally outside the playable [0, end-start] timeline, just like bracketing curve keys.
-        clip.frameStart -= start; clip.frameEnd = last - start
+        clip.frameStart -= start; clip.frameEnd = blendCut.has(clip.id) ? clip.frameEnd - start : last - start
         nextAnimation.motionClips.push(clip)
         if (source.bindings[clip.id]) project.bindings[clip.id] = { ...structuredClone(source.bindings[clip.id]!), fadeOutSeconds: original.frameEnd > end ? 0 : source.bindings[clip.id]!.fadeOutSeconds }
         if (clip.frameStart < 0) warnings.push(`Clip ${clip.id}: giữ mốc thời gian nguồn trước khung 0 để bảo toàn vòng lặp/root motion.`)

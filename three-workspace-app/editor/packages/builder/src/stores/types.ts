@@ -344,7 +344,7 @@ export interface StudioView {
   toggleAutoKeyframe: () => void
   toggleTimelineSnap: () => void
   setClipBlendOverlap: (enabled: boolean) => void
-  /** Chuột phải "Trộn với clip trước": dời clip sau sớm hơn 0,5 giây và đặt blendIn (một bước Undo). */
+  /** Chuột phải "Trộn với clip trước": dời clip sau sớm hơn 1 giây và đặt blendIn (một bước Undo). */
   blendMotionClipWithPrevious: (clipId: string) => boolean
   /** Đổi số khung / kiểu chuyển của blendIn (một bước Undo). false = không hợp lệ, không đổi gì. */
   setMotionClipBlend: (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
