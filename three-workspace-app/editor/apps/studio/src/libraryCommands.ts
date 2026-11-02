@@ -158,7 +158,8 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
   const replaced = input.replaceClipId ? project.scene.content.timeline.animation.motionClips.find((clip) => clip.id === input.replaceClipId && clip.target.nodeId === input.nodeId) : undefined
   if (input.replaceClipId && !replaced) throw new UnifiedStoreError('NOT_FOUND', 'Clip cần thay không còn trong cảnh hoặc không thuộc nhân vật này', 404)
   const frameStartWanted = replaced ? replaced.frameStart : input.frameStart
-  if (frameStartWanted !== undefined) {
+  // A replacement reuses the old clip's span (the store keeps frameStart..frameEnd), so only new placements are checked.
+  if (frameStartWanted !== undefined && !replaced) {
     const duration = project.motions[action.uuid]?.durationSeconds ?? action.durationSeconds
     const frameEnd = frameStartWanted + Math.max(1, Math.round(duration * project.scene.content.timeline.fps)) - 1
     if (!Number.isSafeInteger(frameStartWanted) || frameStartWanted < 0 || !Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)

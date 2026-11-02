@@ -2881,13 +2881,20 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           // picked; without one the clip is appended after the character's last clip as before.
           const frameStart = libraryPlacement.frameStart >= 0 ? libraryPlacement.frameStart : Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
           const durationFrames = Math.max(1, Math.round(motion.durationSeconds * scene.content.timeline.fps))
-          const frameEnd = frameStart + durationFrames - 1
+          // A replacement keeps the old clip's span so neighbouring clips never shift or collide.
+          const frameEnd = replacedClip ? replacedClip.frameEnd : frameStart + durationFrames - 1
           if (!Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
-          if (libraryPlacement.frameStart >= 0 && priorClips.some((clip) => clip.frameStart <= frameEnd && clip.frameEnd >= frameStart)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
+          if (!replacedClip && libraryPlacement.frameStart >= 0 && priorClips.some((clip) => clip.frameStart <= frameEnd && clip.frameEnd >= frameStart)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
           const metadata = next.extensions.retargetMotionMetadata?.[motion.id] as { clipIndex?: number } | undefined
           const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(motion.assetId)}/source?format=glb`
+          const spans = new Map(priorClips.map((item) => [item.id, [item.frameStart, item.frameEnd] as const]))
           const clip = appendMotionClip(scene, { type: 'add-motion', libraryId: motion.id, name: libraryPlacement.name, fbxKey: url, targetNodeId: character.nodeId, frameStart, durationSeconds: motion.durationSeconds })
           clip.sourceDuration = motion.durationSeconds; clip.frameEnd = frameEnd
+          // appendMotionClip ripples overlapped clips by the full Action length; a replacement must leave neighbours where they were.
+          if (replacedClip) scene.content.timeline.animation.motionClips = scene.content.timeline.animation.motionClips.map((item) => {
+            const span = spans.get(item.id)
+            return span && (item.frameStart !== span[0] || item.frameEnd !== span[1]) ? { ...item, frameStart: span[0], frameEnd: span[1] } : item
+          })
           clip.playback.speed = 1; clip.playback.loop = false
           clip.motion.speed = 1; clip.motion.loop = false; clip.motion.time = 0; clip.motion.sourceLengthSeconds = motion.durationSeconds
           clip.motion.reverse = false; clip.motion.clipIndex = metadata?.clipIndex ?? 0; clip.motion.sourceRig = profile.family

@@ -75,6 +75,12 @@ test('B7: place-for-node with replaceClipId swaps the clip in one revision and u
     const after = await readUnifiedProject(projectId)
     const clipsAfter = after.scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === nodeId)
     assert.equal(clipsAfter.length, 2)
+    const oldSpan = clipsBefore.find((clip) => clip.id === first.clipId)!
+    const newClip = clipsAfter.find((clip) => clip.id === replaced.clipId)!
+    assert.deepEqual([newClip.frameStart, newClip.frameEnd], [oldSpan.frameStart, oldSpan.frameEnd], 'replacement keeps the old span')
+    const neighbourBefore = clipsBefore.find((clip) => clip.id === second.clipId)!
+    const neighbourAfter = clipsAfter.find((clip) => clip.id === second.clipId)!
+    assert.deepEqual([neighbourAfter.frameStart, neighbourAfter.frameEnd], [neighbourBefore.frameStart, neighbourBefore.frameEnd], 'neighbour clip does not move')
     assert.ok(!clipsAfter.some((clip) => clip.id === first.clipId), 'old clip removed')
     assert.equal(after.bindings[first.clipId], undefined, 'old binding removed')
     assert.equal(after.bindings[replaced.clipId]?.motionId, den.draftUuid)

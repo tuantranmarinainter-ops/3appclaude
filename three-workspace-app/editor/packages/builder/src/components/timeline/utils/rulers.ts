@@ -8,8 +8,9 @@ export type RulerVisibility = Record<TimelineUnit, boolean>
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
-export function defaultRulerVisibility(unit: TimelineUnit): RulerVisibility {
-  return { seconds: unit === 'seconds', frames: unit === 'frames', ticks: unit === 'ticks' }
+/** B4: all three rulers show until the user hides one. */
+export function defaultRulerVisibility(_unit?: TimelineUnit): RulerVisibility {
+  return { seconds: true, frames: true, ticks: true }
 }
 
 export function visibleRulers(visibility: RulerVisibility): TimelineUnit[] {

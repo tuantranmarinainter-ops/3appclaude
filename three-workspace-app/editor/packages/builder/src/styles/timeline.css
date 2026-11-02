@@ -877,8 +877,8 @@
 }
 
 .t3d-timeline-ruler-toggle.is-active {
-  background: var(--t3d-sheet-accent);
-  color: #111;
+  background: var(--t3d-accent, #4c8dff);
+  color: #fff;
 }
 
 .t3d-timeline-notice {

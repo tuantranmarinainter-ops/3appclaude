@@ -10,7 +10,8 @@ import { useAssignData } from './hooks/useAssignData'
 
 type AssignTab = 'own' | 'others' | 'shared'
 type Placement = 'shot' | 'frame' | 'replace'
-type Conflict = { nearest: number | null; afterLast: number }
+type Conflict = { nearest: number | null; afterLast: number; shotEnd?: number }
+const outsideShot = (frame: number, conflict: Conflict) => conflict.shotEnd !== undefined && frame > conflict.shotEnd ? ' · ngoài shot hiện tại' : ''
 
 const PLACEMENT_KEY = 'wb-assign-placement'
 function readStoredPlacement(): 'shot' | 'frame' | null {
@@ -119,7 +120,7 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
       if (isRangeOccupied(motionClips, node.nodeId, start, length)) {
         const range = shotRange(currentProject, start)
         const nearest = findFreeStart(motionClips, node.nodeId, start, length, range) ?? findFreeStart(motionClips, node.nodeId, start, length)
-        setFeedback({ uuid: action.uuid, text: `Khung ${start} đã có clip khác của nhân vật này. Chọn một chỗ trống bên dưới hoặc đổi vị trí đặt.`, conflict: { nearest, afterLast: frameAfterLastClip(motionClips, node.nodeId) } })
+        setFeedback({ uuid: action.uuid, text: `Khung ${start} đã có clip khác của nhân vật này. Chọn một chỗ trống bên dưới hoặc đổi vị trí đặt.`, conflict: { nearest, afterLast: frameAfterLastClip(motionClips, node.nodeId), shotEnd: range?.end } })
         return
       }
     }
@@ -198,8 +199,8 @@ export function AnimationAssignPanel({ projectId, project, initialNodeId }: {
                     <p>{feedback.text}</p>
                     {feedback.conflict && (
                       <div className="wb-assign-row">
-                        {feedback.conflict.nearest !== null && <button type="button" disabled={busy !== null} onClick={() => void assign(action, feedback.conflict!.nearest!)}>Đặt vào khoảng trống gần nhất (khung {feedback.conflict.nearest})</button>}
-                        <button type="button" disabled={busy !== null} onClick={() => void assign(action, feedback.conflict!.afterLast)}>Đặt sau clip cuối (khung {feedback.conflict.afterLast})</button>
+                        {feedback.conflict.nearest !== null && <button type="button" disabled={busy !== null} onClick={() => void assign(action, feedback.conflict!.nearest!)}>Đặt vào khoảng trống gần nhất (khung {feedback.conflict.nearest}{outsideShot(feedback.conflict.nearest, feedback.conflict)})</button>}
+                        <button type="button" disabled={busy !== null} onClick={() => void assign(action, feedback.conflict!.afterLast)}>Đặt sau clip cuối (khung {feedback.conflict.afterLast}{outsideShot(feedback.conflict.afterLast, feedback.conflict)})</button>
                       </div>
                     )}
                   </div>
