@@ -174,6 +174,8 @@ export interface BindViewportNavigationOptions {
   container: HTMLElement
   isHandleActive: () => boolean
   isEnabled: () => boolean
+  /** Khoá khung 3D: phím tắt, lăn chuột, kéo và cử chỉ không đổi camera khung nhìn; chọn/khoanh chọn vẫn dùng được. */
+  isViewLocked?: () => boolean
   /** 左键留给路径绘制；右键环绕、中键平移、滚轮和 WASD 仍走导航。 */
   reservesLeftPointer?: () => boolean
   getHandlers: () => ViewportNavPickHandlers | null
@@ -181,6 +183,7 @@ export interface BindViewportNavigationOptions {
 
 export function bindViewportNavigation(opts: BindViewportNavigationOptions): () => void {
   const { camera, canvas, container, isHandleActive, isEnabled, reservesLeftPointer, getHandlers } = opts
+  const viewLocked = () => opts.isViewLocked?.() ?? false
   canvas.tabIndex = 0
   canvas.style.outline = 'none'
 
@@ -279,7 +282,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     const key = e.key.toLowerCase()
     if (!['w', 'a', 's', 'd', 'q', 'e'].includes(key)) return
     if (e.metaKey || e.ctrlKey || e.altKey) return
-    if (!isEnabled()) return
+    if (!isEnabled() || viewLocked()) return
     e.preventDefault()
     camera.setKey(key, true)
   }
@@ -354,6 +357,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     }
     // 原生 touch 已在处理时，pointer 路径让路，避免双份位移。
     if (nativeTouchActive) return
+    if (viewLocked() && (touchPointers.size >= 2 || touchPan)) return
     if (touchPointers.size >= 2 || touchPan) {
       if (touchPointers.size >= 2) stepTouchGesture(touchPointers.values())
       return
@@ -368,7 +372,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
       const stepY = e.clientY - pointer.lastY
       pointer.lastX = e.clientX
       pointer.lastY = e.clientY
-      if (pointer.rightMoved && (stepX !== 0 || stepY !== 0)) camera.applyLookDelta(stepX, stepY)
+      if (pointer.rightMoved && !viewLocked() && (stepX !== 0 || stepY !== 0)) camera.applyLookDelta(stepX, stepY)
       return
     }
 
@@ -377,7 +381,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
       const stepY = e.clientY - pointer.lastY
       pointer.lastX = e.clientX
       pointer.lastY = e.clientY
-      if (stepX !== 0 || stepY !== 0) camera.applyPanDelta(stepX, stepY)
+      if (!viewLocked() && (stepX !== 0 || stepY !== 0)) camera.applyPanDelta(stepX, stepY)
       return
     }
 
@@ -391,6 +395,8 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
         // Space + drag = pan
       } else if (ctrl) {
         boxSelecting = true
+      } else if (viewLocked()) {
+        // Khung 3D đang khoá: kéo không xoay/nhìn, chỉ huỷ cú bấm chọn.
       } else if (e.pointerType === 'mouse') {
         pointer.leftOrbit = true
         camera.beginOrbitGesture()
@@ -405,6 +411,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
     }
 
     if (space && pointer.moved) {
+      if (viewLocked()) return
       const stepX = e.clientX - pointer.lastX
       const stepY = e.clientY - pointer.lastY
       pointer.lastX = e.clientX
@@ -503,7 +510,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
   }
 
   const onTouchMove = (e: TouchEvent) => {
-    if (!isEnabled() || touchOnUi) return
+    if (!isEnabled() || touchOnUi || viewLocked()) return
     if (e.timeStamp === lastTouchEventStamp && e.type === lastTouchEventType) return
     lastTouchEventStamp = e.timeStamp
     lastTouchEventType = e.type
@@ -530,6 +537,7 @@ export function bindViewportNavigation(opts: BindViewportNavigationOptions): () 
   const wheel = (e: WheelEvent) => {
     if (!isEnabled() || isHandleActive() || isViewportUiTarget(e.target)) return
     e.preventDefault()
+    if (viewLocked()) return
     wheelInputDevice = nextWheelInputDevice(wheelInputDevice, e)
     const gesture = classifyWheelEvent(e, {
       activeTouchCount: Math.max(touchCount, touchPointers.size),

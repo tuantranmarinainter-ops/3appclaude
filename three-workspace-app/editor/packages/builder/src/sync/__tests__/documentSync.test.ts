@@ -17,6 +17,7 @@ function engineStub(): DirectorEngine {
     ready: false,
     reset() {},
     invalidate() {},
+    setPlayRange() {},
     load: async () => undefined,
     seek() {},
     setEvalContext() {},
@@ -233,4 +234,161 @@ test('时间轴打开后点播放会驱动引擎', () => {
   editor.setPlaying(true)
   assert.deepEqual(calls, ['stopAmbient', 'play'])
   sync.dispose()
+})
+
+
+test('B44/B46: saves and camera edits are blocked while a host reload awaits its sidecar', async () => {
+  const model = new DirectorDoc()
+  const doc = makeEmptyDraft('reload-save-race', 30, 150, {
+    fov: 120, position: { x: 0, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 },
+  })
+  model.replace(doc)
+  const fresh = structuredClone(doc)
+  fresh.content.nodes[0]!.camera!.fov = 78.83
+  let finishCurves!: (raw: unknown) => void
+  let writes = 0
+  const session = new StudioSession(engineStub(), model, new EditorStore('reload-save-race'), new History(), {
+    loadDocument: async () => fresh,
+    loadFCurves: () => new Promise((resolve) => { finishCurves = resolve }),
+    saveDocumentState: async () => { writes++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  const reloading = session.reloadFromHost()
+  while (!finishCurves) await Promise.resolve()
+  assert.equal(session.writeLocked, true)
+  session.setCameraFov(35, doc.content.nodes[0]!.id)
+  await session.save({ captureCover: false })
+  assert.equal(writes, 0)
+  assert.equal(doc.content.nodes[0]!.camera!.fov, 120)
+  finishCurves(null)
+  await reloading
+  assert.equal(session.writeLocked, false)
+  assert.equal(session.doc!.content.nodes[0]!.camera!.fov, 78.83)
+  assert.equal(session.dirty, false)
+})
+
+test('B44: an in-flight save cannot drain old work across a newer host reload', async () => {
+  const model = new DirectorDoc()
+  model.replace(makeEmptyDraft('save-generation', 30, 150))
+  let finishSave!: () => void
+  const writes: DirectorDocument[] = []
+  const fresh = makeEmptyDraft('save-generation', 30, 300)
+  const session = new StudioSession(engineStub(), model, new EditorStore('save-generation'), new History(), {
+    loadDocument: async () => fresh,
+    loadFCurves: async () => null,
+    saveDocumentState: async (_id: string, doc: DirectorDocument) => {
+      writes.push(doc)
+      await new Promise<void>((resolve) => { finishSave = resolve })
+    },
+  } as unknown as HostAdapter<DirectorDocument>)
+  const saving = session.save({ captureCover: false })
+  await session.reloadFromHost()
+  session.setTimelineRange(0, 350)
+  finishSave()
+  await saving
+  assert.equal(writes.length, 1)
+  assert.equal(session.doc!.content.timeline.frameEnd, 350)
+  assert.equal(session.dirty, true)
+})
+
+
+test('B32/B44: failed host sidecar reload keeps old scene locked until a complete retry', async () => {
+  const model = new DirectorDoc()
+  const previous = makeEmptyDraft('failed-reload', 30, 150)
+  model.replace(previous)
+  const fresh = makeEmptyDraft('failed-reload', 30, 300)
+  let fail = true
+  let writes = 0
+  const session = new StudioSession(engineStub(), model, new EditorStore('failed-reload'), new History(), {
+    loadDocument: async () => fresh,
+    loadFCurves: async () => { if (fail) throw new Error('sidecar unavailable'); return null },
+    saveDocumentState: async () => { writes++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await assert.rejects(session.reloadFromHost(), /sidecar unavailable/)
+  assert.equal(session.hydrating, false)
+  assert.equal(session.writeLocked, true)
+  assert.equal(session.doc!.content.timeline.frameEnd, 150)
+  await session.save({ captureCover: false })
+  assert.equal(writes, 0)
+  fail = false
+  await session.reloadFromHost()
+  assert.equal(session.writeLocked, false)
+  assert.equal(session.doc!.content.timeline.frameEnd, 300)
+})
+
+
+test('B32: initial draft sidecar failure cannot save an empty key layer', async () => {
+  let writes = 0
+  const session = new StudioSession(engineStub(), new DirectorDoc(), new EditorStore('failed-open'), new History(), {
+    loadDocument: async () => makeEmptyDraft('failed-open', 30, 150),
+    loadFCurves: async () => { throw new Error('sidecar unavailable') },
+    saveDocumentState: async () => { writes++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await assert.rejects(session.loadDraft('failed-open'), /sidecar unavailable/)
+  assert.equal(session.writeLocked, true)
+  await session.save({ captureCover: false })
+  assert.equal(writes, 0)
+})
+
+
+test('B44/B58: a pilot preview is cancelled across reload and cannot write while loading', async () => {
+  const model = new DirectorDoc()
+  const doc = makeEmptyDraft('pilot-load', 30, 150, {
+    fov: 50, position: { x: 0, y: 2, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 },
+  })
+  model.replace(doc)
+  const editor = new EditorStore('pilot-load')
+  const cameraId = doc.content.nodes[0]!.id
+  let ended = 0
+  const engine = {
+    ...engineStub(),
+    getNodeSnapshot: () => null,
+    applyLiveCameraPose() {},
+    endCameraPilot: () => { ended++; return { position: { x: 99, y: 99, z: 99 }, forward: { x: 0, y: 0, z: -1 } } },
+  } as unknown as DirectorEngine
+  const session = new StudioSession(engine, model, editor, new History(), {
+    loadDocument: async () => structuredClone(doc),
+    loadFCurves: async () => null,
+  } as unknown as HostAdapter<DirectorDocument>)
+  editor.setCameraPilotId(cameraId)
+  session.hydrating = true
+  const before = JSON.stringify(session.doc)
+  session.setCameraPilot(null)
+  assert.equal(JSON.stringify(session.doc), before)
+  assert.equal(editor.cameraPilotId, null)
+  session.hydrating = false
+  editor.setCameraPilotId(cameraId)
+  await session.reloadFromHost()
+  assert.equal(editor.cameraPilotId, null)
+  assert.equal(session.doc!.content.nodes[0]!.transform.position.x, 0)
+  editor.setCameraPilotId(cameraId)
+  await session.loadDraft('pilot-load')
+  assert.equal(editor.cameraPilotId, null)
+  assert.equal(session.doc!.content.nodes[0]!.transform.position.x, 0)
+  assert.equal(ended, 3)
+})
+
+
+test('B44: fresh save after reload waits for old request and then persists the new generation', async () => {
+  const model = new DirectorDoc()
+  model.replace(makeEmptyDraft('save-after-reload', 30, 150))
+  let finishOld!: () => void
+  const writes: DirectorDocument[] = []
+  const session = new StudioSession(engineStub(), model, new EditorStore('save-after-reload'), new History(), {
+    loadDocument: async () => makeEmptyDraft('save-after-reload', 30, 300),
+    loadFCurves: async () => null,
+    saveDocumentState: async (_id: string, doc: DirectorDocument) => {
+      writes.push(doc)
+      if (writes.length === 1) await new Promise<void>((resolve) => { finishOld = resolve })
+    },
+  } as unknown as HostAdapter<DirectorDocument>)
+  const old = session.save({ captureCover: false })
+  await session.reloadFromHost()
+  session.setTimelineRange(0, 350)
+  const fresh = session.save({ captureCover: false })
+  assert.equal(writes.length, 1)
+  finishOld()
+  await Promise.all([old, fresh])
+  assert.equal(writes.length, 2)
+  assert.equal(writes[1]!.content.timeline.frameEnd, 350)
+  assert.equal(session.dirty, false)
 })

@@ -1,4 +1,5 @@
 import { browserOptions } from './browser_test_options.mjs';
+import { APP3_FRAME_URL } from '../../../../editor/apps/studio/src/app3Embed.ts';
 import { useClassicLayout } from './classic_test_layout.mjs';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
@@ -399,7 +400,7 @@ test(
       let frame = null;
       for (
         let i = 0;
-        i < 120 && !(frame = page.frame({ url: /animation-studio\/v1\.33\.0\/index\.html/ }));
+        i < 120 && !(frame = page.frames().find((child) => child.url().endsWith(APP3_FRAME_URL)));
         i++
       )
         await delay(500);

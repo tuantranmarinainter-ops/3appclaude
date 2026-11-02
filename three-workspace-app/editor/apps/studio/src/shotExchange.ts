@@ -56,15 +56,23 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     const libraryCharacterId=typeof node?.metadata?.libraryCharacterId==='string'?node.metadata.libraryCharacterId:null
     if(libraryCharacterId){
       const libraryCharacter=resolveCharacter(libraryCharacterId), nativeRig=libraryCharacter.baseModel?.format==='bobj'&&['verity','minecraft20'].includes(libraryCharacter.baseModel.rig)
-      if(nativeRig){
+      if(nativeRig && motion.edit===null){
+        const conversion=project.extensions?.libraryMotionConversions?.[motion.assetId]
+        if(conversion){
+          const ownModel=await libraryCharacterModel(libraryCharacterId)
+          packagedSource=composeLibraryActionGlb(ownModel.bytes,source,0)
+          packagedManifest={...packagedManifest,rig:'minecraft20',glbSha256:sha256(packagedSource),glb:{bytes:packagedSource.length,mode:'library-character-native'},actions:(Array.isArray(packagedManifest.actions)?packagedManifest.actions:[]).map((entry:any)=>entry.uuid===motion.id?{...entry,glbAnimationIndex:0}:entry)}
+        }else{
         const libraryActionUuid=isRecord(metadata)&&typeof metadata.libraryActionUuid==='string'?metadata.libraryActionUuid:motion.id
         const action=getAction({actionUuid:libraryActionUuid}), owned=action.ownerCharId===libraryCharacterId
-        if(owned){
+        if(owned || libraryCharacter.baseModel!.rig==='minecraft20' && action.rig==='minecraft20'){
           const sidecar=path.join(path.dirname(action.glbPath),libraryCharacter.baseModel!.rig==='minecraft20'?'anim.bobj':'anim.original.bbs.bobj')
-          const nativeAction=action.status==='edited'?await readFile(action.glbPath):await libraryNativeAction(libraryCharacterId,sidecar)
+          const mc20=libraryCharacter.baseModel!.rig==='minecraft20'
+          const nativeAction=mc20?source:action.status==='edited'?await readFile(action.glbPath):await libraryNativeAction(libraryCharacterId,sidecar)
           const ownModel=await libraryCharacterModel(libraryCharacterId)
-          packagedSource=composeLibraryActionGlb(ownModel.bytes,nativeAction,0)
+          packagedSource=composeLibraryActionGlb(ownModel.bytes,nativeAction,mc20 && isRecord(metadata) && Number.isSafeInteger(metadata.clipIndex)?Number(metadata.clipIndex):0)
           packagedManifest={...packagedManifest,rig:libraryCharacter.baseModel!.rig,glbSha256:sha256(packagedSource),glb:{bytes:packagedSource.length,mode:'library-character-native'},actions:(Array.isArray(packagedManifest.actions)?packagedManifest.actions:[]).map((entry:any)=>entry.uuid===motion.id?{...entry,glbAnimationIndex:0}:entry)}
+        }
         }
       }
     }

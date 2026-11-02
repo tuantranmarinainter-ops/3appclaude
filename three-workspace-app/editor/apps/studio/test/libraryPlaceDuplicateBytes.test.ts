@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +8,7 @@ import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { createCharacter, registerBaseModel, rebuildLibraryIndex } from '../../../packages/library/index'
 import { libraryBaseGlb, libraryNativeAction } from '../src/libraryModels'
-import { addLibraryCharacterToProject } from '../src/libraryCommands'
+import { addLibraryCharacterToProject, placeLibraryActionForNode } from '../src/libraryCommands'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore'
 
 const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -96,10 +96,31 @@ test('library.place gives each same-rig character its own Motion for byte-identi
     assert.equal(project.bindings[clip!.id]?.motionId, walk.actionUuid, 'each clip binds to the Motion of its own Action')
   }
 
+  // Occupied placement must fail before copying another character's Action or conversion.
+  const heroClip = clips.find((item) => item.target.nodeId === project.characters[heroPlaced.characterId]!.nodeId)!
+  const packsBeforeRejected = readdirSync(path.join(process.env.W01_LIBRARY!, 'packs')).sort()
+  await assert.rejects(placeLibraryActionForNode({ projectId: created.projectId, actionUuid: denWalk.actionUuid, nodeId: heroClip.target.nodeId, frameStart: heroClip.frameStart }), /Khung bắt đầu/)
+  const afterRejected = await readUnifiedProject(created.projectId)
+  assert.equal(afterRejected.revision, project.revision)
+  assert.deepEqual(readdirSync(path.join(process.env.W01_LIBRARY!, 'packs')).sort(), packsBeforeRejected, 'rejected placement creates no copied Action pack')
+
   // Undoing the second placement removes only Den's Motion and clip.
   await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: denResult.revision, command: 'history.undo', args: {} })
   const afterUndo = await readUnifiedProject(created.projectId)
   assert.ok(afterUndo.motions[heroWalk.actionUuid])
   assert.equal(afterUndo.motions[denWalk.actionUuid], undefined)
   assert.equal(afterUndo.scene.content.timeline.animation.motionClips.length, 1)
+
+  // Actual clip deletion leaves motionPath behind; explicit cleanup must remove that orphan Motion.
+  const deletedScene = structuredClone(afterUndo.scene)
+  deletedScene.content.timeline.animation.motionClips = []
+  const deleted = await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: afterUndo.revision, command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: deletedScene, fcurves: null }] } })
+  assert.ok((await readUnifiedProject(created.projectId)).scene.content.asset.motionPath.some((entry) => entry.id === heroWalk.actionUuid))
+  const cleaned = await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: deleted.revision, command: 'project.cleanup', args: { confirmed: true } })
+  const afterCleanup = await readUnifiedProject(created.projectId)
+  assert.equal(afterCleanup.motions[heroWalk.actionUuid], undefined)
+  assert.equal(afterCleanup.scene.content.asset.motionPath.some((entry) => entry.id === heroWalk.actionUuid), false)
+  assert.ok(Object.values(afterCleanup.characters).every((character) => afterCleanup.assets[character.assetId]), 'both character model assets remain')
+  await executeUnifiedCommand({ requestId: randomUUID(), projectId: created.projectId, expectedRevision: cleaned.revision, command: 'history.undo', args: {} })
+  assert.ok((await readUnifiedProject(created.projectId)).motions[heroWalk.actionUuid], 'undo cleanup restores deleted-clip Motion and catalogue')
 })

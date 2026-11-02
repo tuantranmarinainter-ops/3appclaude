@@ -1,0 +1,438 @@
+{
+  "before": [
+    {
+      "phase": "baseline",
+      "projectOpenMs": 3337.585687,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "5516ffe8-93a6-4df4-acaf-74dff124ddfe",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "idle": {
+        "total": 1,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 1,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 2056.115071,
+        "domKeydownToViewMs": 2050.600000023842,
+        "domKeydownToDocReadyMs": 1400.699999988079,
+        "postDocTwoFramesMs": 649.9000000357628,
+        "total": 28,
+        "projectJsonLoads": 8,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "workspaceReturn": {
+        "elapsedMs": 3566.2328970000017,
+        "editedZipBytes": 6006,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 26,
+        "projectJsonLoads": 6,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 14,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "libraryReturn": {
+        "elapsedMs": 2437.2769100000005,
+        "total": 60,
+        "projectJsonLoads": 7,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 2,
+        "heightProfiles": 0
+      }
+    },
+    {
+      "phase": "baseline",
+      "projectOpenMs": 3542.628619,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "36a82820-df26-46e1-ad82-24def6b2f1ba",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "idle": {
+        "total": 1,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 1,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 2257.4408870000007,
+        "domKeydownToViewMs": 2251.100000023842,
+        "domKeydownToDocReadyMs": 1502.199999988079,
+        "postDocTwoFramesMs": 748.9000000357628,
+        "total": 28,
+        "projectJsonLoads": 8,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "workspaceReturn": {
+        "elapsedMs": 3920.095601000001,
+        "editedZipBytes": 6009,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 26,
+        "projectJsonLoads": 6,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 14,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "libraryReturn": {
+        "elapsedMs": 2662.3869019999984,
+        "total": 60,
+        "projectJsonLoads": 7,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 2,
+        "heightProfiles": 0
+      }
+    },
+    {
+      "phase": "baseline",
+      "projectOpenMs": 3247.072876,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "66a543d6-850f-4a9e-9d69-1b289231064e",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "idle": {
+        "total": 1,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 1,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 3127.683875999999,
+        "domKeydownToViewMs": 3101.199999988079,
+        "domKeydownToDocReadyMs": 2134.599999964237,
+        "postDocTwoFramesMs": 966.6000000238419,
+        "total": 28,
+        "projectJsonLoads": 8,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "workspaceReturn": {
+        "elapsedMs": 3394.6462390000015,
+        "editedZipBytes": 6012,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 26,
+        "projectJsonLoads": 6,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 14,
+        "libraryCharacters": 1,
+        "heightProfiles": 0,
+        "sameStore": false,
+        "sameStage": false,
+        "sameModelInstances": false
+      },
+      "libraryReturn": {
+        "elapsedMs": 2326.4433529999988,
+        "total": 60,
+        "projectJsonLoads": 7,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 2,
+        "heightProfiles": 0
+      }
+    }
+  ],
+  "after": [
+    {
+      "phase": "after",
+      "projectOpenMs": 4280.900219,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "510ed48e-76a3-46f1-b931-f43f6eac45d2",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "profileNotifications": {
+        "unrelated": {
+          "total": 0,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 0,
+          "paths": []
+        },
+        "relevant": {
+          "total": 1,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 1,
+          "paths": [
+            "/api/library?heightCharacter=b34-den"
+          ]
+        }
+      },
+      "idle": {
+        "total": 0,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 392.19712100000106,
+        "domKeydownToViewMs": 382.2999999523163,
+        "domKeydownToDocReadyMs": 316.0999999642372,
+        "postDocTwoFramesMs": 66.19999998807907,
+        "total": 2,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "workspaceReturn": {
+        "elapsedMs": 2012.70435,
+        "editedZipBytes": 6009,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 4,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 1,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "libraryReturn": {
+        "elapsedMs": 2286.425108000003,
+        "total": 54,
+        "projectJsonLoads": 2,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 1
+      }
+    },
+    {
+      "phase": "after",
+      "projectOpenMs": 3022.194435,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "1fdcfd1f-8cbc-41fe-97c3-8f6f6ed0986d",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "profileNotifications": {
+        "unrelated": {
+          "total": 0,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 0,
+          "paths": []
+        },
+        "relevant": {
+          "total": 1,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 1,
+          "paths": [
+            "/api/library?heightCharacter=b34-den"
+          ]
+        }
+      },
+      "idle": {
+        "total": 0,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 287.111664,
+        "domKeydownToViewMs": 282.10000002384186,
+        "domKeydownToDocReadyMs": 219.80000001192093,
+        "postDocTwoFramesMs": 62.30000001192093,
+        "total": 2,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "workspaceReturn": {
+        "elapsedMs": 1900.0158180000035,
+        "editedZipBytes": 6009,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 4,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 1,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "libraryReturn": {
+        "elapsedMs": 1951.6188309999998,
+        "total": 54,
+        "projectJsonLoads": 2,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 1
+      }
+    },
+    {
+      "phase": "after",
+      "projectOpenMs": 3123.326862,
+      "fixture": {
+        "libraryPacks": 300,
+        "projectBytes": 643000,
+        "assetSourceBytes": 44527168,
+        "assets": 16,
+        "motions": 8,
+        "characters": 15
+      },
+      "errors": [],
+      "newMotionId": "fa08d627-5a93-4928-8c54-3c7607beec32",
+      "limits": "Synthetic 643KB,16 assets with 42MiB unused BIN padding (byte-size stress, NOT equivalent geometry complexity); genuine shot.result.import with changed animation sample and workspace switch; real Tap15 NOT_RUN",
+      "profileNotifications": {
+        "unrelated": {
+          "total": 0,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 0,
+          "paths": []
+        },
+        "relevant": {
+          "total": 1,
+          "projectJsonLoads": 0,
+          "assetSourceLoads": 0,
+          "unchangedModelLoads": 0,
+          "libraryCharacters": 0,
+          "heightProfiles": 1,
+          "paths": [
+            "/api/library?heightCharacter=b34-den"
+          ]
+        }
+      },
+      "idle": {
+        "total": 0,
+        "projectJsonLoads": 0,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0
+      },
+      "undo": {
+        "elapsedMs": 340.33864800000083,
+        "domKeydownToViewMs": 332.39999997615814,
+        "domKeydownToDocReadyMs": 285.89999997615814,
+        "postDocTwoFramesMs": 46.5,
+        "total": 2,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 0,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "workspaceReturn": {
+        "elapsedMs": 1873.4127750000007,
+        "editedZipBytes": 6007,
+        "timingBoundary": "elapsedMs: POST shot.result.import through loaded motion + 2 frames; optional uploadAndReturnElapsedMs: HTTP ZIP upload through same endpoint; ZIP generation/native editor export excluded",
+        "total": 4,
+        "projectJsonLoads": 1,
+        "assetSourceLoads": 1,
+        "unchangedModelLoads": 0,
+        "libraryCharacters": 0,
+        "heightProfiles": 0,
+        "sameStore": true,
+        "sameStage": true,
+        "sameModelInstances": true
+      },
+      "libraryReturn": {
+        "elapsedMs": 2068.694879999999,
+        "total": 54,
+        "projectJsonLoads": 2,
+        "assetSourceLoads": 15,
+        "unchangedModelLoads": 15,
+        "libraryCharacters": 1,
+        "heightProfiles": 1
+      }
+    }
+  ]
+}

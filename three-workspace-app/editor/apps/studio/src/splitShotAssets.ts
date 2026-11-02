@@ -7,10 +7,15 @@ import type { BlobRef, UnifiedProject } from '@bbs/animation-workspace-shared'
 export async function linkSplitShotAssets(root: string, sourceId: string, project: UnifiedProject): Promise<{ assetBytes: number; sharedBlobCount: number }> {
   const sourceRoot = await realpath(path.join(root, sourceId)), destinationRoot = path.join(root, project.projectId)
   const refs = new Map<string, BlobRef>()
+  // Converted GLB refs describe disposable materializations. Their canonical recipe JSON
+  // is linked below like any other original; the split project regenerates its own cache.
+  const virtualHashes = new Set(Object.keys(project.extensions?.libraryMotionConversions ?? {})
+    .map((assetId) => project.assets[assetId as keyof typeof project.assets]?.source.sha256)
+    .filter((hash): hash is string => typeof hash === 'string'))
   function visit(value: unknown): void {
     if (!value || typeof value !== 'object') return
     const ref = value as BlobRef
-    if (typeof ref.path === 'string' && typeof ref.sha256 === 'string' && typeof ref.byteLength === 'number') { refs.set(ref.path, ref); return }
+    if (typeof ref.path === 'string' && typeof ref.sha256 === 'string' && typeof ref.byteLength === 'number') { if (!virtualHashes.has(ref.sha256)) refs.set(ref.path, ref); return }
     for (const child of Object.values(value)) visit(child)
   }
   visit(project)

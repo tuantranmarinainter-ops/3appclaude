@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,7 +47,8 @@ test('migration gives old-schema characters a base model without touching their 
 
     const dry = await migrateLibraryBaseModels({ root, dryRun: true })
     assert.deepEqual(dry.map((item) => [item.charId, item.status]).sort(), [['bare', 'unsupported'], ['mc-den', 'would-migrate'], ['mc-hero', 'would-migrate'], ['verity-go', 'would-migrate'], ['verity-tieu', 'would-migrate']])
-    assert.deepEqual(readdirSync(join(root, 'models')), [])
+    // Dry runs are read-only: the library may not even create models/.
+    assert.deepEqual(existsSync(join(root, 'models')) ? readdirSync(join(root, 'models')) : [], [])
 
     const results = await migrateLibraryBaseModels({ root })
     assert.deepEqual(results.map((item) => item.status).sort(), ['migrated', 'migrated', 'migrated', 'migrated', 'unsupported'])

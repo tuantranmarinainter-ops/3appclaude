@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { basename, dirname, extname } from 'node:path'
-import { ensureRegularFile, initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
+import { ensureRegularFile, initializeLibrary, readIndex, readJsonFile, resolveLibraryPath, safeChild, safeId, validateRelativeAssetPath, withLibraryLock, writeIndex, writeJsonAtomic } from './store'
 import { DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION, type BaseModelMetadata, type CharacterMetadata, type CharacterWarning, type LibraryLicense, type LibraryOptions, type ResolvedCharacter } from './types'
 
 function rigId(rig: string): string {
@@ -298,14 +298,11 @@ export function resolveCharacter(options: LibraryOptions & { charId: string }): 
 export function resolveCharacter(input: string | (LibraryOptions & { charId: string }), configuration: LibraryOptions = {}): ResolvedCharacter {
   const options = typeof input === 'string' ? { ...configuration, charId: input } : input
   const root = resolveLibraryPath(options)
-  return withLibraryLock(root, () => {
-    initializeLibrary(root)
-    const character = characterRecord(root, options.charId), directory = safeChild(root, 'characters', character.charId)
-    const baseModel = character.baseModelId ? baseRecord(root, character.baseModelId) : null
-    const modelDirectory = baseModel ? safeChild(root, 'models', baseModel.modelId) : directory
-    const textures = texturesFor(baseModel?.objects ?? [], safeChild(modelDirectory, 'textures'), character.skin ? safeChild(directory, validateRelativeAssetPath(character.skin)) : undefined)
-    const index = writeIndex(root)
-    const actions = index.actions.filter((action) => character.actions ? character.actions.includes(action.uuid) : action.boundCharacter === character.charId)
-    return { character, baseModel, modelPath: safeChild(modelDirectory, validateRelativeAssetPath(baseModel?.model ?? character.model)), textures, actions, warnings: missing(baseModel?.objects ?? [], textures) }
-  })
+  const character = characterRecord(root, options.charId), directory = safeChild(root, 'characters', character.charId)
+  const baseModel = character.baseModelId ? baseRecord(root, character.baseModelId) : null
+  const modelDirectory = baseModel ? safeChild(root, 'models', baseModel.modelId) : directory
+  const textures = texturesFor(baseModel?.objects ?? [], safeChild(modelDirectory, 'textures'), character.skin ? safeChild(directory, validateRelativeAssetPath(character.skin)) : undefined)
+  const index = readIndex(root)
+  const actions = index.actions.filter((action) => character.actions ? character.actions.includes(action.uuid) : action.boundCharacter === character.charId)
+  return { character, baseModel, modelPath: safeChild(modelDirectory, validateRelativeAssetPath(baseModel?.model ?? character.model)), textures, actions, warnings: missing(baseModel?.objects ?? [], textures) }
 }

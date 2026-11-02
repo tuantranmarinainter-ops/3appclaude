@@ -15,8 +15,8 @@ const editor = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..
 const builtinCharacter = path.join(editor, '../builtin-assets/characters/a3d_char_30ec53c93eae4173946b38639691ebe0.glb')
 
 // N1b end-to-end: a Mixamo65-owned Action assigned to a Minecraft20-linked scene node is
-// converted into a Draft of the receiving character and placed, with the quality warning.
-test('place-for-node converts a cross-skeleton character-owned Action and places the Draft', { timeout: 300000 }, async () => {
+// materialized from a project recipe and placed without creating a library Draft.
+test('place-for-node converts a cross-skeleton Action from a recipe without adding a library Draft', { timeout: 300000 }, async () => {
   const temp = mkdtempSync(path.join(tmpdir(), 'w01-n1b-'))
   const libraryRoot = path.join(temp, 'library')
   mkdirSync(libraryRoot, { recursive: true })
@@ -62,13 +62,14 @@ test('place-for-node converts a cross-skeleton character-owned Action and places
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name: 'N1b', scene: makeEmptyDraft('N1b', 30, 600) } })
   const added = await addLibraryCharacterToProject({ projectId: created.projectId!, expectedRevision: created.revision, charId: 'go-xua' })
 
+  const packsBefore = readdirSync(path.join(libraryRoot, 'packs')).sort()
   const placed = await placeLibraryActionForNode({ projectId: created.projectId!, actionUuid: heroActionUuid, nodeId: added.nodeId! })
   assert.equal(placed.converted, true)
   assert.notEqual(placed.placedActionUuid, heroActionUuid)
-  assert.ok(placed.warning?.includes('chuyển xương'), `warning surfaced: ${placed.warning}`)
+  assert.deepEqual(readdirSync(path.join(libraryRoot, 'packs')).sort(), packsBefore, 'placement creates no library pack')
   const project = await readUnifiedProject(created.projectId!)
   const clip = project.scene.content.timeline.animation.motionClips.find((item) => item.id === placed.clipId)
-  assert.ok(clip, 'the converted Draft clip is on the timeline')
+  assert.ok(clip, 'the converted recipe clip is on the timeline')
   assert.equal(clip.target.nodeId, added.nodeId)
-  assert.ok(project.motions[placed.placedActionUuid], 'converted Draft motion is in the project')
+  assert.ok(project.motions[placed.placedActionUuid], 'converted recipe motion is in the project')
 })

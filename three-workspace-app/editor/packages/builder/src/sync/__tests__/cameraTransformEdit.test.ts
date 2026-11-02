@@ -9,6 +9,8 @@ import { DirectorDoc } from '../../document/DirectorDoc'
 import { History } from '../../document/History'
 import type { DirectorEngine } from '../../engine/DirectorEngine'
 import type { HostAdapter } from '../../host/types'
+import { FCurveSet } from '../../evaluate/curves/FCurveSet'
+import { focalLengthToFov, fovToFocalLength } from '../../evaluate/camera/focalLength'
 import { resolveSubjectCameraPose } from '../../evaluate/camera/subjectBinding'
 
 function camNode(): DraftNode {
@@ -35,7 +37,7 @@ function camNode(): DraftNode {
   }
 }
 
-function fixture() {
+function fixture(adapter: HostAdapter<DirectorDocument> = {} as unknown as HostAdapter<DirectorDocument>) {
   const model = new DirectorDoc()
   const doc = makeEmptyDraft('cam-xform-test', 30, 120)
   doc.content.nodes.push(camNode())
@@ -50,6 +52,7 @@ function fixture() {
     set currentFrame(frame: number) { engineState.currentFrame = frame },
     setFcurves() {},
     syncPathNodes() {},
+    invalidate() {},
     syncCameraMotionGuide() {},
     applyLiveCameraPose() {},
     setStagedTransform() {},
@@ -69,7 +72,7 @@ function fixture() {
     model,
     editor,
     history,
-    {} as HostAdapter<DirectorDocument>,
+    adapter,
   )
   return { model, doc, session, engine, history, editor }
 }
@@ -344,4 +347,55 @@ test('打帧后拖动只暂存：I 才覆写当前帧关键帧', () => {
   assert.deepEqual(session.pendingKeyframe?.position, [5, 1.6, 4])
   session.addKeyframes('cam', [{ prop: 'position', value: [0, 1.6, 4] }])
   assert.deepEqual(model.userKeys.cam!.position![0].value, [5, 1.6, 4])
+})
+
+
+test('B46: releasing the lens and round trips do not create more revisions or saves', async () => {
+  const writes: DirectorDocument[] = []
+  const { session, model, doc } = fixture({
+    saveDocumentState: async (_id: string, saved: DirectorDocument) => { writes.push(saved) },
+  } as unknown as HostAdapter<DirectorDocument>)
+  for (const fov of [120, 78.83]) {
+    session.setCameraFov(fov, 'cam')
+    await session.save({ captureCover: false })
+    const revision = model.revision
+    const count = writes.length
+    for (let i = 0; i < 1000; i++) session.setCameraFov(focalLengthToFov(fovToFocalLength(fov)), 'cam')
+    session.setCameraFov(NaN, 'cam')
+    await session.save({ captureCover: false })
+    assert.equal(model.revision, revision)
+    assert.equal(writes.length, count)
+    assert.equal(doc.content.nodes.find((node) => node.id === 'cam')!.camera!.fov, fov)
+  }
+})
+
+test('B32/B44: document updates and timeline saves preserve baked camera keys and shots', async () => {
+  let savedCurves: unknown
+  let savedDoc: DirectorDocument | undefined
+  const { session, model, doc } = fixture({
+    saveDocumentState: async (_id: string, saved: DirectorDocument, curves: unknown) => { savedDoc = saved; savedCurves = curves },
+  } as unknown as HostAdapter<DirectorDocument>)
+  doc.content.editorial = {
+    version: 1, activeSequenceId: 'tap15',
+    sequences: [{ id: 'tap15', clips: [{ id: 'shot01', cameraNodeId: 'cam', sourceFrameStart: 0, sourceFrameEnd: 149 }] }],
+  }
+  const keys = { cam: {
+    position: Array.from({ length: 150 }, (_, f) => makeKeyframe(f, [f, 1.6, 4])),
+    rotation: Array.from({ length: 150 }, (_, f) => makeKeyframe(f, [0, f / 10, 0])),
+    scale: Array.from({ length: 150 }, (_, f) => makeKeyframe(f, [1, 1, 1])),
+    lookAt: Array.from({ length: 150 }, (_, f) => makeKeyframe(f, [f, 1.2, 0])),
+    fov: Array.from({ length: 150 }, (_, f) => makeKeyframe(f, [50 + f / 10])),
+  } }
+  model.setUserKeys(keys)
+  for (let i = 0; i < 5; i++) {
+    session.setDoc(structuredClone(session.doc!))
+    session.setTimelineRange(0, 160 + i)
+    await session.save({ captureCover: false })
+    assert.deepEqual(model.userKeys, keys)
+    assert.deepEqual(FCurveSet.parseUserKeys(savedCurves), keys)
+    assert.ok(savedDoc?.content.nodes.some((node) => node.id === 'cam'))
+    assert.equal(savedDoc?.content.editorial?.sequences[0].clips[0].cameraNodeId, 'cam')
+  }
+  session.setDoc(structuredClone(session.doc!), null)
+  assert.deepEqual(model.userKeys, {})
 })

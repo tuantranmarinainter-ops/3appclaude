@@ -35,7 +35,6 @@ export function usePanelNavigation(workspace: Workspace, setWorkspace: (workspac
             resume.current = null
           }
         }
-        setApi(null)
         setWorkspace(target.workspace)
       }
       setRequest({ panelId })

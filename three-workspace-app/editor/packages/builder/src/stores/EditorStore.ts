@@ -64,6 +64,8 @@ export class EditorStore {
   userKeysEnabled = true
   autoKeyframe = false
   timelineSnap = true
+  /** Khoá khung 3D (B2): camera khung nhìn không nhận phím tắt/lăn/kéo. */
+  viewportLocked = false
   chainCameraMotion = false
   pxPerFrame = 1.5
   timelineUnit: TimelineUnit = 'frames'
@@ -158,6 +160,7 @@ export class EditorStore {
       userKeysEnabled: observable,
       autoKeyframe: observable,
       timelineSnap: observable,
+      viewportLocked: observable,
       chainCameraMotion: observable,
       pxPerFrame: observable,
       timelineUnit: observable,
@@ -249,6 +252,7 @@ export class EditorStore {
       toggleUserKeys: action.bound,
       toggleAutoKeyframe: action.bound,
       toggleTimelineSnap: action.bound,
+      toggleViewportLocked: action.bound,
       toggleChainCameraMotion: action.bound,
       setExporting: action.bound,
       toggleLibrary: action.bound,
@@ -425,6 +429,10 @@ export class EditorStore {
 
   toggleTimelineSnap(): void {
     this.timelineSnap = !this.timelineSnap
+  }
+
+  toggleViewportLocked(): void {
+    this.viewportLocked = !this.viewportLocked
   }
 
   toggleChainCameraMotion(): void {

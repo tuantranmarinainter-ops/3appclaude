@@ -1,3 +1,5 @@
+import type { LibraryMotionConversionRecipe } from './libraryMotionConversion'
+import { cleanupUnusedProjectResources } from './unifiedProjectCleanup'
 import { planSplitShots, readEpisode } from './splitShots'
 import { linkSplitShotAssets } from './splitShotAssets'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
@@ -82,6 +84,9 @@ interface HistoryRecord {
 }
 interface RequestRecord { hash: string; response?: CommandSuccess; projectId?: string; splitProjectIds?: string[] }
 type MappingDraft = Omit<SkeletonMapping, 'calibration' | 'referencePose' | 'confirmed'>
+
+/** Folder that holds every unified project (and the App 2 debug logs). */
+export function unifiedProjectsRoot(): string { return root() }
 
 function root(): string {
   return path.resolve(process.env.BBS_UNIFIED_PROJECTS_DIR?.trim() || path.join(process.cwd(), 'unified-projects'))
@@ -266,13 +271,13 @@ export async function listUnifiedProjects(): Promise<Array<{ id: string; name: s
 
 function requestHash(envelope: CommandEnvelope): string { return createHash('sha256').update(JSON.stringify(envelope)).digest('hex') }
 
-async function previousRequest(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess | null> {
+async function previousRequest(envelope: CommandEnvelope, hash: string, recover = true): Promise<CommandSuccess | null> {
   const previous = await readJson<RequestRecord>(requestPath(envelope.requestId))
   if (previous) {
     if (previous.hash !== hash) throw new UnifiedStoreError('REQUEST_ID_CONFLICT', 'Request ID was already used with a different payload', 409)
     if (previous.response) return previous.response
   }
-  if (envelope.projectId) {
+  if (recover && envelope.projectId) {
     const project = await readJson<UnifiedProject>(projectPath(envelope.projectId))
     const record = project && await readJson<HistoryRecord>(historyPath(envelope.projectId, project.revision))
     if (record?.requestId === envelope.requestId) {
@@ -515,7 +520,8 @@ function applySceneOperations(project: UnifiedProject, value: unknown): { docume
         throw new UnifiedStoreError('VALIDATION_FAILED', 'Invalid document.replace operation', 400)
       }
       document = structuredClone(operation.document)
-      fcurves = structuredClone(operation.fcurves ?? null)
+      // Omitted curves mean the caller only replaced the scene; explicit null clears them.
+      if (Object.prototype.hasOwnProperty.call(operation, 'fcurves')) fcurves = structuredClone(operation.fcurves ?? null)
       const sourceNodeIds = new Set(project.scene.content.nodes.map((node) => node.id))
       const sourceMotionClipIds = new Set(project.scene.content.timeline.animation.motionClips.map((clip) => clip.id))
       const sourceNodeByCloneId = new Map<string, string>()
@@ -946,13 +952,49 @@ export async function executeUnifiedCommand(raw: unknown): Promise<CommandSucces
   return withRequestLock(envelope.requestId, () => executeLockedCommand(envelope, hash))
 }
 
+async function executeHistoryCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  // Keep cached replay available even after later commands or deletion of the project.
+  const cached = await previousRequest(envelope, hash, false)
+  if (cached) return cached
+  if (!envelope.projectId) throw new UnifiedStoreError('VALIDATION_FAILED', 'projectId is required', 400)
+  const id = envelope.projectId
+  try {
+    return await withWriter(id, async () => {
+      // Recover a commit whose project was published before its request cache was saved.
+      const replay = await previousRequest(envelope, hash)
+      if (replay) return replay
+      const current = await readUnifiedProject(id)
+      if (Object.keys(envelope.args).length !== 0) throw new UnifiedStoreError('VALIDATION_FAILED', 'History commands do not accept arguments', 400)
+      const rootConflict = findRootMotionConflict(current.scene)
+      if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
+      if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
+      if (envelope.expectedRevision !== current.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Project revision changed; reload before saving', 409, { expected: envelope.expectedRevision, actual: current.revision })
+      const index = await historyIndex(current)
+      const undo = envelope.command === 'history.undo'
+      if (undo ? index.cursor <= 0 : index.cursor >= index.entries.length) throw new UnifiedStoreError('VALIDATION_FAILED', undo ? 'Undo history is empty' : 'Redo history is empty', 400)
+      const item = await readJson<HistoryRecord>(historyPath(id, index.entries[undo ? index.cursor - 1 : index.cursor]!))
+      if (!item) throw new UnifiedStoreError('IO_FAILED', undo ? 'Undo snapshot is missing' : 'Redo snapshot is missing', 500)
+      const next = structuredClone(undo ? item.before.project : item.after.project)
+      next.revision = current.revision + 1
+      if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
+      const nextIndex = { revision: next.revision, entries: index.entries, cursor: index.cursor + (undo ? -1 : 1) }
+      return commit(envelope, hash, current, next, nextIndex, undo ? { undoneRequestId: item.requestId } : { redoneRequestId: item.requestId }, ['scene'])
+    })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new UnifiedStoreError('NOT_FOUND', 'Project not found or invalid', 404)
+    throw error
+  }
+}
+
 async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Promise<CommandSuccess> {
+  if ((envelope.command === 'history.undo' || envelope.command === 'history.redo') && !envelope.dryRun) return executeHistoryCommand(envelope, hash)
   const replay = await previousRequest(envelope, hash)
   if (replay) return replay
   let sceneReplacement: { document: UnifiedProject['scene']; fcurves: unknown; characters: Record<string, Character>; bindings: Record<string, MotionBinding>; changedNodeIds: string[]; cloneMaps: Array<Record<string, Record<string, string>>> } | null = null
   let shotReplacement: { sequenceId: string; clip: EditSequenceClip } | null = null
   let stagedAssetImports: Array<{ upload: StagedAssetUpload; imported: ImportedAsset }> | null = null
   let assignmentPlacement: { characterId: string; frameStart: number | null; jobId: string; provenance: Record<string, unknown> } | null = null
+  let conversionImport: { assetId: string; recipe: LibraryMotionConversionRecipe } | null = null
   let libraryPlacement: { characterId: string; motionId: string; frameStart: number; name: string; duration: number; nativeValidated?: boolean } | null = null
   let libraryLink: LibraryLinkPlan | null = null
   let stagedAssetRelink: { upload: StagedAssetUpload; asset: UnifiedProject['assets'][keyof UnifiedProject['assets']] } | null = null
@@ -1664,7 +1706,8 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true,
       ...(audioCueChange.type === 'remove' ? { cueId: audioCueChange.id, removed: true } : { cue: audioCueChange.cue }) })
   }
-  if (!['film.anchor.location.set', 'film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'vfx.cue.add', 'vfx.cue.update', 'vfx.cue.remove', 'audio.cue.add', 'audio.cue.update', 'audio.cue.remove', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'library.link', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
+  if (envelope.command === 'project.cleanup' && (envelope.args.confirmed !== true || Object.keys(envelope.args).some((key) => key !== 'confirmed'))) throw new UnifiedStoreError('VALIDATION_FAILED', 'Cleanup requires explicit user confirmation', 400)
+  if (!['project.cleanup', 'film.anchor.location.set', 'film.frame.set', 'shot.result.import', 'scene.apply', 'camera.shot.set', 'scene.review.set', 'vfx.cue.add', 'vfx.cue.update', 'vfx.cue.remove', 'audio.cue.add', 'audio.cue.update', 'audio.cue.remove', 'camera.motion.add', 'camera.motion.remove', 'asset.import', 'library.place', 'library.link', 'asset.relink', 'character.add', 'prop.add', 'skeleton.mapping.set', 'retarget.session.set', 'motion.edit', 'motion.place', 'motion.binding.set', 'history.undo', 'history.redo'].includes(envelope.command)) throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', `Command not implemented in this phase: ${envelope.command}`, 422)
   if (envelope.command === 'shot.result.import') {
     if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Result import requires expectedRevision', 400)
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Result import revision changed', 409)
@@ -1807,9 +1850,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     }
   } else if (envelope.command === 'library.place') {
-    const { actionUuid, characterId, frameStart: requestedFrameStart } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
-      requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
+    const { actionUuid, characterId, frameStart: requestedFrameStart, reconvert } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart', 'reconvert'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
+      reconvert !== undefined && typeof reconvert !== 'boolean' || requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID, Character UUID and an optional nonnegative frameStart', 400)
     }
     const character = project.characters[characterId]
@@ -1819,42 +1862,87 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     try {
       const action = getAction({ actionUuid })
       const libraryCharacter = typeof node.metadata?.libraryCharacterId === 'string' ? resolveCharacter(node.metadata.libraryCharacterId) : null
-      const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.baseModel.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
-      const libraryTopology = !!libraryCharacter && (libraryCharacter.baseModel?.rig ?? libraryCharacter.character.rig) === 'minecraft20' && action.rig === 'minecraft20'
-      const rigMatches = !!nativeCharacter || libraryTopology || action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
-      if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
-      const bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), libraryCharacter?.baseModel?.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
-      const sourceHash = createHash('sha256').update(bytes).digest('hex')
-      const existing = project.motions[action.uuid]
-      if (existing) {
-        const asset = project.assets[existing.assetId]
-        if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
-          throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
-        }
-        libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
-        stagedAssetImports = []
+      const convertToMc20 = libraryCharacter?.character.rig === 'minecraft20' && action.rig === 'mixamo65'
+      if (convertToMc20) {
+        const { createLibraryMotionConversion, materializeLibraryMotionConversion } = await import('./libraryMotionConversion')
+        const recipes = project.extensions.libraryMotionConversions as Record<string, LibraryMotionConversionRecipe> | undefined
+        const priorRecipe = Object.values(recipes ?? {}).reverse().find((recipe) => recipe.sourceActionUuid === actionUuid && recipe.targetCharId === libraryCharacter.character.charId)
+        const recipe = priorRecipe && reconvert !== true ? priorRecipe : await createLibraryMotionConversion({ actionUuid, targetCharId: libraryCharacter.character.charId })
+        const generated = await materializeLibraryMotionConversion(recipe)
+        const bytes = Buffer.from(generated.glb), sourceHash = createHash('sha256').update(bytes).digest('hex')
+        const recipeHash = createHash('sha256').update(canonicalJsonExact(recipe)).digest('hex')
+        const motionId = `${recipeHash.slice(0, 8)}-${recipeHash.slice(8, 12)}-4${recipeHash.slice(13, 16)}-a${recipeHash.slice(17, 20)}-${recipeHash.slice(20, 32)}`
+        const upload: StagedAssetUpload = { id: randomUUID(), name: `conversion-${recipeHash}.glb`, bytes, byteLength: bytes.length, sha256: sourceHash }
+        const imported = buildImportedAsset(upload, 'glb')
+        if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile) || imported.motions.length !== 1) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Kết quả chuyển không khớp khung xương Minecraft20 của nhân vật', 422)
+        const selected = imported.motions[0]!
+        selected.motion.id = motionId
+        selected.name = generated.actionName
+        const recipeBytes = Buffer.from(canonicalJsonExact(recipe))
+        imported.asset.provenance = { sourceKey: 'library-motion-conversion', sourceVersion: recipe.converterVersion, sourceHash: recipeHash,
+          original: { path: `originals/${recipeHash}/conversion.json`, sha256: recipeHash, byteLength: recipeBytes.length, mediaType: 'application/json' } }
+        conversionImport = { assetId: imported.asset.id, recipe }
+        stagedAssetImports = project.motions[motionId] ? [] : [{ upload, imported }]
+        libraryPlacement = { characterId, motionId, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: generated.durationSeconds, nativeValidated: true }
       } else {
-        const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
-        let imported: ImportedAsset
-        try {
-          imported = buildImportedAsset(upload, 'glb')
-          if (nativeCharacter) {
-            if (imported.motions.length !== 1) throw new Error('Native Action clip is missing')
-            imported.motions[0]!.motion.id = action.uuid
-            imported.motions[0]!.name = action.name
-          } else attachApp1Manifest(imported, bytes, JSON.parse(await readFile(action.manifestPath, 'utf8')))
-        } catch (error) { throw new UnifiedStoreError('PROFILE_MISMATCH', error instanceof Error ? error.message : 'Library Action pack is invalid', 422) }
-        if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile)) {
-          throw new UnifiedStoreError('PROFILE_MISMATCH', 'Library Action does not use the selected Character rig and rest skeleton', 422)
+        const nativeCharacter = libraryCharacter?.baseModel?.format === 'bobj' && ['verity', 'minecraft20'].includes(libraryCharacter.baseModel.rig) && action.ownerCharId === node.metadata?.libraryCharacterId && targetProfile.family === 'custom-preserved' ? String(node.metadata.libraryCharacterId) : null
+        const libraryTopology = !!libraryCharacter && (libraryCharacter.baseModel?.rig ?? libraryCharacter.character.rig) === 'minecraft20' && action.rig === 'minecraft20'
+        const rigMatches = !!nativeCharacter || libraryTopology || action.rig === targetProfile.family || action.rig.startsWith('mixamo65+') && targetProfile.family === 'mixamo65'
+        if (!rigMatches) throw new UnifiedStoreError('PROFILE_MISMATCH', `Action rig ${action.rig} does not match Character rig ${targetProfile.family}`, 422)
+        let nativeMc20 = false
+        let bytes: Buffer
+        if (libraryTopology) {
+          try {
+            bytes = await libraryNativeAction(action.ownerCharId ?? String(node.metadata!.libraryCharacterId), path.join(path.dirname(action.glbPath), 'anim.bobj'))
+            nativeMc20 = true
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            bytes = await readFile(action.glbPath)
+          }
+        } else bytes = nativeCharacter ? await libraryNativeAction(nativeCharacter, path.join(path.dirname(action.glbPath), 'anim.original.bbs.bobj')) : await readFile(action.glbPath)
+        const sourceHash = createHash('sha256').update(bytes).digest('hex')
+        let existing: typeof project.motions[string] | undefined = project.motions[action.uuid]
+        if (existing) {
+          const asset = project.assets[existing.assetId]
+          if (!asset || asset.source.sha256 !== sourceHash || !project.skeletons[existing.skeletonId] || !sameRigTopology(project.skeletons[existing.skeletonId] as unknown as NonNullable<ImportedAsset['skeleton']>, targetProfile)) {
+            // B19: a stale copy whose clips were all deleted (the library Action was edited since) must not block
+            // re-assigning it; replace it. A copy still used by a clip keeps the conflict.
+            if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.motion.assetId === action.uuid)) {
+              throw new UnifiedStoreError('ASSET_CONFLICT', 'The source Action UUID already belongs to different project content', 409)
+            }
+            delete project.motions[action.uuid]
+            existing = undefined
+          }
         }
-        const selected = imported.motions.find((item) => item.motion.id.toLowerCase() === action.uuid.toLowerCase())
-        if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
-        imported.motions = [selected]
-        stagedAssetImports = [{ upload, imported }]
-        libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        if (existing) {
+          libraryPlacement = { characterId, motionId: existing.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: action.name, duration: existing.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+          stagedAssetImports = []
+        } else {
+          const upload: StagedAssetUpload = { id: randomUUID(), name: `${action.packId}.glb`, bytes, byteLength: bytes.byteLength, sha256: sourceHash }
+          let imported: ImportedAsset
+          try {
+            imported = buildImportedAsset(upload, 'glb')
+            if (nativeCharacter || libraryTopology) {
+              const selected = imported.motions.find((item) => item.clipIndex === (nativeCharacter || nativeMc20 ? 0 : action.glbAnimationIndex))
+              if (!selected) throw new Error('Native Action clip is missing')
+              selected.motion.id = action.uuid
+              selected.name = action.name
+              imported.motions = [selected]
+            } else attachApp1Manifest(imported, bytes, JSON.parse(await readFile(action.manifestPath, 'utf8')))
+          } catch (error) { throw new UnifiedStoreError('PROFILE_MISMATCH', error instanceof Error ? error.message : 'Library Action pack is invalid', 422) }
+          if (!imported.skeleton || !sameRigTopology(imported.skeleton, targetProfile)) {
+            throw new UnifiedStoreError('PROFILE_MISMATCH', 'Library Action does not use the selected Character rig and rest skeleton', 422)
+          }
+          const selected = imported.motions.find((item) => item.motion.id.toLowerCase() === action.uuid.toLowerCase())
+          if (!selected) throw new UnifiedStoreError('ASSET_MISSING', 'Library Action clip is missing from its pack GLB', 422)
+          imported.motions = [selected]
+          stagedAssetImports = [{ upload, imported }]
+          libraryPlacement = { characterId, motionId: selected.motion.id, frameStart: typeof requestedFrameStart === 'number' ? requestedFrameStart : -1, name: selected.name, duration: selected.motion.durationSeconds, nativeValidated: !!nativeCharacter || libraryTopology }
+        }
       }
     } catch (error) {
       if (error instanceof UnifiedStoreError) throw error
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'CONVERSION_REQUIRED') throw new UnifiedStoreError('CONVERSION_REQUIRED', error instanceof Error ? error.message : 'Cần chuyển lại động tác', 409)
       throw new UnifiedStoreError('ASSET_MISSING', error instanceof Error ? error.message : 'Could not load Action from the library', 404)
     }
   } else if (envelope.command === 'library.link') {
@@ -2348,7 +2436,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   if (rootConflict) throw new UnifiedStoreError('ROOT_MOTION_CONFLICT', 'Trajectory and path contain the same root-motion source', 422, rootConflict)
   if (envelope.dryRun) {
     const index = await historyIndex(project, false)
-    const valid = envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
+    const valid = envelope.command === 'project.cleanup' || envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set' || (envelope.command === 'history.undo' ? index.cursor > 0 : index.cursor < index.entries.length)
     return success(envelope.requestId, id, project.revision, { valid, ...(propAddition ? { nodeId: propAddition.nodeId } : {}), ...(mappingAddition ? { validationReport: mappingAddition.report } : {}), ...(retargetSessionAddition ? { sessionId: retargetSessionAddition.session.id } : {}), ...(motionPlacement ? { clipId: motionPlacement.clipId } : {}), ...(cameraMotionChange?.type === 'add' ? { clipId: cameraMotionChange.clip.id } : {}), ...(stagedAssetImports ? { assetCount: stagedAssetImports.length } : {}), ...(stagedAssetRelink ? { matchedHash: stagedAssetRelink.asset.source.sha256 } : {}) })
   }
   if (!Number.isInteger(envelope.expectedRevision)) throw new UnifiedStoreError('VALIDATION_FAILED', 'expectedRevision is required for mutations', 400)
@@ -2365,8 +2453,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let changedIds: string[]
     let importedUploadIds: string[] = []
 
-    if (envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
-      if (envelope.command === 'film.anchor.location.set') {
+    if (envelope.command === 'project.cleanup' || envelope.command === 'film.anchor.location.set' || envelope.command === 'film.frame.set' || envelope.command === 'shot.result.import' || envelope.command === 'scene.apply' || envelope.command === 'camera.shot.set' || envelope.command === 'scene.review.set' || envelope.command === 'vfx.cue.add' || envelope.command === 'vfx.cue.update' || envelope.command === 'vfx.cue.remove' || envelope.command === 'audio.cue.add' || envelope.command === 'audio.cue.update' || envelope.command === 'audio.cue.remove' || envelope.command === 'camera.motion.add' || envelope.command === 'camera.motion.remove' || envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link' || envelope.command === 'asset.relink' || envelope.command === 'character.add' || envelope.command === 'prop.add' || envelope.command === 'skeleton.mapping.set' || envelope.command === 'retarget.session.set' || envelope.command === 'motion.edit' || envelope.command === 'motion.place' || envelope.command === 'motion.binding.set') {
+      if (envelope.command === 'project.cleanup') {
+        const cleanup = cleanupUnusedProjectResources(next)
+        changedIds = [...cleanup.removedMotionIds, ...cleanup.removedAssetIds, ...cleanup.removedConversionKeys]
+        result = { cleanup }
+      } else if (envelope.command === 'film.anchor.location.set') {
         if (!filmFrameExtensions) throw new UnifiedStoreError('VALIDATION_FAILED', 'Điểm neo chưa được kiểm tra', 400)
         next.extensions = filmFrameExtensions as UnifiedProject['extensions']
         changedIds = ['film-anchor-locations']
@@ -2634,6 +2726,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
         const issues: Array<{ code: string; message: string; actionIndex?: number }> = []
         const modelRebindReports: Array<{ assetId: string; variant: string; sha256: string }> = []
         changedIds = []
+        if (conversionImport) next.extensions.libraryMotionConversions = { ...(next.extensions.libraryMotionConversions ?? {}), [conversionImport.assetId]: conversionImport.recipe }
         const motionMetadata = { ...(isRecord(next.extensions.retargetMotionMetadata) ? next.extensions.retargetMotionMetadata : {}) }
         const modelMetadata = { ...(isRecord(next.extensions.assetImportModels) ? next.extensions.assetImportModels : {}) }
         for (const { imported } of stagedAssetImports) {
@@ -2827,7 +2920,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (!validateProject(next)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Project contract validation failed after command', 400)
     if (envelope.command === 'asset.import' || envelope.command === 'library.place' || envelope.command === 'library.link') {
       if (!stagedAssetImports) throw new UnifiedStoreError('VALIDATION_FAILED', 'Asset upload handles are unavailable', 400)
-      for (const { upload, imported } of stagedAssetImports) if (!current.assets[imported.asset.id] || imported.normalizationReport || imported.modelRebindReport) await persistImportedAssetFiles(id, imported, upload.bytes)
+      for (const { upload, imported } of stagedAssetImports) if (!current.assets[imported.asset.id] || imported.normalizationReport || imported.modelRebindReport) await persistImportedAssetFiles(id, imported, upload.bytes, conversionImport?.assetId === imported.asset.id ? conversionImport.recipe : undefined)
     }
     const response = await commit(envelope, hash, current, next, nextIndex, result, changedIds)
     if (envelope.command === 'asset.import' || envelope.command === 'asset.relink') await removeStagedAssetUploads(importedUploadIds).catch(() => undefined)

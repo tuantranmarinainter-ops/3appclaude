@@ -2,11 +2,12 @@ import type { MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
 import { cx } from '../common/cx'
+import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Dropdown } from '../common/Dropdown'
 import { InspectorRangeDelete } from './FrameRangeRow'
 import { ToggleRow } from './PosePanel'
 
-const MOTION_SPEEDS = [1, 2, 3] as const
+const MOTION_SPEEDS = [0.1, 0.25, 0.5, 1, 2] as const
 
 export function MotionClipConfigEditor({
   clip,
@@ -46,6 +47,8 @@ export function MotionClipConfigEditor({
               </button>
             ))}
           </span>
+          <ScrubNumberInput value={clip.playback.speed} min={0.01} max={16} step={0.05} precision={2}
+            ariaLabel={t('inspector.clipSpeed')} onChange={(value) => patch('speed', value)} />
         </span>
       </div>
       <div className="t3d-inspector-kv">

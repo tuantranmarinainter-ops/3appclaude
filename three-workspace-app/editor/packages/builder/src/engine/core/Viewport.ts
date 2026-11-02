@@ -150,6 +150,8 @@ export class DualViewport {
   private unbindNavigation: (() => void) | null = null
   private navHandlers: ViewportNavPickHandlers | null = null
   private navEnabled = true
+  /** Khoá khung 3D do người dùng bật; độc lập với navEnabled (tạm tắt khi kéo gizmo). */
+  private viewLocked = false
   private leftPointerReserved = false
   private gizmoSuppressed = false
   private unbindBoxSelectGuard: (() => void) | null = null
@@ -262,6 +264,7 @@ export class DualViewport {
       isHandleActive: () => !this.gizmoSuppressed
         && (!!this.unified?.dragging || this.unified?.axis != null || this.jointBusy),
       isEnabled: () => this.navEnabled && !this.followMode,
+      isViewLocked: () => this.viewLocked,
       reservesLeftPointer: () => this.leftPointerReserved,
       getHandlers: () => this.navHandlers,
     })
@@ -365,6 +368,10 @@ export class DualViewport {
   setOrbitEnabled(enabled: boolean): void {
     this.navEnabled = enabled
     this.cameraRig?.setEnabled(enabled && !this.followMode)
+  }
+
+  setViewLocked(locked: boolean): void {
+    this.viewLocked = locked
   }
 
   setLeftPointerReserved(reserved: boolean): void {

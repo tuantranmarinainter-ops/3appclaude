@@ -1,3 +1,7 @@
+import { assignmentTargetRig } from '../../library/components/assignment/utils'
+import { UnifiedStoreError, readUnifiedProject } from '../../../src/unifiedProjectStore'
+import { resolveCharacter } from '../../../../../packages/library/index'
+import { readLibraryCharacterHeight } from '../../../src/libraryCharacterProfiles'
 import { libraryCharacterModel } from '../../../src/libraryModels'
 import { ACTION_CATEGORIES, CHARACTER_ACTION_STATUSES, getAction, searchLibrary, setActionMetadata, type ActionCategory, type CharacterActionStatus } from '../../../../../packages/library/index'
 import { addLibraryCharacterToProject, approveCharacterAction, characterActions, copyCharacterAction, libraryCoverage, linkStoryboardNodesToLibrary, listLibraryCharacterDetails, placeLibraryActionForNode, updateLibraryCharacterHeights, rawActions, updateCharacterProfile, LibraryCharacterAlreadyInSceneError, type ExistingNodePolicy } from '../../../src/libraryCommands'
@@ -7,6 +11,8 @@ export const runtime = 'nodejs'
 export async function GET(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url)
+    const heightCharacter = url.searchParams.get('heightCharacter')
+    if (heightCharacter) return Response.json(await readLibraryCharacterHeight(heightCharacter), { headers: { 'Cache-Control': 'no-store' } })
     const modelCharacter = url.searchParams.get('modelCharacter')
     if (modelCharacter) {
       const fingerprint = url.searchParams.get('fingerprint')
@@ -14,6 +20,34 @@ export async function GET(request: Request): Promise<Response> {
       if (fingerprint !== model.fingerprint) { const legacy = await libraryCharacterModel(modelCharacter, false); if (legacy.fingerprint === fingerprint) model = legacy }
       if (fingerprint !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
       return new Response(new Uint8Array(model.bytes), { headers: { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'no-store' } })
+    }
+    const assignmentNodeId = url.searchParams.get('assignmentNodeId')
+    if (assignmentNodeId) {
+      const projectId = url.searchParams.get('projectId')
+      if (!projectId) throw new Error('projectId is required')
+      const project = await readUnifiedProject(projectId)
+      const node = project.scene.content.nodes.find(item => item.id === assignmentNodeId)
+      const character = Object.values(project.characters).find(item => item.nodeId === assignmentNodeId)
+      if (!node || !character) throw new Error('Node không còn trong project')
+      const libraryCharacterId = typeof node.metadata?.libraryCharacterId === 'string' ? node.metadata.libraryCharacterId : null
+      const resolved = libraryCharacterId ? resolveCharacter(libraryCharacterId) : null
+      const family = project.skeletons[character.skeletonId]?.family
+      const targetRig = assignmentTargetRig(family, resolved?.baseModel?.rig)
+      return Response.json({ targetRig, libraryCharacterId }, { headers: { 'Cache-Control': 'no-store' } })
+    }
+    if (url.searchParams.get('assignmentActions') === '1') {
+      const offset = Number(url.searchParams.get('offset') ?? 0)
+      if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid offset')
+      const page = searchLibrary({ limit: 100, offset })
+      const ownerRigs = new Map<string, string>()
+      const items = page.items.map(action => {
+        if (action.ownerCharId && !ownerRigs.has(action.ownerCharId)) {
+          const owner = resolveCharacter(action.ownerCharId)
+          ownerRigs.set(action.ownerCharId, owner.baseModel?.rig ?? owner.character.rig)
+        }
+        return { ...action, skeletonKind: action.ownerCharId ? ownerRigs.get(action.ownerCharId) : action.rig }
+      })
+      return Response.json({ ...page, items }, { headers: { 'Cache-Control': 'no-store' } })
     }
     const actionUuid = url.searchParams.get('actionUuid')
     if (actionUuid) {
@@ -65,7 +99,7 @@ export async function PATCH(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number }
+    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number; reconvert?: boolean }
     if (body.operation === 'update-scene-heights') {
       if (!body.projectId || !Number.isSafeInteger(body.expectedRevision)) return Response.json({ error: 'projectId và expectedRevision là bắt buộc' }, { status: 400 })
       return Response.json(await updateLibraryCharacterHeights(body.projectId, body.expectedRevision!))
@@ -81,7 +115,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (body.operation === 'place-for-node') {
       if (!body.projectId || !body.actionUuid || !body.nodeId || body.frameStart !== undefined && (!Number.isSafeInteger(body.frameStart) || (body.frameStart as number) < 0)) return Response.json({ error: 'projectId, actionUuid, nodeId and an optional nonnegative frameStart are required' }, { status: 400 })
-      return Response.json(await placeLibraryActionForNode({ projectId: body.projectId, actionUuid: body.actionUuid, nodeId: body.nodeId, ...(body.frameStart !== undefined ? { frameStart: body.frameStart } : {}) }))
+      if (body.reconvert !== undefined && typeof body.reconvert !== 'boolean') return Response.json({ error: 'reconvert must be boolean' }, { status: 400 })
+      return Response.json(await placeLibraryActionForNode({ projectId: body.projectId, actionUuid: body.actionUuid, nodeId: body.nodeId, ...(body.reconvert ? { reconvert: true } : {}), ...(body.frameStart !== undefined ? { frameStart: body.frameStart } : {}) }))
     }
     if (body.operation === 'link-nodes') {
       if (!body.projectId || !body.charId || !Number.isSafeInteger(body.expectedRevision) || !Array.isArray(body.nodeIds) || !body.nodeIds.length || body.nodeIds.some((id) => typeof id !== 'string')) return Response.json({ error: 'projectId, expectedRevision, charId and nodeIds are required' }, { status: 400 })
@@ -89,6 +124,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ error: 'Unknown library operation' }, { status: 400 })
   } catch (error) {
+    if (error instanceof UnifiedStoreError) return Response.json({ error: error.message, code: error.code }, { status: error.code === 'CONVERSION_REQUIRED' ? 409 : 400 })
     if (error instanceof LibraryCharacterAlreadyInSceneError) {
       return Response.json({ error: error.message, code: error.code, charId: error.charId, existingNodeIds: error.existingNodeIds, existingNodeNames: error.existingNodeNames }, { status: 409 })
     }

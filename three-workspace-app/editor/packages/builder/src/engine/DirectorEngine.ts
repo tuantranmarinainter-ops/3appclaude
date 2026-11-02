@@ -145,6 +145,8 @@ export interface DirectorEngine {
   /** Khoảng phát lặp In/Out của timeline (N4); null = toàn timeline. */
   setPlayRange(range: { start: number; end: number } | null): void
   load(doc: DirectorDocument, onProgress?: (msg: string) => void): Promise<void>
+  /** Refresh a host snapshot while retaining unchanged runtime objects and the editor view. */
+  refreshDocument?(previous: DirectorDocument): Promise<void>
   reset(): void
   setEvalContext(ctx: EvalContext): void
   setFcurves(fcurves: FCurveSet | null): void
@@ -204,6 +206,8 @@ export interface DirectorEngine {
   groundPoint(ndcX: number, ndcY: number, y: number): [number, number, number] | null
   groundDrawPoint(ndcX: number, ndcY: number): [number, number, number] | null
   setOrbitEnabled(enabled: boolean): void
+  /** Khoá khung 3D: phím tắt/lăn/kéo không đổi camera khung nhìn. */
+  setViewLocked(locked: boolean): void
   /** 路径绘制占用左键时为 true。导航本身保持开启。 */
   setLeftPointerReserved(reserved: boolean): void
   setNavPickHandlers(handlers: ViewportNavPickHandlers | null): void

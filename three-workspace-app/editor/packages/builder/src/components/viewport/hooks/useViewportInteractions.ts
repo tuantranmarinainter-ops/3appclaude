@@ -417,6 +417,7 @@ export function useViewportInteractions(ref: RefObject<HTMLCanvasElement>) {
       lastPt = null
     }
     const onPoseKey = (e: KeyboardEvent) => {
+      if (canvas.getClientRects().length === 0) return
       if (e.key !== 'Escape') return
       if (poseDrag) {
         e.preventDefault()

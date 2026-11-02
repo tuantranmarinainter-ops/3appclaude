@@ -1,23 +1,27 @@
 import type * as THREE from 'three'
 
 import { LIBRARY_ASSET_PREFIX } from '../../contract/assetKeyPrefixes'
-import { releaseTemplateShared } from '../objects/templateShared'
+import { markTemplateShared, releaseTemplateShared } from '../objects/templateShared'
 
 const MAX_LIBRARY_TEMPLATES = 48
 
 /** three 的 GPU 资源必须显式释放，仅从 Map 里移除引用不会回收显存。 */
 export function disposeTemplateResources(root: THREE.Object3D): void {
+  const resources = new Set<{ dispose: () => void }>()
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh
-    mesh.geometry?.dispose?.()
+    if (mesh.geometry) resources.add(mesh.geometry)
     const material = mesh.material
     if (!material) return
     for (const item of Array.isArray(material) ? material : [material]) {
-      const std = item as THREE.MeshStandardMaterial
-      std.map?.dispose?.()
-      std.dispose?.()
+      resources.add(item)
+      for (const value of Object.values(item)) {
+        const texture = value as THREE.Texture | null
+        if (texture?.isTexture) resources.add(texture)
+      }
     }
   })
+  for (const resource of resources) resource.dispose()
 }
 
 class LruMap<T> {
@@ -57,8 +61,40 @@ class LruMap<T> {
   }
 }
 
-const libraryCharacters = new LruMap<THREE.Object3D>(MAX_LIBRARY_TEMPLATES, releaseTemplateShared)
-const libraryProps = new LruMap<THREE.Object3D>(MAX_LIBRARY_TEMPLATES, releaseTemplateShared)
+const ownership = new WeakMap<THREE.Object3D, { cached: boolean; users: number }>()
+
+function retireTemplate(root: THREE.Object3D): void {
+  const state = ownership.get(root)
+  if (state) state.cached = false
+  if (state?.users) return
+  releaseTemplateShared(root)
+  disposeTemplateResources(root)
+}
+
+/** Pin shared GPU resources for an AssetLoader's lifetime, including after LRU eviction. */
+export function retainCachedTemplate(root: THREE.Object3D): boolean {
+  const state = ownership.get(root)
+  if (!state) return false
+  state.users++
+  return true
+}
+
+export function releaseCachedTemplate(root: THREE.Object3D): void {
+  const state = ownership.get(root)
+  if (!state) return
+  state.users = Math.max(0, state.users - 1)
+  if (!state.cached && state.users === 0) retireTemplate(root)
+}
+
+function ownTemplate(root: THREE.Object3D): void {
+  const state = ownership.get(root)
+  if (state) state.cached = true
+  else ownership.set(root, { cached: true, users: 0 })
+  markTemplateShared(root)
+}
+
+const libraryCharacters = new LruMap<THREE.Object3D>(MAX_LIBRARY_TEMPLATES, retireTemplate)
+const libraryProps = new LruMap<THREE.Object3D>(MAX_LIBRARY_TEMPLATES, retireTemplate)
 
 /**
  * 从资源 URL 或裸 key 还原官方素材库的 S3 key；用户私有素材返回 null，由调用方退回实例缓存。
@@ -70,6 +106,17 @@ const libraryProps = new LruMap<THREE.Object3D>(MAX_LIBRARY_TEMPLATES, releaseTe
 export function libraryAssetCacheKey(urlOrKey: string): string | null {
   const trimmed = urlOrKey.trim()
   if (!trimmed) return null
+  // Studio project asset IDs are SHA-256 addresses; project identity and URL
+  // signatures do not change the bytes. Mutable library models require a fingerprint.
+  try {
+    const url = new URL(trimmed, 'https://asset.invalid')
+    const path = decodeURIComponent(url.pathname)
+    const content = /\/assets\/sha256:([a-f0-9]{64})\/source$/.exec(path)
+    if (content) return `sha256:${content[1]}:${url.searchParams.get('format') ?? 'source'}`
+    const fingerprint = url.searchParams.get('fingerprint')
+    const character = url.searchParams.get('modelCharacter')
+    if (path === '/api/library' && character && fingerprint) return `character:${character}:${fingerprint}`
+  } catch { /* Malformed or non-URL keys still use the existing library path rules. */ }
   let path = trimmed
   try {
     if (/^https?:\/\//i.test(trimmed)) path = new URL(trimmed).pathname
@@ -101,6 +148,7 @@ export function lookupLibraryCharacter(url: string): THREE.Object3D | undefined 
 export function storeLibraryCharacter(url: string, scene: THREE.Object3D): boolean {
   const key = libraryAssetCacheKey(url)
   if (!key) return false
+  ownTemplate(scene)
   libraryCharacters.set(key, scene)
   return true
 }
@@ -113,6 +161,7 @@ export function lookupLibraryProp(url: string): THREE.Object3D | undefined {
 export function storeLibraryProp(url: string, scene: THREE.Object3D): boolean {
   const key = libraryAssetCacheKey(url)
   if (!key) return false
+  ownTemplate(scene)
   libraryProps.set(key, scene)
   return true
 }

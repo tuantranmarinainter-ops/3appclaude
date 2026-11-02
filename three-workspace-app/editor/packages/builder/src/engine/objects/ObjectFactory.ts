@@ -5,6 +5,7 @@ import type { AssetLoader } from '../io/AssetLoader'
 import { buildCameraInstance } from './CameraObject'
 import { buildCharacterInstance } from './CharacterObject'
 import { buildPrimitiveInstance } from './PrimitiveObject'
+import { buildGroupInstance, attachGroupLabel } from './GroupObject'
 import { attachProp } from './PropObject'
 import { buildPathInstance, removePathNode, type PathViewHost } from './PathObject'
 import type { StageGraph } from './graph'
@@ -100,6 +101,12 @@ export async function addRuntimeNode(
     return true
   }
   if (node.type === 'character') return addCharacterNode(graph, loader, node)
+  if (node.type === 'group') {
+    graph.nodeById.set(node.id, node)
+    buildGroupInstance(graph, node)
+    attachGroupLabel(graph, node)
+    return true
+  }
   if (node.type === 'primitive') {
     graph.nodeById.set(node.id, node)
     buildPrimitiveInstance(graph, node)
@@ -125,7 +132,7 @@ async function addCharacterNode(graph: StageGraph, loader: AssetLoader, n: Draft
   let template = loader.lookupCharacterTemplate(url)
   if (!template) {
     try {
-      template = await loader.loadCharacterTemplate(url)
+      template = await loader.loadCharacterTemplate(url, undefined, n.metadata?.modelFormat === 'fbx' ? 'fbx' : 'gltf')
       const mixamorigTpl = loader.mixamorigTemplate()
       if (mixamorigTpl) graph.motionPlayer.setMixamorigTemplate(mixamorigTpl)
     } catch (e) {
@@ -151,7 +158,7 @@ async function addPropFromUrl(
 ): Promise<boolean> {
   if (!graph.doc) return false
   try {
-    attachProp(graph, n, await loader.loadPropTemplate(url))
+    attachProp(graph, n, await loader.loadPropTemplate(url, n.metadata?.modelFormat === 'fbx' ? 'fbx' : 'gltf'))
     return true
   } catch (e) {
     console.warn(`[Stage] 道具加载失败 ${url}`, e)

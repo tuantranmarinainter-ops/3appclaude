@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import {
-  initializeLibrary, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic,
+  initializeLibrary, readIndex, readJsonFile, resolveLibraryPath, safeChild, safeId, withLibraryLock, writeIndex, writeJsonAtomic,
 } from './store'
 import {
   CHARACTER_ACTION_STATUSES, DEFAULT_REQUIRED_ACTIONS, LIBRARY_VERSION,
@@ -314,21 +314,18 @@ export function copyActionToCharacter(options: LibraryOptions & { actionUuid: st
 
 export function listCharacterActions(options: LibraryOptions & { charId: string; status?: CharacterActionStatus; latestOnly?: boolean }): IndexedAction[] {
   const root = resolveLibraryPath(options)
-  return withLibraryLock(root, () => {
-    initializeLibrary(root)
-    const index = writeIndex(root), character = characterAt(root, options.charId), ids = new Set(memberships(root, character, index.actions))
-    let actions = index.actions.filter((action) => ids.has(action.uuid) && action.ownerCharId === character.charId)
-    if (options.latestOnly) {
-      const latest = new Map<string, IndexedAction>()
-      for (const action of actions) {
-        const key = action.variantOf ?? action.uuid, previous = latest.get(key)
-        if (!previous || (action.version ?? 0) > (previous.version ?? 0)) latest.set(key, action)
-      }
-      actions = [...latest.values()]
+  const index = readIndex(root), character = characterAt(root, options.charId), ids = new Set(memberships(root, character, index.actions))
+  let actions = index.actions.filter((action) => ids.has(action.uuid) && action.ownerCharId === character.charId)
+  if (options.latestOnly) {
+    const latest = new Map<string, IndexedAction>()
+    for (const action of actions) {
+      const key = action.variantOf ?? action.uuid, previous = latest.get(key)
+      if (!previous || (action.version ?? 0) > (previous.version ?? 0)) latest.set(key, action)
     }
-    if (options.status) actions = actions.filter((action) => action.status === options.status)
-    return actions.sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (a.variantOf ?? a.uuid).localeCompare(b.variantOf ?? b.uuid) || (a.version ?? 0) - (b.version ?? 0))
-  })
+    actions = [...latest.values()]
+  }
+  if (options.status) actions = actions.filter((action) => action.status === options.status)
+  return actions.sort((a, b) => Number(!!b.favorite) - Number(!!a.favorite) || (a.variantOf ?? a.uuid).localeCompare(b.variantOf ?? b.uuid) || (a.version ?? 0) - (b.version ?? 0))
 }
 
 export function removeCharacterAction(options: LibraryOptions & { charId: string; actionUuid: string }): CharacterMetadata {
@@ -372,24 +369,21 @@ export function setCharacterProfile(options: LibraryOptions & {
 
 export function coverageMatrix(options: LibraryOptions & { charIds?: string[] } = {}): CharacterCoverage[] {
   const root = resolveLibraryPath(options)
-  return withLibraryLock(root, () => {
-    initializeLibrary(root)
-    const index = writeIndex(root), requested = options.charIds ? new Set(options.charIds.map((id) => safeId(id, 'character id'))) : null
-    return index.characters.filter((character) => !requested || requested.has(character.charId)).map((raw) => {
-      const character = withCharacterDefaults(raw), ids = new Set(memberships(root, raw, index.actions))
-      const owned = index.actions.filter((action) => ids.has(action.uuid) && action.ownerCharId === character.charId)
-      const latest = new Map<string, IndexedAction>()
-      for (const action of owned) {
-        const key = action.variantOf ?? action.uuid, previous = latest.get(key)
-        if (!previous || (action.version ?? 0) > (previous.version ?? 0)) latest.set(key, action)
-      }
-      const actions = [...latest.values()]
-      return { charId: character.charId, name: character.name, cells: character.requiredActions!.map(({ key, label }) => {
-        const matching = actions.filter((action) => action.tags.some((tag) => tag.toLowerCase() === key.toLowerCase()))
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.uuid.localeCompare(a.uuid))
-        const action = matching[0] ?? null
-        return { key, label, action, status: action?.status ?? null }
-      }) }
-    })
+  const index = readIndex(root), requested = options.charIds ? new Set(options.charIds.map((id) => safeId(id, 'character id'))) : null
+  return index.characters.filter((character) => !requested || requested.has(character.charId)).map((raw) => {
+    const character = withCharacterDefaults(raw), ids = new Set(memberships(root, raw, index.actions))
+    const owned = index.actions.filter((action) => ids.has(action.uuid) && action.ownerCharId === character.charId)
+    const latest = new Map<string, IndexedAction>()
+    for (const action of owned) {
+      const key = action.variantOf ?? action.uuid, previous = latest.get(key)
+      if (!previous || (action.version ?? 0) > (previous.version ?? 0)) latest.set(key, action)
+    }
+    const actions = [...latest.values()]
+    return { charId: character.charId, name: character.name, cells: character.requiredActions!.map(({ key, label }) => {
+      const matching = actions.filter((action) => action.tags.some((tag) => tag.toLowerCase() === key.toLowerCase()))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.uuid.localeCompare(a.uuid))
+      const action = matching[0] ?? null
+      return { key, label, action, status: action?.status ?? null }
+    }) }
   })
 }

@@ -1,4 +1,6 @@
 import { browserOptions } from './browser_test_options.mjs';
+import { useClassicLayout } from './classic_test_layout.mjs';
+import { APP3_FRAME_URL } from '../../../../editor/apps/studio/src/app3Embed.ts';
 // Run against Studio with APP3_RUNTIME_BASE and its own BBS_UNIFIED_PROJECTS_DIR.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -98,6 +100,7 @@ test(
         headers = { Origin: base },
         errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
+      await useClassicLayout(page);
       assert.ok((await request.post(base + '/api/unified/session', { headers })).ok());
       async function command(command, args = {}, projectId) {
         const revision = projectId
@@ -166,7 +169,7 @@ test(
       await iframe.waitFor();
       const frame = await (await iframe.elementHandle()).contentFrame();
       assert.ok(frame);
-      await frame.waitForURL(/animation-studio\/v1\.33\.0\/index\.html/);
+      await frame.waitForURL((url) => url.pathname === APP3_FRAME_URL);
       await frame.waitForFunction(
         () => window.__studio?.ready && window.__studio.silhouette.enabled,
         null,
@@ -237,6 +240,16 @@ test(
       assert.ok(counts.outsideFraction < 0.02, JSON.stringify(counts));
       assert.ok(counts.darkFraction > 0.002, JSON.stringify(counts));
       assert.ok(counts.lightFraction > 0.5, JSON.stringify(counts));
+      // Compare restoration before the separate orbit/playback round trips,
+      // whose floating-point reconstruction can change edge rasterization.
+      await frame.locator('#silhouetteBtn').click();
+      const restored = await capture('restored');
+      assert.equal(before.width, restored.width);
+      assert.equal(before.height, restored.height);
+      let changed = 0;
+      for (let i = 0; i < before.data.length; i++) if (before.data[i] !== restored.data[i]) changed++;
+      assert.equal(changed, 0, 'off must reproduce original pixels at the same camera and time');
+      await frame.locator('#silhouetteBtn').click();
       console.log('Silhouette pixels verified; checking camera and playback');
       const cameraBefore = await frame.evaluate(() => {
         const v = window.__studio.view;
@@ -301,12 +314,7 @@ test(
         cameraBefore.position,
         'toggle preserves camera',
       );
-      const off = await capture('off');
-      assert.equal(before.width, off.width);
-      assert.equal(before.height, off.height);
-      let changed = 0;
-      for (let i = 0; i < before.data.length; i++) if (before.data[i] !== off.data[i]) changed++;
-      assert.equal(changed, 0, 'off must reproduce original pixels');
+      await capture('off');
       await frame.locator('#silhouetteBtn').focus();
       await frame.locator('body').press('Shift+S');
       await frame.waitForFunction(() => window.__studio.silhouette.enabled);

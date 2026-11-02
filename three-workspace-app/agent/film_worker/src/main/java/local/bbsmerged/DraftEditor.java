@@ -234,6 +234,7 @@ public final class DraftEditor {
                 if(command.equals("add_camera_clip")) {
                     int duration=tick(p,"duration",1); if(duration<1) throw new IllegalArgumentException("duration >= 1");
                     map(c).put("type",string("bbs:keyframe")); map(c).put("duration",integer(duration)); map(c).put("layer",integer(tick(p,"layer",0))); map(c).put("additive",bool(flag(p,"additive",false))); map(c).put("enabled",bool(true));
+                    map(group(c,"envelope")).put("enabled",bool(false));
                 }
                 array(root,"camera").add(c); result=camera(c);
             }
@@ -242,7 +243,10 @@ public final class DraftEditor {
                 int t=tick(p,"relativeTick",0); if(t>value(c,"duration",1)) throw new IllegalArgumentException("Keyframe beyond camera duration");
                 boolean supplied=false;
                 for(String name:List.of("x","y","z","yaw","pitch","roll","fov","distance")) if(p.has(name)) {
-                    double v=num(p,name,0); if(name.equals("fov")&&(v<=0||v>=180)) throw new IllegalArgumentException("FOV must be (0,180)"); key(c,name,"double",t,number(v)); supplied=true;
+                    double v=num(p,name,0); if(name.equals("fov")&&(v<=0||v>=180)) throw new IllegalArgumentException("FOV must be (0,180)"); key(c,name,"double",t,number(v));
+                    // Explicit interpolation prevents native defaults from changing baked samples.
+                    for (Node frame : array(group(c,name), "keyframes")) map(frame).put("interp",string("linear"));
+                    supplied=true;
                 }
                 if(!supplied) throw new IllegalArgumentException("No camera channels supplied"); result=camera(c);
             }

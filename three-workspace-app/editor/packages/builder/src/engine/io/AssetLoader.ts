@@ -18,6 +18,8 @@ import {
   lookupLibraryProp,
   storeLibraryCharacter,
   storeLibraryProp,
+  retainCachedTemplate,
+  releaseCachedTemplate,
 } from './libraryAssetCache'
 
 /**
@@ -68,6 +70,11 @@ export class AssetLoader {
    * 让同一份草稿的动作烘焙结果依赖「之前打开过什么」。
    */
   private readonly usedCharacterTemplates = new Set<THREE.Object3D>()
+  private readonly retainedTemplates = new Set<THREE.Object3D>()
+
+  private retainTemplate(template: THREE.Object3D): void {
+    if (!this.retainedTemplates.has(template) && retainCachedTemplate(template)) this.retainedTemplates.add(template)
+  }
   private readonly gltf: GLTFLoader
   private readonly fbx = new FBXLoader()
 
@@ -85,15 +92,16 @@ export class AssetLoader {
 
   lookupCharacterTemplate(url: string): THREE.Object3D | undefined {
     const found = lookupLibraryCharacter(url) ?? this.characterTemplates.get(instanceCacheKey(url))
-    if (found) this.usedCharacterTemplates.add(found)
+    if (found) { this.usedCharacterTemplates.add(found); this.retainTemplate(found) }
     return found
   }
 
   async loadPropTemplate(url: string, format: 'gltf' | 'fbx' = 'gltf'): Promise<THREE.Object3D> {
     const cached = lookupLibraryProp(url) ?? this.propTemplates.get(instanceCacheKey(url))
-    if (cached) return skeletonClone(cached)
+    if (cached) { this.retainTemplate(cached); return skeletonClone(cached) }
     const scene = format === 'fbx' ? await this.fbx.loadAsync(url) : await this.loadGltf(url)
     if (!storeLibraryProp(url, scene)) this.propTemplates.set(instanceCacheKey(url), scene)
+    this.retainTemplate(scene)
     // 带骨骼的库道具（马、人偶等）必须 SkeletonUtils.clone，普通 clone 会把
     // SkinnedMesh 和 skeleton.bones 拆开，视口里只剩空 gizmo。
     return skeletonClone(scene)
@@ -105,6 +113,7 @@ export class AssetLoader {
     onProgress?.(`Loading character model: ${url.split('/').pop()}…`)
     const scene = format === 'fbx' ? await this.fbx.loadAsync(url) : await this.loadGltf(url)
     if (!storeLibraryCharacter(url, scene)) this.characterTemplates.set(instanceCacheKey(url), scene)
+    this.retainTemplate(scene)
     this.usedCharacterTemplates.add(scene)
     return scene
   }
@@ -181,5 +190,7 @@ export class AssetLoader {
     this.propTemplates.clear()
     // 官方素材库模板归模块级缓存所有，这里只松开本会话的引用，不能 dispose。
     this.usedCharacterTemplates.clear()
+    for (const template of this.retainedTemplates) releaseCachedTemplate(template)
+    this.retainedTemplates.clear()
   }
 }

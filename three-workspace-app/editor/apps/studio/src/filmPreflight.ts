@@ -1,5 +1,6 @@
 import { filmAnchorPlacement, type FilmAnchorPlacement } from './filmAnchorPreflight'
 import { filmCharacterHeight } from './filmCharacterHeight'
+import { filmCameraWarnings } from './filmCameraWarnings'
 import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
@@ -205,6 +206,7 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
   }
 
   const sequence = project.scene.content.editorial?.sequences.find((item) => item.id === args.sequenceId)
+  if (args.range) result.warnings.push(...filmCameraWarnings(project, args.sequenceId, args.range, args.viewportAspect))
   if (sequence) for (const clip of sequence.clips) {
     if (range && (clip.sourceFrameEnd < range.startFrame || clip.sourceFrameStart > range.endFrame)) continue
     const status = reviewStatusForSequence(project, sequence.id, clip.id)

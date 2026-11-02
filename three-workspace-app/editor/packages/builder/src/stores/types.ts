@@ -209,6 +209,7 @@ export interface StudioView {
   autoKeyframe: boolean
   /** 时间轴拖动是否吸附到关键帧 / 片段首尾 / 刻度；默认开。 */
   timelineSnap: boolean
+  viewportLocked: boolean
   /** 已有变换关键帧的节点，当前帧尚未确认的候选值；有值时禁止挪播放头。 */
   pendingKeyframe: PendingKeyframe | null
   chainCameraMotion: boolean
@@ -337,6 +338,7 @@ export interface StudioView {
   toggleUserKeys: () => void
   toggleAutoKeyframe: () => void
   toggleTimelineSnap: () => void
+  toggleViewportLocked: () => void
   addKeyframe: (nodeId: string, prop: TrackProp, value: number[]) => void
   addKeyframes: (nodeId: string, keys: { prop: TrackProp; value: number[] }[]) => void
   /** 多选打关键帧：按节点类型写整套变换通道（给了 props 就只写这些），一条 undo */
@@ -427,6 +429,9 @@ export interface StudioView {
   updateCameraMotionConfig: (clipId: string, patch: Record<string, number | string>) => string | null
   resizeCameraMotionClip: (clipId: string, edge: 'start' | 'end', frame: number) => string | null
   resizePathMotionClip: (clipId: string, edge: 'start' | 'end', frame: number) => string | null
+  copyTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string) => void
+  pasteTimelineClip: (frame: number) => string | null
+  duplicateTimelineClip: (kind: 'camera' | 'motion' | 'path', clipId: string, frame: number) => string | null
   updateMotionClipConfig: (clipId: string, patch: Record<string, number | string | boolean>) => void
   addCameraFromPreset: (presetId: string, name?: string) => string | null
   canSave: boolean

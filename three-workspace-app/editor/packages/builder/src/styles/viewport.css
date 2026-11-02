@@ -180,10 +180,13 @@
   transform: translateX(-50%);
   z-index: 8;
   display: flex;
+  flex-wrap: wrap;
+  width: max-content;
+  max-width: calc(100% - 24px);
   align-items: center;
   gap: 10px;
   padding: 6px 10px 6px 12px;
-  border-radius: 999px;
+  border-radius: 16px;
   background: var(--t3d-dock-surface);
   color: var(--t3d-text);
   border: 1px solid var(--t3d-dock-border);
@@ -191,7 +194,20 @@
   -webkit-backdrop-filter: blur(var(--t3d-dock-blur));
   box-shadow: var(--t3d-shadow-float);
   font-size: 12px;
-  white-space: nowrap;
+  white-space: normal;
+}
+
+.t3d-look-at-prompt > span,
+.t3d-pose-editor-hint > span {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.t3d-look-at-prompt .t3d-hint-action,
+.t3d-pose-editor-hint .t3d-hint-action {
+  max-width: 100%;
+  white-space: normal;
 }
 
 .t3d-pilot-mask {

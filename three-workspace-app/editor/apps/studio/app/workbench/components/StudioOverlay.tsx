@@ -9,7 +9,7 @@ import { getLiveStudio, setLiveStudio, subscribeLiveStudio } from '../../../src/
 import { setStudioLocale, useStudioLocale } from '../../../src/devtools/localePreference'
 import { readFilmFrameAspect } from '../../../src/filmFrame'
 import { useStudioT } from '../../../src/locale'
-import { ensureUnifiedSession, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
+import { ensureUnifiedSession, invalidateUnifiedProjectReads, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
 import { FeatureNavigation } from './feature-navigation'
 import { WorkspaceNavigationSlot } from './feature-navigation/WorkspaceNavigation'
 import { usePanelNavigation } from './feature-navigation/hooks/usePanelNavigation'
@@ -28,6 +28,8 @@ import { useAudioPlayback } from './audio-cues/useAudioPlayback'
 import { useVfxPreview } from './vfx-cues/hooks/useVfxPreview'
 import { planReviewFrames, reviewStatusForSequence } from '../../../src/sceneReview'
 import { DiagnosticsPanel } from '../../../src/devtools/tools/DiagnosticsPanel'
+import { DebugRecorderPanel } from './debug-recorder'
+import { resumeDebugIfEnabled } from '../../../src/debugRecorder'
 import { LanguageMenu } from './LanguageMenu'
 import { WORKSPACE_PANELS, type Workspace } from '../../../src/workspaceNavigation'
 
@@ -96,7 +98,7 @@ type StudioWindow = Window & {
   __exportDraft?: () => boolean
 }
 
-type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign'
+type HostDrawerId = 'features' | 'assets' | 'animation' | 'export' | 'review' | 'vfx' | 'audio' | 'diagnostics' | 'assign' | 'debug'
 
 function installDebugHooks(api: DirectorApi): void {
   const target = window as StudioWindow
@@ -133,11 +135,11 @@ export function StudioOverlay({
   const [drawer, setDrawer] = useState<HostDrawerId | null>(null)
   const [assignRequest, setAssignRequest] = useState<{ nodeId: string | null; nonce: number }>({ nodeId: null, nonce: 0 })
   const [historyBusy, setHistoryBusy] = useState(false)
+  const hostRefreshRef = useRef<Promise<void> | null>(null)
   const [shellError, setShellError] = useState<string | null>(null)
   const [assetMessage, setAssetMessage] = useState('')
   const [assetBusy, setAssetBusy] = useState(false)
   const [animationEditorDirty, setAnimationEditorDirty] = useState(false)
-  const [editorKey, setEditorKey] = useState(0)
   // Silhouette is a view mode only (never saved): App 2's Stage applies it; App 3 listens for the window event.
   const [silhouette, setSilhouette] = useState(false)
   useEffect(() => {
@@ -186,15 +188,32 @@ export function StudioOverlay({
     setHistoryBusy(true)
     setShellError(null)
     try {
-      const latest = await loadUnifiedProject(documentId)
+      const latest = projectState ?? await loadUnifiedProject(documentId)
       if (command === 'history.undo' ? !latest.history.canUndo : !latest.history.canRedo) return
       await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: documentId, expectedRevision: latest.project.revision, command, args: {} })
-      setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
-    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+      await hostRefreshRef.current
+    } catch (error) {
+      // The server rejects stale expectedRevision. Refresh before the next attempt.
+      notifyProjectCommit(documentId)
+      await hostRefreshRef.current
+      setShellError(error instanceof Error ? error.message : String(error))
+    }
     finally { setHistoryBusy(false) }
-  }, [documentId, historyBusy])
+  }, [documentId, historyBusy, projectState])
+  const cleanupResources = useCallback(async () => {
+    if (assetBusy || !window.confirm(vi ? 'Dọn motion và tài nguyên không còn dùng? Bạn có thể hoàn tác thao tác này.' : 'Remove unused motions and assets? You can undo this operation.')) return
+    setAssetBusy(true)
+    setShellError(null)
+    try {
+      const latest = await loadUnifiedProject(documentId)
+      await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: documentId, expectedRevision: latest.project.revision, command: 'project.cleanup', args: { confirmed: true } })
+      notifyProjectCommit(documentId)
+      await hostRefreshRef.current
+      setAssetMessage(vi ? 'Đã dọn tài nguyên không còn dùng.' : 'Unused resources removed.')
+    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+    finally { setAssetBusy(false) }
+  }, [assetBusy, documentId, vi])
   const importAssets = useCallback(async (files: File[]) => {
     if (!files.length || assetBusy) return
     const totalBytes = files.reduce((total, file) => total + file.size, 0)
@@ -234,7 +253,6 @@ export function StudioOverlay({
       })
       setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
       setAssetMessage(vi ? `Đã thêm nhân vật “${name}” vào cảnh.` : `Added character “${name}” to the scene.`)
     } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
     finally { setAssetBusy(false) }
@@ -251,7 +269,6 @@ export function StudioOverlay({
       })
       setProjectState(await loadUnifiedProject(documentId))
       notifyProjectCommit(documentId)
-      setEditorKey((key) => key + 1)
       setAssetMessage(vi ? `Đã thêm đạo cụ “${name}” vào cảnh.` : `Added prop “${name}” to the scene.`)
     } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
     finally { setAssetBusy(false) }
@@ -324,6 +341,11 @@ export function StudioOverlay({
   }, [activeWorkspace, documentId, mounted, projectState, source])
 
   useEffect(() => {
+    if (api && activeWorkspace !== 'scene') { api.stage.pause(); api.stage.stopAmbient() }
+    else if (api && !api.useStore.getState().timelineVisible) api.stage.startAmbient()
+  }, [activeWorkspace, api])
+
+  useEffect(() => {
     if (activeWorkspaceRef.current !== activeWorkspace) {
       activeWorkspaceRef.current = activeWorkspace
       if (openAnimationOnSwitch.current) {
@@ -369,19 +391,28 @@ export function StudioOverlay({
     const refresh = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail
       if (detail?.projectId !== documentId) return
-      void loadUnifiedProject(documentId).then(setProjectState).catch((error: unknown) => setShellError(error instanceof Error ? error.message : String(error)))
+      invalidateUnifiedProjectReads(documentId)
+      // Apply host revisions in order: async node loads must finish before the next refresh.
+      const reload = (hostRefreshRef.current ?? Promise.resolve()).then(() => loadUnifiedProject(documentId)).then(async (state) => {
+        setProjectState(state)
+        const studio = getLiveStudio()
+        if (studio?.documentId === documentId) await adapter.withProjectSnapshot(state.project, () => studio.session.reloadFromHost())
+      }).catch((error: unknown) => setShellError(error instanceof Error ? error.message : String(error)))
+      hostRefreshRef.current = reload
+      void reload.finally(() => { if (hostRefreshRef.current === reload) hostRefreshRef.current = null })
     }
     window.addEventListener('bbs-unified-project-commit', refresh)
     return () => window.removeEventListener('bbs-unified-project-commit', refresh)
-  }, [documentId, source])
+  }, [adapter, documentId, source])
 
   useEffect(() => {
-    if (source === 'unified' && activeWorkspace === 'retarget') clearDebugHooks()
-  }, [activeWorkspace, source])
+    if (source === 'unified' && activeWorkspace === 'scene' && getLiveStudio()) setApi(getLiveStudio())
+  }, [activeWorkspace, source, setApi])
 
   useEffect(() => {
     if (source !== 'unified') return
     const onKeyDown = (event: KeyboardEvent) => {
+      if (activeWorkspaceRef.current !== 'scene') return
       const target = event.target
       if (event.isComposing || target instanceof HTMLElement && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return
       if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
@@ -514,6 +545,14 @@ export function StudioOverlay({
     window.addEventListener('bbs-assign-animation', onAssignRequest)
     return () => window.removeEventListener('bbs-assign-animation', onAssignRequest)
   }, [source])
+  // Nút "Debug" ở cột trái mở bảng ghi thao tác; bản ghi đang bật thì tiếp tục sau khi tải lại trang.
+  useEffect(() => {
+    if (source !== 'unified') return
+    resumeDebugIfEnabled()
+    const onDebugRequest = () => setDrawer('debug')
+    window.addEventListener('bbs-open-debug', onDebugRequest)
+    return () => window.removeEventListener('bbs-open-debug', onDebugRequest)
+  }, [source])
   // C27: after an assignment, reveal the new clip (scroll + zoom + flash) in the builder timeline.
   // Sources: the assign panel and adapter dispatch 'bbs-reveal-clip'; returning from the Library
   // page hands the clip over through sessionStorage because the workbench remounts.
@@ -582,7 +621,7 @@ export function StudioOverlay({
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Hoàn tác' : 'Undo'} title="Undo (Ctrl+Z)" disabled={historyBusy || !projectState?.history.canUndo} onClick={() => void runHistory('history.undo')}>↶</button>
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>
             <button type="button" className="wb-host-primary" onClick={() => setDrawer('export')}>{vi ? 'Xuất' : 'Export'} ▾</button>
-            <details className="wb-host-more"><summary aria-label={vi ? 'Tùy chọn khác' : 'More options'}>⋯</summary><div className="wb-host-more-menu"><LanguageMenu /><button type="button" onClick={() => setDrawer('diagnostics')}>{vi ? 'Chẩn đoán' : 'Diagnostics'}</button><button type="button" onClick={() => window.dispatchEvent(new Event('bbs-unified-open-devtools'))}>{vi ? 'Công cụ phát triển' : 'Developer tools'}</button><details><summary>{vi ? 'Chi tiết dự án' : 'Project details'}</summary><small>{vi ? 'Revision' : 'Revision'} {project?.revision ?? '—'} · {assetCount} {vi ? 'tài nguyên' : 'assets'}</small></details></div></details>
+            <details className="wb-host-more"><summary aria-label={vi ? 'Tùy chọn khác' : 'More options'}>⋯</summary><div className="wb-host-more-menu"><LanguageMenu /><button type="button" disabled={assetBusy} onClick={() => void cleanupResources()}>{vi ? 'Dọn tài nguyên thừa' : 'Clean unused resources'}</button><button type="button" onClick={() => setDrawer('diagnostics')}>{vi ? 'Chẩn đoán' : 'Diagnostics'}</button><button type="button" onClick={() => window.dispatchEvent(new Event('bbs-unified-open-devtools'))}>{vi ? 'Công cụ phát triển' : 'Developer tools'}</button><details><summary>{vi ? 'Chi tiết dự án' : 'Project details'}</summary><small>{vi ? 'Revision' : 'Revision'} {project?.revision ?? '—'} · {assetCount} {vi ? 'tài nguyên' : 'assets'}</small></details></div></details>
             <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
@@ -591,7 +630,7 @@ export function StudioOverlay({
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && activeWorkspace === 'scene' && <div className="wb-unified-scene"><div className="studio-root"><DirectorStudio key={editorKey} adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
+          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>
@@ -631,6 +670,7 @@ export function StudioOverlay({
             <AudioCueHost key={documentId} projectId={documentId} project={project} active={drawer === 'audio'} />
           </HostDrawer>
           <HostDrawer open={drawer === 'diagnostics'} title={vi ? 'Chẩn đoán' : 'Diagnostics'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DiagnosticsPanel /></HostDrawer>
+          <HostDrawer open={drawer === 'debug'} title="Debug · ghi thao tác" closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}><DebugRecorderPanel /></HostDrawer>
           <HostDrawer open={drawer === 'assign'} title={vi ? 'Gán animation' : 'Assign animation'} closeLabel={vi ? 'Đóng bảng' : 'Close panel'} className="wb-drawer-wide" onClose={() => setDrawer(null)}>
             <AnimationAssignPanel key={`${documentId}-${assignRequest.nonce}`} projectId={documentId} project={project} initialNodeId={assignRequest.nodeId} />
           </HostDrawer>

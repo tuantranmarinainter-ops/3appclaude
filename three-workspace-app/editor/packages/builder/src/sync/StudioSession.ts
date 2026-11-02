@@ -109,9 +109,11 @@ export class StudioSession implements StudioView {
   private loadSeq = 0
   private pendingHostReload = false
   hydrating = false
+  hostLoadFailed = false
   hostReadOnly = false
   private pendingUserWrites = new Set<Promise<unknown>>()
   private saveInFlight: Promise<string | null> | null = null
+  private saveGeneration = -1
   private pendingSaveCaptureCover = false
   private engineCover: Promise<void> | null = null
   private lastSavedRevision = 0
@@ -131,6 +133,8 @@ export class StudioSession implements StudioView {
     this.hostReadOnly = options?.readOnly === true
     makeObservable<this, 'lastSavedRevision'>(this, {
       hostReadOnly: observable,
+      hydrating: observable,
+      hostLoadFailed: observable,
       writeLocked: computed,
       lastSavedRevision: observable,
     })
@@ -148,7 +152,7 @@ export class StudioSession implements StudioView {
   }
 
   get writeLocked(): boolean {
-    return this.hostReadOnly
+    return this.hostReadOnly || this.hydrating || this.hostLoadFailed
   }
 
   private isCameraNode(nodeId: string): boolean {
@@ -198,6 +202,9 @@ export class StudioSession implements StudioView {
   }
   get timelineSnap(): boolean {
     return this.editor.timelineSnap
+  }
+  get viewportLocked(): boolean {
+    return this.editor.viewportLocked
   }
   get pendingKeyframe(): PendingKeyframe | null {
     return this.editor.pendingKeyframes[0] ?? null
@@ -476,6 +483,10 @@ export class StudioSession implements StudioView {
   toggleAutoKeyframe = (): void => this.editor.toggleAutoKeyframe()
 
   toggleTimelineSnap = (): void => this.editor.toggleTimelineSnap()
+  toggleViewportLocked = (): void => {
+    this.editor.toggleViewportLocked()
+    this.engine.setViewLocked(this.editor.viewportLocked)
+  }
   toggleChainCameraMotion = (): void => this.editor.toggleChainCameraMotion()
   setExporting = (b: boolean): void => this.editor.setExporting(b)
   undo = (): void => {
@@ -500,6 +511,7 @@ export class StudioSession implements StudioView {
     if (mine) this.hydrating = true
     try {
       const previous = this.docModel.fcurves
+      const previousKeys = this.docModel.userKeys
       const hydrated = hydrateSkyColor(doc)
       const editorial = pruneMissingCameraClips(hydrated)
       this.docModel.replace(editorial ? { ...hydrated, content: { ...hydrated.content, editorial } } : hydrated)
@@ -510,9 +522,13 @@ export class StudioSession implements StudioView {
         } else {
           this.applyFcurvesRaw(fcurves)
         }
-      } else if (previous) {
-        this.docModel.setFcurves(previous)
-        this.engine.setFcurves(previous)
+      } else {
+        // A document-only update does not replace its animation sidecar.
+        this.docModel.setUserKeys(previousKeys)
+        if (previous) {
+          this.docModel.setFcurves(previous)
+          this.engine.setFcurves(previous)
+        }
       }
       this.history.clear()
     } finally {
@@ -1319,6 +1335,55 @@ export class StudioSession implements StudioView {
     return null
   }
 
+  private timelineClipboardDocument: DirectorDocument | null = null
+  private timelineClipboard: { kind: 'camera' | 'motion' | 'path'; clip: DirectorDocument['content']['timeline']['animation']['motionClips'][number] | DirectorDocument['content']['timeline']['animation']['cameraMotionClips'][number] | DirectorDocument['content']['timeline']['animation']['pathMotionClips'][number] } | null = null
+
+  copyTimelineClip = (kind: 'camera' | 'motion' | 'path', clipId: string): void => {
+    const animation = this.docModel.toContract()?.content.timeline.animation
+    const clips = kind === 'motion' ? animation?.motionClips : kind === 'camera' ? animation?.cameraMotionClips : animation?.pathMotionClips
+    const clip = clips?.find((item) => item.id === clipId)
+    this.timelineClipboard = clip ? { kind, clip: cloneJson(clip) } : null
+    this.timelineClipboardDocument = this.docModel.toContract()
+  }
+
+  pasteTimelineClip = (frame: number): string | null => {
+    const saved = this.timelineClipboard
+    const live = this.docModel.toContract()
+    if (this.writeLocked || !saved || !live || live !== this.timelineClipboardDocument || !Number.isFinite(frame)) return null
+    // Clipboard is a document-local clip snapshot, never an asset import.
+    if (!live.content.nodes.some((node) => node.id === saved.clip.target.nodeId)) return null
+    if (saved.kind === 'motion') {
+      const motion = (saved.clip as DirectorDocument['content']['timeline']['animation']['motionClips'][number]).motion
+      if (!live.content.asset.motionPath.some((entry) => entry.id === motion.assetId)) return null
+    }
+    if (saved.kind === 'path') {
+      const pathNodeId = (saved.clip as DirectorDocument['content']['timeline']['animation']['pathMotionClips'][number]).pathNodeId
+      if (!live.content.nodes.some((node) => node.id === pathNodeId)) return null
+    }
+    const start = Math.max(live.content.timeline.frameStart, Math.round(frame))
+    const clip = { ...cloneJson(saved.clip), id: crypto.randomUUID(), frameStart: start, frameEnd: start + saved.clip.frameEnd - saved.clip.frameStart }
+    const before = snapshotDocState(this.docModel)
+    if (!before) return null
+    const animation = live.content.timeline.animation
+    if (saved.kind === 'motion') animation.motionClips.push(clip as typeof animation.motionClips[number])
+    else if (saved.kind === 'camera') animation.cameraMotionClips.push(clip as typeof animation.cameraMotionClips[number])
+    else animation.pathMotionClips.push(clip as typeof animation.pathMotionClips[number])
+    this.docModel.touch()
+    this.pushDocSnapshot('Nhân bản clip', before)
+    this.select({ kind: 'clip', clipType: saved.kind, clipId: clip.id })
+    return clip.id
+  }
+
+  duplicateTimelineClip = (kind: 'camera' | 'motion' | 'path', clipId: string, frame: number): string | null => {
+    const previous = this.timelineClipboard
+    const previousDocument = this.timelineClipboardDocument
+    this.copyTimelineClip(kind, clipId)
+    const id = this.pasteTimelineClip(frame)
+    this.timelineClipboard = previous
+    this.timelineClipboardDocument = previousDocument
+    return id
+  }
+
   updateMotionClipConfig = (clipId: string, patch: Record<string, number | string | boolean>): void => {
     if (this.writeLocked) return
     const live = this.docModel.toContract()
@@ -1350,9 +1415,13 @@ export class StudioSession implements StudioView {
     }
     const playback = {
       ...old.playback,
-      ...(typeof patch.speed === 'number' ? { speed: Math.max(0.01, patch.speed) } : {}),
+      ...(typeof patch.speed === 'number' && Number.isFinite(patch.speed) ? { speed: Math.min(16, Math.max(0.01, patch.speed)) } : {}),
       ...(typeof patch.loop === 'boolean' ? { loop: patch.loop } : {}),
       ...(typeof patch.loopMode === 'string' ? { loopMode: patch.loopMode } : {}),
+    }
+    if (typeof patch.speed === 'number' && Number.isFinite(patch.speed) && playback.speed !== old.playback.speed) {
+      // Keep the same source span when changing speed; respect neighbouring clips and the shot range.
+      frameEnd = Math.min(nextStart, Math.max(frameStart + 1, frameStart + Math.round((old.frameEnd - old.frameStart) * old.playback.speed / playback.speed)))
     }
     const motion = {
       ...old.motion,
@@ -1513,7 +1582,12 @@ export class StudioSession implements StudioView {
   save = (opts?: SaveOptions): Promise<string | null> => {
     if (this.writeLocked) return Promise.resolve(null)
     this.pendingSaveCaptureCover ||= opts?.captureCover !== false
-    if (this.saveInFlight) return this.saveInFlight
+    if (this.saveInFlight) {
+      if (this.saveGeneration === this.loadSeq) return this.saveInFlight
+      // A fresh edit after reload needs its own save, after the old request settles.
+      return this.saveInFlight.then(() => this.save(opts))
+    }
+    this.saveGeneration = this.loadSeq
     const pending = this.drainSaveQueue()
     this.saveInFlight = pending
     void pending.finally(() => {
@@ -1523,7 +1597,10 @@ export class StudioSession implements StudioView {
   }
 
   private async drainSaveQueue(): Promise<string | null> {
+    const generation = this.loadSeq
     for (;;) {
+      // A host reload owns the next document; old save work must not cross it.
+      if (generation !== this.loadSeq || this.hydrating) return null
       const err = await this.runSaveAttempt()
       if (err) return err
       if (this.docModel.revision !== this.lastSavedRevision) continue
@@ -1554,6 +1631,7 @@ export class StudioSession implements StudioView {
     }
     // 文档与曲线必须来自同一 revision；不要在第一次网络 await 后再读取实时状态。
     const revision = this.docModel.revision
+    const generation = this.loadSeq
     const doc = cloneJson(source)
     const fcurves = FCurveSet.persist(this.docModel.fcurves, this.userKeys)
     this.editor.setSaveState('saving')
@@ -1562,11 +1640,13 @@ export class StudioSession implements StudioView {
         await this.adapter.saveDocumentState(this.editor.draftId, doc, fcurves)
       } else {
         await this.adapter.saveDocument!(this.editor.draftId, doc)
+        if (generation !== this.loadSeq || this.hydrating) return null
         await this.adapter.saveFCurves?.(this.editor.draftId, fcurves)
       }
-      this.markSavedRevision(revision)
+      if (generation === this.loadSeq && !this.hydrating) this.markSavedRevision(revision)
       return null
     } catch (e) {
+      if (generation !== this.loadSeq || this.hydrating) return null
       // saveError 只放 i18n key，原始异常文本走 detail：消费端统一 t()，塞 raw 文本会翻译不到。
       const message = e instanceof Error ? e.message : String(e)
       this.editor.setSaveState('error', 'save.failed', message)
@@ -1671,6 +1751,7 @@ export class StudioSession implements StudioView {
       this.pendingHostReload = true
       return
     }
+    this.cancelCameraPilotForLoad()
     const seq = ++this.loadSeq
     const keptSelection = this.editor.selection
     const keptFrame = this.engine.currentFrame
@@ -1680,17 +1761,23 @@ export class StudioSession implements StudioView {
       const nextDoc = await this.adapter.loadDocument(this.editor.draftId)
       await ensurePoseBones(this.adapter, collectUsedPoseIds(nextDoc), this.engine.poseBank)
       if (seq !== this.loadSeq) return
-      let raw: unknown = null
-      try {
-        raw = (await this.adapter.loadFCurves?.(this.editor.draftId)) ?? null
-      } catch (e) {
-        console.warn('[fcurves] 加载失败，继续用派生路径', e)
-      }
+      const raw = (await this.adapter.loadFCurves?.(this.editor.draftId)) ?? null
       if (seq !== this.loadSeq) return
       // loadDocument 不会清图，必须先 reset 再 setDoc/load，避免节点 reaction 往旧图加角色。
-      this.engine.reset()
-      this.setDoc(nextDoc, raw)
-      await this.engine.load(nextDoc)
+      const previous = this.docModel.toContract()
+      if (previous && this.engine.ready && this.engine.refreshDocument) {
+        // Preserve the document reference held by Stage and all unchanged model instances.
+        const before = { ...previous, content: previous.content }
+        const hydrated = hydrateSkyColor(nextDoc)
+        const editorial = pruneMissingCameraClips(hydrated)
+        this.docModel.applyContent(editorial ? { ...hydrated, content: { ...hydrated.content, editorial } } : hydrated)
+        this.history.clear()
+        await this.engine.refreshDocument(before)
+      } else {
+        this.engine.reset()
+        this.setDoc(nextDoc, raw)
+        await this.engine.load(nextDoc)
+      }
       if (seq !== this.loadSeq) return
       this.applyFcurvesRaw(raw)
       const nodeIds = new Set(nextDoc.content.nodes.map((node) => node.id))
@@ -1713,7 +1800,11 @@ export class StudioSession implements StudioView {
       }
       this.seekTo(keptFrame)
       this.markSavedRevision(this.docModel.revision)
+      this.hostLoadFailed = false
       this.editor.setReady(true)
+    } catch (error) {
+      if (seq === this.loadSeq) this.hostLoadFailed = true
+      throw error
     } finally {
       if (seq === this.loadSeq) {
         this.hydrating = false
@@ -1723,6 +1814,7 @@ export class StudioSession implements StudioView {
   }
 
   async loadDraft(draftId: string): Promise<void> {
+    this.cancelCameraPilotForLoad()
     const seq = ++this.loadSeq
     this.hydrating = true
     try {
@@ -1734,19 +1826,11 @@ export class StudioSession implements StudioView {
       this.setDoc(nextDoc, null)
       const cams = nodesOfType(nextDoc, 'camera')
       this.editor.setActiveCamera(nextDoc.content.activeShotCameraNodeId || cams[0]?.id || '')
-      const fcurvesPromise = (async (): Promise<unknown> => {
-            try {
-              return (await this.adapter.loadFCurves?.(draftId)) ?? null
-            } catch (e) {
-              console.warn('[fcurves] 加载失败，继续用派生路径', e)
-              return null
-            }
-          })()
+      const raw = (await this.adapter.loadFCurves?.(draftId)) ?? null
+      if (seq !== this.loadSeq) return
       await this.engine.load(nextDoc, (msg) => {
         if (seq === this.loadSeq) this.editor.setLoadStatus(msg)
       })
-      if (seq !== this.loadSeq) return
-      const raw = await fcurvesPromise
       if (seq !== this.loadSeq) return
       this.applyFcurvesRaw(raw)
       this.engine.setEvalContext({
@@ -1758,8 +1842,12 @@ export class StudioSession implements StudioView {
       this.seekTo(nextDoc.content.timeline.frameStart)
       this.markSavedRevision(this.docModel.revision)
       this.editor.setSaveState('idle')
+      this.hostLoadFailed = false
       this.editor.setReady(true)
       this.editor.setLoadStatus('Ready')
+    } catch (error) {
+      if (seq === this.loadSeq) this.hostLoadFailed = true
+      throw error
     } finally {
       if (seq === this.loadSeq) {
         this.hydrating = false
@@ -2028,13 +2116,20 @@ export class StudioSession implements StudioView {
     this.syncGizmoState()
   }
 
+  private cancelCameraPilotForLoad(): void {
+    if (!this.editor.cameraPilotId) return
+    // Preview belongs to the old scene; never apply it to newly loaded content.
+    this.engine.endCameraPilot()
+    this.editor.setCameraPilotId(null)
+  }
+
   private finishCameraPilot(): void {
     const id = this.editor.cameraPilotId
     if (!id) return
     const flown = this.engine.endCameraPilot()
     this.editor.setCameraPilotId(null)
     const node = this.docModel.snapshot?.content.nodes.find((candidate) => candidate.id === id && candidate.type === 'camera')
-    if (flown && node?.camera) {
+    if (flown && node?.camera && !this.writeLocked) {
       const liveLook = node.camera.lookAt
       const dist = Math.hypot(liveLook.x - node.transform.position.x, liveLook.y - node.transform.position.y, liveLook.z - node.transform.position.z) || 2
       const error = library.commitCameraPilotPose(this, id, flown.position, {
@@ -2214,6 +2309,7 @@ export class StudioSession implements StudioView {
   }
 
   focusSelection = (): void => {
+    if (this.editor.viewportLocked) return
     const sel = this.editor.selection
     if (sel?.kind !== 'node') return
     const ids = sel.nodeIds?.length ? sel.nodeIds : [sel.nodeId]

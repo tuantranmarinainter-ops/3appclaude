@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolveCharacter } from '../../../packages/library/index'
-import { bobjModelToGlb, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
+import { bobjModelToGlb, bobjModelNodeName, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
 
 /** Library BOBJ models face +Z at rest like Minecraft20; native clips already carry the Root turn. */
 export const LIBRARY_GLB_OPTIONS = { faceForward: true } as const
@@ -147,7 +147,11 @@ export async function libraryNativeAction(charId: string, sidecar: string) {
     const { parseBobjActions } = await import('../../../packages/retarget/src/index')
     model.actions = parseBobjActions(extended.toString('utf8'))
     if (model.actions.size !== 1) throw new Error('Minecraft Action sidecar must contain one Action')
-    return Buffer.from(bobjModelToGlb(model, LIBRARY_GLB_OPTIONS).bytes)
+    const output = unpackLibraryGlb(Buffer.from(bobjModelToGlb(model, LIBRARY_GLB_OPTIONS).bytes))
+    const joints = model.armature.bones.map((bone) => output.json.nodes.findIndex((node: { name?: string }) => node.name === bobjModelNodeName(bone.name)))
+    if (joints.length !== 20 || joints.some((index) => index < 0)) throw new Error('Minecraft Action must preserve all 20 bones')
+    output.json.skins = [...(output.json.skins ?? []), { joints }]
+    return packLibraryGlb(output.json, output.binary)
   }
   if (!extended.subarray(0, original.length).equals(original)) throw new Error('Native Action does not preserve the selected base model')
   const base = parseBobjModel(original.toString('utf8')), model = parseBobjModel(extended.toString('utf8'))
