@@ -11,6 +11,7 @@ import { formatBilingual } from '../../../../packages/library/actionNames'
 import { ASSIGNMENT_GROUPS, assignmentActions, assignmentGroup, loadAssignmentPages } from './components/assignment/utils'
 import { notifyCharacterProfileChanged } from '../workbench/components/character-height/utils'
 import { filterLibraryActions } from '../../src/libraryFilters'
+import { libraryJson as json, invalidateLibrary } from '../../src/libraryClient'
 
 type Status = 'draft' | 'edited' | 'approved'
 type Action = { uuid: string; name: string; nameVi?: string; nameViSource?: 'glossary' | 'words' | 'manual'; rig: string; skeletonKind?: string; category: string; tags: string[]; durationSeconds: number; fps: number; packId: string; coverPath: string | null; previewPath: string | null; preview?: { file: string; sha256: string; width: number; height: number; fps: number; seconds: number }; glbAnimationIndex: number; ownerCharId?: string; status?: Status; version?: number; favorite?: boolean; inPlace: boolean; licenseId: string; licenseSource?: string; createdAt: string }
@@ -23,13 +24,6 @@ const DETAIL_WIDTH_MIN = 280
 const DETAIL_WIDTH_MAX = 720
 const STATUS_LABEL: Record<Status, string> = { draft: 'Nháp', edited: 'Đã chỉnh', approved: 'Đã duyệt' }
 const STATUS_COLOR: Record<Status, string> = { draft: '#78622e', edited: '#275d83', approved: '#276b46' }
-
-async function json(url: string, init?: RequestInit) {
-  const response = await fetch(url, { cache: 'no-store', ...init })
-  const body = await response.json()
-  if (!response.ok) throw Object.assign(new Error(body.error ?? `HTTP ${response.status}`), { code: body.code })
-  return body
-}
 
 export default function LibraryPage() {
   const [tab, setTab] = useState<'actions' | 'favorites' | 'characters' | 'coverage'>('actions')
@@ -99,6 +93,7 @@ export default function LibraryPage() {
   }, [assignTo, category, characterId, characters, inPlaceOnly, query, sortOrder, sourceFilter, status, tab, warehouse])
 
   useEffect(() => {
+    invalidateLibrary()
     setHasOpener(!!window.opener)
     const params = new URLSearchParams(window.location.search)
     const requested = params.get('unified')

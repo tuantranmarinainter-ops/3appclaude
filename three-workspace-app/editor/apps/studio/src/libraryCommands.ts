@@ -163,7 +163,7 @@ export async function placeLibraryActionForNode(input: { projectId: string; acti
     const duration = project.motions[action.uuid]?.durationSeconds ?? action.durationSeconds
     const frameEnd = frameStartWanted + Math.max(1, Math.round(duration * project.scene.content.timeline.fps)) - 1
     if (!Number.isSafeInteger(frameStartWanted) || frameStartWanted < 0 || !Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
-    if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.id !== replaced?.id && clip.target.nodeId === input.nodeId && clip.frameStart <= frameEnd && clip.frameEnd >= frameStartWanted)) {
+    if (project.scene.content.timeline.animation.motionClips.some((clip) => clip.target.nodeId === input.nodeId && clip.frameStart <= frameEnd && clip.frameEnd >= frameStartWanted)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
     }
   }
