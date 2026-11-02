@@ -7,7 +7,7 @@ import {
   resolveSubjectCameraPose,
   subjectOverridesMotion,
 } from './camera/subjectBinding'
-import { motionClipAt, motionTimeSeconds } from './clips'
+import { motionClipsAt, motionTimeSeconds } from './clips'
 import {
   cmdPoolOf,
   copyVec3,
@@ -75,18 +75,19 @@ function emitPlayback(
   clipId: string,
   timeSeconds: number,
   clampSource = false,
+  weight = 1,
 ): void {
   const i = out.motionPlayback.length
   const pool = cmdPoolOf(out)
   let cmd = pool[i]
   if (!cmd) {
-    cmd = { nodeId, clipId, timeSeconds, weight: 1 }
+    cmd = { nodeId, clipId, timeSeconds, weight }
     pool[i] = cmd
   } else {
     cmd.nodeId = nodeId
     cmd.clipId = clipId
     cmd.timeSeconds = timeSeconds
-    cmd.weight = 1
+    cmd.weight = weight
   }
   if (clampSource) cmd.clampSource = true
   else delete cmd.clampSource
@@ -125,10 +126,18 @@ export function evaluateCharacters(scene: SceneContract, frame: number, out: Fra
     if (node.type !== 'character') continue
     const xf = ensureTransform(out, node.id)
     writeStaticTransform(xf, node.transform)
-    const clip = motionClipAt(clips, node.id, frame, scene.exportSampleBoundary)
-    if (clip) {
+    const hit = motionClipsAt(clips, node.id, frame, scene.exportSampleBoundary)
+    const clip = hit?.from ?? null
+    if (hit) {
       const exporting = scene.exportSampleBoundary !== undefined
-      emitPlayback(out, node.id, clip.id, motionTimeSeconds(clip, frame, fps, scene.exportSampleBoundary === 'left', exporting), exporting)
+      const left = scene.exportSampleBoundary === 'left'
+      if (hit.to) {
+        // Vùng trộn: hai playback, trọng số (1 - w, w); runtime trộn slerp/lerp theo thứ tự này.
+        emitPlayback(out, node.id, hit.from.id, motionTimeSeconds(hit.from, frame, fps, left, exporting), exporting, 1 - hit.weight)
+        emitPlayback(out, node.id, hit.to.id, motionTimeSeconds(hit.to, frame, fps, left, exporting), exporting, hit.weight)
+      } else {
+        emitPlayback(out, node.id, hit.from.id, motionTimeSeconds(hit.from, frame, fps, left, exporting), exporting)
+      }
     } else if (node.character?.animation.mode === 'pose') {
       writePoseKnobs(out, node.id, node.character.animation.controlValues ?? {})
     }

@@ -177,6 +177,8 @@ export interface ClipMovePreview extends ClipMoveLayout {
   clipType: 'camera' | 'motion' | 'path'
   clipId: string
   clips?: ClipRef[]
+  /** Kéo đè để trộn (K1): clip sau nhận blendIn `frames` khi thả. */
+  blend?: { clipId: string; frames: number }
 }
 
 export interface ClipResizePreview {
@@ -210,6 +212,8 @@ export interface StudioView {
   autoKeyframe: boolean
   /** 时间轴拖动是否吸附到关键帧 / 片段首尾 / 刻度；默认开。 */
   timelineSnap: boolean
+  /** "Cho chồng để trộn": mặc định bật, nhớ theo người dùng (localStorage). */
+  clipBlendOverlap: boolean
   viewportLocked: boolean
   /** 已有变换关键帧的节点，当前帧尚未确认的候选值；有值时禁止挪播放头。 */
   pendingKeyframe: PendingKeyframe | null
@@ -339,6 +343,13 @@ export interface StudioView {
   toggleUserKeys: () => void
   toggleAutoKeyframe: () => void
   toggleTimelineSnap: () => void
+  setClipBlendOverlap: (enabled: boolean) => void
+  /** Chuột phải "Trộn với clip trước": dời clip sau sớm hơn 0,5 giây và đặt blendIn (một bước Undo). */
+  blendMotionClipWithPrevious: (clipId: string) => boolean
+  /** Đổi số khung / kiểu chuyển của blendIn (một bước Undo). false = không hợp lệ, không đổi gì. */
+  setMotionClipBlend: (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear' }) => boolean
+  /** "Bỏ trộn": xóa blendIn và đẩy clip sau ra khỏi vùng chồng (một bước Undo). */
+  removeMotionClipBlend: (clipId: string) => boolean
   toggleViewportLocked: () => void
   addKeyframe: (nodeId: string, prop: TrackProp, value: number[]) => void
   addKeyframes: (nodeId: string, keys: { prop: TrackProp; value: number[] }[]) => void

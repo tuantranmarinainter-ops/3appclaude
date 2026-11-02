@@ -30,6 +30,16 @@ const playbackSchema = z.object({
   baseDurationFrames: z.number().optional(),
 }).passthrough()
 
+const motionBlendInSchema = z.object({
+  frames: z.number().int().positive(),
+  curve: z.enum(['smooth', 'linear']),
+  footLock: z.literal(true),
+  mirror: z.boolean().optional(),
+  phaseOffsetSeconds: z.number().finite().optional(),
+}).strict()
+
+const motionPlaybackSchema = playbackSchema.extend({ blendIn: motionBlendInSchema.optional() })
+
 const curveKeyframeSchema = z.object({
   id: z.string(),
   time: z.number(),
@@ -76,7 +86,7 @@ const motionClipSchema = z.object({
   frameStart: z.number(),
   frameEnd: z.number(),
   target: nodeRefSchema,
-  playback: playbackSchema,
+  playback: motionPlaybackSchema,
   motion: z.object({
     assetId: z.string(),
     name: z.string(),

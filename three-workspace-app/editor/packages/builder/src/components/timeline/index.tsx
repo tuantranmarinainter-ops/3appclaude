@@ -12,6 +12,7 @@ import { RangeSlider } from '../common/RangeSlider'
 import { browserPanelStorage } from '../common/panelLayout'
 import type { TimelineUnit } from '../../stores/types'
 import { readTimelineUnit, timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
+import { readClipBlendOverlap, writeClipBlendOverlap } from './utils/blendPreference'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Tooltip } from '../common/Tooltip'
 import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
@@ -69,6 +70,7 @@ function SceneTimeline() {
   const userKeysEnabled = useStore((s) => s.userKeysEnabled)
   const autoKeyframe = useStore((s) => s.autoKeyframe)
   const timelineSnap = useStore((s) => s.timelineSnap)
+  const clipBlendOverlap = useStore((s) => s.clipBlendOverlap)
   const viewportLocked = useStore((s) => s.viewportLocked)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
@@ -89,6 +91,7 @@ function SceneTimeline() {
     toggleUserKeys,
     toggleAutoKeyframe,
     toggleTimelineSnap,
+    setClipBlendOverlap,
     toggleViewportLocked,
     addKeyframes,
     addTransformKeyframes,
@@ -166,6 +169,20 @@ function SceneTimeline() {
     }
     writeTimelineUnit(browserPanelStorage(), timelineUnit)
   }, [timelineUnit, setTimelineUnit])
+
+  // K1: "Cho chồng để trộn" mặc định bật, nhớ theo người dùng.
+  const blendHydrated = useRef(false)
+  useEffect(() => {
+    if (!blendHydrated.current) {
+      blendHydrated.current = true
+      const stored = readClipBlendOverlap(browserPanelStorage())
+      if (stored !== clipBlendOverlap) {
+        setClipBlendOverlap(stored)
+        return
+      }
+    }
+    writeClipBlendOverlap(browserPanelStorage(), clipBlendOverlap)
+  }, [clipBlendOverlap, setClipBlendOverlap])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -470,6 +487,16 @@ function SceneTimeline() {
           >
             <IconSnapMagnet />
             {t('timeline.snap')}
+          </button>
+        </Tooltip>
+        <Tooltip label="Kéo clip đè lên clip kề để trộn mượt thay vì đẩy clip ra" side="top">
+          <button
+            type="button"
+            className={cx('t3d-timeline-auto-key', clipBlendOverlap && 'is-active')}
+            aria-pressed={clipBlendOverlap}
+            onClick={() => setClipBlendOverlap(!clipBlendOverlap)}
+          >
+            Cho chồng để trộn
           </button>
         </Tooltip>
         <Tooltip label={t('timeline.lockViewTitle')} side="top">

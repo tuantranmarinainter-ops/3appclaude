@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { MIXAMORIG_TO_UAL1 } from '../../evaluate/retarget/RetargetMap'
 import type { FrameSnapshot } from '../../evaluate/evaluateFrame'
+import type { MotionPlaybackCommand } from '../../evaluate/FrameSnapshot'
 import type { NodeSnapshot } from '../DirectorEngine'
 import { applyPose } from '../rig/applyPose'
 import { poseRootOffsetScale } from '../rig/poseRootScale'
@@ -27,6 +28,69 @@ export function applyFrameSnapshot(graph: StageGraph, snapshot: FrameSnapshot): 
   applyEnvironment(graph)
 }
 
+/** Đặt xương theo một lệnh phát clip. true = có áp động tác (asset đã nạp). Hành vi gốc, không đổi. */
+function applyMotionCommand(graph: StageGraph, cmd: MotionPlaybackCommand): boolean {
+  const ch = graph.characters.get(cmd.nodeId)
+  const clip = graph.doc?.content.timeline.animation.motionClips.find((c) => c.id === cmd.clipId)
+  if (!ch || !clip) return false
+  const clipIndex = clip.motion.clipIndex ?? 0
+  if (ch.rig === 'ual1' && ch.retargeter) {
+    const raw = graph.motionPlayer.getRaw(clip.motion.assetId, clipIndex)
+    if (raw) {
+      ch.retargeter.setClip(clip.id, raw.group, raw.clip)
+      ch.retargeter.apply(cmd.timeSeconds, cmd.clampSource ? false : clip.playback.loop)
+      return true
+    }
+  } else {
+    const ac = graph.motionPlayer.getClipForDirectBind(clip.motion.assetId, ch.inner, ch.restPose, ch.restPos, clipIndex)
+    if (ac) {
+      ch.animator.playAt(clip.id, ac, cmd.timeSeconds, cmd.clampSource ? false : clip.playback.loop)
+      if (clip.motion.rootMotion?.policy === 'in-place' || clip.motion.rootMotion?.policy === 'trajectory' && ch.motionRootDelta) {
+        const name = clip.motion.rootMotion.boneName
+        const bone = ch.inner.getObjectByName(name)
+        const position = ch.restPos.get(name)
+        const rotation = ch.restPose.get(name)
+        // Reset both channels: removing only translation leaves root turns in an in-place clip.
+        if (bone && position && rotation) { bone.position.copy(position); bone.quaternion.copy(rotation) }
+      }
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Trộn hai clip trong vùng `blendIn`: lấy mẫu `from`, nhớ xương cục bộ, lấy mẫu `to`, rồi
+ * quaternion slerp + lerp vị trí theo trọng số của `to`. Một clip chưa nạp thì dùng clip còn lại.
+ */
+function applyBlendedMotion(graph: StageGraph, from: MotionPlaybackCommand, to: MotionPlaybackCommand): boolean {
+  const ch = graph.characters.get(from.nodeId)
+  if (!ch) return false
+  const bones: THREE.Object3D[] = []
+  ch.inner.traverse((object) => { if ((object as THREE.Bone).isBone) bones.push(object) })
+  const okFrom = applyMotionCommand(graph, from)
+  if (!okFrom) return applyMotionCommand(graph, to)
+  const savedQ = bones.map((bone) => bone.quaternion.clone())
+  const savedP = bones.map((bone) => bone.position.clone())
+  const okTo = applyMotionCommand(graph, to)
+  if (!okTo) {
+    // `to` chưa nạp: phát lại `from` để xương về đúng tư thế của nó.
+    applyMotionCommand(graph, from)
+    return true
+  }
+  const w = Math.min(1, Math.max(0, to.weight))
+  const blendedQ = bones.map((bone, i) => savedQ[i].clone().slerp(bone.quaternion, w))
+  const blendedP = bones.map((bone, i) => savedP[i].clone().lerp(bone.position, w))
+  // AnimationMixer chỉ ghi lại xương khi giá trị mẫu đổi so với lần ghi trước. Giá trị trộn do ta ghi đè
+  // sẽ làm khung kế (một clip) bị kẹt, nên dừng action để lần phát sau bắt đầu sạch (giống chuyển sang pose).
+  if (!(ch.rig === 'ual1' && ch.retargeter)) ch.animator.stopAll()
+  for (let i = 0; i < bones.length; i++) {
+    bones[i].quaternion.copy(blendedQ[i])
+    bones[i].position.copy(blendedP[i])
+  }
+  return true
+}
+
 export function applyMotionAndPose(graph: StageGraph, snapshot: FrameSnapshot): void {
   const playing = new Set<string>()
   for (const [, character] of graph.characters) {
@@ -36,33 +100,18 @@ export function applyMotionAndPose(graph: StageGraph, snapshot: FrameSnapshot): 
       : null
   }
   // 动作素材未加载（缺失 / 离线 / 仍在加载）的片段不算覆盖，角色继续走下面的姿势分支。
-  for (const cmd of snapshot.motionPlayback) {
-    const ch = graph.characters.get(cmd.nodeId)
-    const clip = graph.doc?.content.timeline.animation.motionClips.find((c) => c.id === cmd.clipId)
-    if (!ch || !clip) continue
-    const clipIndex = clip.motion.clipIndex ?? 0
-    if (ch.rig === 'ual1' && ch.retargeter) {
-      const raw = graph.motionPlayer.getRaw(clip.motion.assetId, clipIndex)
-      if (raw) {
-        ch.retargeter.setClip(clip.id, raw.group, raw.clip)
-        ch.retargeter.apply(cmd.timeSeconds, cmd.clampSource ? false : clip.playback.loop)
-        playing.add(cmd.nodeId)
-      }
-    } else {
-      const ac = graph.motionPlayer.getClipForDirectBind(clip.motion.assetId, ch.inner, ch.restPose, ch.restPos, clipIndex)
-      if (ac) {
-        ch.animator.playAt(clip.id, ac, cmd.timeSeconds, cmd.clampSource ? false : clip.playback.loop)
-        if (clip.motion.rootMotion?.policy === 'in-place' || clip.motion.rootMotion?.policy === 'trajectory' && ch.motionRootDelta) {
-          const name = clip.motion.rootMotion.boneName
-          const bone = ch.inner.getObjectByName(name)
-          const position = ch.restPos.get(name)
-          const rotation = ch.restPose.get(name)
-          // Reset both channels: removing only translation leaves root turns in an in-place clip.
-          if (bone && position && rotation) { bone.position.copy(position); bone.quaternion.copy(rotation) }
-        }
-        playing.add(cmd.nodeId)
-      }
+  const commands = snapshot.motionPlayback
+  for (let i = 0; i < commands.length; i++) {
+    const cmd = commands[i]
+    const next = commands[i + 1]
+    // Vùng trộn (clip chồng nhau): evaluateCharacters phát đúng 2 lệnh liên tiếp cho cùng nhân vật,
+    // lệnh sau mang trọng số của clip sau. Đường một lệnh bên dưới giữ nguyên như trước.
+    if (next && next.nodeId === cmd.nodeId) {
+      if (applyBlendedMotion(graph, cmd, next)) playing.add(cmd.nodeId)
+      i += 1
+      continue
     }
+    if (applyMotionCommand(graph, cmd)) playing.add(cmd.nodeId)
   }
   for (const [id, ch] of graph.characters) {
     const anim = ch.node.character?.animation

@@ -6,6 +6,7 @@ import { useSnapFrame } from './hooks/useSnapFrame'
 import { duplicateClipGesture } from './utils/clipGestures'
 import { clipRefsOf, nextClipSelection } from '../../stores/types'
 import { clampMenuPosition, emitTimelineNotice } from './utils/clipMenu'
+import { blendWithPrevious } from '../../document/clipBlend'
 
 export function ClipBlock({
   kind,
@@ -202,6 +203,14 @@ export function ClipBlock({
             },
             disabled: !isMotion,
           },
+          ...(isMotion ? [{
+            label: 'Trộn với clip trước',
+            action: () => { useStore.getState().blendMotionClipWithPrevious(clipId) },
+            disabled: !(() => {
+              const doc = useStore.getState().doc
+              return doc ? blendWithPrevious(doc.content.timeline.animation.motionClips, clipId, doc.content.timeline.fps, doc.content.timeline.frameStart) : null
+            })(),
+          }] : []),
           { label: 'Xoá', action: () => { const s = useStore.getState(); s.select({ kind: 'clip', clipType: kind, clipId }); s.deleteSelection() } },
         ]
         return items.map((item) => <button key={item.label} type="button" role="menuitem" disabled={item.disabled || (writeLocked && item.label !== 'Sao chép')}

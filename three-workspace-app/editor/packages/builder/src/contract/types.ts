@@ -147,6 +147,18 @@ export interface CameraMotionClip {
   }
 }
 
+/**
+ * Trộn kiểu iClone, gắn ở clip SAU (B). Vùng trộn = [B.frameStart, B.frameStart + frames - 1]
+ * (frame của timeline) và phải nằm trong khoảng của clip trước (A). Thiếu trường = không trộn.
+ */
+export interface MotionBlendIn {
+  frames: number
+  curve: 'smooth' | 'linear'
+  footLock: true
+  mirror?: boolean
+  phaseOffsetSeconds?: number
+}
+
 export interface MotionClip {
   id: string
   source: string
@@ -154,7 +166,7 @@ export interface MotionClip {
   frameStart: number
   frameEnd: number
   target: { type: string; nodeId: string }
-  playback: { version: number; speed: number; loop: boolean; loopMode: string }
+  playback: { version: number; speed: number; loop: boolean; loopMode: string; blendIn?: MotionBlendIn }
   motion: {
     assetId: string
     name: string // 中文名
