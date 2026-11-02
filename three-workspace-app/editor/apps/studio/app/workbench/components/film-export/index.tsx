@@ -10,7 +10,10 @@ import { EffectsOptions } from './EffectsOptions'
 import { WorldAnchorAdvanced, WorldAnchorFields } from './WorldAnchorFields'
 import { BbsInstallPanel } from './BbsInstallPanel'
 import { GameFolderStep } from './GameFolderStep'
-import { ASPECT_PRESETS, aspectLabel, aspectPreset } from './utils'
+import { ASPECT_PRESETS, aspectLabel, aspectPreset, placePreflightIssues } from './utils'
+import { PreflightIssues, type TaggedIssue } from './PreflightIssues'
+import { FilmCleanupPanel } from './FilmCleanupPanel'
+import { useFilmCleanup } from './hooks/useFilmCleanup'
 
 /** B54: three steps in the order the user works — ① game, ② content, ③ place in the world — then one big button.
  * Rarely used settings live in "Tuỳ chọn nâng cao". */
@@ -28,6 +31,14 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
   const shotLabel = state.matchingShotId || `${state.effectiveRange.startFrame}–${state.effectiveRange.endFrame}`
   const exportInstall = () => void state.exportFilm({ install: (job) => install.installJob(project.projectId, job.jobId) })
   const preset = aspectPreset(state.viewportAspect)
+  const cleanup = useFilmCleanup(vi, install.gameDir, install.worldName, project.projectId, () => install.refresh())
+  // B61: each message goes next to the item it concerns; a control that is not on screen leaves its messages in the general list.
+  const charactersListed = state.content !== 'backdrops' && (state.exportMode === 'film' || state.seriesCharacterSelection === 'selected')
+  const propsListed = state.content !== 'characters' && (state.exportMode === 'film' || state.seriesPropSelection === 'selected')
+  const placed = placePreflightIssues<TaggedIssue>(
+    [...(state.preflight?.errors ?? []).map((item) => ({ ...item, kind: 'error' as const })), ...(state.preflight?.warnings ?? []).map((item) => ({ ...item, kind: 'warning' as const }))],
+    new Set([...(charactersListed ? state.characters.map((character) => character.nodeId) : []), ...(propsListed ? state.props.map((node) => node.id) : [])]))
+  const propIssues = state.props.flatMap((node) => placed.byNode.get(node.id) ?? [])
   return (
     <section className="wb-film-export wb-film-steps" aria-labelledby="wb-film-export-title">
       <h2 id="wb-film-export-title">{vi ? 'Xuất phim vào Minecraft (BBS FS 2.7)' : 'Export Film to Minecraft (BBS FS 2.7)'}</h2>
@@ -68,6 +79,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
             {state.characters.map((character) => <label key={character.id} className="wb-check">
               <input type="checkbox" checked={state.characterIds.includes(character.id)} onChange={(event) => state.toggleCharacter(character.id, event.target.checked)} />
               <span>{character.name}{state.actingCharacterIds.includes(character.id) ? (vi ? ' · có động tác trong shot' : ' · acts in this shot') : ''}</span>
+              <PreflightIssues items={placed.byNode.get(character.nodeId)} vi={vi} />
             </label>)}
             {state.actingButUnselected.length > 0 && <p role="alert" className="wb-film-warn">{vi
               ? `${state.actingButUnselected.join(', ')} có động tác trong shot nhưng chưa được tick — phim sẽ thiếu nhân vật này.`
@@ -83,8 +95,10 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
           <select multiple value={state.propIds} onChange={(event) => state.setPropIds(Array.from(event.target.selectedOptions, (option) => option.value))} aria-label={vi ? 'Hậu cảnh cần xuất' : 'Backdrops to export'}>
             {state.props.map((prop) => <option key={prop.id} value={prop.id}>{prop.name}</option>)}
           </select>
+          <PreflightIssues items={propIssues} vi={vi} />
         </label>}
         <EffectsOptions capabilities={install.capabilities} value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
+        <PreflightIssues items={placed.effects} vi={vi} />
         <label>{vi ? 'Tên phim' : 'Film name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} maxLength={state.exportMode === 'series' ? 56 : 64} />
           <small>{vi ? 'Tên hiện trong danh sách Film của BBS. Chỉ dùng chữ không dấu, số, dấu - _ .' : 'Shown in the BBS Film list. Letters, digits, - _ . only.'}</small>
         </label>
@@ -99,12 +113,14 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
                 {vi ? `Camera trong cảnh được dựng cho khung ${aspectLabel(state.sceneAspect)}. Xuất ${aspectLabel(state.viewportAspect)} sẽ thấy rộng/hẹp hơn lúc bạn dựng.` : `The scene camera is framed for ${aspectLabel(state.sceneAspect)}; exporting ${aspectLabel(state.viewportAspect)} changes what is visible.`}
                 {' '}<button type="button" onClick={() => state.setViewportAspect(undefined)}>{vi ? `Dùng khung của cảnh (${aspectLabel(state.sceneAspect)})` : `Use the scene frame (${aspectLabel(state.sceneAspect)})`}</button>
               </span>}
+          <PreflightIssues items={placed.camera} vi={vi} />
         </label>
       </fieldset>
 
       <fieldset className="wb-film-step" disabled={state.busy}>
         <legend><span className="wb-film-step-no">3</span>{vi ? 'Vị trí trong game' : 'Place in the world'}</legend>
         <WorldAnchorFields project={project} value={state.worldAnchor} onChange={state.setWorldAnchor} onValidityChange={state.setWorldAnchorInputValid} />
+        <PreflightIssues items={placed.anchor} vi={vi} />
       </fieldset>
 
       <div className="wb-film-go">
@@ -127,12 +143,9 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
 
       <div className="wb-film-preflight" aria-live="polite" aria-busy={state.checkingPreflight}>
         {state.checkingPreflight && <p>{vi ? 'Đang kiểm tra lựa chọn xuất…' : 'Checking the export selection…'}</p>}
-        {state.preflight?.errors.map((item, index) => <p key={`error-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`} role="alert" className="wb-film-error">
-          {vi ? 'Lỗi' : 'Error'}{item.segment === undefined ? '' : ` · ${vi ? 'Đoạn' : 'Segment'} ${item.segment}`}: {vi ? item.message.vi : item.message.en}
-        </p>)}
-        {state.preflight?.warnings.map((item, index) => <p key={`warning-${item.code}-${item.nodeId ?? ''}-${item.clipId ?? ''}-${item.frame ?? ''}-${index}`} className="wb-film-warn">
-          {vi ? 'Lưu ý' : 'Warning'}{item.segment === undefined ? '' : ` · ${vi ? 'Đoạn' : 'Segment'} ${item.segment}`}: {vi ? item.message.vi : item.message.en}
-        </p>)}
+        <PreflightIssues items={placed.rest} vi={vi} />
+        {state.preflight && !state.checkingPreflight && placed.rest.length < state.preflight.errors.length + state.preflight.warnings.length &&
+          <p className="wb-film-muted">{vi ? 'Một số lỗi/lưu ý hiện ngay cạnh mục liên quan ở trên (nhân vật, hậu cảnh, hiệu ứng, khung hình, vị trí).' : 'Some errors and warnings appear next to the item they concern above.'}</p>}
         {state.preflight && !state.checkingPreflight && state.preflight.errors.length === 0 && state.preflight.warnings.length === 0 &&
           <p>{vi ? 'Kiểm tra trước khi xuất: đạt.' : 'Preflight passed.'}</p>}
         {state.preflight?.placement && <p className="wb-film-muted">{vi
@@ -181,6 +194,7 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
             {!state.busy && state.completedJob?.state === 'succeeded' && <button type="button" onClick={() => void state.saveAgain(state.completedJob!)}>{vi ? 'Lưu lại gói vừa xuất…' : 'Save the last package again…'}</button>}
           </div>
         </fieldset>
+        <FilmCleanupPanel state={cleanup} vi={vi} />
         <BbsInstallPanel state={install} />
       </details>
     </section>

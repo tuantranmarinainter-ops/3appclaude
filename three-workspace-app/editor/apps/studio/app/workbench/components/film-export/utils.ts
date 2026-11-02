@@ -66,3 +66,19 @@ export function defaultExportCharacterIds(project: UnifiedProject, range: { star
   const acting = charactersInRange(project, range)
   return acting.length ? acting : Object.keys(project.characters)
 }
+
+/** B61: where a preflight message belongs in the panel. `rest` keeps whatever has no home next to an item. */
+export interface PreflightIssueLike { code: string; nodeId?: string; segment?: number }
+export interface PreflightPlacement<T> { byNode: Map<string, T[]>; anchor: T[]; effects: T[]; camera: T[]; rest: T[] }
+
+export function placePreflightIssues<T extends PreflightIssueLike>(issues: readonly T[], nodeIds: ReadonlySet<string>): PreflightPlacement<T> {
+  const placed: PreflightPlacement<T> = { byNode: new Map(), anchor: [], effects: [], camera: [], rest: [] }
+  for (const item of issues) {
+    if (item.nodeId && nodeIds.has(item.nodeId)) placed.byNode.set(item.nodeId, [...(placed.byNode.get(item.nodeId) ?? []), item])
+    else if (item.code.startsWith('WORLD_ANCHOR')) placed.anchor.push(item)
+    else if (item.code.startsWith('VFX_')) placed.effects.push(item)
+    else if (/^(CAMERA_|FILM_SEQUENCE|FILM_CAMERA|FILM_TICK_GRID|SHOT_)/.test(item.code)) placed.camera.push(item)
+    else placed.rest.push(item)
+  }
+  return placed
+}

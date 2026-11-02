@@ -5,6 +5,7 @@ import { createReadStream } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, lstat, writeFile, unlink, rename } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { remainingFilmIndex } from './bbsWorldFilms'
 
 const MAX_ZIP_BYTES = 128 * 1024 * 1024
 const PLAN_TTL_MS = 30 * 60 * 1000
@@ -75,16 +76,16 @@ export interface InstallWorld { name: string }
 export interface InstallPlanFile { source: string; target: string; sizeBytes: number; sha256: string; status: 'install' | 'skip' | 'conflict' }
 export interface InstallPlan { planId: string; packageName: string; packageSha256: string; gameDir: string; worldName: string; files: InstallPlanFile[]; expiresAt: string }
 interface InternalPlan extends InstallPlan { requiresEffects: boolean; stagingRoot: string; expiresMs: number }
-interface LogFile { path: string; sha256: string }
-interface InstallLogEntry { installId: string; installedAt: string; packageName: string; packageSha256: string; ownedFiles: LogFile[]; uninstalledAt?: string; preservedFiles?: string[] }
-interface InstallLog { version: 1; installs: InstallLogEntry[] }
+export interface LogFile { path: string; sha256: string }
+export interface InstallLogEntry { installId: string; installedAt: string; packageName: string; packageSha256: string; ownedFiles: LogFile[]; uninstalledAt?: string; preservedFiles?: string[] }
+export interface InstallLog { version: 1; installs: InstallLogEntry[] }
 type GlobalPlans = typeof globalThis & { __bbsInstallPlans?: Map<string, InternalPlan> }
 const plans = (globalThis as GlobalPlans).__bbsInstallPlans ??= new Map()
 type GlobalLocks = typeof globalThis & { __bbsInstallLocks?: Map<string, Promise<void>> }
 const locks = (globalThis as GlobalLocks).__bbsInstallLocks ??= new Map()
 
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-async function fileDigest(file: string): Promise<string> {
+export async function fileDigest(file: string): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer)
   return hash.digest('hex')
@@ -112,7 +113,7 @@ function validWorldName(value: string): boolean {
     !/^(con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i.test(value)
 }
 
-async function canonicalGameDir(gameDir: string): Promise<string> {
+export async function canonicalGameDir(gameDir: string): Promise<string> {
   gameDir = (await normalizeBbsGameDir(gameDir)).gameDir
   if (typeof gameDir !== 'string' || !gameDir.trim() || gameDir.includes('\0')) throw new TypeError('Enter the BBS FS game folder')
   const root = await realpath(path.resolve(gameDir.trim()))
@@ -120,7 +121,7 @@ async function canonicalGameDir(gameDir: string): Promise<string> {
   return root
 }
 
-async function withGameLock<T>(root: string, action: () => Promise<T>): Promise<T> {
+export async function withGameLock<T>(root: string, action: () => Promise<T>): Promise<T> {
   const previous = locks.get(root) ?? Promise.resolve()
   let release!: () => void
   const held = new Promise<void>((resolve) => { release = resolve })
@@ -137,7 +138,7 @@ function safePackageName(value: string | undefined, fallback: string): string {
   return name
 }
 
-async function assertSafePath(root: string, target: string, allowMissing: boolean): Promise<void> {
+export async function assertSafePath(root: string, target: string, allowMissing: boolean): Promise<void> {
   const resolved = path.resolve(target)
   if (!isInside(root, resolved)) throw new TypeError('Install path escaped the selected game folder')
   const relative = path.relative(root, resolved).split(path.sep).filter(Boolean)
@@ -158,7 +159,7 @@ async function assertSafePath(root: string, target: string, allowMissing: boolea
   }
 }
 
-async function worldDir(root: string, worldName: string): Promise<string> {
+export async function worldDir(root: string, worldName: string): Promise<string> {
   if (!validWorldName(worldName)) throw new TypeError('Invalid world name')
   const saves = path.join(root, 'saves')
   await assertSafePath(root, saves, false)
@@ -242,7 +243,7 @@ function publicPlan(plan: InternalPlan): InstallPlan {
 
 function logPath(root: string): string { return path.join(root, 'config', 'bbs', 'w01-install-log.json') }
 
-async function readInstallLog(root: string): Promise<InstallLog> {
+export async function readInstallLog(root: string): Promise<InstallLog> {
   const file = logPath(root)
   await assertSafePath(root, file, true)
   try {
@@ -253,7 +254,7 @@ async function readInstallLog(root: string): Promise<InstallLog> {
     for (const entry of installs) {
       if (!entry || typeof entry !== 'object' || !/^[0-9a-f-]{36}$/i.test(entry.installId) || ids.has(entry.installId) ||
           typeof entry.installedAt !== 'string' || !Number.isFinite(Date.parse(entry.installedAt)) || typeof entry.packageName !== 'string' || entry.packageName.length > 160 ||
-          !/^[a-f0-9]{64}$/.test(entry.packageSha256) || !Array.isArray(entry.ownedFiles) || entry.ownedFiles.length > 4096 ||
+          !/^[a-f0-9]{64}$/.test(entry.packageSha256) || !Array.isArray(entry.ownedFiles) || entry.ownedFiles.length > 65536 ||
           (entry.uninstalledAt !== undefined && (typeof entry.uninstalledAt !== 'string' || !Number.isFinite(Date.parse(entry.uninstalledAt)))) ||
           (entry.preservedFiles !== undefined && (!Array.isArray(entry.preservedFiles) || entry.preservedFiles.some((item) => typeof item !== 'string' || !safeOwnedPath(item))))) throw new TypeError('Install log has an unsupported format')
       safePackageName(entry.packageName, '')
@@ -277,7 +278,7 @@ function safeOwnedPath(value: string): boolean {
   return parts[0] === 'saves' && validWorldName(parts[1] ?? '') && parts[2] === 'bbs' && parts[3] === 'films' && parts.length === 5 && /^[^/]+\.dat$/.test(parts[4] ?? '')
 }
 
-async function writeInstallLog(root: string, log: InstallLog): Promise<void> {
+export async function writeInstallLog(root: string, log: InstallLog): Promise<void> {
   const folder = path.dirname(logPath(root))
   await ensureSafeDirectories(root, folder)
   const file = logPath(root), temp = `${file}.${randomUUID()}.tmp`
@@ -350,31 +351,48 @@ export async function applyInstall(planId: string): Promise<{ installId: string;
   })
 }
 
-export async function uninstallInstall(gameDir: string, installId: string): Promise<{ removed: string[]; preserved: string[] }> {
+/** Delete one logged file when it is still byte-identical to what the install wrote. Returns false = preserved. */
+export async function removeLoggedFile(root: string, file: LogFile): Promise<boolean> {
+  const target = path.resolve(root, ...file.path.split('/'))
+  try {
+    await assertSafePath(root, target, false)
+    const info = await lstat(target)
+    if (!info.isFile() || info.isSymbolicLink()) return false
+    await assertSafePath(root, target, false)
+    if (await fileDigest(target) !== file.sha256) return false
+    const verified = await lstat(target)
+    if (info.dev !== verified.dev || info.ino !== verified.ino || info.size !== verified.size || info.mtimeMs !== verified.mtimeMs) return false
+    await assertSafePath(root, target, false)
+    await unlink(target)
+    return true
+  } catch { return false }
+}
+
+export const isLoggedAsset = (logged: string) => logged.startsWith('config/bbs/assets/')
+export const assetRelativePath = (logged: string) => logged.slice('config/bbs/assets/'.length)
+
+/** B64: uninstall never removes an asset another film still uses; those stay and pass to another active install. */
+export async function uninstallInstall(gameDir: string, installId: string): Promise<{ removed: string[]; preserved: string[]; inUse: string[] }> {
   if (!/^[0-9a-f-]{36}$/i.test(installId)) throw new TypeError('Invalid install record')
   const root = await canonicalGameDir(gameDir)
   return withGameLock(root, async () => {
     const log = await readInstallLog(root)
     const entry = log.installs.find((row) => row.installId === installId && !row.uninstalledAt)
     if (!entry) throw Object.assign(new Error('Install record not found'), { status: 404 })
-    const removed: string[] = [], preserved: string[] = []
-    for (const file of entry.ownedFiles) {
-      const target = path.resolve(root, ...file.path.split('/'))
-      try {
-        await assertSafePath(root, target, false)
-        const info = await lstat(target)
-        if (!info.isFile() || info.isSymbolicLink()) { preserved.push(file.path); continue }
-        await assertSafePath(root, target, false)
-        if (await fileDigest(target) !== file.sha256) { preserved.push(file.path); continue }
-        const verified = await lstat(target)
-        if (info.dev !== verified.dev || info.ino !== verified.ino || info.size !== verified.size || info.mtimeMs !== verified.mtimeMs) { preserved.push(file.path); continue }
-        await assertSafePath(root, target, false)
-        await unlink(target); removed.push(file.path)
-      } catch { preserved.push(file.path) }
+    const removed: string[] = [], preserved: string[] = [], inUse: string[] = []
+    // Films first: whichever films stay afterwards decide which assets are still needed.
+    for (const file of entry.ownedFiles.filter((item) => !isLoggedAsset(item.path))) (await removeLoggedFile(root, file) ? removed : preserved).push(file.path)
+    const index = await remainingFilmIndex(root)
+    const heir = log.installs.filter((row) => !row.uninstalledAt && row.installId !== entry.installId).sort((a, b) => b.installedAt.localeCompare(a.installedAt))[0]
+    for (const file of entry.ownedFiles.filter((item) => isLoggedAsset(item.path))) {
+      if (index.isReferenced(assetRelativePath(file.path))) {
+        inUse.push(file.path)
+        if (heir) heir.ownedFiles.push(file); else preserved.push(file.path)
+      } else (await removeLoggedFile(root, file) ? removed : preserved).push(file.path)
     }
     entry.uninstalledAt = new Date().toISOString(); entry.preservedFiles = preserved
     await writeInstallLog(root, log)
-    return { removed, preserved }
+    return { removed, preserved, inUse }
   })
 }
 
