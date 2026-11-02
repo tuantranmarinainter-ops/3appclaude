@@ -941,6 +941,45 @@
   outline: none;
 }
 
+/* K3: ngược nhịp bước -> dải X vàng. */
+.t3d-timeline-clip-blend.is-offbeat {
+  border-color: #f5c542;
+  background-color: rgba(245, 197, 66, 0.28);
+  background-image:
+    repeating-linear-gradient(45deg, rgba(245, 197, 66, 0.95) 0, rgba(245, 197, 66, 0.95) 1px, transparent 1px, transparent 6px),
+    repeating-linear-gradient(-45deg, rgba(245, 197, 66, 0.95) 0, rgba(245, 197, 66, 0.95) 1px, transparent 1px, transparent 6px);
+}
+
+.t3d-timeline-blend-warn {
+  color: #f5c542;
+  max-width: 260px;
+}
+
+.t3d-timeline-blend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.t3d-timeline-blend-actions button {
+  background: #15171c;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.t3d-timeline-blend-actions button[aria-pressed='true'] {
+  border-color: #f5a623;
+  background: rgba(245, 166, 35, 0.2);
+}
+
+.t3d-timeline-blend-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .t3d-timeline-blend-panel {
   position: fixed;
   z-index: 10000;

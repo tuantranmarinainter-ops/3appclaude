@@ -7,6 +7,7 @@ import {
   previewBlendDrag,
   removeBlend,
   setBlendCurve,
+  setBlendOptions,
   setBlendFrames,
 } from '../document/clipBlend'
 import { rippleResizeClip } from '../document/clipRipple'
@@ -2983,13 +2984,18 @@ export class StudioSession implements StudioView {
   blendMotionClipWithPrevious = (clipId: string): boolean =>
     this.commitMotionClips('Trộn với clip trước', (clips, fps, minFrame) => blendWithPrevious(clips, clipId, fps, minFrame))
 
-  setMotionClipBlend = (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear' }): boolean =>
-    this.commitMotionClips('Đổi thông số trộn', (clips, _fps, minFrame) => {
-      let current: MotionClip[] | null = clips
-      if (patch.frames !== undefined) current = setBlendFrames(current, clipId, patch.frames, minFrame)
-      if (current && patch.curve !== undefined) current = setBlendCurve(current, clipId, patch.curve) ?? current
-      return current
-    })
+  setMotionClipBlend = (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }): boolean =>
+    this.commitMotionClips(
+      patch.mirror !== undefined ? 'Đảo chân' : patch.phaseOffsetSeconds !== undefined ? (patch.phaseOffsetSeconds ? 'Khớp nhịp bước' : 'Bỏ khớp nhịp') : 'Đổi thông số trộn',
+      (clips, _fps, minFrame) => {
+        let current: MotionClip[] | null = clips
+        if (patch.frames !== undefined) current = setBlendFrames(current, clipId, patch.frames, minFrame)
+        if (current && patch.curve !== undefined) current = setBlendCurve(current, clipId, patch.curve) ?? current
+        if (current && (patch.mirror !== undefined || patch.phaseOffsetSeconds !== undefined)) {
+          current = setBlendOptions(current, clipId, { mirror: patch.mirror, phaseOffsetSeconds: patch.phaseOffsetSeconds })
+        }
+        return current
+      })
 
   removeMotionClipBlend = (clipId: string): boolean =>
     this.commitMotionClips('Bỏ trộn', (clips) => removeBlend(clips, clipId))

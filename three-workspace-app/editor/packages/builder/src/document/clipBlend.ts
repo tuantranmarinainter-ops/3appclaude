@@ -228,3 +228,25 @@ export function removeBlend(clips: readonly MotionClip[], clipId: string): Motio
 export function blendBandLabel(blend: MotionBlendIn): string {
   return `Trộn ${blend.frames} khung · ${blend.curve === 'linear' ? 'Tuyến tính' : 'Êm đầu-cuối'}`
 }
+
+export interface BlendOptionsPatch {
+  /** Đảo chân: lật trái-phải toàn bộ clip sau. */
+  mirror?: boolean
+  /** Khớp nhịp bước: dời điểm bắt đầu đọc động tác gốc (giây). null hoặc 0 = bỏ khớp nhịp. */
+  phaseOffsetSeconds?: number | null
+}
+
+/** K3: bật/tắt Đảo chân và đặt/bỏ độ dời nhịp bước của clip sau. null nếu clip không có blendIn hoặc không đổi gì. */
+export function setBlendOptions(clips: readonly MotionClip[], clipId: string, patch: BlendOptionsPatch): MotionClip[] | null {
+  const clip = clips.find((item) => item.id === clipId)
+  const blend = clip && motionBlendInOf(clip)
+  if (!clip || !blend) return null
+  const { mirror: _mirror, phaseOffsetSeconds: _phase, ...rest } = blend
+  void _mirror; void _phase
+  const mirror = patch.mirror !== undefined ? patch.mirror : blend.mirror === true
+  const phase = patch.phaseOffsetSeconds !== undefined ? patch.phaseOffsetSeconds : blend.phaseOffsetSeconds ?? null
+  const phaseValue = phase === null || !Number.isFinite(phase) || phase === 0 ? null : phase
+  if (mirror === (blend.mirror === true) && phaseValue === (blend.phaseOffsetSeconds ?? null)) return null
+  const next: MotionBlendIn = { ...rest, ...(mirror ? { mirror: true } : {}), ...(phaseValue !== null ? { phaseOffsetSeconds: phaseValue } : {}) }
+  return clips.map((item) => (item.id === clipId ? withBlend(item, next) : item))
+}

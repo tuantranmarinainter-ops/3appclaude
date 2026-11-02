@@ -56,3 +56,61 @@ Nhận xét về FAIL giật xương:
   `blendIn` giữ y hệt, `evaluateRootTrajectory` neo theo A).
 - `pnpm typecheck` toàn workspace sạch. Studio `tsx --test`: sceneBbsPreview, filmMinecraftFeet, b10MinecraftFloor, bbsPreview,
   skeletonMappingCommand đều pass.
+
+## Đợt K3 — Đảo chân, Khớp nhịp bước, cảnh báo ngược nhịp, nhả khóa chân êm hơn
+
+Mẫu và script như K2 (`measureClipBlendK2.mts`, bản sao `clip-blend-k2-projects`, chỉ đọc). Script có thêm tùy chọn chỉ-trong-bộ-nhớ
+`--zone-frames N` (dời B để vùng trộn dài N khung, vẫn kết thúc khung 59), `--mirror`, `--phase-seconds`; không ghi project.json.
+
+### Cách làm
+
+- **Đảo chân** (`blendIn.mirror: true`, file `engine/objects/clipMirror.ts`): lật cả clip sau trên AnimationClip đã bake theo rig
+  đích rồi mọi nơi (viewport, sampler, kế hoạch trộn K2, quỹ đạo root) dùng clip đã lật qua `directAnimationFor`. Xương hoán đổi theo
+  tên (`Left/Right`, hậu tố `_L/_R`, `.L/.R`; đọc quy ước tên, không sửa `packages/retarget`). Phép quay: lấy delta thế giới so với rest,
+  phản chiếu qua mặt phẳng giữa thân (pháp tuyến = trung bình trái trừ phải của các cặp xương lúc rest), đặt lên rest của xương đối xứng
+  rồi tính lại quay cục bộ qua FK. Vị trí (root/hông) phản chiếu trong không gian actor, nên đường đi và hướng root cũng lật (rẽ trái
+  thành rẽ phải). Phép căn chỗ đứng K2 chạy sau đó trên clip đã lật.
+- **Khớp nhịp bước** (`blendIn.phaseOffsetSeconds`): cộng vào thời gian đọc động tác gốc trong `motionTimeSeconds` (sau tốc độ, tôn
+  trọng lặp/kẹp/reverse) và vào quỹ đạo root (`trajectoryState`, neo tại điểm bắt đầu đọc nên root vẫn khởi đầu đúng tại neo). Kế hoạch
+  trộn tính độ dời nhỏ nhất trong min(1,5 s, một vòng động tác gốc), bước 0,02 s, để chân trước của B trùng chân trước của A; lưu vào
+  trạng thái dải X (`suggestedPhaseSeconds`). Nút "Khớp nhịp bước" đặt giá trị này; "Bỏ khớp nhịp" đặt lại.
+- **Ngược nhịp**: chân trước = bàn chân xa hơn về phía trước (hướng mặt suy từ hai đùi) so với trung điểm hai đùi, chênh >= 3 cm mới
+  tính. So A tại khung bắt đầu trộn với B (đã lật/dời nhịp/căn). Khác nhau thì dải X vàng + chữ "Ngược nhịp bước: chân trước của clip
+  sau ngược clip trước — bấm Đảo chân hoặc Khớp nhịp bước" (hover và bảng). Hết khi sửa. Mỗi nút bảng là một bước Undo.
+- **Nhả khóa chân**: khi chân còn chạm đất tới hết vùng trộn (đứng ở cả hai clip nhưng lệch chỗ), khóa 100% tới 35% vùng trộn (tối
+  thiểu 2 khung) rồi nhả smootherstep (6t^5-15t^4+10t^3) suốt phần còn lại của vùng thay vì 0,125 s cuối vùng. Chân nhấc lên giữa vùng
+  vẫn nhả ngắn 0,125 s. Trượt chân chỉ tính trong lúc khóa 100%.
+
+### Số đo (trước = K2 `34d4c88`, sau = K3)
+
+| Tiêu chí | Vùng | Trước | Sau | Trạng thái |
+| --- | --- | --- | --- | --- |
+| Giật xương, tỉ lệ xấu nhất | 15 khung | 7,95x (Foot_L), 14/23 xương vượt | 3,85x (Hand_L), 13/23 xương vượt | FAIL (còn) |
+| Giật xương, tỉ lệ xấu nhất | 30 khung | 3,61x, 4/27 xương vượt | 1,37x (Foot_R), 0/27 vượt | PASS |
+| Trượt chân khi khóa 100% (<= 1 cm) | 15 / 30 khung | 1,8e-13 / 1,5e-13 cm | 1,1e-13 / 1,5e-13 cm | PASS |
+| Cửa sổ khóa 100% (trái / phải) | 15 khung | 44–55,25 / 52–55,25 | 44–49,25 (nhả 9,75 khung) / 52–54 (nhả 5) | thông tin |
+| Cửa sổ khóa 100% (trái / phải) | 30 khung | 29–55,25 / 44–55,25 | 29–39,5 (nhả 19,5) / 44–46 (nhả 13) | thông tin |
+| Chỗ đứng sau vùng trộn (<= 1 cm, <= 1 độ) | 15 / 30 khung | PASS | PASS (không đổi) | PASS |
+| Đảo chân, sai số đối xứng chân/tay/ngón/hông (clip B thật, so rig gốc) | khung 44–100 | — | 0,011 mm | PASS |
+| Không hồi quy: hash 99 mẫu project không `blendIn` | — | `e7fbc14f…945f` | trùng | PASS |
+| Không hồi quy: hash 28 mẫu A trước vùng trộn | — | `8726f2f1…c86` | trùng | PASS |
+
+Nhận xét:
+
+- Vùng 15 khung (0,5 s) vẫn FAIL: còn lại là Hand_L 3,85x, đúng bằng mức K2 đo khi KHÔNG khóa chân (hai clip có tư thế tay khác xa và
+  chỉ có 0,5 s). Nhả khóa chân đã hạ Foot_L từ 7,95x xuống dưới mức đó, nhưng 1,5x không đạt được bằng trộn thuần ở 0,5 s; vùng trộn
+  30 khung (1 s) đạt. Cần người dùng chọn: nới ngưỡng cho vùng 0,5 s hoặc mặc định trộn dài hơn.
+- Cặp mẫu thật (Gỗ Xưa 58→59): tại khung bắt đầu trộn A chân trái trước, B chân trái trước nên không ngược nhịp. Bật Đảo chân thì B
+  thành chân phải trước và dải báo vàng (đã đo `leadA=left, leadB=right, leadMismatch=true`). Với B thật, không có độ dời nào trong 1,5 s
+  đầu của B (đã lật) cho chân trái trước (`suggestedPhaseSeconds=null`), nút Khớp nhịp bước bị khóa và có chú thích; Đảo chân là cách
+  sửa cho cặp này. Cặp ngược nhịp tổng hợp (chu kỳ bước 1 s): Khớp nhịp tìm ra 0,26 s và Đảo chân đều làm hết cảnh báo (có test).
+- Film (K4) vẫn NOT_RUN.
+
+### Kiểm thử
+
+- `clipBlendK3.test.ts` 13 test: cặp xương Mixamo65/Verity/hậu tố, phản chiếu quaternion (đối chiếu M·R·M), smootherstep nhả khóa,
+  `motionTimeSeconds` có độ dời (tốc độ/lặp/kẹp), `setBlendOptions`, đảo chân trên clip tổng hợp (hoán đổi xương, đảo quay Z,
+  root x và yaw, đảo hai lần về bản gốc, vị trí xương thế giới đối xứng), quỹ đạo root đảo trái-phải, quỹ đạo root có độ dời nhịp,
+  phát hiện/xóa ngược nhịp, đứng yên không báo, tìm độ dời nhỏ nhất, nhả khóa giữ trượt < 1e-4 rồi nhả trơn chậm hơn nhả cũ.
+  Thêm 1 test session (Undo từng nút). `packages/builder` vitest 128 file, 732 test pass, 1 skipped. `pnpm typecheck` sạch, studio
+  `tsx --test` 5 file pass. Golden và `packages/retarget` không đổi.

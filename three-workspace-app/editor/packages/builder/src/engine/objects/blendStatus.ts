@@ -18,6 +18,23 @@ export interface BlendStatus {
   /** false khi không thể căn (thiếu xương chân/hông hoặc kiểu root không phải skeletal). */
   aligned: boolean
   locks: BlendLockRun[]
+  /** K3: chân trước (chân xa hơn về phía hướng đi) của clip trước tại khung bắt đầu trộn và của clip sau (đã lật/dời nhịp, đã căn). */
+  leadA: FootLead | null
+  leadB: FootLead | null
+  /** true khi hai chân trước khác nhau: cảnh báo vàng "ngược nhịp". */
+  leadMismatch: boolean
+  mirror: boolean
+  phaseOffsetSeconds: number
+  /** Độ dời nhịp nhỏ nhất (giây động tác gốc) để chân trước của clip sau trùng clip trước; null khi không tìm thấy / không cần. */
+  suggestedPhaseSeconds: number | null
+}
+
+export type FootLead = 'left' | 'right'
+
+export const OFF_BEAT_TEXT = 'Ngược nhịp bước: chân trước của clip sau ngược clip trước — bấm Đảo chân hoặc Khớp nhịp bước'
+
+export function blendOffBeatText(status: BlendStatus | null | undefined): string {
+  return status?.leadMismatch ? OFF_BEAT_TEXT : ''
 }
 
 interface Registry { statuses: Map<string, BlendStatus>; listeners: Set<() => void>; version: number }
@@ -64,6 +81,11 @@ function emit(): void {
 
 function vnNumber(value: number, digits: number): string {
   return value.toFixed(digits).replace('.', ',')
+}
+
+export function blendPhaseText(status: BlendStatus | null | undefined): string {
+  if (!status || !status.phaseOffsetSeconds) return ''
+  return `Khớp nhịp bước +${vnNumber(status.phaseOffsetSeconds, 2)} s`
 }
 
 export function blendOffsetText(status: BlendStatus | null | undefined): string {

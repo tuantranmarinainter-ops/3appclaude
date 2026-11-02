@@ -347,7 +347,7 @@ export interface StudioView {
   /** Chuột phải "Trộn với clip trước": dời clip sau sớm hơn 0,5 giây và đặt blendIn (một bước Undo). */
   blendMotionClipWithPrevious: (clipId: string) => boolean
   /** Đổi số khung / kiểu chuyển của blendIn (một bước Undo). false = không hợp lệ, không đổi gì. */
-  setMotionClipBlend: (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear' }) => boolean
+  setMotionClipBlend: (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
   /** "Bỏ trộn": xóa blendIn và đẩy clip sau ra khỏi vùng chồng (một bước Undo). */
   removeMotionClipBlend: (clipId: string) => boolean
   toggleViewportLocked: () => void

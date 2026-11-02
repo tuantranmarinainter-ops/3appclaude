@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
-import { blendLockText, blendOffsetText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
+import { blendLockText, blendOffBeatText, blendOffsetText, blendPhaseText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
 import { blendBandLabel, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
 import { motionBlendInOf, motionBlendPartner } from '../../evaluate/clips'
 import { clampMenuPosition } from './utils/clipMenu'
@@ -31,7 +31,7 @@ export function ClipBlendBands({
   useSyncExternalStore(subscribeBlendStatus, blendStatusVersion, blendStatusVersion)
   const bandTitle = (band: Band) => {
     const status = getBlendStatus(band.clip.id)
-    return [blendBandLabel(band.blend), blendOffsetText(status), blendLockText(status, 0)].filter(Boolean).join(' · ')
+    return [blendBandLabel(band.blend), band.blend.mirror ? 'Đảo chân' : '', blendPhaseText(status), blendOffsetText(status), blendLockText(status, 0), blendOffBeatText(status)].filter(Boolean).join(' · ')
   }
 
   // Khi đang kéo, vẽ dải theo vị trí xem trước để người dùng thấy ngay vùng trộn.
@@ -61,7 +61,8 @@ export function ClipBlendBands({
       {bands.map((band) => (
         <div
           key={band.clip.id}
-          className="t3d-timeline-clip-blend"
+          className={getBlendStatus(band.clip.id)?.leadMismatch ? 't3d-timeline-clip-blend is-offbeat' : 't3d-timeline-clip-blend'}
+          data-blend-offbeat={getBlendStatus(band.clip.id)?.leadMismatch ? 'true' : undefined}
           role="button"
           tabIndex={0}
           data-blend-clip-id={band.clip.id}
@@ -108,7 +109,7 @@ function BlendPanel({
   disabled: boolean
   maxFrames: number
   onClose: () => void
-  apply: (patch: { frames?: number; curve?: 'smooth' | 'linear' }) => boolean
+  apply: (patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
   remove: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -177,6 +178,26 @@ function BlendPanel({
             {lock && <div>{lock}</div>}
           </div>
         ) : null
+      })()}
+      {(() => {
+        const status = getBlendStatus(band.clip.id)
+        const warning = blendOffBeatText(status)
+        const phase = status?.phaseOffsetSeconds ?? 0
+        const suggested = status?.suggestedPhaseSeconds ?? null
+        return (
+          <>
+            {warning && <div className="t3d-timeline-blend-warn" data-blend-offbeat-text role="alert">{warning}</div>}
+            <div className="t3d-timeline-blend-actions">
+              <button type="button" className="t3d-timeline-blend-toggle" aria-pressed={!!band.blend.mirror} disabled={disabled}
+                title="Lật trái-phải toàn bộ clip sau (xương, đường đi và hướng root)"
+                onClick={() => { apply({ mirror: !band.blend.mirror }) }}>Đảo chân</button>
+              <button type="button" disabled={disabled || suggested === null || suggested === phase}
+                title={suggested === null ? 'Không tìm thấy nhịp khớp trong 1,5 giây đầu của clip sau' : 'Dời điểm bắt đầu của clip sau tới nhịp có cùng chân trước'}
+                onClick={() => { if (suggested !== null) apply({ phaseOffsetSeconds: suggested }) }}>Khớp nhịp bước</button>
+              {phase !== 0 && <button type="button" disabled={disabled} onClick={() => { apply({ phaseOffsetSeconds: null }) }}>Bỏ khớp nhịp</button>}
+            </div>
+          </>
+        )
       })()}
       {invalid && <div className="t3d-timeline-blend-note">Số khung không hợp lệ (2 – {Math.max(MIN_BLEND_FRAMES, maxFrames)}) hoặc đụng clip khác.</div>}
       <button type="button" className="t3d-timeline-blend-remove" disabled={disabled} onClick={remove}>Bỏ trộn</button>

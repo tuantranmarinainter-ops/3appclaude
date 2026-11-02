@@ -78,13 +78,13 @@ export function plantedRuns(flags: readonly boolean[]): Array<[number, number]> 
   return runs
 }
 
-/** Độ mạnh khóa (0..1) tại khung `frame`: 1 trong [start,end], nhả smoothstep trong `ease` khung kế tiếp, 0 ngoài đó. */
+/** Độ mạnh khóa (0..1) tại khung `frame`: 1 trong [start,end], nhả smootherstep (6t^5-15t^4+10t^3, jerk nhỏ) trong `ease` khung kế tiếp, 0 ngoài đó. */
 export function lockStrength(frame: number, start: number, end: number, ease: number): number {
   if (frame < start) return 0
   if (frame <= end) return 1
   if (!(ease > 0) || frame >= end + ease) return 0
   const t = (frame - end) / ease
-  return 1 - t * t * (3 - 2 * t)
+  return 1 - t * t * t * (t * (t * 6 - 15) + 10)
 }
 
 /**

@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 import type { MotionClip } from '../../contract/types'
-import { motionBlendInOf, motionBlendPartner, motionBlendWeight, motionTimeSeconds } from '../../evaluate/clips'
+import { motionBlendInOf, motionBlendPartner, motionBlendWeight, motionPhaseOffsetSeconds, motionSourceLengthSeconds, motionTimeSeconds } from '../../evaluate/clips'
+import { directAnimationFor } from './clipMirror'
 import { isFbxBoneAlias } from '../../evaluate/retarget/fbxSourceBones'
 import {
   alignmentMatrix, alignRoot, isFootPlanted, isIdentityAlignment, lockStrength, plantedRuns, solveKnee, yawOf,
   type PlantOptions, type RootAlignment, type RootPoint,
 } from './footLockMath'
-import { setBlendStatus, type BlendLockRun, type BlendStatus } from './blendStatus'
+import { setBlendStatus, type BlendLockRun, type BlendStatus, type FootLead } from './blendStatus'
 import { sampledTransform } from './rootMotion'
 import type { StageGraph } from './graph'
 import type { CharInstance } from './types'
@@ -14,8 +15,20 @@ import type { CharInstance } from './types'
 /** Tốc độ ngang tối đa (m/s thế giới) và độ cao tối đa (m) để coi bàn chân là đang chạm đất. */
 export const PLANT_MAX_SPEED_MPS = 0.3
 export const PLANT_MAX_HEIGHT_M = 0.1
-/** Nhả khóa êm trong 0,125 s (2–3 tick 20 Hz). */
+/** Nhả khóa tối thiểu 0,125 s (2–3 tick 20 Hz) khi bàn chân nhấc lên trong lúc trộn. */
 export const LOCK_EASE_SECONDS = 0.125
+/**
+ * K3: bàn chân còn chạm đất tới hết vùng trộn (đứng ở cả hai clip nhưng lệch nhau) thì giữ khóa 100% tới điểm này
+ * (tỉ lệ của vùng trộn) rồi nhả smootherstep suốt phần còn lại của vùng, thay vì chỉ 0,125 s cuối vùng.
+ */
+export const LOCK_RELEASE_FRACTION = 0.35
+/** Giữ khóa 100% tối thiểu số khung này trước khi bắt đầu nhả. */
+export const LOCK_MIN_HOLD_FRAMES = 2
+/** Hai bàn chân lệch nhau dưới ngưỡng này (mét) theo hướng đi thì coi là không có chân trước. */
+export const LEAD_MIN_DIFF_M = 0.03
+/** Khớp nhịp: tìm trong tối đa chừng này giây (hoặc một vòng động tác gốc nếu ngắn hơn). */
+export const PHASE_SEARCH_SECONDS = 1.5
+export const PHASE_SEARCH_STEP_SECONDS = 0.02
 
 interface Parts { p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3 }
 type LocalFn = (object: THREE.Object3D) => Parts
@@ -188,7 +201,7 @@ function rootPoint(ch: CharInstance, rig: RigInfo, local: LocalFn): RootPoint | 
 }
 
 function animationOf(graph: StageGraph, ch: CharInstance, clip: MotionClip): THREE.AnimationClip | null {
-  return graph.motionPlayer.getClipForDirectBind(clip.motion.assetId, ch.inner, ch.restPose, ch.restPos, clip.motion.clipIndex ?? 0) ?? null
+  return directAnimationFor(graph.motionPlayer, ch, clip)
 }
 
 function clipSig(clip: MotionClip): string {
@@ -223,6 +236,21 @@ export function blendPlanFor(graph: StageGraph, ch: CharInstance, clip: MotionCl
   return plan
 }
 
+/** Chân trước = bàn chân xa hơn về phía trước (theo hướng mặt suy từ hai đùi) so với trung điểm hai đùi. */
+function leadOf(ch: CharInstance, rig: RigInfo, local: LocalFn, unit: number): { lead: FootLead | null; diff: number } | null {
+  const left = rig.feet.find((foot) => foot.side === 'left'), right = rig.feet.find((foot) => foot.side === 'right')
+  if (!left || !right) return null
+  const tl = positionOf(actorMatrix(ch, left.thigh, local)), tr = positionOf(actorMatrix(ch, right.thigh, local))
+  const dx = tl.x - tr.x, dz = tl.z - tr.z
+  const length = Math.hypot(dx, dz)
+  if (!(length > 1e-9)) return null
+  const fx = -dz / length, fz = dx / length
+  const mx = (tl.x + tr.x) / 2, mz = (tl.z + tr.z) / 2
+  const al = positionOf(actorMatrix(ch, left.foot, local)), ar = positionOf(actorMatrix(ch, right.foot, local))
+  const diff = ((al.x - mx) * fx + (al.z - mz) * fz) - ((ar.x - mx) * fx + (ar.z - mz) * fz)
+  return { lead: Math.abs(diff) < LEAD_MIN_DIFF_M / unit ? null : diff > 0 ? 'left' : 'right', diff }
+}
+
 function computePlan(args: {
   ch: CharInstance; clip: MotionClip; partner: MotionClip; animA: THREE.AnimationClip; animB: THREE.AnimationClip
   planA: BlendPlan | null; fps: number; unit: number; blend: NonNullable<ReturnType<typeof motionBlendInOf>>; sig: string
@@ -231,6 +259,7 @@ function computePlan(args: {
   const rig = rigInfo(ch)
   const zoneStart = clip.frameStart
   const frames = blend.frames
+  const zoneEnd = zoneStart + frames
   const skeletal = isSkeletal(clip) && isSkeletal(partner)
   const timeOf = (c: MotionClip, frame: number) => motionTimeSeconds(c, frame, fps, false, false)
   const sourceA = (frame: number): PoseSource => ({ animation: animA, time: timeOf(partner, frame), align: planA?.matrix ?? null })
@@ -284,17 +313,49 @@ function computePlan(args: {
       const flags = sampleFrames.map((_, i) => weights[i] < 0.5
         ? isFootPlanted(speedA[i], lowA[i], options)
         : isFootPlanted(speedB[i], lowB[i], options))
-      const ease = LOCK_EASE_SECONDS * fps
+      const shortEase = LOCK_EASE_SECONDS * fps
       for (const [first, last] of plantedRuns(flags)) {
         if (last - first < 1) continue
-        const end = Math.min(zoneStart + last, zoneStart + frames - ease)
-        if (end <= zoneStart + first) continue
-        locks.push({ side: foot.side, startFrame: zoneStart + first, endFrame: end, ease, hold: ankleMix[first].clone() })
+        const runStart = zoneStart + first
+        let end: number, ease: number
+        if (last >= count - 1 && frames > shortEase) {
+          // Chân còn chạm đất tới hết vùng trộn nhưng lệch chỗ giữa A và B: nhả smootherstep suốt phần còn lại của vùng.
+          end = Math.min(Math.max(zoneStart + LOCK_RELEASE_FRACTION * frames, runStart + LOCK_MIN_HOLD_FRAMES), zoneEnd - shortEase)
+          ease = zoneEnd - end
+        } else {
+          ease = shortEase
+          end = Math.min(zoneStart + last, zoneEnd - ease)
+        }
+        if (end <= runStart) continue
+        locks.push({ side: foot.side, startFrame: runStart, endFrame: end, ease, hold: ankleMix[first].clone() })
       }
     })
   }
 
+  // 3. Nhịp bước: chân trước của A (tại khung bắt đầu trộn) so với chân trước của B (đã lật/dời nhịp, đã căn).
+  let leadA: FootLead | null = null, leadB: FootLead | null = null
+  let suggested: number | null = null
+  const phase = motionPhaseOffsetSeconds(clip)
+  if (skeletal && rig.feet.length === 2) {
+    const a = leadOf(ch, rig, sourceLocal(ch, rig, sourceA(zoneStart)), unit)
+    const b = leadOf(ch, rig, sourceLocal(ch, rig, sourceB(zoneStart)), unit)
+    leadA = a?.lead ?? null
+    leadB = b?.lead ?? null
+    if (leadA) {
+      const window = Math.min(PHASE_SEARCH_SECONDS, motionSourceLengthSeconds(clip))
+      const steps = Math.floor(window / PHASE_SEARCH_STEP_SECONDS + 1e-9)
+      for (let i = 0; i <= steps; i++) {
+        const offset = Math.round(i * PHASE_SEARCH_STEP_SECONDS * 1000) / 1000
+        const test: MotionClip = { ...clip, playback: { ...clip.playback, blendIn: { ...blend, phaseOffsetSeconds: offset } } }
+        const pose = sourceLocal(ch, rig, { animation: animB, time: timeOf(test, zoneStart), align: null })
+        if (leadOf(ch, rig, pose, unit)?.lead === leadA) { suggested = offset; break }
+      }
+    }
+  }
+
   const status: BlendStatus = {
+    leadA, leadB, leadMismatch: !!leadA && !!leadB && leadA !== leadB,
+    mirror: !!blend.mirror, phaseOffsetSeconds: phase, suggestedPhaseSeconds: suggested,
     offsetMeters: alignment ? alignment.distance * unit : 0,
     yawDegrees: alignment ? alignment.yawDegrees : 0,
     aligned: !!alignment,
