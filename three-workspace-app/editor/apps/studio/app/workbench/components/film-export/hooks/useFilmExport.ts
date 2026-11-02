@@ -59,7 +59,9 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
     return true
   }
   const [viewportAspectOverride, setViewportAspectOverride] = useState<number | undefined>(undefined)
-  const viewportAspect = viewportAspectOverride ?? readFilmFrameAspect(project.extensions)
+  // B61: the shot camera is framed for the scene's frame (the 1:1 / 16:9 toggle beside "Xuất khẩu"); export follows it by default.
+  const sceneAspect = readFilmFrameAspect(project.extensions)
+  const viewportAspect = viewportAspectOverride ?? sceneAspect
   const [filmName, setFilmName] = useState(project.name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64) || 'project-film')
   const [busy, setBusy] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
@@ -326,7 +328,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
 
   return { setWorldAnchorInputValid, effectsPolicy, setEffectsPolicy, worldAnchor, setWorldAnchor, characters, props, content, setContent, propIds, setPropIds, seriesCharacterSelection, setSeriesCharacterSelection, seriesPropSelection, setSeriesPropSelection,
     sequences, characterIds, setCharacterIds, sequenceId, setSequenceId, startFrame, setStartFrame, endFrame, setEndFrame, applyInOutDefault, exportMode, setExportMode,
-    viewportAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
+    viewportAspect, sceneAspect, setViewportAspect: setViewportAspectOverride, filmName, setFilmName, busy, activeJobId, completedJob, status, error, exportFilm, cancel, saveAgain,
     preflight, checkingPreflight, canExport, rangeNotice, effectiveRange, sequenceEmpty, hasCamera: !!cameraNode, createCameraShot, creatingShot, shotSelection, chooseShot, shotRepairs, applyShotRepair,
     selectedSequence, matchingShotId, shotNotice, canSeries, actingCharacterIds, actingButUnselected, selectAllCharacters, clearCharacters, toggleCharacter, revealZip, repairCameraChain, hasPerspectiveCamera: project.scene.content.nodes.some((node) => node.camera?.projection === 'perspective'), undoCreateCameraShot, canUndoCreateCameraShot: createdShotRevision === project.revision }
 }

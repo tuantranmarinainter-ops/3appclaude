@@ -93,6 +93,12 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
             {ASPECT_PRESETS.map((item) => <option key={item.label} value={item.label}>{item.label} · {item.hint}</option>)}
             {!preset && <option value="custom">{aspectLabel(state.viewportAspect)}</option>}
           </select>
+          {Math.abs(state.viewportAspect - state.sceneAspect) < 1e-3
+            ? <small>{vi ? `Đúng khung camera của cảnh (${aspectLabel(state.sceneAspect)}).` : `Matches the scene camera frame (${aspectLabel(state.sceneAspect)}).`}</small>
+            : <span className="wb-film-warn" role="status">
+                {vi ? `Camera trong cảnh được dựng cho khung ${aspectLabel(state.sceneAspect)}. Xuất ${aspectLabel(state.viewportAspect)} sẽ thấy rộng/hẹp hơn lúc bạn dựng.` : `The scene camera is framed for ${aspectLabel(state.sceneAspect)}; exporting ${aspectLabel(state.viewportAspect)} changes what is visible.`}
+                {' '}<button type="button" onClick={() => state.setViewportAspect(undefined)}>{vi ? `Dùng khung của cảnh (${aspectLabel(state.sceneAspect)})` : `Use the scene frame (${aspectLabel(state.sceneAspect)})`}</button>
+              </span>}
         </label>
       </fieldset>
 
