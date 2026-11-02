@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -57,6 +58,53 @@ class NativeHeightFormTests(unittest.TestCase):
             self.assertAlmostEqual(5.828 * small["s"][1], 1.8, places=6)
             self.assertAlmostEqual(-1.993 * small["s"][1] + small["t"][1], 0, places=6)
             self.assertEqual((package / "assets/models/unified/height-test/model.bobj").read_bytes(), raw)
+
+    def camera_manifest(self):
+        # Anchored dolly 3 m, pan 45 degrees, 50 -> 35 mm; hard cut to moving look-at.
+        first, second = [], []
+        for tick in range(150):
+            u = tick / 149
+            first.append({"tick": tick, "x": 107.63 + 3 * u, "y": -58.72, "z": 210.34,
+                "yaw": 157.63 + 45 * u, "pitch": 6.65, "roll": -3 * u,
+                "verticalFovDegrees": math.degrees(2 * math.atan(24 / (2 * (50 - 15 * u))))})
+        for tick in range(10):
+            dx, dy, dz = tick / 10 - 2, -1, 4
+            second.append({"tick": tick, "x": 109.63, "y": -57.72, "z": 206.34,
+                "yaw": math.degrees(math.atan2(dz, dx)) + 90,
+                "pitch": -math.degrees(math.atan2(dy, math.hypot(dx, dz))), "roll": 0,
+                "verticalFovDegrees": 60})
+        return {"schemaVersion": 1, "targetVersion": "2.4", "projectId": "camera-test", "sourceRevision": 0,
+            "mode": "playback", "filmName": "camera-test", "durationTicks": 160, "models": [],
+            "actors": [{"characterId": "actor", "name": "Actor", "actorType": "male", "transformSamples": [
+                {"tick": tick, "x": 107.63 + tick / 10, "y": -58.72, "z": 210.34, "pitch": 0, "yaw": 0} for tick in (0, 160)]}],
+            "cameras": [{"id": "dolly-pan-zoom", "startTick": 0, "durationTicks": 150, "keyframes": first},
+                {"id": "look-at", "startTick": 150, "durationTicks": 10, "keyframes": second}]}
+
+    def test_moving_cameras_native_readback_has_no_placeholder_and_preserves_every_sample(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spec = root / "manifest.json"
+            spec.write_text(json.dumps(self.camera_manifest()), encoding="utf-8")
+            output = root / "exports"
+            output.mkdir()
+            result = run_film_worker(spec, output)
+            report = json.loads((Path(result["packageDirectory"]) / "export-report.json").read_text())
+            self.assertEqual(result["cameras"], 2)
+            self.assertEqual(report["cameraReadback"]["valuesCompared"], 160 * 7)
+            self.assertLessEqual(report["cameraReadback"]["maxAbsoluteError"], 1e-10)
+
+    def test_overlapping_shots_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            document = self.camera_manifest()
+            document["cameras"][1]["startTick"] = 149
+            spec = root / "manifest.json"
+            spec.write_text(json.dumps(document), encoding="utf-8")
+            output = root / "exports"
+            output.mkdir()
+            with self.assertRaisesRegex(RuntimeError, "Camera clips overlap"):
+                run_film_worker(spec, output)
+            self.assertEqual(list(output.iterdir()), [])
 
 
 @unittest.skipUnless(JAVA_AVAILABLE, "Set BBS_JAVA_HOME to a Java 17 JDK to run Film worker integration tests")

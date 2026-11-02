@@ -9,24 +9,15 @@ export function BbsInstallPanel({ state }: { state: ReturnType<typeof useBbsInst
   const vi = useStudioLocale() === 'vi'
   const count = (status: 'install' | 'skip' | 'conflict') => state.plan?.files.filter((file) => file.status === status).length ?? 0
   return (
-    <section className="wb-film-export" aria-labelledby="wb-bbs-install-title">
-      <h2 id="wb-bbs-install-title">{vi ? 'Cài vào BBS FS' : 'Install into BBS FS'}</h2>
+    <fieldset className="wb-film-step" disabled={state.busy}>
+      <legend id="wb-bbs-install-title">{vi ? 'Cài một gói ZIP có sẵn' : 'Install an existing ZIP'}</legend>
       <div className="wb-film-export-controls">
-        <label>{vi ? 'Thư mục game' : 'Game folder'}
-          <input value={state.gameDir} onChange={(event) => state.setGameDir(event.target.value)} placeholder="C:\\...\\BBS" disabled={state.busy} />
-        </label>
-        <div className="wb-scene-render-actions">
-          <button type="button" onClick={() => void state.loadWorlds()} disabled={state.busy || !state.gameDir.trim()}>{vi ? 'Đọc world' : 'Load worlds'}</button>
-          <label>{vi ? 'World' : 'World'}
-            <select value={state.worldName} onChange={(event) => state.setWorldName(event.target.value)} disabled={state.busy || !state.worlds.length}>
-              {state.worlds.map((world) => <option key={world.name} value={world.name}>{world.name}</option>)}
-            </select>
-          </label>
-        </div>
         <label>{vi ? 'Gói ZIP đã xuất' : 'Exported ZIP package'}
-          <input type="file" accept=".zip,application/zip" onChange={(event) => { state.setPackageFile(event.target.files?.[0] ?? null) }} disabled={state.busy} />
+          <input type="file" accept=".zip,application/zip" onChange={(event) => { state.setPackageFile(event.target.files?.[0] ?? null) }} />
         </label>
-        <small>{vi ? 'Xem trước chỉ đọc ZIP. Chỉ nút Cài mới ghi file vào game.' : 'Preview only reads the ZIP. Files are written only after you choose Install.'}</small>
+        <small>{vi
+          ? 'Gói ZIP là cái hộp đựng phim đã làm (gồm phim, nhân vật, hiệu ứng). Bấm Xem trước để xem trong hộp có gì — chưa đụng vào game. Bấm Cài thì app mới chép vào game (vào world đã chọn ở bước 1). Muốn bỏ thì bấm Gỡ.'
+          : 'The ZIP is a box holding the film, characters and effects. Preview shows what is inside without touching the game; Install copies it into the world chosen in step 1; Uninstall removes it.'}</small>
         <div className="wb-scene-render-actions">
           <button type="button" onClick={() => void state.preview()} disabled={state.busy || !state.packageFile || !state.worldName}>{state.busy ? (vi ? 'Đang xử lý…' : 'Working…') : (vi ? 'Xem trước' : 'Preview')}</button>
           {state.plan && <button type="button" onClick={() => void state.apply()} disabled={state.busy || count('install') === 0}>{vi ? `Cài ${count('install')} file` : `Install ${count('install')} files`}</button>}
@@ -41,13 +32,13 @@ export function BbsInstallPanel({ state }: { state: ReturnType<typeof useBbsInst
           </li>)}</ul>
         </div>}
         {!!state.installs.length && <div>
-          <h3>{vi ? 'Đã cài theo nhật ký' : 'Recorded installs'}</h3>
+          <h3>{vi ? 'Phim đã cài vào game này' : 'Films installed in this game'}</h3>
           <ul>{state.installs.map((item) => <li key={item.installId}>
             {item.packageName} · {item.files} {vi ? 'file' : 'files'} · {new Date(item.installedAt).toLocaleString()}
-            <button type="button" onClick={() => void state.uninstall(item.installId)} disabled={state.busy}>{vi ? 'Gỡ theo nhật ký' : 'Uninstall recorded files'}</button>
+            <button type="button" onClick={() => void state.uninstall(item.installId)} disabled={state.busy}>{vi ? 'Gỡ' : 'Uninstall'}</button>
           </li>)}</ul>
         </div>}
       </div>
-    </section>
+    </fieldset>
   )
 }

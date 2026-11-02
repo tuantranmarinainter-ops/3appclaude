@@ -130,6 +130,8 @@ export interface HostAdapter<TDocument = unknown> {
   browseLibraryAction?(documentId: string, characterNodeId: string): Promise<void>
   /** Host-owned "Gán animation" panel (N1): assign a library Action to the selected node without creating a character. */
   assignAnimation?(documentId: string, characterNodeId: string | null): Promise<void>
+  /** Host debug recorder panel: records the user's actions and app errors to a log for troubleshooting. */
+  openDebug?(): void
   /** 按需拉一条姿势 JSON。包内不 fetch。 */
   loadPoseAsset?(modelUrl: string): Promise<PoseBonesPayload | null>
   /** 目录未加载时，按 pose id 取 `a3d_pose_<id>` 再拉 JSON。 */

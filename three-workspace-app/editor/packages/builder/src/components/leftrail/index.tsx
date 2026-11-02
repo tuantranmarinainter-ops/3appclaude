@@ -56,6 +56,7 @@ export function LeftRail(): ReactElement | null {
             label: t('library.assignAnimation'),
             onClick: () => { void adapter.assignAnimation?.(documentId, doc ? selectedTimelineNodeId(doc, selection) : null).catch(() => undefined) },
           } : undefined}
+          debugAction={adapter.openDebug ? { label: t('library.debug'), onClick: () => adapter.openDebug?.() } : undefined}
         />
         <div
           ref={contentRef}

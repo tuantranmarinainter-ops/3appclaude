@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
 import { cx } from '../common/cx'
 import { useSnapFrame } from './hooks/useSnapFrame'
+import { duplicateClipGesture } from './utils/clipGestures'
 import { clipRefsOf, nextClipSelection } from '../../stores/types'
+import { clampMenuPosition, emitTimelineNotice } from './utils/clipMenu'
 
 export function ClipBlock({
   kind,
@@ -35,7 +37,27 @@ export function ClipBlock({
   onSelect?: () => void
 }) {
   const t = useT()
-  const { useStore } = useDirector()
+  const { useStore, stage } = useDirector()
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [duplicateFrame, setDuplicateFrame] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!menu || !el) return
+    const rect = el.getBoundingClientRect()
+    const next = clampMenuPosition(menu.x, menu.y, { width: rect.width, height: rect.height }, { width: window.innerWidth, height: window.innerHeight })
+    el.style.left = `${next.x}px`
+    el.style.top = `${next.y}px`
+  }, [menu])
+  useEffect(() => {
+    if (!menu) return
+    const dismiss = () => setMenu(null)
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') dismiss() }
+    window.addEventListener('pointerdown', dismiss)
+    window.addEventListener('keydown', key)
+    window.addEventListener('blur', dismiss)
+    return () => { window.removeEventListener('pointerdown', dismiss); window.removeEventListener('keydown', key); window.removeEventListener('blur', dismiss) }
+  }, [menu])
   const snap = useSnapFrame(pxPerFrame)
   const [resizing, setResizing] = useState(false)
   const [moving, setMoving] = useState(false)
@@ -57,7 +79,7 @@ export function ClipBlock({
   const displayLeft = draggingThis ? left + (movePreview.pointerFrame - frameStart) * pxPerFrame : previewLeft
   const displayWidth = Math.max(3, (activeEnd - activeStart) * pxPerFrame)
   const dragMove = useRef<{
-    startX: number; origFrame: number; pointerId: number; moved: boolean
+    startX: number; origFrame: number; pointerId: number; moved: boolean; duplicate: boolean
     scroll: HTMLElement | null; scrollLeft: number; scale: number
   } | null>(null)
 
@@ -67,6 +89,7 @@ export function ClipBlock({
       if (dragMove.current) {
         dragMove.current = null
         setMoving(false)
+        setDuplicateFrame(null)
         s.cancelClipMove()
       }
       if (dragEdge.current) {
@@ -151,6 +174,42 @@ export function ClipBlock({
 
   return (
     <>
+    {menu && <div ref={menuRef} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 10000, background: 'var(--t3d-panel-bg, #222)', padding: 6 }}
+      onPointerDown={(e) => e.stopPropagation()} onMouseLeave={() => setMenu(null)}>
+      {(() => {
+        const frame = Math.round(stage.currentFrame)
+        const isMotion = kind === 'motion'
+        const items: { label: string; action: () => void; disabled?: boolean }[] = [
+          { label: 'Sao chép', action: () => useStore.getState().copyTimelineClip(kind, clipId), disabled: false },
+          { label: 'Dán tại đầu phát', action: () => useStore.getState().pasteTimelineClip(stage.currentFrame) },
+          {
+            label: 'Nhân bản',
+            action: () => {
+              const result = useStore.getState().duplicateTimelineClipToGap(kind, clipId)
+              if (result.error === 'no-gap') emitTimelineNotice(t('timeline.clipNoGap'))
+            },
+          },
+          {
+            label: t('timeline.clipSplit'),
+            action: () => { useStore.getState().splitMotionClipAt(clipId, frame) },
+            disabled: !isMotion || frame <= frameStart || frame >= frameEnd,
+          },
+          {
+            label: t('timeline.clipExtend'),
+            action: () => {
+              const result = useStore.getState().extendMotionClipToShotEnd(clipId)
+              if (result.error === 'not-applicable') emitTimelineNotice(t('timeline.clipExtendNoRoom'))
+            },
+            disabled: !isMotion,
+          },
+          { label: 'Xoá', action: () => { const s = useStore.getState(); s.select({ kind: 'clip', clipType: kind, clipId }); s.deleteSelection() } },
+        ]
+        return items.map((item) => <button key={item.label} type="button" role="menuitem" disabled={item.disabled || (writeLocked && item.label !== 'Sao chép')}
+          style={{ display: 'block' }} onClick={() => { item.action(); setMenu(null) }}>{item.label}</button>)
+      })()}
+    </div>}
+    {duplicateFrame !== null && <div className="t3d-timeline-clip t3d-timeline-clip-drop-preview" aria-hidden="true"
+      style={{ left: left + (duplicateFrame - frameStart) * pxPerFrame, width: displayWidth }}>{label}</div>}
     {draggingThis && !ghost && <div
       className="t3d-timeline-clip t3d-timeline-clip-drop-preview"
       style={{ left: previewLeft, width: displayWidth }}
@@ -177,24 +236,27 @@ export function ClipBlock({
       data-preview-end={previewRange?.frameEnd}
       data-dragging={moving || undefined}
       aria-label={ghost ? undefined : label}
+      onContextMenu={ghost ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }) }}
       onClick={ghost ? undefined : (e) => e.stopPropagation()}
       onPointerDown={ghost ? undefined : (e) => {
         if (e.button !== 0 || (e.target as HTMLElement).closest('.t3d-timeline-clip-handle')) return
         e.preventDefault()
         e.stopPropagation()
         const s = useStore.getState()
-        const additive = e.shiftKey || e.ctrlKey || e.metaKey
+        e.currentTarget.closest<HTMLElement>('.t3d-timeline')?.focus()
+        const duplicate = duplicateClipGesture(e, navigator.platform)
+        const additive = e.shiftKey || (!duplicate && (e.ctrlKey || e.metaKey))
         const next = nextClipSelection(s.selection, { clipType: kind, clipId }, additive)
         if (next !== s.selection) s.select(next)
         if (additive || writeLocked) return
         e.currentTarget.setPointerCapture(e.pointerId)
         const scroll = e.currentTarget.closest<HTMLElement>('.t3d-timeline-scroll')
         dragMove.current = {
-          startX: e.clientX, origFrame: frameStart, pointerId: e.pointerId, moved: false,
+          startX: e.clientX, origFrame: frameStart, pointerId: e.pointerId, moved: false, duplicate,
           scroll, scrollLeft: scroll?.scrollLeft ?? 0, scale: pxPerFrame,
         }
         setMoving(true)
-        s.beginClipMove()
+        if (!duplicate) s.beginClipMove()
       }}
       onPointerMove={ghost ? undefined : (e) => {
         const d = dragMove.current
@@ -202,7 +264,8 @@ export function ClipBlock({
         const delta = e.clientX - d.startX + (d.scroll?.scrollLeft ?? 0) - d.scrollLeft
         if (!d.moved && Math.abs(delta) < 3) return
         d.moved = true
-        useStore.getState().moveClip(kind, clipId, snapMoveStart(d.origFrame + delta / d.scale))
+        if (d.duplicate) setDuplicateFrame(Math.max(0, Math.round(snapMoveStart(d.origFrame + delta / d.scale))))
+        else useStore.getState().moveClip(kind, clipId, snapMoveStart(d.origFrame + delta / d.scale))
       }}
       onPointerUp={ghost ? undefined : (e) => {
         const d = dragMove.current
@@ -211,10 +274,11 @@ export function ClipBlock({
         const s = useStore.getState()
         if (d.moved) {
           const delta = e.clientX - d.startX + (d.scroll?.scrollLeft ?? 0) - d.scrollLeft
-          s.moveClip(kind, clipId, snapMoveStart(d.origFrame + delta / d.scale))
-          s.endClipMove()
+          if (d.duplicate) s.duplicateTimelineClip(kind, clipId, snapMoveStart(d.origFrame + delta / d.scale))
+          else { s.moveClip(kind, clipId, snapMoveStart(d.origFrame + delta / d.scale)); s.endClipMove() }
         } else s.cancelClipMove()
         setMoving(false)
+        setDuplicateFrame(null)
         if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
       }}
       onPointerCancel={() => {
@@ -225,6 +289,7 @@ export function ClipBlock({
         if (!dragMove.current) return
         dragMove.current = null
         setMoving(false)
+        setDuplicateFrame(null)
         useStore.getState().cancelClipMove()
       }}
       onLostPointerCapture={() => {
@@ -235,6 +300,7 @@ export function ClipBlock({
         if (!dragMove.current) return
         dragMove.current = null
         setMoving(false)
+        setDuplicateFrame(null)
         useStore.getState().cancelClipMove()
       }}
     >

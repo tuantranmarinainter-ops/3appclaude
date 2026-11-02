@@ -1280,3 +1280,16 @@
   font-size: 11px;
   line-height: 1.5;
 }
+
+.t3d-film-snap-hint {
+  position: fixed;
+  z-index: 10000;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--t3d-bg-header, #222);
+  border: 1px solid var(--t3d-sheet-accent, #e6a23c);
+  color: var(--t3d-text, #eee);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}

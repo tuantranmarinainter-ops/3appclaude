@@ -153,10 +153,21 @@ export async function stageOriginalLibraryBobjProfile(snapshot: UnifiedProject, 
       }
       continue
     }
+    if (motion && snapshot.extensions?.libraryMotionConversions?.[motion.assetId]) {
+      const converted = await resolveUnifiedAssetFile(snapshot, motion.assetId, 'native-bobj')
+      sidecars.push(converted.bytes)
+      continue
+    }
     let selected
     try { selected = getAction({ root, actionUuid }) } catch { throw new TypeError(`Character ${model.characterId} action is missing from the library: ${actionUuid}`) }
-    const sidecar = path.join(path.dirname(selected.glbPath), 'anim.original.bbs.bobj')
-    try { sidecars.push(await readFile(sidecar)) }
+    const sidecar = path.join(path.dirname(selected.glbPath), character.baseModel.rig === 'minecraft20' ? 'anim.bobj' : 'anim.original.bbs.bobj')
+    try {
+      const bytes = await readFile(sidecar)
+      if (character.baseModel.rig === 'minecraft20') {
+        if (selected.rig !== 'minecraft20' || /^(arm_bone|arm_name|o|v|vw|f)\s/m.test(bytes.toString('utf8'))) throw new TypeError('Minecraft Action sidecar must contain only same-rig animation data')
+        sidecars.push(Buffer.concat([baseBytes, Buffer.from('\n'), bytes]))
+      } else sidecars.push(bytes)
+    }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; if (character.baseModel.rig === 'verity') throw new TypeError(`Character ${model.characterId} action lacks its original-rig BOBJ: ${actionUuid}`) }
   }
   if (sidecars.length) bobj = mergeOriginalBobjActions(baseBytes, sidecars).toString('utf8')
@@ -983,6 +994,14 @@ export async function cancelUnifiedJob(jobId: string, projectId: string): Promis
   runtime.controller.abort()
   await runtime.done
   return { state: record.state, committed: false }
+}
+
+/** Absolute path of a succeeded job's ZIP, for "open containing folder" (B55). Verified like a download first. */
+export async function unifiedJobZipPath(jobId: string, projectId: string): Promise<string | null> {
+  const record = await readRecord(projectId, jobId)
+  const file = record?.state === 'succeeded' ? record.result?.files.find((item) => item.mimeType === 'application/zip') : undefined
+  if (!record || !file || !(await readUnifiedJobFile(jobId, projectId, file.id))) return null
+  return path.resolve(await realpath(jobRoot(projectId, jobId)), ...file.path.split('/'))
 }
 
 export async function readUnifiedJobFile(jobId: string, projectId: string, fileId: string): Promise<{ bytes: Buffer; name: string; mimeType: string } | null> {

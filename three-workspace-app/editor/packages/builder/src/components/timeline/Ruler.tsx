@@ -13,6 +13,7 @@ export function Ruler({
   ariaLabel,
   rulerRef,
   scrubHandlers,
+  top = 0,
 }: {
   frameStart: number
   frameEnd: number
@@ -21,7 +22,9 @@ export function Ruler({
   pxPerFrame: number
   currentFrame: number
   ariaLabel: string
-  rulerRef: { current: HTMLDivElement | null }
+  rulerRef?: { current: HTMLDivElement | null }
+  /** Sticky offset when several rulers are stacked. */
+  top?: number
   scrubHandlers: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void
     onPointerMove: (event: PointerEvent<HTMLElement>) => void
@@ -48,7 +51,7 @@ export function Ruler({
   })
 
   return (
-    <div className="t3d-timeline-row t3d-timeline-ruler-row">
+    <div className="t3d-timeline-row t3d-timeline-ruler-row" style={{ top }} data-ruler-unit={unit}>
       <div className="t3d-timeline-name t3d-timeline-ruler-name" />
       <div
         ref={rulerRef}

@@ -2,6 +2,7 @@ node_modules
 dist
 .next
 .next-dev
+.next-dev-*
 .next-path-fix
 .next-mock
 .next-unified-smoke
