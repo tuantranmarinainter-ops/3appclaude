@@ -99,7 +99,7 @@ export async function PATCH(request: Request): Promise<Response> {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number; reconvert?: boolean }
+    const body = await request.json() as { operation?: string; actionUuid?: string; toCharId?: string; projectId?: string; expectedRevision?: number; charId?: string; existingNodePolicy?: string; nodeIds?: string[]; nodeId?: string; frameStart?: number; reconvert?: boolean; replaceClipId?: string }
     if (body.operation === 'update-scene-heights') {
       if (!body.projectId || !Number.isSafeInteger(body.expectedRevision)) return Response.json({ error: 'projectId và expectedRevision là bắt buộc' }, { status: 400 })
       return Response.json(await updateLibraryCharacterHeights(body.projectId, body.expectedRevision!))
@@ -116,7 +116,8 @@ export async function POST(request: Request): Promise<Response> {
     if (body.operation === 'place-for-node') {
       if (!body.projectId || !body.actionUuid || !body.nodeId || body.frameStart !== undefined && (!Number.isSafeInteger(body.frameStart) || (body.frameStart as number) < 0)) return Response.json({ error: 'projectId, actionUuid, nodeId and an optional nonnegative frameStart are required' }, { status: 400 })
       if (body.reconvert !== undefined && typeof body.reconvert !== 'boolean') return Response.json({ error: 'reconvert must be boolean' }, { status: 400 })
-      return Response.json(await placeLibraryActionForNode({ projectId: body.projectId, actionUuid: body.actionUuid, nodeId: body.nodeId, ...(body.reconvert ? { reconvert: true } : {}), ...(body.frameStart !== undefined ? { frameStart: body.frameStart } : {}) }))
+      if (body.replaceClipId !== undefined && (typeof body.replaceClipId !== 'string' || !body.replaceClipId)) return Response.json({ error: 'replaceClipId phải là chuỗi' }, { status: 400 })
+      return Response.json(await placeLibraryActionForNode({ projectId: body.projectId, actionUuid: body.actionUuid, nodeId: body.nodeId, ...(body.replaceClipId ? { replaceClipId: body.replaceClipId } : {}), ...(body.reconvert ? { reconvert: true } : {}), ...(body.frameStart !== undefined ? { frameStart: body.frameStart } : {}) }))
     }
     if (body.operation === 'link-nodes') {
       if (!body.projectId || !body.charId || !Number.isSafeInteger(body.expectedRevision) || !Array.isArray(body.nodeIds) || !body.nodeIds.length || body.nodeIds.some((id) => typeof id !== 'string')) return Response.json({ error: 'projectId, expectedRevision, charId and nodeIds are required' }, { status: 400 })

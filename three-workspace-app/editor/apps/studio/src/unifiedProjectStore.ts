@@ -996,6 +996,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
   let assignmentPlacement: { characterId: string; frameStart: number | null; jobId: string; provenance: Record<string, unknown> } | null = null
   let conversionImport: { assetId: string; recipe: LibraryMotionConversionRecipe } | null = null
   let libraryPlacement: { characterId: string; motionId: string; frameStart: number; name: string; duration: number; nativeValidated?: boolean } | null = null
+  let libraryReplaceClipId: string | null = null
   let libraryLink: LibraryLinkPlan | null = null
   let stagedAssetRelink: { upload: StagedAssetUpload; asset: UnifiedProject['assets'][keyof UnifiedProject['assets']] } | null = null
   let characterAddition: { characterId: string; character: UnifiedProject['characters'][string]; scene: UnifiedProject['scene'] } | null = null
@@ -1850,10 +1851,15 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     }
     }
   } else if (envelope.command === 'library.place') {
-    const { actionUuid, characterId, frameStart: requestedFrameStart, reconvert } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart', 'reconvert'].includes(key)) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
+    const { actionUuid, characterId, frameStart: requestedFrameStart, reconvert, replaceClipId } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['actionUuid', 'characterId', 'frameStart', 'reconvert', 'replaceClipId'].includes(key)) || replaceClipId !== undefined && (typeof replaceClipId !== 'string' || !replaceClipId) || typeof actionUuid !== 'string' || !LIBRARY_ACTION_UUID.test(actionUuid) || typeof characterId !== 'string' || !UUID.test(characterId) ||
       reconvert !== undefined && typeof reconvert !== 'boolean' || requestedFrameStart !== undefined && (!Number.isSafeInteger(requestedFrameStart) || (requestedFrameStart as number) < 0)) {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'library.place requires an Action UUID, Character UUID and an optional nonnegative frameStart', 400)
+    }
+    if (typeof replaceClipId === 'string') {
+      const replaced = project.scene.content.timeline.animation.motionClips.find((clip) => clip.id === replaceClipId)
+      if (!replaced || project.characters[characterId]?.nodeId !== replaced.target.nodeId) throw new UnifiedStoreError('NOT_FOUND', 'Clip cần thay không còn trong cảnh hoặc không thuộc nhân vật này', 404)
+      libraryReplaceClipId = replaceClipId
     }
     const character = project.characters[characterId]
     const targetProfile = character && project.skeletons[character.skeletonId]
@@ -2365,7 +2371,10 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     // shortcut: FBX clips require an identical rig; enable different rigs after V9.12 bake parity is verified.
     const sourceProfile = project.skeletons[motion.skeletonId]
     const targetProfile = project.skeletons[character.skeletonId]
-    if (!sourceProfile || !targetProfile || (sourceProfile.fingerprint !== targetProfile.fingerprint && !(isMixamo65Topology(sourceProfile.bones) && isMixamo65Topology(targetProfile.bones))) || sourceProfile.metersPerUnit !== targetProfile.metersPerUnit) {
+    // B6: editing a clip whose motion/character pair is unchanged must keep working after library.link swapped the Character skeleton.
+    const existingBinding = edit ? project.bindings[edit.binding.clipId] : undefined
+    const unchangedPair = !!existingBinding && existingBinding.motionId === motionId && existingBinding.characterId === characterId
+    if (!sourceProfile || !targetProfile || (!unchangedPair && (sourceProfile.fingerprint !== targetProfile.fingerprint && !(isMixamo65Topology(sourceProfile.bones) && isMixamo65Topology(targetProfile.bones)) || sourceProfile.metersPerUnit !== targetProfile.metersPerUnit))) {
       throw new UnifiedStoreError('PROFILE_MISMATCH', 'Timeline placement requires the same skeleton fingerprint and unit; retarget first for a different rig', 422)
     }
     const asset = project.assets[motion.assetId]
@@ -2375,7 +2384,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     const gltfMotion = asset?.source.mediaType === 'model/gltf-binary' || asset?.source.mediaType === 'model/gltf+json'
     if (!asset || !['model', 'motion'].includes(asset.kind) || (!nativeMotion && (!['application/vnd.autodesk.fbx', 'model/gltf-binary', 'model/gltf+json'].includes(asset.source.mediaType) || !isRecord(metadata) ||
       !Number.isSafeInteger(metadata.clipIndex) || (metadata.clipIndex as number) < 0 || typeof metadata.name !== 'string' || !metadata.name.trim() ||
-      gltfMotion && (!Array.isArray(metadata.boneNames) || metadata.boneNames.some((name) => typeof name !== 'string' || !targetProfile?.bones.some((bone) => canonicalJointName(bone.name) === canonicalJointName(name))))))) {
+      gltfMotion && !unchangedPair && (!Array.isArray(metadata.boneNames) || metadata.boneNames.some((name) => typeof name !== 'string' || !targetProfile?.bones.some((bone) => canonicalJointName(bone.name) === canonicalJointName(name))))))) {
       throw new UnifiedStoreError('UNSUPPORTED_CAPABILITY', 'Motion has no supported FBX/glTF clip or its channels do not match the selected Character profile', 422)
     }
     const scene = structuredClone(project.scene)
@@ -2858,18 +2867,34 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
           if (!motion) throw new UnifiedStoreError('ASSET_MISSING', 'Action đã nhập nhưng Motion của nó không có trong project; không thể gán cho nhân vật', 422)
           if (!character || !profile || !(libraryPlacement.nativeValidated ? next.skeletons[motion.skeletonId] && sameRigTopology(next.skeletons[motion.skeletonId] as NonNullable<ImportedAsset['skeleton']>, profile) : isMixamo65Topology(profile.bones) && isMixamo65Topology(next.skeletons[motion.skeletonId]?.bones ?? []))) throw new UnifiedStoreError('PROFILE_MISMATCH', 'Action không tương thích với rig của nhân vật đã chọn', 422)
           const scene = structuredClone(next.scene)
+          const replacedClip = libraryReplaceClipId ? scene.content.timeline.animation.motionClips.find((clip) => clip.id === libraryReplaceClipId) : undefined
+          if (libraryReplaceClipId && !replacedClip) throw new UnifiedStoreError('NOT_FOUND', 'Clip cần thay không còn trong cảnh', 404)
+          if (replacedClip) {
+            // B7: replace in one revision — the old clip and its binding go, the new Action takes its start frame.
+            scene.content.timeline.animation.motionClips = scene.content.timeline.animation.motionClips.filter((clip) => clip.id !== replacedClip.id)
+            delete next.bindings[replacedClip.id]
+            libraryPlacement.frameStart = replacedClip.frameStart
+            changedIds.push(`motion-clip:${replacedClip.id}`)
+          }
           const priorClips = scene.content.timeline.animation.motionClips.filter((clip) => clip.target.nodeId === character.nodeId)
           // N1: an explicit frameStart places the clip at the shot start / current frame the user
           // picked; without one the clip is appended after the character's last clip as before.
           const frameStart = libraryPlacement.frameStart >= 0 ? libraryPlacement.frameStart : Math.max(0, ...priorClips.map((clip) => clip.frameEnd + 1))
           const durationFrames = Math.max(1, Math.round(motion.durationSeconds * scene.content.timeline.fps))
-          const frameEnd = frameStart + durationFrames - 1
+          // A replacement keeps the old clip's span so neighbouring clips never shift or collide.
+          const frameEnd = replacedClip ? replacedClip.frameEnd : frameStart + durationFrames - 1
           if (!Number.isSafeInteger(frameEnd)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Action placement exceeds the supported timeline range', 400)
-          if (libraryPlacement.frameStart >= 0 && priorClips.some((clip) => clip.frameStart <= frameEnd && clip.frameEnd >= frameStart)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
+          if (!replacedClip && libraryPlacement.frameStart >= 0 && priorClips.some((clip) => clip.frameStart <= frameEnd && clip.frameEnd >= frameStart)) throw new UnifiedStoreError('VALIDATION_FAILED', 'Khung bắt đầu đã có clip khác của nhân vật này; hãy chọn khung trống hoặc đầu shot khác', 400)
           const metadata = next.extensions.retargetMotionMetadata?.[motion.id] as { clipIndex?: number } | undefined
           const url = `/api/unified/projects/${id}/assets/${encodeURIComponent(motion.assetId)}/source?format=glb`
+          const spans = new Map(priorClips.map((item) => [item.id, [item.frameStart, item.frameEnd] as const]))
           const clip = appendMotionClip(scene, { type: 'add-motion', libraryId: motion.id, name: libraryPlacement.name, fbxKey: url, targetNodeId: character.nodeId, frameStart, durationSeconds: motion.durationSeconds })
           clip.sourceDuration = motion.durationSeconds; clip.frameEnd = frameEnd
+          // appendMotionClip ripples overlapped clips by the full Action length; a replacement must leave neighbours where they were.
+          if (replacedClip) scene.content.timeline.animation.motionClips = scene.content.timeline.animation.motionClips.map((item) => {
+            const span = spans.get(item.id)
+            return span && (item.frameStart !== span[0] || item.frameEnd !== span[1]) ? { ...item, frameStart: span[0], frameEnd: span[1] } : item
+          })
           clip.playback.speed = 1; clip.playback.loop = false
           clip.motion.speed = 1; clip.motion.loop = false; clip.motion.time = 0; clip.motion.sourceLengthSeconds = motion.durationSeconds
           clip.motion.reverse = false; clip.motion.clipIndex = metadata?.clipIndex ?? 0; clip.motion.sourceRig = profile.family

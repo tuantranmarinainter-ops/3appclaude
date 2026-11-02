@@ -1,36 +1,62 @@
-import assert from 'node:assert/strict'
-import { test } from 'vitest'
-import { motionTimeSeconds } from '../clips'
+import { describe, expect, it } from 'vitest'
+import type { MotionClip } from '../../contract/types'
+import { motionClipOverrunSeconds, motionExtendMode, motionTimeSeconds } from '../clips'
 
-function clip({ loop = false, reverse = false }: { loop?: boolean; reverse?: boolean } = {}) {
+const FPS = 30
+
+// 1 giây động tác gốc, clip 3 giây (frame 0..89).
+function clip(playback: Partial<MotionClip['playback']> = {}, motion: Partial<MotionClip['motion']> = {}): MotionClip {
   return {
-    id: 'clip', source: 'library', sourceDuration: 5, frameStart: 10, frameEnd: 100,
-    target: { type: 'character', nodeId: 'actor' },
-    playback: { version: 1, speed: 2, loop, loopMode: 'repeat' },
-    motion: { assetId: 'motion', name: 'Walk', source: 'library', sourceRig: 'mixamorig', url: 'walk.fbx', inPlace: true,
-      loop, speed: 2, time: 1, sourceLengthSeconds: 2, reverse },
+    id: 'c1',
+    source: 'x',
+    sourceDuration: 1,
+    frameStart: 0,
+    frameEnd: 89,
+    target: { type: 'node', nodeId: 'n1' },
+    playback: { version: 1, speed: 1, loop: false, loopMode: 'repeat', ...playback },
+    motion: { assetId: 'a', name: 'a', source: 's', sourceRig: 'r', url: 'u', inPlace: false, loop: false, speed: 1, time: 0, ...motion },
   }
 }
 
-test('motion time respects a trimmed source window and playback speed', () => {
-  const source = clip()
-  assert.equal(motionTimeSeconds(source, 10, 30), 1)
-  assert.equal(motionTimeSeconds(source, 25, 30), 2)
-  assert.equal(motionTimeSeconds(source, 40, 30), 3)
-  assert.equal(motionTimeSeconds(source, 70, 30), 3)
-})
+describe('B9 motionTimeSeconds extend modes', () => {
+  it('old documents: loop=false holds the last frame, loop=true repeats', () => {
+    expect(motionExtendMode(clip().playback)).toBe('hold')
+    expect(motionExtendMode(clip({ loop: true }).playback)).toBe('loop')
+    expect(motionTimeSeconds(clip(), 15, FPS)).toBeCloseTo(0.5)
+    expect(motionTimeSeconds(clip(), 60, FPS)).toBeCloseTo(1)
+    expect(motionTimeSeconds(clip({ loop: true }), 45, FPS)).toBeCloseTo(0.5)
+  })
 
-test('motion time loops and reverses within the trimmed source window', () => {
-  const forward = clip({ loop: true })
-  assert.equal(motionTimeSeconds(forward, 55, 30), 2)
-  const reverse = clip({ reverse: true })
-  assert.equal(motionTimeSeconds(reverse, 10, 30), 3)
-  assert.equal(motionTimeSeconds(reverse, 25, 30), 2)
-  assert.equal(motionTimeSeconds(reverse, 40, 30), 1)
-  assert.equal(motionTimeSeconds(clip({ loop: true, reverse: true }), 55, 30), 2)
-  const fullReverse = clip({ loop: true, reverse: true })
-  fullReverse.sourceDuration = 2
-  fullReverse.motion.time = 0
-  fullReverse.motion.sourceLengthSeconds = 2
-  assert.ok(motionTimeSeconds(fullReverse, 10, 30) < fullReverse.sourceDuration)
+  it('stretch fills the whole clip', () => {
+    const c = clip({ loopMode: 'stretch' })
+    expect(motionExtendMode(c.playback)).toBe('stretch')
+    expect(motionTimeSeconds(c, 0, FPS)).toBeCloseTo(0)
+    expect(motionTimeSeconds(c, 45, FPS)).toBeCloseTo(0.5)
+    expect(motionTimeSeconds(c, 89, FPS)).toBeCloseTo(89 / 90)
+  })
+
+  it('stretch honours the trimmed source range and reverse', () => {
+    const c = clip({ loopMode: 'stretch' }, { time: 0.2, sourceLengthSeconds: 0.5 })
+    expect(motionTimeSeconds(c, 45, FPS)).toBeCloseTo(0.45)
+    const r = clip({ loopMode: 'stretch' }, { time: 0.2, sourceLengthSeconds: 0.5, reverse: true })
+    expect(motionTimeSeconds(r, 0, FPS)).toBeCloseTo(0.7)
+  })
+
+  it('ping-pong bounces back and forth', () => {
+    const c = clip({ loop: true, loopMode: 'ping-pong' })
+    expect(motionTimeSeconds(c, 15, FPS)).toBeCloseTo(0.5)
+    expect(motionTimeSeconds(c, 45, FPS)).toBeCloseTo(0.5)
+    expect(motionTimeSeconds(c, 60, FPS)).toBeCloseTo(0)
+    expect(motionTimeSeconds(c, 75, FPS)).toBeCloseTo(0.5)
+  })
+
+  it('explicit extendMode wins over the legacy flags', () => {
+    expect(motionExtendMode({ loop: true, loopMode: 'repeat', extendMode: 'hold' })).toBe('hold')
+  })
+
+  it('reports how much longer the clip is than its source', () => {
+    expect(motionClipOverrunSeconds(clip(), FPS)).toBeCloseTo(2)
+    expect(motionClipOverrunSeconds(clip({ speed: 2 }), FPS)).toBeCloseTo(2.5)
+    expect(motionClipOverrunSeconds({ ...clip(), frameEnd: 14 }, FPS)).toBe(0)
+  })
 })

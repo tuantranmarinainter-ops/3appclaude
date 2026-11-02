@@ -839,6 +839,21 @@
   display: flex;
 }
 
+/* B3: dòng trong nhóm Hậu cảnh luôn hiện nút mắt; nút khóa chỉ hiện khi rê chuột / chọn. */
+.t3d-leftrail-tree-flags.is-eye-always {
+  display: flex;
+}
+
+.t3d-leftrail-tree-flags.is-eye-always .t3d-leftrail-tree-flag-lock {
+  display: none;
+}
+
+.t3d-leftrail-tree-row:hover .t3d-leftrail-tree-flags.is-eye-always .t3d-leftrail-tree-flag-lock,
+.t3d-leftrail-tree-row:focus-within .t3d-leftrail-tree-flags.is-eye-always .t3d-leftrail-tree-flag-lock,
+.t3d-leftrail-tree-row-active .t3d-leftrail-tree-flags.is-eye-always .t3d-leftrail-tree-flag-lock {
+  display: flex;
+}
+
 .t3d-leftrail-tree-flags button svg {
   flex: none;
   width: 14px;
@@ -925,4 +940,12 @@
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+/* B9: gợi ý một dòng dưới lựa chọn Lặp / Giữ khung cuối / Giãn chậm. */
+.t3d-motion-extend-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--t3d-text-muted);
 }

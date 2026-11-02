@@ -37,12 +37,14 @@ export function ObjectTree(): ReactElement {
     backgroundHidden: backgroundViewHidden,
   })
   const backgroundCount = nodes.filter((node) => isBackgroundNode(node)).length
+  // B3: mọi dòng nằm sau tiêu đề "Hậu cảnh" luôn thấy nút mắt (không chờ rê chuột).
+  const backgroundHeaderIndex = rows.findIndex((row) => row.type === 'background')
 
   return (
     <div className="t3d-leftrail-object">
       <SearchField value={query} placeholder={t('library.searchObjects')} onChange={setQuery} />
       <div className="t3d-leftrail-tree">
-        {rows.map((row) => row.type === 'background' ? (
+        {rows.map((row, rowIndex) => row.type === 'background' ? (
           <BackgroundGroupRow
             key={row.id}
             label={t('library.backgroundGroup')}
@@ -57,6 +59,7 @@ export function ObjectTree(): ReactElement {
             key={row.id}
             row={row}
             viewDimmed={viewHiddenIds.has(row.id)}
+            eyeAlwaysVisible={backgroundHeaderIndex >= 0 && rowIndex > backgroundHeaderIndex}
             selected={row.type === 'scene' ? selection == null : selectedIds.has(row.id)}
             sceneLabel={t('library.sceneRoot')}
             hideLabel={t('library.hide')}
@@ -130,6 +133,7 @@ function BackgroundGroupRow({
 function TreeRowView({
   row,
   viewDimmed,
+  eyeAlwaysVisible,
   selected,
   sceneLabel,
   hideLabel,
@@ -143,6 +147,7 @@ function TreeRowView({
 }: {
   row: TreeRow
   viewDimmed?: boolean
+  eyeAlwaysVisible?: boolean
   selected: boolean
   sceneLabel: string
   hideLabel: string
@@ -169,7 +174,7 @@ function TreeRowView({
       </button>
       {/* 隐藏 / 锁定按钮常驻 DOM，由 CSS 决定显隐：选中、悬停、键盘聚焦到这一行时才出现。 */}
       {row.type !== 'scene' && row.node ? (
-        <span className="t3d-leftrail-tree-flags">
+        <span className={cx('t3d-leftrail-tree-flags', eyeAlwaysVisible && 'is-eye-always')}>
           <Tooltip label={hidden ? showLabel : hideLabel} side="top">
             <button
               type="button"
@@ -183,7 +188,7 @@ function TreeRowView({
           <Tooltip label={locked ? unlockLabel : lockLabel} side="top">
             <button
               type="button"
-              className={cx(locked && 'is-on')}
+              className={cx('t3d-leftrail-tree-flag-lock', locked && 'is-on')}
               disabled={readOnly}
               onClick={onToggleLocked}
             >

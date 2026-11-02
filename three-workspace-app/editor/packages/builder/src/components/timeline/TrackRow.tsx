@@ -38,6 +38,8 @@ export function TrackRow({
   keyframesLockedHint,
   onSelect,
   onToggle,
+  pinned,
+  onTogglePin,
   onAddKeyframe,
   onMoveKeyframes,
   onRemoveKeyframe,
@@ -56,6 +58,9 @@ export function TrackRow({
   keyframesLockedHint?: string
   onSelect: (next: Selection) => void
   onToggle: (key: string) => void
+  /** Defined only for root node rows: whether the row is pinned to the top. */
+  pinned?: boolean
+  onTogglePin?: (nodeId: string) => void
   onAddKeyframe: (nodeId: string, props: TrackProp | TrackProp[]) => void
   onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
   onRemoveKeyframe: (nodeId: string, prop: TrackProp, keyId: string) => void
@@ -142,6 +147,22 @@ export function TrackRow({
             {row.label}
           </span>
         )}
+        {onTogglePin ? (
+          <Tooltip label={t(pinned ? 'timeline.unpinTrack' : 'timeline.pinTrack')} side="top">
+            <button
+              type="button"
+              className={cx('t3d-timeline-pin', pinned && 'is-pinned')}
+              aria-pressed={!!pinned}
+              aria-label={t(pinned ? 'timeline.unpinTrack' : 'timeline.pinTrack')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onTogglePin(row.nodeId)
+              }}
+            >
+              {pinned ? '★' : '☆'}
+            </button>
+          </Tooltip>
+        ) : null}
         {row.followsSubject ? (
           <span className="t3d-timeline-follow-badge" title={t('library.subjectBound')}>
             {t('library.subjectBound')}

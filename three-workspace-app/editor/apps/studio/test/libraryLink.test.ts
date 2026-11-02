@@ -153,6 +153,22 @@ test('library.link rebinds storyboard nodes, replaces same-name clips, reports t
   const keptClip = clipsAfter.find((clip) => clip.motion.assetId === motionB)!
   assert.ok(keptClip, 'the unmatched clip is kept and reported, not dropped')
 
+  // B6: an unconverted clip keeps its old Motion, whose skeleton differs from the Character's new one.
+  // Editing its playback must still work (the motion/character pair is unchanged), while placing that
+  // mismatched Motion as a new clip stays refused.
+  const keptBinding = after.bindings[keptClip.id]!
+  assert.equal(keptBinding.characterId, linkedNode1.characterId)
+  assert.notEqual(after.motions[motionB]!.skeletonId, after.characters[linkedNode1.characterId]!.skeletonId)
+  const edited = await run('motion.binding.set', { binding: keptBinding, clipPatch: { playback: { speed: 2, loop: true } } })
+  assert.equal(edited.clipId, keptClip.id)
+  const editedProject = await readUnifiedProject(projectId)
+  const editedClip = editedProject.scene.content.timeline.animation.motionClips.find((clip) => clip.id === keptClip.id)!
+  assert.equal(editedClip.playback.speed, 2)
+  assert.equal(editedClip.playback.loop, true)
+  await assert.rejects(run('motion.place', { characterId: linkedNode1.characterId, motionId: motionB, frameStart: 400, sourceStartSeconds: 0, sourceLengthSeconds: durationB, speed: 1, loop: false, reverse: false }), /PROFILE_MISMATCH|same skeleton fingerprint/)
+  revision = editedProject.revision
+  await run('history.undo', {}) // keep the pre-link undo assertion below about the link step only
+
   // The linked node evaluates on the CPU without SKELETON_EVALUATION_UNAVAILABLE for its Character.
   const evaluated = await executeUnifiedCommand({ requestId: randomUUID(), projectId, command: 'scene.evaluate', args: { frame: 0 } })
   const issues = evaluated.result.issues as Array<{ code: string; path: string }>

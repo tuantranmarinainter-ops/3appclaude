@@ -1128,3 +1128,8 @@ body.bbs-debug-recording .bbs-debug-action::after { content: ""; position: absol
 .wb-film-advanced > summary { cursor: pointer; padding: 6px 0; color: var(--wb-muted, rgba(255,255,255,.6)); }
 .wb-film-advanced[open] > summary { margin-bottom: 8px; }
 .wb-film-advanced .wb-film-export-controls { display: grid; gap: 8px; padding: 0; }
+
+.wb-assign-list li { flex-wrap: wrap; }
+.wb-assign-feedback { flex: 1 1 100%; display: flex; flex-direction: column; gap: 6px; }
+.wb-assign-feedback p { margin: 0; font-size: 13px; color: #ff9d8a; }
+.wb-assign-placement label.is-disabled { opacity: 0.55; }

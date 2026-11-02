@@ -105,3 +105,42 @@ test('paste rejects a removed motion catalogue after host applyContent preservin
   assert.equal(doc.content.timeline.animation.motionClips.length, 0)
   assert.equal(history.canUndo, false)
 })
+
+test('duplicateTimelineClipToGap fills the nearest gap, reports no-gap and undoes once', () => {
+  const { session, doc, history } = fixture('motion')
+  doc.content.nodes.push({ id: 'actor' } as DirectorDocument['content']['nodes'][number])
+  const clips = doc.content.timeline.animation.motionClips
+  const result = session.duplicateTimelineClipToGap('motion', clips[2].id)
+  assert.equal(result.error, null)
+  const copy = clips.find((clip) => clip.id === result.id)!
+  assert.ok(copy.frameStart >= 498 && copy.frameEnd - copy.frameStart === 61)
+  assert.equal(history.undoStack.length, 1)
+  history.undo()
+  assert.equal(doc.content.timeline.animation.motionClips.length, 5)
+  doc.content.timeline.frameEnd = 520
+  const blocked = session.duplicateTimelineClipToGap('motion', doc.content.timeline.animation.motionClips[2].id)
+  assert.deepEqual(blocked, { id: null, error: 'no-gap' })
+  assert.equal(doc.content.timeline.animation.motionClips.length, 5)
+})
+
+test('splitMotionClipAt makes two continuous clips in one undo step; extend stops at the next clip', () => {
+  const { session, doc, history } = fixture('motion')
+  doc.content.nodes.push({ id: 'actor' } as DirectorDocument['content']['nodes'][number])
+  const first = doc.content.timeline.animation.motionClips[1]
+  const result = session.splitMotionClipAt(first.id, 150)
+  assert.equal(result.error, null)
+  const clips = doc.content.timeline.animation.motionClips
+  assert.equal(clips.length, 6)
+  const [a, b] = [clips.find((c) => c.id === first.id)!, clips.find((c) => c.id === result.id)!]
+  assert.equal(a.frameEnd, 150)
+  assert.equal(b.frameStart, 150)
+  assert.equal(b.frameEnd, 229)
+  assert.ok(b.motion.time > 0)
+  assert.equal(history.undoStack.length, 1)
+  history.undo()
+  assert.equal(doc.content.timeline.animation.motionClips.length, 5)
+  assert.equal(session.splitMotionClipAt(first.id, 97).error, 'not-applicable')
+  assert.equal(session.extendMotionClipToShotEnd(doc.content.timeline.animation.motionClips[2].id).error, 'not-applicable')
+  assert.equal(session.extendMotionClipToShotEnd(doc.content.timeline.animation.motionClips[1].id).error, null)
+  assert.equal(doc.content.timeline.animation.motionClips[1].frameEnd, 437)
+})

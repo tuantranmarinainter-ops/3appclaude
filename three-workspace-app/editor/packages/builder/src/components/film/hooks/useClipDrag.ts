@@ -4,6 +4,8 @@ import { useDirector } from '../../../bridge/DirectorContext'
 import { DRAG_THRESHOLD_PX } from '../constants'
 import { autoScrollSpeed, frameFromClientX, insertIndexAt } from '../utils'
 import { beginFilmInteraction } from './filmInteraction'
+import { snapTrimEnd, snapTrimStart, tickGridFrames } from '../tickSnap'
+import { useT } from '../../../locale'
 
 export type ClipDragKind = 'move' | 'trim-start' | 'trim-end'
 
@@ -30,6 +32,8 @@ interface UseClipDragDeps {
 export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
   const { useStore } = useDirector()
   const { beginFilmDrag, previewFilmDrag, commitFilmDrag } = useStore()
+  const fps = useStore((s) => s.doc?.content.timeline.fps ?? 30)
+  const t = useT()
   const { clips, pxPerFrame, track, disabled, seek, frameMax } = deps
 
   return useCallback((kind, clip, event) => {
@@ -55,9 +59,25 @@ export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
     let pointerX = startX
     let autoRaf = 0
     const endInteraction = beginFilmInteraction()
+    const gridFrames = kind === 'move' ? null : tickGridFrames(fps)
+    let hintEl: HTMLDivElement | null = null
+    const showHint = () => {
+      if (!gridFrames || gridFrames <= 1 || hintEl) return
+      hintEl = document.createElement('div')
+      hintEl.className = 't3d-film-snap-hint'
+      hintEl.setAttribute('role', 'status')
+      hintEl.textContent = t('film.tickSnapHint', { frames: gridFrames })
+      document.body.appendChild(hintEl)
+    }
+    const moveHint = () => {
+      if (!hintEl) return
+      hintEl.style.left = `${pointerX + 12}px`
+      hintEl.style.top = `${(track.current?.getBoundingClientRect().top ?? 0) - 30}px`
+    }
 
     const begin = () => {
       started = true
+      showHint()
       beginFilmDrag(dragKind, clip.id)
       if (kind === 'move') {
         previewFilmDrag({
@@ -95,8 +115,9 @@ export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
         return
       }
       const delta = Math.round(dx / pxPerFrame)
+      moveHint()
       if (kind === 'trim-start') {
-        const sourceFrameStart = Math.min(origin.start + delta, origin.end)
+        const sourceFrameStart = Math.min(snapTrimStart(origin.start + delta, fps), origin.end)
         if (sourceFrameStart === lastFrame) return
         lastFrame = sourceFrameStart
         previewFilmDrag({
@@ -108,7 +129,7 @@ export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
         })
         return
       }
-      const sourceFrameEnd = Math.max(origin.end + delta, origin.start)
+      const sourceFrameEnd = Math.max(snapTrimEnd(origin.end + delta, fps), origin.start)
       if (sourceFrameEnd === lastFrame) return
       lastFrame = sourceFrameEnd
       previewFilmDrag({
@@ -169,6 +190,8 @@ export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
       stopAutoScroll()
+      hintEl?.remove()
+      hintEl = null
       if (slotEl) slotEl.style.transform = ''
       if (started) commitFilmDrag()
       endInteraction()
@@ -176,5 +199,5 @@ export function useClipDrag(deps: UseClipDragDeps): ClipDragStart {
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
-  }, [beginFilmDrag, previewFilmDrag, commitFilmDrag, clips, pxPerFrame, track, disabled, seek, frameMax])
+  }, [beginFilmDrag, previewFilmDrag, commitFilmDrag, clips, pxPerFrame, track, disabled, seek, frameMax, fps, t])
 }
