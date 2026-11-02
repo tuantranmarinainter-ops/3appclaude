@@ -201,8 +201,110 @@ body.layout-modes {
   gap: 4px;
   width: auto;
 }
+/* B67: grouped "…" menu. The emptied stage toolbar stays in the DOM (listeners/anchors) but is not shown. */
+.layout-modes #layoutMoreContent > .stage-toolbar {
+  display: none;
+}
+.layout-modes #layoutMoreContent .layout-more-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 8px;
+  border-top: 1px solid var(--lm-line);
+}
+.layout-modes #layoutMoreContent .layout-more-group:first-of-type {
+  border-top: 0;
+}
+.layout-modes #layoutMoreContent #layoutMore-panes {
+  display: none; /* pane toggles are the "Cây & Pose / Thuộc tính / Timeline" tabs; nodes stay for classic layout */
+}
+.layout-modes #layoutMoreContent .layout-more-group > h4 {
+  flex: 0 0 100%;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #9aa3b2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Advanced tools expand inline: no nested clipped popup, one "Công cụ nâng cao" entry. */
 .layout-modes #layoutMoreContent #workflowTools {
   display: block;
+  flex: 1 1 100%;
+}
+.layout-modes #layoutMoreContent #workflowTools > summary {
+  display: none;
+}
+.layout-modes #layoutMoreContent #workflowTools .workflow-tools-content {
+  position: static;
+  display: block;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.layout-modes #layoutMoreContent #workflowTools nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.layout-modes #layoutMoreContent #studioAdvancedTools {
+  flex: 1 1 100%;
+}
+.layout-modes #layoutMoreContent .studio-advanced-body {
+  position: static;
+  width: auto;
+  max-height: none;
+  margin-top: 6px;
+  box-shadow: none;
+}
+/* B69: viewport tools on the main toolbar row (icons + tooltips). */
+.layout-modes #layoutMainTools {
+  flex-wrap: wrap;
+}
+.layout-modes #layoutQuickTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--lm-line);
+}
+.layout-modes #layoutQuickTools > .studio-group,
+.layout-modes #layoutQuickTools .onion-actions,
+.layout-modes #layoutQuickTools .minimal-rig-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  width: auto;
+}
+.layout-modes #layoutQuickTools select {
+  max-width: 84px;
+  min-height: 30px;
+}
+.layout-modes #layoutQuickTools [data-quick-icon] {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 6px;
+  font-size: 0;
+  line-height: 1;
+}
+.layout-modes #layoutQuickTools [data-quick-icon]::before {
+  content: attr(data-quick-icon);
+  font-size: 16px;
+}
+.layout-modes #layoutQuickTools #minimalViewMenu > summary[data-quick-icon]::after {
+  content: ' ▾';
+  font-size: 11px;
+}
+.layout-modes #layoutQuickTools #layoutMaterial {
+  width: auto;
 }
 .layout-modes #createWorkspace #viewportShell {
   flex: 1;

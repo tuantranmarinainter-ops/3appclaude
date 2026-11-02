@@ -385,7 +385,7 @@ function sceneExit() {
   editView.visual.visible = true;
   editView.wrapper.position.set(0, 0, 0);
   editView.wrapper.quaternion.copy(C.kinematics.blenderBasis);
-  editView.wrapper.scale.setScalar(2 / rig.height);
+  editView.wrapper.scale.setScalar(displayScale(rig));
   editView.wrapper.updateMatrixWorld(true);
   C.evaluate(rig, project, Math.min(time, project.duration));
   scenePanel?.hide();

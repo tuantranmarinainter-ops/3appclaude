@@ -71,7 +71,9 @@ test(
       await page.locator('#workflowExport').click();
       await page.waitForFunction(() => document.body.dataset.layoutTab === 'export');
       await page.locator('#layoutMoreTools > summary').click();
-      await page.locator('#workflowTools > summary').click();
+      // B67: the advanced tools are always expanded inside the grouped "…" menu (no nested popup summary).
+      assert.equal(await page.locator('#workflowTools > summary').isVisible(), false);
+      assert.equal(await page.locator('#layoutQuickTools #silhouetteBtn').isVisible(), true);
       await page.locator('#studioAdvancedTools > summary').click();
       await page.locator('#modeCompare').click();
       await page.waitForFunction(() => document.body.dataset.layoutTab === 'compare');

@@ -21,6 +21,7 @@
       throw Error('Chiều cao nhân vật không hợp lệ');
     displayHeight = height ?? null;
     displayRoot = window.__studio?.rig?.()?.root ?? null;
+    window.__studio?.setDisplayHint?.(displayHeight ? displayRoot : null, displayHeight);
     syncDisplayHeight();
   }
   let loadedSha = null;
