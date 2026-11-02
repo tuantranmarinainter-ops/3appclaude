@@ -21,8 +21,10 @@ function eachTemplateResource(root: THREE.Object3D, visit: (resource: object) =>
     if (!material) return
     for (const item of Array.isArray(material) ? material : [material]) {
       visit(item)
-      const std = item as THREE.MeshStandardMaterial
-      if (std.map) visit(std.map)
+      for (const value of Object.values(item)) {
+        const texture = value as THREE.Texture | null
+        if (texture?.isTexture) visit(texture)
+      }
     }
   })
 }

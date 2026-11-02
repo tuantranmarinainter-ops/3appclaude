@@ -6,6 +6,7 @@ import {
   useDirector,
 } from '../../bridge/DirectorContext'
 import { nodeIdsOf } from '../../stores/nodeSelection'
+import { createSpaceTap } from './spaceTap'
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -34,7 +35,9 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
     if (!root) return
     claimAppKeyboard(root)
 
+    const spaceTap = createSpaceTap(() => useStore.getState().togglePlay())
     const onPointerDown = (e: PointerEvent) => {
+      spaceTap.pointerDown()
       claimAppKeyboard(root)
       const target = e.target
       if (target instanceof HTMLCanvasElement) return
@@ -89,6 +92,7 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
       }
       if (e.code === 'Space') {
         e.preventDefault()
+        spaceTap.keyDown(e.repeat)
         return
       }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyV') {
@@ -194,11 +198,22 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
       }
     }
 
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || !isAppKeyboardOwner(root)) return
+      if (isTypingTarget(e.target) || isInStudioDialog(e.target, root)) {
+        spaceTap.reset()
+        return
+      }
+      e.preventDefault()
+      spaceTap.keyUp()
+    }
     root.addEventListener('pointerdown', onPointerDown)
     root.addEventListener('keydown', onKey)
+    root.addEventListener('keyup', onKeyUp)
     return () => {
       root.removeEventListener('pointerdown', onPointerDown)
       root.removeEventListener('keydown', onKey)
+      root.removeEventListener('keyup', onKeyUp)
       releaseAppKeyboard(root)
     }
   }, [rootRef, useStore])

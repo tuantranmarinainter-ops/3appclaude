@@ -1,5 +1,7 @@
 'use client'
 
+import { libraryJson, invalidateLibrary } from '../../../src/libraryClient'
+
 import { useEffect, useMemo, useState } from 'react'
 import type { MotionBinding, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../src/unifiedApi'
@@ -160,10 +162,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
     setLibraryActions([]); setLibrarySelected([])
     try {
       const q = libraryQuery ? `&q=${encodeURIComponent(libraryQuery)}` : ''
-      const [sharedResponse, own] = await Promise.all([fetch(`/api/library?raw=1${q}`, { cache: 'no-store' }), fetch(`/api/library?charId=${encodeURIComponent(target.libraryCharacterId)}`, { cache: 'no-store' })])
-      const body = await sharedResponse.json() as { actions?: typeof libraryActions; error?: string }
-      if (!sharedResponse.ok) throw new Error(body.error ?? `Library lookup failed (${sharedResponse.status})`)
-      const ownBody = own.ok ? await own.json() as { actions?: typeof libraryActions } : {}
+      const [body, ownBody] = await Promise.all([libraryJson<{ actions?: typeof libraryActions }>(`/api/library?raw=1${q}`), libraryJson<{ actions?: typeof libraryActions }>(`/api/library?charId=${encodeURIComponent(target.libraryCharacterId)}`)])
       const owned = filterLibraryActions((ownBody.actions ?? []).map((action) => ({ ...action, tags: action.tags ?? [], own: true })), libraryQuery, libraryCategory)
       const seen = new Set(owned.map((action) => action.uuid))
       const sharedActions = filterLibraryActions(body.actions ?? [], libraryQuery, libraryCategory)
@@ -202,6 +201,7 @@ export function AnimationWorkspace({ projectId, active = true, controlsOpen, onC
       }
       const refreshed = await loadUnifiedProject(projectId); setProject(refreshed.project)
       setMessage(vi ? `Đã gán ${placed.length}/${job.total} động tác vào nhân vật và đặt lên timeline.` : `Assigned ${placed.length}/${job.total} Actions and placed them on the timeline.`)
+      invalidateLibrary()
       setLibraryOpen(false)
       const failures = job.results.filter(result => result.status === 'error')
       if (failures.length) setError(failures.map(result => result.reason).filter(Boolean).join('; '))

@@ -1,5 +1,6 @@
 import { libraryCharacterBoundingBoxHeight } from './libraryCharacterSpacing'
 import { app3HeightHint } from './app3Height'
+import { shotClipPayload } from './shotClip'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -56,15 +57,23 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     const libraryCharacterId=typeof node?.metadata?.libraryCharacterId==='string'?node.metadata.libraryCharacterId:null
     if(libraryCharacterId){
       const libraryCharacter=resolveCharacter(libraryCharacterId), nativeRig=libraryCharacter.baseModel?.format==='bobj'&&['verity','minecraft20'].includes(libraryCharacter.baseModel.rig)
-      if(nativeRig){
+      if(nativeRig && motion.edit===null){
+        const conversion=project.extensions?.libraryMotionConversions?.[motion.assetId]
+        if(conversion){
+          const ownModel=await libraryCharacterModel(libraryCharacterId)
+          packagedSource=composeLibraryActionGlb(ownModel.bytes,source,0)
+          packagedManifest={...packagedManifest,rig:'minecraft20',glbSha256:sha256(packagedSource),glb:{bytes:packagedSource.length,mode:'library-character-native'},actions:(Array.isArray(packagedManifest.actions)?packagedManifest.actions:[]).map((entry:any)=>entry.uuid===motion.id?{...entry,glbAnimationIndex:0}:entry)}
+        }else{
         const libraryActionUuid=isRecord(metadata)&&typeof metadata.libraryActionUuid==='string'?metadata.libraryActionUuid:motion.id
         const action=getAction({actionUuid:libraryActionUuid}), owned=action.ownerCharId===libraryCharacterId
-        if(owned){
+        if(owned || libraryCharacter.baseModel!.rig==='minecraft20' && action.rig==='minecraft20'){
           const sidecar=path.join(path.dirname(action.glbPath),libraryCharacter.baseModel!.rig==='minecraft20'?'anim.bobj':'anim.original.bbs.bobj')
-          const nativeAction=action.status==='edited'?await readFile(action.glbPath):await libraryNativeAction(libraryCharacterId,sidecar)
+          const mc20=libraryCharacter.baseModel!.rig==='minecraft20'
+          const nativeAction=mc20?source:action.status==='edited'?await readFile(action.glbPath):await libraryNativeAction(libraryCharacterId,sidecar)
           const ownModel=await libraryCharacterModel(libraryCharacterId)
-          packagedSource=composeLibraryActionGlb(ownModel.bytes,nativeAction,0)
+          packagedSource=composeLibraryActionGlb(ownModel.bytes,nativeAction,mc20 && isRecord(metadata) && Number.isSafeInteger(metadata.clipIndex)?Number(metadata.clipIndex):0)
           packagedManifest={...packagedManifest,rig:libraryCharacter.baseModel!.rig,glbSha256:sha256(packagedSource),glb:{bytes:packagedSource.length,mode:'library-character-native'},actions:(Array.isArray(packagedManifest.actions)?packagedManifest.actions:[]).map((entry:any)=>entry.uuid===motion.id?{...entry,glbAnimationIndex:0}:entry)}
+        }
         }
       }
     }
@@ -73,16 +82,16 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
     const t=snapshot.transforms.get(character.nodeId);if(!t)throw new TypeError('Character placement is unavailable')
     const height = app3HeightHint(node?.metadata)
     if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-(height?.heightScale??1))>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
-    const offset=(args.frameStart-clip.frameStart)/30*clip.playback.speed
-    if(clip.playback.loop&&offset!==0)throw new TypeError('MVP loop shots must begin at the source clip boundary')
-    const start=binding.sourceStartSeconds+(binding.reverse?0:offset),end=binding.sourceStartSeconds+binding.sourceLengthSeconds-(binding.reverse?offset:0)
+    // B20: sourceEndSeconds luôn bị kẹp trong thời lượng Action; Giãn chậm đổi thành speed, Giữ khung cuối/Lặp giữ nguyên đoạn nguồn.
+    const payload=shotClipPayload(clip,binding,30,args.frameStart,motion.durationSeconds)
+    const shotClip={sourceStartSeconds:payload.sourceStartSeconds,sourceEndSeconds:payload.sourceEndSeconds,speed:payload.speed,loop:payload.loop,reverse:payload.reverse}
     let shotHeight=height
     if(height) {
       // Native-library shots can recompose a different canonical model from the source project GLB.
       // Root edit deltas must use the exact packaged model's units, rather than the scene's source scale.
       try { shotHeight={...height,heightScale:height.heightBlocks/libraryCharacterBoundingBoxHeight(Buffer.from(packagedSource))} } catch { /* Animation-only GLB retains the source model's canonical units. */ }
     }
-    shot.characters.push({...shotHeight,characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(packagedSource),actionUuid:motion.id,clip:{sourceStartSeconds:start,sourceEndSeconds:end,speed:clip.playback.speed,loop:clip.playback.loop,reverse:binding.reverse},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:binding.rootPolicy==='in-place'?'in-place':'skeletal',editable:args.editableCharacterIds.includes(character.id)})
+    shot.characters.push({...shotHeight,characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(packagedSource),actionUuid:motion.id,clip:shotClip,placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:binding.rootPolicy==='in-place'?'in-place':'skeletal',editable:args.editableCharacterIds.includes(character.id)})
     clips[character.id]={clipId:clip.id,motionId:motion.id}
   }
   for(const node of project.scene.content.nodes.filter(n=>n.type==='prop')) {

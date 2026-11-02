@@ -153,6 +153,7 @@ export class MotionPlayer {
   private loader = new FBXLoader()
   private gltfLoader = new GLTFLoader()
   private raw = new Map<string, RawMotion>()
+  private sourceUrls = new Map<string, string>()
   private pending = new Map<string, Promise<RawMotion>>()
   private bakedDirectBind = new Map<string, THREE.AnimationClip>()
   private mixamorigTemplate: THREE.Object3D | null = null
@@ -165,6 +166,13 @@ export class MotionPlayer {
   load(assetId: string, url: string, clipIndex = 0): Promise<RawMotion> {
     if (!Number.isInteger(clipIndex) || clipIndex < 0) return Promise.reject(new RangeError('Motion clip index must be a non-negative integer'))
     const key = motionKey(assetId, clipIndex)
+    const previousUrl = this.sourceUrls.get(key)
+    if (previousUrl && previousUrl !== url) {
+      this.raw.delete(key)
+      this.pending.delete(key)
+      this.bakedDirectBind.clear()
+    }
+    this.sourceUrls.set(key, url)
     const cached = this.raw.get(key)
     if (cached) return Promise.resolve(cached)
     const libraryKey = libraryAssetCacheKey(url)
@@ -182,12 +190,12 @@ export class MotionPlayer {
           const clip = group.animations[clipIndex]
           if (!clip) throw new Error(`FBX animation ${clipIndex} was not found: ${url}`)
           const entry: RawMotion = { clip, group, bind: captureBind(group) }
-          this.raw.set(key, entry)
+          if (this.sourceUrls.get(key) === url) this.raw.set(key, entry)
           rememberLibraryMotion(url, clipIndex, entry)
           return entry
         })
         .finally(() => {
-          this.pending.delete(key)
+          if (this.sourceUrls.get(key) === url) this.pending.delete(key)
         })
       this.pending.set(key, p)
     }
@@ -241,6 +249,7 @@ export class CharacterAnimator {
   private root: THREE.Object3D
   private actions = new Map<string, THREE.AnimationAction>()
   private filtered = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>()
+  private actionSources = new Map<string, THREE.AnimationClip>()
   private activeClipId: string | null = null
 
   constructor(root: THREE.Object3D) {
@@ -267,15 +276,18 @@ export class CharacterAnimator {
   playAt(clipId: string, clip: THREE.AnimationClip, timeSec: number, loop = true): void {
     const filtered = this.filterClip(clip)
     let action = this.actions.get(clipId)
-    if (action && action.getClip() !== filtered) {
+    if (action && this.actionSources.get(clipId) !== clip) {
       action.stop()
       this.mixer.uncacheAction(action.getClip(), this.root)
       this.actions.delete(clipId)
+      if (this.activeClipId === clipId) this.activeClipId = null
       action = undefined
     }
     if (!action) {
-      action = this.mixer.clipAction(filtered)
+      // The mixer caches by AnimationClip UUID; each timeline clip needs its own action.
+      action = this.mixer.clipAction(new THREE.AnimationClip(filtered.name, filtered.duration, filtered.tracks))
       this.actions.set(clipId, action)
+      this.actionSources.set(clipId, clip)
     }
     const loopMode = loop ? THREE.LoopRepeat : THREE.LoopOnce
     if (action.loop !== loopMode || action.repetitions !== (loop ? Infinity : 1) || action.clampWhenFinished === loop) {
