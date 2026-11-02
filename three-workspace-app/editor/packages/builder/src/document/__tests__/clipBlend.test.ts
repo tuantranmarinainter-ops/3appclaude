@@ -4,6 +4,7 @@ import {
   applyBlendDrag,
   blendWithPrevious,
   defaultBlendFrames,
+  findInvalidMotionOverlaps,
   motionOverlapsValid,
   normalizeBlendIns,
   previewBlendDrag,
@@ -77,16 +78,21 @@ describe('previewBlendDrag (kéo B sang trái đè đuôi A)', () => {
 })
 
 describe('blendWithPrevious (chuột phải "Trộn với clip trước")', () => {
-  it('moves B earlier by default 0.5 s worth of frames and sets blendIn', () => {
-    const next = blendWithPrevious([clip('A', 0, 58), clip('B', 59, 149)], 'B', 30)!
-    expect(defaultBlendFrames(30)).toBe(15)
-    expect(range(next, 'B')).toEqual([44, 134])
-    expect(next.find((c) => c.id === 'B')!.playback.blendIn).toEqual({ frames: 15, curve: 'smooth', footLock: true })
+  it('moves B earlier by default 1 s worth of frames (K4) and sets blendIn', () => {
+    expect(defaultBlendFrames(30)).toBe(30)
+    // A 0-58 is 59 frames: the half-clip cap (29) wins over the 30-frame default.
+    const capped = blendWithPrevious([clip('A', 0, 58), clip('B', 59, 149)], 'B', 30)!
+    expect(range(capped, 'B')).toEqual([30, 120])
+    expect(capped.find((c) => c.id === 'B')!.playback.blendIn).toEqual({ frames: 29, curve: 'smooth', footLock: true })
+    expect(motionOverlapsValid(capped)).toBe(true)
+    const next = blendWithPrevious([clip('A', 0, 89), clip('B', 90, 179)], 'B', 30)!
+    expect(range(next, 'B')).toEqual([60, 149])
+    expect(next.find((c) => c.id === 'B')!.playback.blendIn).toEqual({ frames: 30, curve: 'smooth', footLock: true })
     expect(motionOverlapsValid(next)).toBe(true)
   })
 
   it('works for a clip exactly touching its predecessor and is unavailable otherwise', () => {
-    expect(range(blendWithPrevious([clip('A', 0, 58), clip('B', 58, 149)], 'B', 30)!, 'B')).toEqual([44, 135])
+    expect(range(blendWithPrevious([clip('A', 0, 58), clip('B', 58, 149)], 'B', 30)!, 'B')).toEqual([30, 121])
     expect(blendWithPrevious([clip('A', 0, 58), clip('B', 70, 149)], 'B', 30)).toBeNull() // có khe
     expect(blendWithPrevious([clip('A', 0, 58)], 'A', 30)).toBeNull() // không có clip trước
     expect(blendWithPrevious([clip('A', 0, 58), clip('B', 59, 149, { frames: 5, curve: 'smooth', footLock: true })], 'B', 30)).toBeNull()
@@ -147,4 +153,24 @@ describe('invariants', () => {
     expect(normalizeBlendIns(plain).every((c, i) => c === plain[i])).toBe(true)
     expect(motionOverlapsValid(plain)).toBe(true)
   })
+})
+
+describe('findInvalidMotionOverlaps (K4 preflight)', () => {
+  const b = (frames: number): MotionBlendIn => ({ frames, curve: 'smooth', footLock: true })
+  const cases: Array<[string, MotionClip[], string[]]> = [
+    ['valid blend', [clip('A', 0, 58), clip('B', 44, 134, b(15))], []],
+    ['touching clips', [clip('A', 0, 58), clip('B', 58, 134)], []],
+    ['overlap without blendIn', [clip('A', 0, 58), clip('B', 44, 134)], ['no-blend']],
+    ['blendIn shorter than the overlap', [clip('A', 0, 58), clip('B', 44, 134, b(5))], ['no-blend']],
+    ['three clips', [clip('A', 0, 58), clip('B', 40, 100, b(19)), clip('C', 45, 134, b(14))], ['no-blend', 'no-blend', 'triple']],
+    ['other characters do not interact', [clip('A', 0, 58), clip('B', 44, 134, undefined, 'other')], []],
+  ]
+  for (const [name, clips, reasons] of cases) {
+    it(name, () => {
+      const found = findInvalidMotionOverlaps(clips)
+      expect(found.length > 0).toBe(!motionOverlapsValid(clips))
+      if (reasons.length) expect(found.map((item) => item.reason).sort()).toEqual([...reasons].sort())
+      else expect(found).toEqual([])
+    })
+  }
 })

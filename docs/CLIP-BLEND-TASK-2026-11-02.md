@@ -57,7 +57,7 @@ Người dùng đã quen iClone 8: kéo đầu clip sau đè lên đuôi clip tr
    Không còn tự đẩy clip ra **khi giữ phím/bật nút "Cho chồng để trộn"** **[Claude chốt: mặc định BẬT cho kéo bằng chuột;
    lệnh thêm clip từ thư viện vẫn nối đuôi như cũ]**.
 2. Vùng chồng hiện **dải X** (như iClone). Hover dải: "Trộn 10 khung · Êm đầu-cuối · Khóa chân".
-3. Thả clip sát nhau (không chồng) rồi bấm chuột phải → **"Trộn với clip trước"**: tự chồng **10 tick (0,5 s)** **[Claude chốt]**.
+3. Thả clip sát nhau (không chồng) rồi bấm chuột phải → **"Trộn với clip trước"**: tự chồng **1 giây** (tối đa nửa clip ngắn hơn) **[Claude chốt; K4 đổi từ 0,5 s vì K3 đo vùng 15 khung giật 3,85× FAIL, 30 khung 1,37× PASS]**.
 4. Bấm vào dải X mở bảng nhỏ:
    - **Số khung trộn** (ô số; kéo mép dải cũng đổi).
    - **Kiểu chuyển**: Êm đầu-cuối (mặc định) / Tuyến tính **[Claude chốt]**.
@@ -156,7 +156,7 @@ Report số vào `docs/REPORT-clip-blend-<ngày>.md`.
    Mixamo65 hiện có của Action thư viện (builder đọc `packages/library` để theo đúng).
 4. **Đơn vị** — `blendIn.frames` tính theo **frame của timeline** (`timeline.fps`). Film nướng **mỗi tick 20 Hz**
    (`unifiedFilmSampling.ts` đã lấy mẫu `sourceFrame = start + tick·fps/20`, `filmPoseBake` ghi key từng tick liên tiếp) → đủ dày,
-   không cần đổi. Mặc định trộn = **0,5 giây** quy ra frame của timeline. Ngưỡng §8 đo trên mẫu 20 Hz.
+   không cần đổi. Mặc định trộn = **1 giây** (K4; trước là 0,5 giây) quy ra frame của timeline. Ngưỡng §8 đo trên mẫu 20 Hz.
 5. **Khóa chân** — sàn = sàn rest của nhân vật trong cảnh (cùng nguồn với B10 `fitMinecraftFloor` / `measureFilmFeet`),
    theo tỉ lệ node nhân vật. Clip có speed ≠ 1 hoặc lặp: đánh giá trên **thời gian đã áp speed/lặp** (dùng `motionTimeSeconds`);
    "vùng trộn ⊂ A" tính theo khoảng timeline của A. Không có chân đứng yên (nhảy, chạy trên không) → **bỏ khóa**, không lỗi;

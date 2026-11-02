@@ -118,3 +118,6 @@ export type {
 export { fbxSourceBones } from './retarget/fbxSourceBones'
 export { duplicateDocumentNodes } from '../sync/duplicateDocumentNodes'
 export type { DuplicateDocumentNodesInput } from '../sync/duplicateDocumentNodes'
+export { motionBlendInOf, motionBlendPartner, motionClipsAt } from './clips'
+export { findInvalidMotionOverlaps, motionOverlapsValid } from '../document/clipBlend'
+export type { InvalidMotionOverlap } from '../document/clipBlend'

@@ -1,5 +1,6 @@
 import { filmCharacterHeight } from './filmCharacterHeight'
 import { resolveFilmWorldAnchor } from './filmWorldAnchor'
+import { blendZoneText, invalidFilmMotionOverlaps, listFilmBlendZones } from './filmBlendZones'
 import { createHash } from 'node:crypto'
 import { Euler, Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
@@ -148,6 +149,10 @@ export function inspectProjectFilm(project: UnifiedProject, args: FilmSamplingAr
     range.startFrame >= timeline.frameStart && range.endFrame <= timeline.frameEnd && range.endFrame >= range.startFrame &&
     Number.isFinite(viewportAspect) && viewportAspect > 0
   if (!validRange) add('RANGE_INVALID', 'Invalid Film range or viewport aspect')
+  // K4: overlapping motion clips are only meaningful as a valid blend zone (blendIn on the later clip, at most two clips).
+  if (validRange && validCharacterSelection) for (const overlap of invalidFilmMotionOverlaps(project, characterIds, range)) {
+    add('MOTION_OVERLAP_INVALID', `Motion clips overlap without a valid blend zone (${overlap.reason}) for ${overlap.name}`, overlap.characterId)
+  }
   const ticks = validRange ? (range.endFrame - range.startFrame + 1) / timeline.fps * TICK_RATE : NaN
   const gridValid = Number.isFinite(ticks) && Math.abs(ticks - Math.round(ticks)) <= 1e-7 && ticks >= 1
   if (!gridValid || ticks > MAX_TICKS) add('TICK_LIMIT', 'Film range must end on the 20 Hz grid and contain 1-255 ticks')
@@ -333,7 +338,12 @@ export async function sampleProjectFilm(project: UnifiedProject, args: FilmSampl
   }
   signal?.throwIfAborted()
   if (frames.length !== preflight.durationTicks + 1 || frames.at(-1)?.side !== 'left') fail('Film skeleton sampler omitted the terminal left sample')
+  // K4: blended clip zones are already baked into `frames` (same evaluator as App 2); list them for the report.
+  const fps = snapshot.scene.content.timeline.fps
+  const zones = listFilmBlendZones(snapshot, options.characterIds, options.range)
+  const blendZones = zones.map((zone) => ({ ...zone, text: blendZoneText(zone, fps, true) }))
   return {
+    ...(blendZones.length ? { blendZones } : {}),
     schemaVersion: 1 as const, kind: 'film-sampling-input' as const, targetVersion: '2.4' as const,
     projectId: snapshot.projectId, sourceRevision: snapshot.revision,
     sourceSha256, sourceHashes,

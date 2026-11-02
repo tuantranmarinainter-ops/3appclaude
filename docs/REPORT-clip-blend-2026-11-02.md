@@ -114,3 +114,41 @@ Nhận xét:
   phát hiện/xóa ngược nhịp, đứng yên không báo, tìm độ dời nhỏ nhất, nhả khóa giữ trượt < 1e-4 rồi nhả trơn chậm hơn nhả cũ.
   Thêm 1 test session (Undo từng nút). `packages/builder` vitest 128 file, 732 test pass, 1 skipped. `pnpm typecheck` sạch, studio
   `tsx --test` 5 file pass. Golden và `packages/retarget` không đổi.
+
+## Đợt K4 — Film / "Xem như BBS" đi qua hàm trộn, preflight báo vùng trộn, mặc định trộn 1 giây
+
+Script: `apps/studio/scripts/measureClipBlendK4.mts` (chỉ đọc bản sao `clip-blend-k2-projects`, không ghi project.json, không chạm thư mục game/thư viện; đọc thư viện thật chỉ để lấy BOBJ gốc của Verity).
+
+```powershell
+$env:BBS_UNIFIED_PROJECTS_DIR='S:\Claude\w01-samples\clip-blend-k2-projects'
+pnpm --filter @topview/3d-builder exec tsx <đường dẫn tuyệt đối>\apps\studio\scripts\measureClipBlendK4.mts --out report.json
+```
+
+### Đường đi đã kiểm
+
+- `sampleProjectFilm` -> `sampleProjectSkeletonRange` -> `sampleSkeletonRange` -> `evaluateFrame` (`motionClipsAt`) -> `applyMotionAndPose` (trộn slerp, K2 căn chỗ đứng + khóa chân, K3 đảo chân/dời nhịp) -> `buildFilmExportManifest` (poseTracks + transformSamples, đầu vào của worker `.dat`). "Xem như BBS" (`bbsPreview.ts`) dùng cùng `sampleProjectSkeletonRange`. Không còn nơi nào của film gọi `motionClipAt` đơn clip. Biên `exportSampleBoundary` (mẫu cuối `left`, còn lại `right`) cho đúng một clip ở khung A.frameEnd+1 và trọng số 0 ở B.frameStart, nên không nhảy.
+- Gỗ Xưa là nhân vật thư viện Verity: film thật nướng qua hồ sơ BOBJ gốc (`projectOriginalVerityPoseTracks`), nên script dùng `stageOriginalLibraryBobjProfile`. Vị trí nhân vật khi đi (phép căn K2) nằm trong xương gốc/hông của poseTracks; transformSamples (x/y/z/yaw) của node không đổi (0 cm bước) vì clip này không dùng root motion cấp node.
+- Sửa: `splitShots.ts` (cắt shot qua vùng trộn: giữ nguyên cả hai clip, dời cùng nhau, cảnh báo; clip sau mất clip trước thì bỏ `blendIn` thừa; không sửa project nguồn). `exportShotSelection.ts` chỉ xử lý camera shot, `shotClip.ts` thuộc App 3 (K5): không đổi.
+
+### Số đo Film = App 2 (Gỗ Xưa, vùng trộn 44–58, 15 khung, film 0–149 = 100 tick)
+
+| Tiêu chí | Ngưỡng | Kết quả | Trạng thái |
+| --- | --- | --- | --- |
+| poseTracks của `.dat` (giải mã lại thành tư thế xương trong không gian actor) so với mẫu App 2 (lượt lấy mẫu độc lập, lưới lệch 3 khung), từng xương từng tick, 81 xương x 99 tick (9 tick trong vùng trộn) | <= 0,5 độ và <= 2 mm | tối đa 0,0011 mm; góc tối đa 0,068 độ (Jaw_end_end, xương hàm đuôi); trong vùng trộn 0,0002 mm / 0,068 độ | PASS |
+| Replay x/y/z/yaw của actor so với ma trận actor của sampler | <= 2 mm, <= 0,5 độ | 0 mm, 0 độ | PASS |
+| Film bắt đầu giữa vùng trộn (khung 42–77) so với film đầy đủ, cùng tick | giống nhau | lệch tối đa 1,3e-12 | PASS |
+| Không hồi quy: hash film (transformSamples + poseTracks) của project không `blendIn` (B ở 59), K3 so K4 | bit-giống | `bdcbc717…c154` trùng K3 `f780440` | PASS |
+
+Ghi chú: ví dụ vùng trộn trong báo cáo job: "Gỗ Xưa · Shot 01: trộn 44–58 (15 khung), khóa chân, chân trái khóa 44–49 · Chân phải khóa 52–54, clip sau dời 0,64 m, xoay -0°". Phần giải mã dùng một ma trận bọc cố định W (tỉ lệ đơn vị/sàn của BOBJ) hiệu chuẩn trên xương gốc ở tick đầu, rồi mọi xương/tick còn lại phải khớp. Đường bake `bakeFilmPoseTracks` (rig Mixamo65 qua Blender converter) không chạy trên mẫu này (mẫu là Verity một gốc không kết nối); phần trộn nằm trước bước bake nên không đổi.
+
+### Preflight / báo cáo
+
+- `filmPreflight` thêm cảnh báo `CLIP_BLEND_ZONE` (Vietnamese + English) cho từng vùng trộn chạm khoảng xuất, ví dụ "Gỗ Xưa: trộn 44–58 (15 khung), khóa chân, đảo chân". Job xuất ghi vùng trộn (kèm chân khóa, dời/xoay) vào `warnings`, `provenance.blendZones` và `REPORT.txt` trong gói; không có vùng trộn thì kết quả y hệt trước.
+- Lỗi `FILM_MOTION_OVERLAP_INVALID` (qua `inspectProjectFilm`, nên cả preflight lẫn job) chỉ khi hai clip chồng nhau mà clip sau không có `blendIn` hợp lệ trỏ đúng clip trước, hoặc ba clip chồng nhau. Vùng chồng hợp lệ không báo lỗi; clip sát nhau (frameEnd == frameStart) vẫn không phải chồng (project Đen có clip kiểu này). Logic: `findInvalidMotionOverlaps` trong `document/clipBlend.ts`, cùng quy tắc với `motionOverlapsValid`.
+- Mặc định trộn đổi 0,5 s -> 1 s (`DEFAULT_BLEND_SECONDS = 1.0`): 30 khung ở 30 fps, bị giới hạn nửa clip ngắn hơn, nên cặp Gỗ Xưa (A dài 59 khung) ra 29 khung, khung đầu B ở 30. Spec §4.1 mục 3 và §10.4 đã cập nhật.
+
+### Kiểm thử
+
+- Builder vitest 128 file, 738 test pass, 1 skipped (thêm `findInvalidMotionOverlaps`, cập nhật mặc định 1 s ở `clipBlend.test.ts` và `clipBlendSession.test.ts`). `pnpm typecheck` toàn workspace sạch.
+- Studio `tsx --test`: `clipBlendK4.test.ts` (2 test: preflight vùng trộn / lỗi chồng clip / ba clip / clip sát nhau; splitShots qua vùng trộn khớp từng khung với dự án gốc, nguồn không bị sửa, bỏ blendIn mồ côi) cùng filmPreflight, splitShots, sceneBbsPreview, bbsPreview, filmMinecraftFeet, b10MinecraftFloor, filmManifest, filmPoseBake, filmRotationKeys, exportShotSelection, shotClip, sceneBbsFilm, filmSeries, skeletonMappingCommand: 92 test, 91 pass, 1 skipped, 0 fail.
+- Giật xương ở vùng 15 khung vẫn FAIL như K3 (3,85x); vùng 30 khung PASS (1,37x) nên mặc định 1 s là cách xử lý. Chưa đo lại sau khi đổi vì cặp mẫu chỉ cho 29 khung.

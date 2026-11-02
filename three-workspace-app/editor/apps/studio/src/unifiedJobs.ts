@@ -416,6 +416,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     signal.throwIfAborted()
     record.state = 'running'; record.progress = 0.03; record.updatedAt = new Date().toISOString(); await persist(record)
     const input = await sampleProjectFilm(snapshot, args, signal)
+    const blendZoneTexts = input.blendZones?.map((zone) => zone.text) ?? []
     await validateFilmEffectsDestination(args.effectsPolicy)
     const effectsPolicy = resolveFilmEffectsPolicy(args.effectsPolicy)
     const effects = await filmEffectsForExport(effectsPolicy, () => buildVfxEffectsForFilm(snapshot, args, signal))
@@ -529,6 +530,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
       `Effects policy: ${effectsPolicy.mode}; included cue intervals: ${effects.length}; in-game effect playback: ${effects.length ? 'UNVERIFIED' : 'OMITTED'}.`,
       effectsPolicy.mode === 'include' ? 'Moving attachments are rejected: the sidecar stores one transform per interval and moving transform replay has not been established.' : 'Project VFX cues were not evaluated or changed; no effect replay, form, sidecar or asset was exported.',
       'Static cues and stationary attachments can be represented. BBS in-game playback was not tested.',
+      ...(blendZoneTexts.length ? ['', 'Clip blend zones baked into the pose tracks (same blended pose as App 2):', ...blendZoneTexts.map((text) => `- ${text}`)] : []),
       '',
     ].join('\n'), { flag: 'w' })
     const archiveName = options.archiveName ?? `${args.filmName}.zip`
@@ -537,7 +539,8 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     await saveArtifact(record, archive, archiveName, files)
     signal.throwIfAborted()
     record.result = { files, provenance: { sourceRevision: record.sourceRevision, sourceSha256: record.sourceSha256,
-      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes, worldAnchor }, warnings: [], blockedRequests: [] }
+      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes, worldAnchor,
+      ...(blendZoneTexts.length ? { blendZones: input.blendZones } : {}) }, warnings: blendZoneTexts.map((text) => `Vùng trộn clip đã nướng vào film: ${text}`), blockedRequests: [] }
     record.state = 'succeeded'; record.progress = 1
   } catch (error) {
     if (signal.aborted || error instanceof DOMException && error.name === 'AbortError') record.state = 'cancelled'

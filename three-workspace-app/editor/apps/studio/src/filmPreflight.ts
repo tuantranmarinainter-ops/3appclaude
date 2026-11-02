@@ -1,6 +1,7 @@
 import { filmAnchorPlacement, type FilmAnchorPlacement } from './filmAnchorPreflight'
 import { filmCharacterHeight } from './filmCharacterHeight'
 import { filmCameraWarnings } from './filmCameraWarnings'
+import { blendZoneText, listFilmBlendZones } from './filmBlendZones'
 import { Matrix4, PropertyBinding, Quaternion, Vector3 } from 'three'
 import type { SkeletonProfile, UnifiedProject } from '@bbs/animation-workspace-shared'
 import { filmGridFrameStep, FILM_MAX_TICKS, FILM_TICK_RATE } from './filmFrame'
@@ -133,6 +134,7 @@ const samplingMessages: Record<string, [string, string]> = {
   BONE_PROFILE_INVALID: ['Tên hoặc số lượng xương vượt giới hạn BOBJ.', 'Bone names or count exceed the BOBJ profile limit.'],
   MODEL_UNITS_INVALID: ['Đơn vị nhân vật không khớp hồ sơ skeleton.', 'Character units do not match the skeleton profile.'],
   BONE_BUDGET: ['Đoạn xuất vượt ngân sách lấy mẫu xương; hãy rút ngắn đoạn hoặc chọn ít nhân vật hơn.', 'The export exceeds the bone sampling budget; shorten the range or select fewer characters.'],
+  MOTION_OVERLAP_INVALID: ['Hai clip của một nhân vật chồng nhau mà không phải vùng trộn hợp lệ (cần bật trộn trên clip sau, tối đa 2 clip cùng lúc).', 'Two motion clips of a Character overlap without a valid blend zone (blend must be on the later clip, at most 2 clips at once).'],
   PROP_BONE_COUNT_UNAVAILABLE: ['Không thể xác định số xương của hậu cảnh được chọn từ hồ sơ nguồn.', 'Could not determine the selected backdrop bone count from its source profile.'],
 }
 
@@ -175,6 +177,9 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
       }
     }
     const character = validation.characterId ? project.characters[validation.characterId] : undefined
+    if (validation.code === 'MOTION_OVERLAP_INVALID' && character) {
+      vi = `${character.name}: ${vi}`; en = `${character.name}: ${en}`
+    }
     const nodeId = character?.nodeId ?? validation.propId
     addError(issue(code, vi, en, nodeId ? { nodeId } : {}))
   }
@@ -215,6 +220,13 @@ export function filmPreflight(project: UnifiedProject, args: FilmPreflightArgs):
     if (status.status !== 'ok') result.warnings.push(issue('SHOT_NOT_APPROVED', `Cảnh chưa được duyệt (${status.status}).`, `Shot is not approved (${status.status}).`, { clipId: clip.id }))
   }
 
+  // K4: list clip blend zones (valid overlaps are baked as blended poses; invalid ones are errors from the inspection above).
+  if (range) for (const zone of listFilmBlendZones(project, selectedCharacters, range)) {
+    const text = blendZoneText(zone, project.scene.content.timeline.fps)
+    result.warnings.push(issue('CLIP_BLEND_ZONE', `Vùng trộn clip, đã nướng vào film: ${text}.`,
+      `Clip blend zone baked into the film: ${zone.name}: blend ${zone.frameStart}–${zone.frameEnd} (${zone.frames} frames), foot lock${zone.mirror ? ', mirrored' : ''}.`,
+      { nodeId: zone.nodeId, clipId: zone.clipId, frame: zone.frameStart }))
+  }
   for (const characterId of selectedCharacters) {
     const character = project.characters[characterId]
     if (!character) continue
