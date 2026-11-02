@@ -14,7 +14,7 @@ async function call<T>(url: string, body: unknown, vi: boolean): Promise<T> {
   return data
 }
 
-export const formatMiB = (bytes: number) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+export const formatMiB = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.ceil(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
 /** B64: "Dọn phim cũ" (films + unreferenced assets in the game) and "Xoá gói ZIP cũ" (project job folder). */
 export function useFilmCleanup(vi: boolean, gameDir: string, worldName: string, projectId: string, refreshInstall: () => Promise<unknown>) {

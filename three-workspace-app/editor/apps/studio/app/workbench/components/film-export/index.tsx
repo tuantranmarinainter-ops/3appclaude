@@ -76,11 +76,12 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
               <button type="button" onClick={state.selectAllCharacters}>{vi ? 'Chọn tất cả' : 'Select all'}</button>
               <button type="button" onClick={state.clearCharacters}>{vi ? 'Bỏ chọn' : 'Clear'}</button>
             </div>
-            {state.characters.map((character) => <label key={character.id} className="wb-check">
+            {state.characters.map((character) => <div key={character.id}><label className="wb-check">
               <input type="checkbox" checked={state.characterIds.includes(character.id)} onChange={(event) => state.toggleCharacter(character.id, event.target.checked)} />
               <span>{character.name}{state.actingCharacterIds.includes(character.id) ? (vi ? ' · có động tác trong shot' : ' · acts in this shot') : ''}</span>
-              <PreflightIssues items={placed.byNode.get(character.nodeId)} vi={vi} />
-            </label>)}
+            </label>
+            <PreflightIssues items={placed.byNode.get(character.nodeId)} vi={vi} />
+            </div>)}
             {state.actingButUnselected.length > 0 && <p role="alert" className="wb-film-warn">{vi
               ? `${state.actingButUnselected.join(', ')} có động tác trong shot nhưng chưa được tick — phim sẽ thiếu nhân vật này.`
               : `${state.actingButUnselected.join(', ')} act in this shot but are not ticked.`}</p>}
