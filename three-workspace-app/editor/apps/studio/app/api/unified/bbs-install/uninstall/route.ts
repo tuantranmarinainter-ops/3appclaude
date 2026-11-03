@@ -1,4 +1,5 @@
-import { uninstallInstall } from '../../../../../src/bbsInstall'
+import { canonicalGameDir, uninstallInstall } from '../../../../../src/bbsInstall'
+import { gameRunningResponse } from '../../../../../src/bbsGameGuard'
 import { validateLocalRequest } from '../../../../../src/unifiedSession'
 
 export const runtime = 'nodejs'
@@ -10,6 +11,8 @@ export async function POST(request: Request): Promise<Response> {
     const body: unknown = await request.json()
     const args = body && typeof body === 'object' ? body as Record<string, unknown> : {}
     if (typeof args.gameDir !== 'string' || typeof args.installId !== 'string') return Response.json({ error: { message: 'Game folder and install record are required' } }, { status: 400 })
+    const running = await gameRunningResponse(await canonicalGameDir(args.gameDir))
+    if (running) return running
     const result = await uninstallInstall(args.gameDir, args.installId)
     return Response.json({ result }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {

@@ -184,15 +184,16 @@ export function useBbsInstall(vi: boolean) {
 
   const uninstall = async (installId: string) => {
     if (busy) return
-    if (!window.confirm(vi ? 'Chỉ gỡ file không thay đổi trong nhật ký cài đặt? File đã sửa sẽ được giữ.' : 'Remove only unchanged files recorded by this install? Modified files will be preserved.')) return
+    if (!window.confirm(vi ? 'Chỉ gỡ file không thay đổi trong nhật ký cài đặt? File đã sửa, và file nhân vật/hiệu ứng mà phim khác còn dùng, sẽ được giữ.' : 'Remove only unchanged files recorded by this install? Modified files will be preserved.')) return
     setBusy(true); setError(''); setStatus(vi ? 'Đang gỡ file trong nhật ký…' : 'Removing recorded files…')
     try {
       await ensureUnifiedSession()
       const send = () => fetch('/api/unified/bbs-install/uninstall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gameDir, installId }) })
       let response = await send()
       if (response.status === 401) { await ensureUnifiedSession(true); response = await send() }
-      const body = await responseBody<{ result: { removed: string[]; preserved: string[] } }>(response, vi)
-      setStatus(vi ? `Đã gỡ ${body.result.removed.length} · giữ ${body.result.preserved.length} file đã đổi/thiếu` : `Removed ${body.result.removed.length} · preserved ${body.result.preserved.length} changed/missing files`)
+      const body = await responseBody<{ result: { removed: string[]; preserved: string[]; inUse?: string[] } }>(response, vi)
+      const shared = body.result.inUse?.length ?? 0
+      setStatus(vi ? `Đã gỡ ${body.result.removed.length} · giữ ${body.result.preserved.length} file đã đổi/thiếu${shared ? ` · giữ ${shared} file vì phim khác còn dùng` : ''}` : `Removed ${body.result.removed.length} · preserved ${body.result.preserved.length} changed/missing files${shared ? ` · kept ${shared} files used by other films` : ''}`)
       await refresh()
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('') }
     finally { setBusy(false) }
