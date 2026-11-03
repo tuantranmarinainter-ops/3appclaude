@@ -841,6 +841,52 @@ function setupShotWorkspace() {
     panel.hidden = true;
     exportButton.hidden = true;
   };
+  // Scene mode: one result package, one edit per edited character (unedited characters get none; none edited: edits []).
+  // A character that is not being edited has no mounted IK controls/frames (the editor tears them down when it is left),
+  // so it is baked the way the editor itself evaluates it: temporarily made the editing character through the normal
+  // switch (its saved keys/undo/selection are restored by the switch), then the original editing character is put back.
+  async function sceneExportFiles(includeMinecraft20) {
+    const shot = session.shot,
+      original = sceneShotView.editing(),
+      ids = sceneShotView.edited(),
+      parts = new Map();
+    const bakeEditing = async () => {
+      const entry = sceneShotView.registry.get(sceneShotView.editing()),
+        character = entry.character,
+        manifest = ShotPackage.readJSON(session.files, character.manifest),
+        own = {
+          shot,
+          character,
+          manifest,
+          entry: manifest.actions.find((a) => a.uuid === character.actionUuid),
+          sourceProject: sceneShotView.editingStore().baseProject,
+          placementKeys: [{ frame: shot.frameRange[0], ...C.clone(character.placement) }],
+        },
+        policy = ShotExport.placementPolicy(rig, project, own),
+        glb = await ShotExport.bakeEditedGLB(rig, policy.project, own.entry.name);
+      parts.set(character.characterId, {
+        session: own,
+        glb,
+        placementKeys: policy.placementKeys,
+        bobj: includeMinecraft20 ? await minecraft20BOBJ(glb) : null,
+      });
+    };
+    try {
+      if (ids.includes(original)) await bakeEditing();
+      for (const id of ids.filter((x) => x !== original)) {
+        await sceneShotView.select(id);
+        if (sceneShotView.editing() !== id) throw Error('Không chuyển được sang ' + id + ' để xuất.');
+        await bakeEditing();
+      }
+    } finally {
+      if (sceneShotView.editing() !== original) await sceneShotView.select(original);
+    }
+    return ShotExport.sceneResultFiles(
+      shot,
+      session.baseShotSha256,
+      ids.map((id) => parts.get(id)),
+    );
+  }
   async function exportFiles({ includeMinecraft20 = false } = {}) {
     if (!session || session.rigFingerprint !== rig.fingerprint)
       throw Error('Không có shot đang chỉnh.');
@@ -855,6 +901,7 @@ function setupShotWorkspace() {
     playing = false;
     for (const [e] of locked) e.inert = true;
     try {
+      if (session.shot.sceneMode === true) return await sceneExportFiles(includeMinecraft20);
       const policy = ShotExport.placementPolicy(rig, project, session),
         glb = await ShotExport.bakeEditedGLB(rig, policy.project, session.entry.name);
       const files = await ShotExport.resultFiles(session, glb, policy.placementKeys);

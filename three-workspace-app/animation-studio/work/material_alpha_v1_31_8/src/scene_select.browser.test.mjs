@@ -180,13 +180,14 @@ test(
       await waitEditing('char1');
       assert.equal(await SS('()=>SS.keysHash("char1")'), B1);
       assert.equal(await SS('()=>SS.keysHash("char0")'), A1);
-      // 6) shotExport follows the editing character; then a click on its own body/widgets never switches
+      // 6) (S4) shotExport carries every edited character, in shot order (A was redone, B edited); then a click on its own body/widgets never switches
       const exp = await page.evaluate(async () => {
         const files = await window.__studio.shot.exportFiles();
         const r = JSON.parse(new TextDecoder().decode(files['result.json']));
         return r.edits.map((e) => e.characterId);
       });
-      assert.deepEqual(exp, ['char1']);
+      assert.deepEqual(exp, ['char0', 'char1']);
+      assert.equal(await SS('()=>SS.editing()'), 'char1', 'export restores the editing character');
       const own = await where('char1');
       assert.ok(own);
       await page.mouse.click(own.x, own.y);
