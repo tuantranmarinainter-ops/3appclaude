@@ -102,8 +102,9 @@ export function spreadOffset(axis, screenRight, motion, up, height, spread, side
   const travel = motion.clone().projectOnPlane(normal);
   let dir = screen;
   if (axis === 'x') dir = new T.Vector3(1, 0, 0);
-  // 'z' = three.js Z = Blender -Y; shown as "Trục Y" in the Z-up view, so point it at Blender +Y.
-  else if (axis === 'z') dir = new T.Vector3(0, 0, -1);
+  // 'z' is shown as "Trục Y": the ground axis perpendicular to X, i.e. up × X. Z-up view → (0,1,0) (Blender +Y);
+  // Y-up view → (0,0,-1). Never vertical, whichever up the view uses.
+  else if (axis === 'z') dir = normal.clone().cross(new T.Vector3(1, 0, 0)).normalize();
   else if (axis === 'up') dir = normal; // "Trục Z" in the Z-up view: vertical, along the view's up
   else if (axis === 'motion' && travel.length() >= height * 0.01) dir = travel.normalize();
   return dir.clone().multiplyScalar((side === 'before' ? 1 : -1) * rank * height * spread / 100);

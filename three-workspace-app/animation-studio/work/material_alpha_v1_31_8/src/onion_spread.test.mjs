@@ -22,7 +22,10 @@ test('spread offsets honor rank, side, axes, and stationary motion fallback', ()
   assert.deepEqual(calc('screen', new T.Vector3(), 'after', 10), [-12, 0, 0]);
   assert.deepEqual(calc('screen', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
   assert.deepEqual(calc('x', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
-  assert.deepEqual(calc('z', new T.Vector3()), [0, 0, 1.2]);
+  // "Trục Y" lies on the ground plane, perpendicular to X: Blender +Y in a Z-up view, three.js -Z in a Y-up view.
+  assert.deepEqual(calc('z', new T.Vector3(), 'before', 1), [0, 1.2, 0]);
+  const yUp = spreadOffset('z', screen, new T.Vector3(), new T.Vector3(0, 1, 0), 2, 60, 'before', 1).toArray().map((n) => n + 0);
+  assert.deepEqual(yUp, [0, 0, -1.2]);
   // "Trục Z" (vertical) follows the view's up vector.
   assert.deepEqual(calc('up', new T.Vector3(), 'before', 1), [0, 0, 1.2]);
   assert.deepEqual(calc('up', new T.Vector3()), [0, 0, -1.2]);
