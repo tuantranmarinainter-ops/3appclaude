@@ -2,7 +2,7 @@
 import { mappingTransaction } from './mapping-transaction.js'
 import { boneChooser, closeBoneChooser } from './bone-chooser.js'
 import { mappingDrag } from './mapping-drag.js'
-import { Viewer, FPS } from './viewer.js'
+import { Viewer, FPS, DEFAULT_STAFF_FIT } from './viewer.js'
 import { jointSettings, JOINT_SETTINGS_KEY } from './joint-overlay.js'
 import { executeTransfer, suggestActionKey } from './transfer.js'
 
@@ -211,6 +211,26 @@ $('tgStaff').addEventListener('change', (event) => {
   viewer.setStaff(event.target.checked)
   try { localStorage.setItem('w01.workbench.rainbowStaff', String(event.target.checked)) } catch { /* Preview works without storage. */ }
 })
+// Fit the staff to the hand: offsets in Minecraft pixels along the staff, rotations in degrees, length in %.
+const STAFF_FIT_KEY = 'w01.workbench.rainbowStaffFit'
+let staffFit = { ...DEFAULT_STAFF_FIT }
+try { staffFit = { ...DEFAULT_STAFF_FIT, ...JSON.parse(localStorage.getItem(STAFF_FIT_KEY) ?? '{}') } } catch { /* Defaults still apply. */ }
+const staffInputs = {}
+function saveStaffFit(next) {
+  staffFit = { ...DEFAULT_STAFF_FIT, ...next }
+  viewer.setStaffFit(staffFit)
+  for (const [key, [input, readout]] of Object.entries(staffInputs)) { input.value = staffFit[key]; readout.textContent = String(staffFit[key]) }
+  try { localStorage.setItem(STAFF_FIT_KEY, JSON.stringify(staffFit)) } catch { /* Fit still applies in memory. */ }
+}
+for (const [key, title, min, max] of [['x', 'Dời ngang (px)', -16, 16], ['y', 'Dời dọc gậy (px)', -24, 24], ['z', 'Dời trước/sau (px)', -16, 16],
+  ['rx', 'Xoay X (°)', -180, 180], ['ry', 'Xoay Y (°)', -180, 180], ['rz', 'Xoay Z (°)', -180, 180], ['length', 'Độ dài (%)', 20, 200]]) {
+  const input = h('input', { type: 'range', min, max, step: 1, 'aria-label': title }), readout = h('span', { text: '' })
+  input.addEventListener('input', () => saveStaffFit({ ...staffFit, [key]: Number(input.value) }))
+  staffInputs[key] = [input, readout]
+  $('staffFit').append(h('label', {}, title, h('span', {}, input, readout)))
+}
+$('staffFit').append(h('button', { type: 'button', text: 'Đặt lại gậy', onclick: () => saveStaffFit(DEFAULT_STAFF_FIT) }))
+saveStaffFit(staffFit)
 $('frameBtn').addEventListener('click', () => viewer.frameAll())
 try { viewer.autoFitOnAnimationChange = localStorage.getItem('w01.workbench.autoFitCamera') === 'true' } catch { /* Camera control works without storage. */ }
 $('autoFitCamera').checked = viewer.autoFitOnAnimationChange

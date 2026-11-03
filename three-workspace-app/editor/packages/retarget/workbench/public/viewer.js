@@ -242,28 +242,42 @@ export async function buildSteve(data, textureUrl) {
 
 const RAINBOW = ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#3949ab', '#8e24aa']
 
+/** User fit of the staff in the fist: offset in Minecraft pixels along the staff frame, rotation in degrees, length %. */
+export const DEFAULT_STAFF_FIT = Object.freeze({ x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, length: 100 })
+
 /**
- * Preview-only rainbow staff for Minecraft20 characters (Đen has no staff model yet): seven 2-px block segments, upright
- * through the right fist at rest, parented to the wrist bone so it follows the hand. Never exported.
+ * Preview-only rainbow staff for Minecraft20 characters (Hero has no staff model yet): seven 2-px block segments held like
+ * a Minecraft tool, parented to the wrist bone so it follows the hand. Never exported. `anchor` carries the default grip;
+ * `staff` inside it takes the user's fit (DEFAULT_STAFF_FIT) so it can be lined up with the hand.
  */
 function attachRainbowStaff(model) {
   const wrist = model.getObjectByName(steveNode('low_right_arm.end'))
   if (!wrist) return null
   model.updateMatrixWorld(true)
   const height = bodyHeight(model), pixel = height / 32, length = height * 0.75, thick = pixel * 2
-  const staff = new THREE.Group(); staff.name = 'rainbow-staff'
+  const anchor = new THREE.Group(); anchor.name = 'rainbow-staff'
+  const staff = new THREE.Group(); anchor.add(staff)
+  // Gripped a third of the way along: the anchor origin is the fist.
   RAINBOW.forEach((color, index) => {
     const part = new THREE.Mesh(new THREE.BoxGeometry(thick, length / RAINBOW.length, thick), new THREE.MeshLambertMaterial({ color }))
-    part.position.y = (index + 0.5) * length / RAINBOW.length
+    part.position.y = (index + 0.5) * length / RAINBOW.length - length / 3
     staff.add(part)
   })
-  // Held like a Minecraft tool: pointing forward (+Z, the way the character faces) and up from the fist, gripped a third of
-  // the way along, so it stands clear of the hanging arm. Built in rest world space; attach() keeps that world pose.
+  // Pointing forward (+Z, the way the character faces) and up, clear of the hanging arm. Built in rest world space;
+  // attach() keeps that world pose under the wrist.
   const along = new THREE.Vector3(0, 0.6, 0.8)
-  staff.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), along)
-  staff.position.copy(wrist.getWorldPosition(new THREE.Vector3())).addScaledVector(along, -length / 3)
-  model.add(staff); staff.updateMatrixWorld(true); wrist.attach(staff)
-  return staff
+  anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), along)
+  anchor.position.copy(wrist.getWorldPosition(new THREE.Vector3()))
+  model.add(anchor); anchor.updateMatrixWorld(true); wrist.attach(anchor)
+  // attach() leaves the anchor at model scale, so offsets inside it are in model units.
+  return { anchor, staff, pixel }
+}
+
+function fitRainbowStaff(rig, fit) {
+  const value = { ...DEFAULT_STAFF_FIT, ...fit }
+  rig.staff.position.set(value.x * rig.pixel, value.y * rig.pixel, value.z * rig.pixel)
+  rig.staff.rotation.set(...['rx', 'ry', 'rz'].map((key) => THREE.MathUtils.degToRad(value[key])), 'XYZ')
+  rig.staff.scale.set(1, Math.max(0.1, value.length / 100), 1)
 }
 
 /** Server clip JSON (per-tick bone-local tracks) → AnimationClips addressing the Steve bones. */
@@ -284,6 +298,7 @@ export class Viewer {
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
     this.autoFitOnAnimationChange = false
     this.showStaff = false
+    this.staffFit = { ...DEFAULT_STAFF_FIT }
     this.hasSourceFrame = false
     this.source = null // { scene, animations }
     this.sourceSeq = 0
@@ -384,7 +399,7 @@ export class Viewer {
       const holder = new THREE.Group(); holder.name = 'steve-holder'; holder.add(scene)
       this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [], skinId, staff }
     }
-    if (this.steve.staff) this.steve.staff.visible = this.showStaff
+    if (this.steve.staff) { this.steve.staff.anchor.visible = this.showStaff; fitRainbowStaff(this.steve.staff, this.staffFit) }
     const fit = !this.steveMode || this.autoFitOnAnimationChange
     this.fitSteveToTarget()
     this.steveMode = true
@@ -447,7 +462,10 @@ export class Viewer {
   setToggle(key, value) { for (const pane of [this.left, this.right]) { pane.show[key] = value; pane.applyVisibility() } }
 
   /** Rainbow staff in the Minecraft20 character's right hand (preview only). */
-  setStaff(value) { this.showStaff = value; if (this.steve?.staff) this.steve.staff.visible = value }
+  setStaff(value) { this.showStaff = value; if (this.steve?.staff) this.steve.staff.anchor.visible = value }
+
+  /** Line the staff up with the hand: `{ x, y, z }` px, `{ rx, ry, rz }` degrees, `length` %. */
+  setStaffFit(fit) { this.staffFit = { ...DEFAULT_STAFF_FIT, ...fit }; if (this.steve?.staff) fitRainbowStaff(this.steve.staff, this.staffFit) }
 
   frameAll() { this.left.updateBounds(); this.right.updateBounds(); this.left.frame(); this.right.frame() }
 }
