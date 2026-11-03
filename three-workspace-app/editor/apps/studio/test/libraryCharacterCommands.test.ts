@@ -76,8 +76,10 @@ test('two library characters reuse one base asset and retain distinct per-node s
   const adapter = new LocalHostAdapter('unified')
   for (const node of nodes) {
     const model = await libraryCharacterModel(String(node.metadata!.libraryCharacterId))
-    assert.equal(adapter.resolveAssetUrl(String(node.metadata!.modelUrl)), node.metadata!.modelUrl)
-    const response = await GET(new Request(`http://localhost/api/library?modelCharacter=${node.metadata!.libraryCharacterId}&fingerprint=${model.fingerprint}`))
+    const resolved = adapter.resolveAssetUrl(String(node.metadata!.modelUrl))
+    assert.equal(resolved, `${node.metadata!.modelUrl}&render=2`, 'browser cache key moves past the pre-NEAREST GLB without changing the stored fingerprint')
+    assert.equal(adapter.resolveAssetUrl(resolved), resolved)
+    const response = await GET(new Request(`http://localhost${resolved}`))
     assert.equal(response.status, 200)
     const { json, binary } = unpackLibraryGlb(Buffer.from(await response.arrayBuffer()))
     const meshNode = json.nodes.find((item: any) => item.mesh !== undefined)
@@ -175,7 +177,10 @@ for (const count of [84, 101, 20]) test(`native BOBJ placement preserves ${count
       const { json, binary } = unpackLibraryGlb((await libraryCharacterModel(character.charId)).bytes)
       const node = json.nodes.find((node: any) => node.extras?.bobjObject === 'Body')
       const material = json.materials[json.meshes[node.mesh].primitives[0].material]
-      const view = json.bufferViews[json.images[json.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].bufferView]
+      const texture = json.textures[material.pbrMetallicRoughness.baseColorTexture.index]
+      const sampler = json.samplers?.[texture.sampler]
+      assert.deepEqual([sampler?.magFilter, sampler?.minFilter], [9728, 9728], '64×64 Minecraft skins stay pixel-sharp (NEAREST), not blurred by linear mipmaps')
+      const view = json.bufferViews[json.images[texture.source].bufferView]
       rendered.push(binary.subarray(view.byteOffset, view.byteOffset + view.byteLength))
     }
     assert.deepEqual(rendered, [png(0), png(255)], 'Minecraft mesh material embeds the selected skin pixels')
