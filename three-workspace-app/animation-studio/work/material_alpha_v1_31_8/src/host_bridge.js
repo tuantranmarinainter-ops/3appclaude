@@ -932,6 +932,10 @@
         savedSnapshot = JSON.stringify(studio.serialized(false));
         studio.sceneShot?.markSaved?.();
         reply(requestId, true, { saved: true });
+      } else if (type === 'allowUnload') {
+        // Scene-mode "Bỏ sửa": the host already asked the user, so the reload must not show a second browser prompt.
+        window.__bbsAllowUnload = true;
+        reply(event.data.requestId, true, { allowUnload: true });
       } else if (type === 'shotClose') {
         // The host imported the shot result into the project: drop the shot (scene layout, per-character edits, F2 baseline)
         // so nothing stays dirty and the next "Mở cả cảnh" starts from fresh bakes of the changed project.

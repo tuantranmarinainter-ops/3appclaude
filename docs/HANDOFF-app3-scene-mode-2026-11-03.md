@@ -9,18 +9,15 @@ Quy tắc: `CLAUDE.md`, `docs/DECISIONS.md`, `three-workspace-app/editor/AGENTS.
 | S1 hợp đồng `sceneMode` | `claude/app3-scene-s1` | #207 → `main` | xong |
 | S2 actor xem, bố cục, camera cảnh | `claude/app3-scene-s2` | #209 → S1 | xong (kèm sửa lỗi Armature 2,3 cm) |
 | S3 click chọn, sửa/Undo từng nhân vật | `claude/app3-scene-s3` | #214 → S2 | xong (kèm 7 lỗi review + vòng Root/gizmo nhường click) |
-| S4 host + trả về | `claude/app3-scene-s4` | PR → S3 | **đang làm**: code chính xong, còn 4 lỗi ở report mục S4 |
+| S4 host + trả về | `claude/app3-scene-s4` | #215 → S3 | xong (§9 trọn luồng 13 PASS, 1 BLOCKED Thư viện) |
 
 Người dùng đã chốt thêm (2026-11-03): ở chế độ Cả cảnh, click (không kéo) vào thân nhân vật khác **luôn chuyển**, kể cả trong vùng
 quả cầu gizmo; vòng trục X/Y/Z, nét vòng E, tay cầm di chuyển vẫn như cũ.
 
-## Việc tiếp theo cho S4 (theo thứ tự)
-1. Hộp "Lưu clip gộp" không bị `#floatingAnimationList` che (z-index/đặt hộp ngoài iframe dock, hoặc đóng danh sách nổi khi mở hộp).
-2. Sau `shot.result.import` thành công ở chế độ cả cảnh: host báo App 3 đóng shot cả cảnh (lệnh bridge mới hoặc `saved` + clear),
-   để App 3 hết dirty và lần mở sau không còn bản sửa cũ. Thêm test (`scene_export.browser.test.mjs` hoặc `sceneModeE2E.mjs`).
-3. Đo và giảm thời gian "Mở cả cảnh" qua Studio (24 s trên máy cloud; ngưỡng 15 s): ghi thời gian từng chặng.
-4. Chạy lại `sceneModeE2E.mjs` đủ §9; bước 8 (Thư viện) cần nhân vật Thư viện thật → chạy trên bản sao `tall-projects` + `tall-lib`.
-5. Ghi số vào report, mở/ cập nhật PR S4.
+## Việc còn lại (cần máy người dùng)
+1. Chạy §8/§9 trên bản sao Tập 15 · Shot 01 (Đen + Gỗ Xưa) và `tall-lib`, gồm bước 8 (Thư viện F5 có clip gộp).
+2. Đo 5 nhân vật ≥ 30 FPS trên máy có GPU.
+3. Quyết định về bộ giải Draco cho App 3 (nhân vật builtin).
 
 ## Chưa kiểm được (máy cloud không có ổ `S:\`, không GPU)
 - §8 trên Tập 15 · Shot 01 thật và bản 5 nhân vật từ Tập 15: dùng

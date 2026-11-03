@@ -201,6 +201,8 @@ try {
     const frame = await frameHandle()
     await frame.getByRole('tab', { name: 'Animate', exact: true }).click() // #playBtn lives in the Animate tab of App 3's mode layout
     await frame.locator('#playBtn').waitFor({ state: 'visible' })
+    // Start inside every character's clip (B's clip starts at frame 40; before it B correctly stands still, as in F2).
+    await SS('()=>SS.setTime(45/30)')
     const sample0 = await SS('()=>SS.sample().map(s=>[s.characterId,JSON.stringify(s.bones).length,Object.values(s.bones).flat().slice(0,40).reduce((a,b)=>a+b,0)])')
     await frame.locator('#playBtn').click()
     const fps = await frame.evaluate(() => new Promise((resolve) => { let n = 0; const t0 = performance.now(); const tick = () => { n++; if (performance.now() - t0 < 1500) requestAnimationFrame(tick); else resolve(n * 1000 / (performance.now() - t0)) }; requestAnimationFrame(tick) }))
@@ -335,7 +337,8 @@ try {
       return { dialogRect: [r.left, r.top, r.width, r.height].map(Math.round), topElement: top?.id || top?.className || top?.tagName, coveredByFloatingList: !!top?.closest('#floatingAnimationList') }
     })
     ev.fileDialogWithFloatingList = await shot('merge-dialog-with-floating-list-open')
-    await hostFrame.locator('#floatingAnimationList button[aria-label="Đóng danh sách animation"]').click()
+    // Fixed: the dialog is a modal layer above App 3's floating panels (its backdrop blocks clicks behind it).
+    assert.equal(ev.dialogHiddenUnderFloatingList.coveredByFloatingList, false, 'dialog must be above #floatingAnimationList')
     await page.waitForTimeout(300)
     await dialog.scrollIntoViewIfNeeded()
     afterDialogRows = await dialog.locator('fieldset.wb-scene-merge-row').count()

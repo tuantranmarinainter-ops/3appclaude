@@ -99,7 +99,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
 
   const receive = useCallback((event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== CHANNEL) return
-    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus(APP3_TITLE + ' đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
+    if (event.data.type === 'bridge-ready') { setBridgeReady(true); setStatus((previous) => previous.startsWith('Đã bỏ bản sửa') ? previous : APP3_TITLE + ' đã sẵn sàng. Chọn animation hoặc mở shot từ cảnh.'); return }
     if (event.data.type === 'dirty') { const dirty = event.data.dirty === true; setEditorDirty(dirty); onEditorDirty(dirty); return }
     const item = pending.current.get(event.data.requestId)
     if (!item) return
@@ -129,7 +129,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
 
-  function request(type: 'ping' | 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport' | 'shotClose', value?: unknown): Promise<BridgeReply['value']> {
+  function request(type: 'ping' | 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport' | 'shotClose' | 'allowUnload', value?: unknown): Promise<BridgeReply['value']> {
     const target = frame.current?.contentWindow
     if (!target) return Promise.reject(new Error('Editor chưa mở.'))
     const requestId = crypto.randomUUID()
@@ -420,7 +420,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       <button type="button" disabled={!bridgeReady || !characterId || busy || editorDirty} onClick={() => void openEditor(motionId || undefined)}>{motionId ? 'Chỉnh animation' : 'Tạo animation'}</button>
       <button type="button" className="wb-host-primary" disabled={busy || !characterId || !opened} onClick={() => void saveMotion()}>Lưu vào project</button>
       {revisionConflict && editorDirty && <button type="button" disabled={busy} onClick={() => void saveMotion(true)}>Lưu thành animation mới</button>}
-      {editorDirty && <button type="button" disabled={busy} onClick={() => { if (sceneShot && !window.confirm('Bỏ mọi bản sửa của cả cảnh (mọi nhân vật)? Không thể hoàn tác.')) return; sceneZip.current = null; setSceneShot(null); setSceneDialog(null); setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); setShotCharacterId(''); setChainInfo(null); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
+      {editorDirty && <button type="button" disabled={busy} onClick={async () => { if (sceneShot && !window.confirm('Bỏ mọi bản sửa của cả cảnh (mọi nhân vật)? Không thể hoàn tác.')) return; if (sceneShot) await request('allowUnload').catch(() => undefined); sceneZip.current = null; setSceneShot(null); setSceneDialog(null); setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); setShotCharacterId(''); setChainInfo(null); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
     </header>
     <header className="wb-animation-creation-toolbar" aria-label="Shot từ cảnh">
       <label>Camera<select value={cameraId} onChange={(event) => setCameraId(event.target.value)} disabled={busy || !!shotId || !cameras.length}>

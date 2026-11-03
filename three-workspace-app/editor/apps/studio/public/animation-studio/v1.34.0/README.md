@@ -5,8 +5,8 @@ từ nhánh `claude/app3-scene-s4` (working tree, chưa commit; thêm "1 khung �
 
 | Tệp | SHA-256 |
 | --- | --- |
-| `index.html` | `254ce34d41eaa729e5e28d8f90d0dc42265becfdd79204aac866f701277b1204` |
-| `host-bridge.js` | `373e8c306a1e4582f55227da760fdf6476cf897b3092d87f1b020ec4f1f0c6ef` (chép nguyên byte từ `src/host_bridge.js`) |
+| `index.html` | `0d80bb7668ef9e907065947a23eaa30e8d7c7c7e1814b3a3c83c466328223c91` |
+| `host-bridge.js` | `47d3d4ee7d285241b050d11ae6c8045a93364f726b7d7885faaa3ed08f1ddde7` (chép nguyên byte từ `src/host_bridge.js`) |
 
 Kênh cầu nối: `bbs-animation-studio-v1.33.0` (phiên bản giao thức, không đổi theo số build).
 

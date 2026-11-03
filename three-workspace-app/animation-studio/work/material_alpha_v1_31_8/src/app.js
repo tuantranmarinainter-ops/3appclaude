@@ -8459,6 +8459,7 @@ listen('reportCsv', 'click', () => {
   );
 });
 window.addEventListener('beforeunload', (e) => {
+  if (window.__bbsAllowUnload) return;
   if (
     dirty ||
     Object.entries(editorSlots).some(([side, slot]) => side !== activeEditorSlot && slot?.dirty)
