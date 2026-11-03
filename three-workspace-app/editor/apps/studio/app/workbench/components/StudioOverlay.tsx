@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import type { DirectorApi } from '@topview/3d-builder'
 import { LocalHostAdapter, type LocalDocumentSource } from '../../../src/LocalHostAdapter'
 import { getLiveStudio, setLiveStudio, subscribeLiveStudio } from '../../../src/devtools/liveStudio'
+import { flushStudioBeforeHistory } from '../../../src/devtools/historyFlush'
 import { setStudioLocale, useStudioLocale } from '../../../src/devtools/localePreference'
 import { readFilmFrameAspect } from '../../../src/filmFrame'
 import { useStudioT } from '../../../src/locale'
@@ -189,7 +190,11 @@ export function StudioOverlay({
     setHistoryBusy(true)
     setShellError(null)
     try {
-      const latest = projectState ?? await loadUnifiedProject(documentId)
+      // Ghi các sửa đổi Studio chưa lưu (trộn clip, kéo đè...) trước, để Ctrl+Z và nút Hoàn tác tác động đúng bước vừa làm.
+      const live = getLiveStudio()
+      const flushed = live?.documentId === documentId ? await flushStudioBeforeHistory(live.session) : true
+      if (!flushed) throw new Error(vi ? 'Không lưu được thay đổi mới nhất nên chưa hoàn tác.' : 'Could not save the latest change, so nothing was undone.')
+      const latest = flushed && live?.documentId === documentId ? await loadUnifiedProject(documentId) : projectState ?? await loadUnifiedProject(documentId)
       if (command === 'history.undo' ? !latest.history.canUndo : !latest.history.canRedo) return
       await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId: documentId, expectedRevision: latest.project.revision, command, args: {} })
       notifyProjectCommit(documentId)
@@ -201,7 +206,7 @@ export function StudioOverlay({
       setShellError(error instanceof Error ? error.message : String(error))
     }
     finally { setHistoryBusy(false) }
-  }, [documentId, historyBusy, projectState])
+  }, [documentId, historyBusy, projectState, vi])
   const cleanupResources = useCallback(async () => {
     if (assetBusy || !window.confirm(vi ? 'Dọn motion và tài nguyên không còn dùng? Bạn có thể hoàn tác thao tác này.' : 'Remove unused motions and assets? You can undo this operation.')) return
     setAssetBusy(true)
