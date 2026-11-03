@@ -204,6 +204,8 @@ export async function validateShot(files) {
       ids.add(id);
     }
     editable = field(c, 'editable', 'boolean', q) === true || editable;
+    if ('name' in c && !(typeof c.name === 'string' && c.name.length > 0))
+      issue('INVALID_VALUE', q + '.name', 'Expected a non-empty string.');
     await asset(c, q);
     const clip = field(c, 'clip', 'object', q);
     if (clip) {

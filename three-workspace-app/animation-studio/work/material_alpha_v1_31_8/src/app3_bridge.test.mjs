@@ -333,6 +333,43 @@ test('host self-registers, polls authenticated local queue and retains active/pi
   f.handlers.pagehide();
   assert.equal(f.parentHandlers['bbs-app3-project'], undefined);
 });
+test('scene shot: bridge identity stays pinned to the opened character while the editing character switches', async () => {
+  const f = await hostFixture(),
+    bridge = f.sandbox.window.__app3LocalBridge,
+    original = f.studio.rig(),
+    pin = Object.freeze({
+      character: { characterId: 'charA', actionUuid: 'act-A', glbSha256: 'a'.repeat(64) },
+      rig: f.context.rig,
+      rootUuid: f.context.rootUuid,
+      slot: f.context.slot,
+      activeRoot: f.context.activeRoot,
+      rigObject: original,
+    }),
+    shotSession = {
+      shot: { shotId: 'shot-1', frameRange: [0, 30], fps: 30 },
+      baseShotSha256: 'b'.repeat(64),
+      character: pin.character,
+    };
+  f.studio.sceneShot = { active: true, bridgePin: () => pin };
+  f.studio.shot = { session: shotSession };
+  const before = bridge.identity();
+  assert.equal(before.shot.characterId, 'charA');
+  assert.equal(JSON.parse(before.editor)[1], pin.rootUuid);
+  // Switch: new rig (asset, fingerprint, root uuid) and session.character moves to B, as onEditingChanged does.
+  f.context.rig = 'rigB';
+  f.context.rootUuid = randomUUID();
+  f.studio.rig = () => ({ asset: { data: Buffer.from('another character').toString('base64') } });
+  shotSession.character = { characterId: 'charB', actionUuid: 'act-B', glbSha256: 'f'.repeat(64) };
+  assert.deepEqual(bridge.identity(), before, 'identity constant across the switch');
+  await f.timers[0]();
+  assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 1, 'broker session survives the switch');
+  assert.equal(bridge.status().bound, true);
+  // Control: without the pin (not a scene shot) the same change replaces the session, as before.
+  f.studio.sceneShot = { active: false };
+  assert.notEqual(bridge.identity().editor, before.editor);
+  await f.timers[0]();
+  assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 0);
+});
 test('host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA', async () => {
   const f = await hostFixture(true);
   assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 0);

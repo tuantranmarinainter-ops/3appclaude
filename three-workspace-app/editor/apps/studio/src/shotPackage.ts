@@ -4,6 +4,8 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'three/addons/libs/fflate
 export interface Issue { code: string; path: string; message: string }
 export type PackageFiles = Record<string, Uint8Array>
 export interface ShotCharacter {
+  /** Optional display name (scene mode). */
+  name?: string
   heightBlocks?: number; heightScale?: number
   characterId: string; glb: string; manifest: string; glbSha256: string; actionUuid: string
   clip: { sourceStartSeconds: number; sourceEndSeconds: number; speed: number; loop: boolean; reverse: boolean }
@@ -109,6 +111,7 @@ class Validator {
     for(const [c,q] of this.rows(s,'characters',p)) {
       const id=this.field(c,'characterId','string',q);if(ids.has(id))this.issue('DUPLICATE_CHARACTER_ID',q+'.characterId','Duplicate character');ids.add(id)
       if(this.field(c,'editable','boolean',q)===true)editable=true
+      if('name' in c&&!(typeof c.name==='string'&&c.name.length>0))this.issue('INVALID_VALUE',q+'.name','Expected a non-empty string')
       for (const key of ['heightBlocks', 'heightScale']) if (key in c && (!finite(c[key]) || (c[key] as number) <= 0)) this.issue('INVALID_HEIGHT', q+'.'+key, 'Expected positive finite height')
       if (('heightBlocks' in c) !== ('heightScale' in c)) this.issue('INVALID_HEIGHT', q, 'Height and scale must be supplied together')
       this.asset(c,q,'actionUuid')

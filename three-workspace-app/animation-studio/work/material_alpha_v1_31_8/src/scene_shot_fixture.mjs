@@ -1,7 +1,7 @@
 // Test helper for the "1 khung · Cả cảnh" browser tests. buildSceneShot is serialised with toString() and runs
 // inside the built Animation Studio page: it keys the sample Mixamo rig, exports two different animated GLBs with
 // the app's own exporter, and returns the in-memory files of a scene-mode shot package (no Studio, no disk).
-export const buildSceneShot = async ({ count = 3, heightScale, aspect = 2, sceneMode = true }) => {
+export const buildSceneShot = async ({ count = 3, heightScale, aspect = 2, sceneMode = true, names }) => {
   const S = window.__studio,
     C = S.core;
   const { sha256 } = await import('@studio/shot-package');
@@ -84,6 +84,7 @@ export const buildSceneShot = async ({ count = 3, heightScale, aspect = 2, scene
       placement: { position: [x, y, z], yawDegrees: yaw },
       rootPolicy: 'skeletal',
       editable: true,
+      ...(names?.[i] ? { name: names[i] } : {}),
       ...(heightScale ? { heightScale, heightBlocks: heightScale * 1.8 } : {}),
     });
   }

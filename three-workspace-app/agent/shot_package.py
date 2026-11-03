@@ -230,6 +230,8 @@ class _Validator:
                     self.issue("DUPLICATE_CHARACTER_ID", f"{location}.characterId", "Character ID is duplicated.")
                 character_ids.add(character_id)
             editable = self.field(character, "editable", bool, location) is True or editable
+            if "name" in character and not (type(character["name"]) is str and character["name"]):
+                self.issue("INVALID_VALUE", f"{location}.name", "Expected a non-empty string.")
             self.asset(character, location, "actionUuid")
             clip = self.field(character, "clip", dict, location)
             if clip is not None:

@@ -264,6 +264,9 @@ imports['@studio/scene-shot'] =
       "'@studio/shot-package'",
     ),
   ).toString('base64');
+imports['@studio/scene-select'] =
+  'data:text/javascript;base64,' +
+  Buffer.from(await fs.readFile(path.join(root, 'src/scene_select.js'), 'utf8')).toString('base64');
 imports['@studio/shot-export'] =
   'data:text/javascript;base64,' +
   Buffer.from(
@@ -322,6 +325,7 @@ const app = (
   .replace("'./shot_export.js'", "'@studio/shot-export'")
   .replace("'./shot_package.js'", "'@studio/shot-package'")
   .replace("'./scene_shot.js'", "'@studio/scene-shot'")
+  .replace("'./scene_select.js'", "'@studio/scene-select'")
   .replace("'./animation_director.js'", "'@studio/animation-director'")
   .replace("'./director_panel.js'", "'@studio/director-panel'")
   .replace("'./studio_bridge.js'", "'@studio/studio-bridge'")

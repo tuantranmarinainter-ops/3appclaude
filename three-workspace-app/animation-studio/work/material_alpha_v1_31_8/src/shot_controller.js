@@ -3,7 +3,58 @@ import { minecraft20BOBJ } from './minecraft20_export.js';
 import * as ShotExport from './shot_export.js';
 import * as ShotPackage from './shot_package.js';
 import * as SceneShot from './scene_shot.js';
+import * as SceneSelect from './scene_select.js';
 import { unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
+/**
+ * Bakes the character's shot clip into linear 30 FPS keys on `candidate` (a freshly parsed rig), exactly the way the
+ * first editing character always was. Shared by openFiles and by the first switch to another scene character.
+ */
+function bakeCharacterProject(candidate, character, entry, clip, frames) {
+  const duration = frames / 30,
+    baked = C.newProject(candidate);
+  baked.name = entry.name || clip.name;
+  baked.fps = 30;
+  baked.duration = duration;
+  baked.loop = [0, duration];
+  const mixer = new T.AnimationMixer(candidate.root),
+    action = mixer.clipAction(clip);
+  action.setLoop(T.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  // Baked GLBs can animate a non-bone node above the top bone (e.g. "<NAME>_Armature"); the rig records bones only,
+  // so that motion is folded into the top bone's local transform.
+  candidate.root.updateMatrixWorld(true);
+  const rootInverse = candidate.root.matrixWorld.clone().invert(),
+    ancestors = (r) => rootInverse.clone().multiply(r.o.parent.matrixWorld),
+    wrapped = candidate.records
+      .filter((r) => !r.parent && r.o.parent && r.o.parent !== candidate.root)
+      .map((r) => ({ r, restInverse: ancestors(r).invert() })),
+    identity = new T.Matrix4();
+  try {
+    for (let frame = 0; frame <= frames; frame++) {
+      const t = frame / 30;
+      C.resetRig(candidate);
+      action.reset().play();
+      mixer.setTime(ShotPackage.clipTime(character.clip, t));
+      candidate.root.updateMatrixWorld(true);
+      const captured = C.capture(candidate);
+      for (const { r, restInverse } of wrapped) {
+        const delta = restInverse.clone().multiply(ancestors(r));
+        if (delta.elements.every((v, i) => Math.abs(v - identity.elements[i]) < 1e-9)) continue;
+        const p = new T.Vector3(),
+          q = new T.Quaternion(),
+          sc = new T.Vector3();
+        delta.multiply(r.o.matrix).decompose(p, q, sc);
+        captured[r.id] = { p: p.toArray(), q: q.toArray(), s: sc.toArray() };
+      }
+      for (const [id, value] of Object.entries(captured)) C.addKey(baked, id, t, value, 'linear');
+    }
+  } finally {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(candidate.root);
+  }
+  return baked;
+}
 // "1 khung · Cả cảnh": viewer actors (mesh + mixer, no rig), placement, shot camera, letterbox, debug hooks.
 // Only active while a shot with sceneMode === true is open; everything else in this file is unchanged.
 function setupSceneShotView() {
@@ -14,8 +65,34 @@ function setupSceneShotView() {
   frameBox.hidden = true;
   frameBox.setAttribute('aria-hidden', 'true');
   editView.container.append(frameBox);
+  const DIM_OPACITY = 0.5;
   let state = null,
-    editing = null;
+    editing = null,
+    switching = false,
+    lastSwitchMs = null,
+    onEditingChanged = null;
+  // Per-character editor state, keyed by characterId:
+  //   { rig (kept; null until first edit-switch), baseProject (baked F2 keys), baseHash, saved ({project, history,
+  //     historyIndex, selected, selectionKeys, dirty, time} while not editing), hash, edited, hRef/hLen (cache key),
+  //     bakedHash (hash the viewer's edited clip was baked for), savedHash (hash at the last host save: dirty = hash !==
+  //     savedHash, while edited = hash !== baseHash stays the "differs from the baked F2 keys" mark/export criterion) }
+  const stores = new Map();
+  const label = document.createElement('div');
+  label.id = 'sceneEditingLabel';
+  label.hidden = true;
+  label.setAttribute('role', 'status');
+  editView.container.append(label);
+  const list = document.createElement('div');
+  list.id = 'sceneCharacterList';
+  list.hidden = true;
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Nhân vật trong cảnh');
+  const mountList = () => {
+    const body = document.querySelector('#floatingAnimationList .floating-animation-body');
+    if (body) body.prepend(list);
+    else if (!list.isConnected) editView.container.append(list);
+  };
+  mountList();
   const shotPlacement = (character) => ({
     scale: character.heightScale > 0 ? character.heightScale : 1,
     placement: character.placement,
@@ -41,7 +118,9 @@ function setupSceneShotView() {
     action.setLoop(T.LoopOnce, 1);
     action.clampWhenFinished = true;
     action.play();
-    return { root: gltf.scene, mixer, action };
+    // Viewers are only ever seen dimmed (the editing rig has its own, untouched materials).
+    SceneSelect.dimViewer(gltf.scene, DIM_OPACITY);
+    return { root: gltf.scene, mixer, action, baseClip: clip, direct: false, editedClip: null };
   }
   function mountViewer(entry, parsed, visible) {
     const group = new T.Group();
@@ -124,6 +203,16 @@ function setupSceneShotView() {
   $('projectionBtn').addEventListener('click', () => setCamera(false));
   function clear() {
     for (const entry of registry.list()) disposeViewer(entry);
+    // Kept rigs of characters that are not being edited; the current rig is disposed by the next mount() as usual.
+    for (const st of stores.values())
+      if (st.rig) {
+        retainedRigs.delete(st.rig);
+        if (st.rig !== rig) disposeObject(st.rig.root);
+      }
+    stores.clear();
+    label.hidden = true;
+    list.hidden = true;
+    list.replaceChildren();
     registry.clear();
     if (state) {
       setCamera(false);
@@ -135,7 +224,361 @@ function setupSceneShotView() {
     button.hidden = true;
     frameBox.hidden = true;
   }
-  return {
+
+  // ---- per-character editor state (S3) -------------------------------------------------------------------------
+  const nameOf = (id) => SceneSelect.displayName(registry.get(id)?.character);
+  /** Recomputes the editing character's hash/edited flag when its undo stack moved (cheap check, hash only on change). */
+  function refreshEditing(force = false) {
+    const st = editing && stores.get(editing.characterId);
+    if (!st) return false;
+    const ref = history[historyIndex];
+    if (!force && st.hRef === ref && st.hLen === history.length) return false;
+    st.hRef = ref;
+    st.hLen = history.length;
+    st.hash = SceneSelect.keysHash(project);
+    const edited = st.hash !== st.baseHash;
+    const changed = st.edited !== edited;
+    st.edited = edited;
+    return changed || force;
+  }
+  const isEdited = (id) => {
+    if (editing?.characterId === id) refreshEditing();
+    return !!stores.get(id)?.edited;
+  };
+  const editedIds = () => [...stores.keys()].filter(isEdited);
+  /** Differs from the last saved state (host dirty flag / unsaved guards); `edited` keeps meaning "differs from F2". */
+  const isDirty = (id) => {
+    if (editing?.characterId === id) refreshEditing();
+    const st = stores.get(id);
+    return !!st && st.hash != null && st.hash !== st.savedHash;
+  };
+  const dirtyIds = () => [...stores.keys()].filter(isDirty);
+  /** The host saved: re-baseline every character's saved hash (the ● edited mark and export are unaffected). */
+  function markSaved() {
+    if (!state) return false;
+    refreshEditing(true);
+    for (const st of stores.values()) if (st.hash != null) st.savedHash = st.hash;
+    return true;
+  }
+  function renderList() {
+    if (!state) return;
+    list.replaceChildren();
+    for (const entry of registry.list()) {
+      const row = document.createElement('button'),
+        edited = isEdited(entry.characterId),
+        current = entry === editing;
+      row.type = 'button';
+      row.className = 'scene-character-row' + (current ? ' active' : '');
+      row.dataset.characterId = entry.characterId;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(current));
+      row.title = entry.characterId + (edited ? ' · đã sửa' : '');
+      const name = document.createElement('span');
+      name.textContent = nameOf(entry.characterId);
+      const mark = document.createElement('span');
+      mark.className = 'scene-edited-mark';
+      mark.textContent = edited ? '●' : '';
+      mark.setAttribute('aria-label', edited ? 'đã sửa' : '');
+      row.append(name, mark);
+      row.onclick = () => switchTo(entry.characterId).catch((e) => info(e.message || String(e), true));
+      list.append(row);
+    }
+    label.textContent = 'Đang sửa: ' + nameOf(editing.characterId);
+  }
+  /** Parses one non-editing character's GLB into a rig (once) and bakes its F2 clip into editable keys. */
+  async function buildRig(entry) {
+    const character = entry.character,
+      manifest = ShotPackage.readJSON(state.files, character.manifest),
+      action = manifest.actions.find((a) => a.uuid === character.actionUuid),
+      index = action?.glbAnimationIndex;
+    if (!Number.isInteger(index) || index < 0)
+      throw Error('Manifest thiếu glbAnimationIndex hợp lệ cho ' + character.characterId + '.');
+    const bytes = entry.bytes,
+      candidate = await parseAsset(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        character.glb,
+      ),
+      clip = candidate.clips[index];
+    try {
+      if (!clip) throw Error('glbAnimationIndex không tồn tại trong GLB của ' + character.characterId + '.');
+      const baked = bakeCharacterProject(
+        candidate,
+        character,
+        action,
+        clip,
+        state.shot.frameRange[1] - state.shot.frameRange[0],
+      );
+      C.resetRig(candidate);
+      return { rig: candidate, baked: C.validateProject(baked, candidate) };
+    } catch (error) {
+      disposeObject(candidate.root);
+      throw error;
+    }
+  }
+  function setViewerClip(entry, clip, direct) {
+    const v = entry.viewer;
+    v.mixer.stopAllAction();
+    if (v.editedClip) v.mixer.uncacheClip(v.editedClip);
+    v.action = v.mixer.clipAction(clip);
+    v.action.setLoop(T.LoopOnce, 1);
+    v.action.clampWhenFinished = true;
+    v.action.play();
+    v.direct = direct;
+    v.editedClip = direct ? clip : null;
+  }
+  /**
+   * How an edited character that is not being edited keeps playing its EDITED keys: when the user leaves it, the
+   * editor's own evaluation (C.evaluate: keys, IK, in-place...) is sampled at 30 FPS on the still-installed rig into
+   * an AnimationClip that drives the character's viewer (same mixer path as every unedited viewer, no rig/IK per
+   * frame). Exact on every 1/30 s step (shot frames); linear/slerp between. Characters whose keys equal the baked F2
+   * keys keep the original F2 clip, so unedited characters are never touched.
+   */
+  function bakeLeavingViewer(entry, st) {
+    if (st.edited) {
+      if (st.bakedHash === st.hash) return;
+      const pairs = SceneSelect.pairNodes(
+          entry.rig.root,
+          [entry.rig.root, ...entry.rig.records.map((r) => r.o)],
+          entry.viewer.root,
+        ),
+        clip = SceneSelect.bakePoseClip(
+          pairs,
+          SceneSelect.sampleTimes(entry.duration, 30),
+          (t) => C.evaluate(entry.rig, project, t),
+          'edited:' + entry.characterId,
+        );
+      setViewerClip(entry, clip, true);
+      st.bakedHash = st.hash;
+    } else if (st.bakedHash) {
+      setViewerClip(entry, entry.viewer.baseClip, false);
+      st.bakedHash = null;
+    }
+  }
+  /** Restores a character's saved editor state (history, project, selection) on the rig that is now installed. */
+  function restoreSaved(sv, store, keepTime) {
+    history = sv.history;
+    historyIndex = sv.historyIndex;
+    restoreHistory(historyIndex); // pose, IK modes/options, selection, panels
+    project = C.clone(sv.project);
+    dirty = sv.dirty;
+    store.saved = null;
+    if (!draft) {
+      selectionKeys = sv.selectionKeys;
+      select(sv.selected);
+      seek(keepTime);
+    }
+  }
+  /** Why a switch is refused right now (null when allowed); install() would reset or discard these states. */
+  function switchBlocker() {
+    if (draft) return 'Đang có tư thế chưa ghi key: ghi key hoặc bỏ trước khi chuyển nhân vật.';
+    if (sceneMode && !sceneEditing)
+      return 'Đang ở chế độ Dựng cảnh (chỉ đọc): thoát Dựng cảnh trước khi chuyển nhân vật.';
+    if (studioMode !== 'classic')
+      return 'Đang ở Animation Lab: chuyển về Pose Editor (Classic) trước khi chuyển nhân vật.';
+    return null;
+  }
+  async function switchTo(characterId) {
+    if (!state || switching) return false;
+    const next = registry.get(characterId);
+    if (!next) throw Error('Không có nhân vật ' + characterId + ' trong cảnh.');
+    if (next === editing) return false;
+    assertEditingAllowed();
+    const blocker = switchBlocker();
+    if (blocker) throw Error(blocker);
+    switching = true;
+    const started = performance.now(),
+      prev = editing,
+      prevStore = stores.get(prev.characterId),
+      nextStore = stores.get(characterId);
+    let fresh = null,
+      entered = false;
+    const nextWasRetained = !!nextStore.rig;
+    try {
+      // Everything that can fail or take time comes first: a broken GLB changes nothing.
+      if (!nextStore.rig) fresh = await buildRig(next);
+      await sceneShotApi.ensureViewer(prev.characterId);
+      if (!state || editing !== prev) {
+        if (fresh) disposeObject(fresh.rig.root);
+        return false;
+      }
+      // ---- leave the current character: save its editor state, hand its viewer the edited keys
+      refreshEditing(true);
+      prevStore.saved = {
+        project: C.clone(project),
+        history,
+        historyIndex,
+        selected,
+        selectionKeys: C.clone(selectionKeys),
+        dirty,
+        time,
+      };
+      bakeLeavingViewer(prev, prevStore);
+      retainedRigs.add(prev.rig);
+      // ---- enter the next one
+      const nextRig = nextStore.rig || fresh.rig,
+        keepTime = time,
+        camera = editView.camera,
+        saved = {
+          position: camera.position.clone(),
+          zoom: camera.zoom,
+          target: editView.orbit.target.clone(),
+        };
+      retainedRigs.delete(nextRig);
+      // A retained rig still carries the pose it was left in; install()/setupIK capture rest/base values from the
+      // current pose, so start from the rest pose exactly like a first visit.
+      if (nextWasRetained) {
+        C.resetRig(nextRig);
+        nextRig.root.updateMatrixWorld(true);
+      }
+      window.__studio.setDisplayHint(nextRig.root, next.scale * nextRig.height);
+      await install(nextRig, { keepScene: true });
+      // install() re-frames the camera for a new model; a character switch keeps the user's view.
+      camera.position.copy(saved.position);
+      camera.zoom = saved.zoom;
+      camera.updateProjectionMatrix();
+      editView.orbit.target.copy(saved.target);
+      editView.orbit.update();
+      prev.editing = false;
+      prev.group = prev.viewer.group;
+      prev.root = prev.viewer.root;
+      next.editing = true;
+      next.rig = nextRig;
+      next.group = editView.wrapper;
+      next.root = nextRig.root;
+      next.matrix = SceneShot.placementMatrix(next.placement, next.scale);
+      SceneShot.applyPlacement(editView.wrapper, next.placement, next.scale);
+      prev.viewer.group.visible = true;
+      if (next.viewer) next.viewer.group.visible = false;
+      editing = next;
+      nextStore.rig = nextRig;
+      entered = true;
+      const sv = nextStore.saved;
+      if (sv) restoreSaved(sv, nextStore, keepTime);
+      else {
+        project = fresh.baked;
+        nextStore.baseProject = C.clone(project);
+        nextStore.baseHash = SceneSelect.keysHash(project);
+        nextStore.savedHash = nextStore.baseHash;
+        history = [snapshot()];
+        historyIndex = 0;
+        dirty = false;
+        syncProject();
+        seek(keepTime);
+      }
+      syncButtons();
+      refreshEditing(true);
+      registry.sync(time, true);
+      for (const v of editViews) v.dirty = true;
+      lastSwitchMs = performance.now() - started;
+      renderList();
+      onEditingChanged?.(next.character, nextStore);
+      info('Đang sửa: ' + nameOf(characterId));
+      return true;
+    } catch (error) {
+      if (!entered) await rollbackSwitch();
+      throw error;
+    } finally {
+      switching = false;
+    }
+    /** The previous character stays the editing one: put its rig back, drop the fresh rig, change nothing else. */
+    async function rollbackSwitch() {
+      try {
+        const nextRig = nextStore.rig || fresh?.rig,
+          nextMounted = !!nextRig && editView.rig === nextRig;
+        if (editView.rig !== prev.rig) {
+          // The next rig was (partly) mounted: mount() disposes it unless it is a kept rig.
+          if (nextWasRetained && nextRig) retainedRigs.add(nextRig);
+          retainedRigs.delete(prev.rig);
+          C.resetRig(prev.rig);
+          prev.rig.root.updateMatrixWorld(true);
+          window.__studio.setDisplayHint(prev.rig.root, prev.scale * prev.rig.height);
+          await install(prev.rig, { keepScene: true });
+          SceneShot.applyPlacement(editView.wrapper, prev.placement, prev.scale);
+          const sv = prevStore.saved;
+          if (sv) restoreSaved(sv, prevStore, sv.time);
+        } else {
+          retainedRigs.delete(prev.rig);
+          prevStore.saved = null;
+        }
+        // A fresh rig that never got mounted (install failed before mount) is still ours to dispose.
+        if (fresh && !nextMounted) disposeObject(fresh.rig.root);
+        editing = prev;
+        prev.editing = true;
+        prev.viewer.group.visible = false;
+        syncButtons();
+        refreshEditing(true);
+        registry.sync(time, true);
+        for (const v of editViews) v.dirty = true;
+        renderList();
+      } catch (rollbackError) {
+        info('Không khôi phục được nhân vật đang sửa: ' + (rollbackError.message || rollbackError), true);
+      }
+    }
+  }
+  // ---- click selection (S3): raycast against the viewers' skinned meshes --------------------------------------
+  const raycaster = new T.Raycaster();
+  // Raycaster ignores `visible`: the editing character's meshes still occlude when hidden (bones-only display), so a
+  // click on its (invisible) body or limbs never reaches a character standing behind it.
+  const meshesOf = (root, includeHidden = false) => {
+    const out = [];
+    root.traverse((o) => {
+      if (o.isMesh && (o.visible || includeHidden) && o.geometry && !o.userData.boneId) out.push(o);
+    });
+    return out;
+  };
+  /**
+   * Nearest hit per character under a pointer event: [{characterId, distance, editing}].
+   * SkinnedMesh.raycast intersects the *current* skinned vertices (applyBoneTransform) but tests a bounding sphere
+   * cached from an earlier pose, so every mesh's cache is dropped first. No fallback volumes were needed: the
+   * triangle test is pose-accurate (browser test clicks the projected position of several bones).
+   */
+  function hitsAt(clientX, clientY) {
+    const rect = editView.renderer.domElement.getBoundingClientRect(),
+      ndc = SceneSelect.toNDC(clientX, clientY, rect);
+    raycaster.setFromCamera(new T.Vector2(ndc.x, ndc.y), editView.camera);
+    const hits = [];
+    for (const entry of registry.list()) {
+      const root = entry.editing ? entry.rig?.root : entry.viewer?.root;
+      if (!root || (!entry.editing && !entry.viewer.group.visible)) continue;
+      root.updateMatrixWorld(true);
+      const meshes = meshesOf(root, !!entry.editing);
+      for (const m of meshes) if (m.isSkinnedMesh) m.boundingSphere = null;
+      const hit = raycaster.intersectObjects(meshes, false)[0];
+      if (hit) hits.push({ characterId: entry.characterId, distance: hit.distance, editing: !!entry.editing });
+    }
+    return hits;
+  }
+  const pickAt = (x, y) => SceneSelect.pickCharacter(hitsAt(x, y));
+  (() => {
+    const canvas = editView.renderer.domElement;
+    let down = null;
+    // Registered without capture: the Control Rig handler (capture phase, stopImmediatePropagation on a widget hit)
+    // runs first, so a click on a control never reaches this and keeps its old behaviour.
+    canvas.addEventListener('pointerdown', (e) => {
+      const blocked =
+        !state ||
+        switching ||
+        e.button !== 0 ||
+        silhouetteView.enabled ||
+        sourcePreview ||
+        mode === 'compare' ||
+        editView.gizmo?.axis ||
+        editView.moveGizmo?.axis;
+      down = blocked ? null : { x: e.clientX, y: e.clientY, id: e.pointerId };
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      const start = down;
+      down = null;
+      if (!start || start.id !== e.pointerId || !state) return;
+      if (!SceneSelect.isClick(start, { x: e.clientX, y: e.clientY })) return;
+      // The editor's own handler (registered earlier on this canvas) already used this click to select a bone/control.
+      if (e.studioPicked) return;
+      const id = pickAt(e.clientX, e.clientY);
+      if (id) switchTo(id).catch((error) => info(error.message || String(error), true));
+    });
+    canvas.addEventListener('pointercancel', () => (down = null));
+  })();
+  const sceneShotApi = {
     registry,
     get active() {
       return registry.active;
@@ -168,9 +611,21 @@ function setupSceneShotView() {
       const duration = (shot.frameRange[1] - shot.frameRange[0]) / shot.fps,
         previousLayout =
           $('viewportLayout').value === 'sceneSingle' ? 'single' : $('viewportLayout').value;
+      const context = directorContext();
       state = {
         files,
         shot,
+        bridge: Object.freeze({
+          character: editingCharacter,
+          characterId: editingCharacter.characterId,
+          actionUuid: editingCharacter.actionUuid,
+          glbSha256: editingCharacter.glbSha256,
+          rig: context.rig,
+          rootUuid: context.rootUuid,
+          slot: context.slot,
+          activeRoot: context.activeRoot,
+          rigObject: rig,
+        }),
         aspect: SceneShot.filmAspect(shot),
         camera: false,
         previousLayout,
@@ -197,6 +652,31 @@ function setupSceneShotView() {
       SceneShot.applyPlacement(editView.wrapper, editing.placement, editing.scale);
       for (const { character, parsed } of parsedViewers)
         mountViewer(registry.add({ ...base(character), editing: false, rig: null }), parsed, true);
+      stores.clear();
+      for (const e of registry.list())
+        stores.set(e.characterId, {
+          rig: e.editing ? rig : null,
+          baseProject: e.editing ? C.clone(project) : null,
+          baseHash: e.editing ? SceneSelect.keysHash(project) : null,
+          saved: null,
+          hash: e.editing ? SceneSelect.keysHash(project) : null,
+          savedHash: e.editing ? SceneSelect.keysHash(project) : null,
+          edited: false,
+          hRef: null,
+          hLen: -1,
+          bakedHash: null,
+        });
+      mountList();
+      list.hidden = false;
+      label.hidden = false;
+      refreshEditing(true);
+      renderList();
+      // The character list lives in the left dock: open it (without stealing keyboard focus).
+      const dock = $('floatingAnimationList');
+      if (dock?.hidden) {
+        dock.hidden = false;
+        $('animationListToggle')?.setAttribute('aria-expanded', 'true');
+      }
       registry.sync(time, true);
       button.hidden = false;
       button.setAttribute('aria-pressed', 'false');
@@ -230,6 +710,7 @@ function setupSceneShotView() {
       }
       if (registry.sync(time)) for (const v of editViews) v.dirty = true;
       if (state.camera) updateCamera();
+      if (!switching && refreshEditing()) renderList();
     },
     setTime(t) {
       seek(t);
@@ -242,7 +723,47 @@ function setupSceneShotView() {
     stats: () => registry.stats(),
     /** Object3D roots a host should frame after opening: every character in the scene. */
     fitRoots: () => registry.list().map((e) => e.root),
+    // ---- S3: switching, per-character state, measurement hooks
+    /** Make `characterId` the editing character (same path as a 3D click or a click in the left list). */
+    select: (characterId) => switchTo(characterId),
+    editing: () => editing?.characterId ?? null,
+    edited: () => editedIds(),
+    /** True when any scene character differs from its baked F2 keys (host dirty flag). */
+    anyEdited: () => !!state && editedIds().length > 0,
+    /** True when any scene character differs from its last saved state (host dirty flag, open/shotOpen guards). */
+    anyDirty: () => !!state && dirtyIds().length > 0,
+    dirty: () => dirtyIds(),
+    markSaved,
+    /**
+     * Identity the App 2 broker session was leased for: frozen at attach (shotOpen), unaffected by switching the
+     * editing character (that one lives in session.character / editing()). The host bridge reports this.
+     */
+    bridgePin: () => state?.bridge ?? null,
+    keysHash(characterId) {
+      const st = stores.get(characterId);
+      if (!st) return null;
+      if (editing?.characterId === characterId) refreshEditing();
+      return st.hash;
+    },
+    undo: () => $('undoBtn').click(),
+    redo: () => $('redoBtn').click(),
+    /** Nearest hit per character at a client position (tests: where a click would land). */
+    hitsAt,
+    pickAt,
+    get lastSwitchMs() {
+      return lastSwitchMs;
+    },
+    get switching() {
+      return switching;
+    },
+    /** shot_controller's workspace registers here so shotExport follows the editing character. */
+    onEditingChanged(fn) {
+      onEditingChanged = fn;
+    },
+    /** The editing character's state, for host/session code. */
+    editingStore: () => (editing ? stores.get(editing.characterId) : null),
   };
+  return sceneShotApi;
 }
 function setupShotWorkspace() {
   let session = null,
@@ -278,6 +799,39 @@ function setupShotWorkspace() {
   exportButton.textContent = 'Xuất gói kết quả';
   exportButton.hidden = true;
   menu.append(exportButton);
+  const describeShot = (shot, character) =>
+    'Shot: ' +
+    shot.shotId +
+    '\nNhân vật: ' +
+    character.characterId +
+    '\nFrame: ' +
+    shot.frameRange.join(' → ') +
+    ' @30 FPS\nVị trí (m): ' +
+    character.placement.position.join(', ') +
+    '; yaw ' +
+    character.placement.yawDegrees +
+    '°\nRoot: ' +
+    character.rootPolicy +
+    '\nCamera (chỉ xem):\n' +
+    JSON.stringify(shot.camera, null, 2) +
+    (shot.sceneMode === true
+      ? '\nCả cảnh: ' + shot.characters.length + ' nhân vật (đang sửa nhân vật được chọn)'
+      : '');
+  // Scene mode: the editing character changed; shotExport must follow it (it exports the CURRENT editing character).
+  sceneShotView.onEditingChanged((character, store) => {
+    if (!session || session.shot.sceneMode !== true) return;
+    const manifest = ShotPackage.readJSON(session.files, character.manifest);
+    Object.assign(session, {
+      character,
+      manifest,
+      entry: manifest.actions.find((a) => a.uuid === character.actionUuid),
+      rigFingerprint: rig.fingerprint,
+      sourceProject: C.clone(store.baseProject),
+      placementKeys: [{ frame: session.shot.frameRange[0], ...C.clone(character.placement) }],
+      displayHeight: sceneShotView.registry.get(character.characterId).scale * rig.height,
+    });
+    metadata.textContent = describeShot(session.shot, character);
+  });
   const clear = () => {
     session = null;
     panel.hidden = true;
@@ -388,56 +942,21 @@ function setupShotWorkspace() {
         disposeObject(candidate.root);
         throw Error('Editor hiện hỗ trợ shot dài >=0.1 và <=300 giây.');
       }
-      const baked = C.newProject(candidate);
-      baked.name = entry.name || clip.name;
-      baked.fps = 30;
-      baked.duration = duration;
-      baked.loop = [0, duration];
-      const mixer = new T.AnimationMixer(candidate.root),
-        action = mixer.clipAction(clip);
-      action.setLoop(T.LoopOnce, 1);
-      action.clampWhenFinished = true;
-      action.play();
-      // The rig records bones only. A baked shot (K5 chain / scene mode) can also animate a non-bone node above the
-      // top bone (e.g. "<NAME>_Armature", K2 foot/ground placement); fold that motion into the top bone's local key
-      // (local' = restAncestors^-1 * nowAncestors * local) so the editor shows exactly what App 2 shows.
-      candidate.root.updateMatrixWorld(true);
-      const rootInverse = candidate.root.matrixWorld.clone().invert();
-      const ancestors = (r) => rootInverse.clone().multiply(r.o.parent.matrixWorld);
-      const wrapped = candidate.records
-        .filter((r) => !r.parent && r.o.parent && r.o.parent !== candidate.root)
-        .map((r) => ({ r, restInverse: ancestors(r).invert() }));
-      const foldP = new T.Vector3(), foldQ = new T.Quaternion(), foldS = new T.Vector3();
+      let baked;
       try {
-        for (let frame = 0; frame <= frames; frame++) {
-          const t = frame / 30;
-          C.resetRig(candidate);
-          action.reset().play();
-          mixer.setTime(ShotPackage.clipTime(character.clip, t));
-          candidate.root.updateMatrixWorld(true);
-          const captured = C.capture(candidate);
-          for (const { r, restInverse } of wrapped) {
-            const delta = restInverse.clone().multiply(ancestors(r));
-            if (delta.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-9)) continue;
-            delta.multiply(r.o.matrix).decompose(foldP, foldQ, foldS);
-            captured[r.id] = { p: foldP.toArray(), q: foldQ.toArray(), s: foldS.toArray() };
-          }
-          for (const [id, value] of Object.entries(captured))
-            C.addKey(baked, id, t, value, 'linear');
-        }
+        baked = bakeCharacterProject(candidate, character, entry, clip, frames);
       } finally {
-        mixer.stopAllAction();
-        mixer.uncacheRoot(candidate.root);
         disposeObject(candidate.root);
       }
       // Scene mode: parse every other character first (same rule as above: a broken GLB must not replace the editor).
       const viewers =
         shot.sceneMode === true ? await sceneShotView.prepare(files, shot, character) : [];
-      if ((dirty || draft) && !interactive) {
+      const sceneEdited = sceneShotView.anyDirty();
+      if ((dirty || draft || sceneEdited) && !interactive) {
         for (const v of viewers) disposeObject(v.parsed.root);
         throw Error('UNSAVED_CHANGES');
       }
-      if ((dirty || draft) && !confirm('Thay bài đang chỉnh bằng gói shot?')) {
+      if ((dirty || draft || sceneEdited) && !confirm('Thay bài đang chỉnh bằng gói shot?')) {
         for (const v of viewers) disposeObject(v.parsed.root);
         return false;
       }
@@ -477,24 +996,7 @@ function setupShotWorkspace() {
         session.displayHeight = editing.scale * rig.height;
         session.sceneMode = true;
       }
-      metadata.textContent =
-        'Shot: ' +
-        shot.shotId +
-        '\nNhân vật: ' +
-        character.characterId +
-        '\nFrame: ' +
-        shot.frameRange.join(' → ') +
-        ' @30 FPS\nVị trí (m): ' +
-        character.placement.position.join(', ') +
-        '; yaw ' +
-        character.placement.yawDegrees +
-        '°\nRoot: ' +
-        character.rootPolicy +
-        '\nCamera (chỉ xem):\n' +
-        JSON.stringify(shot.camera, null, 2) +
-        (shot.sceneMode === true
-          ? '\nCả cảnh: ' + shot.characters.length + ' nhân vật (chỉ nhân vật đầu được sửa)'
-          : '');
+      metadata.textContent = describeShot(shot, character);
       panel.hidden = false;
       exportButton.hidden = false;
       info('Đã mở shot ' + shot.shotId + ' · ' + character.characterId);

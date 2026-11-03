@@ -117,6 +117,8 @@ let rig,
   importToken = 0;
 // B68: host display height (heightBlocks) for one rig; every place that resets the wrapper scale must use displayScale().
 let displayHint = null;
+// Scene mode (S3): rigs of non-editing scene characters stay alive across mount() so switching never re-parses a GLB.
+const retainedRigs = new WeakSet();
 function displayScale(r) {
   return (displayHint && displayHint.root === r.root ? displayHint.height : 2) / r.height;
 }
@@ -689,7 +691,10 @@ function makeView(container, edit = false) {
       node.updateWorldMatrix(true, false);
     }
     const picks = ray.intersectObjects(candidates);
-    if (v.edit && pickOnionPose(ray, picks[0]?.distance)) return;
+    if (v.edit && pickOnionPose(ray, picks[0]?.distance)) {
+      e.studioPicked = true;
+      return;
+    }
     let picked = picks[0]?.object;
     if (!picked) {
       picked = candidates
@@ -709,6 +714,7 @@ function makeView(container, edit = false) {
     }
     if (picked) {
       const id = picked.userData.boneId;
+      e.studioPicked = true; // lets later listeners (scene character picking) know this click was consumed
       if (edit) selectUser(id);
       else selectCompare(v === compareA ? 'A' : 'B', id);
     }
@@ -1127,9 +1133,13 @@ function clearView(v) {
 }
 function placeAnimationRig(v, r) {
   const placement = CompareSpace.alignClip(r, v.wrapper, 'z', true);
-  if (placement.warning) r.warnings.push(placement.warning);
+  // A rig can be mounted again (scene character switch): never repeat a warning it already carries.
+  const warn = (text) => {
+    if (!r.warnings.includes(text)) r.warnings.push(text);
+  };
+  if (placement.warning) warn(placement.warning);
   if (placement.source.startsWith('đáy mesh'))
-    r.warnings.push('Không nhận diện được xương bàn chân; dùng đáy mesh để đặt mặt đất.');
+    warn('Không nhận diện được xương bàn chân; dùng đáy mesh để đặt mặt đất.');
 }
 function mount(v, r) {
   V.clearMeshDisplay(v);
@@ -1142,7 +1152,7 @@ function mount(v, r) {
   clearView(v);
   if (v.rig) {
     v.wrapper.remove(v.rig.root);
-    disposeObject(v.rig.root);
+    if (!retainedRigs.has(v.rig)) disposeObject(v.rig.root);
     for (const c of Object.values(v.rig.controls)) {
       c.object.removeFromParent();
       disposeObject(c.object);
@@ -2304,9 +2314,11 @@ function renderPoses() {
     $('poseList').append(row);
   });
 }
-async function install(r) {
-  window.__studio?.shot?.clear();
-  window.__studio?.sceneShot?.clear();
+async function install(r, { keepScene = false } = {}) {
+  if (!keepScene) {
+    window.__studio?.shot?.clear();
+    window.__studio?.sceneShot?.clear();
+  }
   directorCancel();
   endSourcePreview(false);
   assertEditingAllowed();
