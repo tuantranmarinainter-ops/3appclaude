@@ -42,13 +42,16 @@ function mergeInfo(project: UnifiedProject,chain: NonNullable<import('./shotExch
 /** Policy seam: edited actor travel belongs only to placement keys, never rebaked into root. */
 export const SHOT_PLACEMENT_POLICY = 'placement-keys' as const
 export async function prepareShotResult(project: UnifiedProject,args: Record<string, unknown>, draftBytes?: Uint8Array) {
-  if(Object.keys(args).some(k=>!['file','shotId','merge'].includes(k))||typeof args.file!=='string'||typeof args.shotId!=='string')throw new TypeError('shot.result.import requires file and shotId')
+  if(Object.keys(args).some(k=>!['file','shotId','merge','merges'].includes(k))||typeof args.file!=='string'||typeof args.shotId!=='string')throw new TypeError('shot.result.import requires file and shotId')
   const mergeArgs=args.merge===undefined?undefined:parseMergeArgs(args.merge)
+  if(args.merges!==undefined&&!isRecord(args.merges))throw new TypeError('merges phải là đối tượng {characterId: {name, description}}')
+  const mergesArgs: Record<string,{name:string;description:string}>|undefined=args.merges===undefined?undefined:Object.fromEntries(Object.entries(args.merges as Record<string,unknown>).map(([id,value])=>[id,parseMergeArgs(value)]))
   const base=await loadShotExport(project.projectId,args.shotId)
   if(base.saved.sourceRevision!==project.revision)throw Object.assign(new Error('Exported shot revision is stale'),{code:'REVISION_CONFLICT'})
   const upload=draftBytes?{id:'draft',bytes:draftBytes}:await readStagedAssetUpload(args.file),files=unzipPackage(upload.bytes),issues=validateResult(files,base.files)
   if(issues.length)throw new TypeError(JSON.stringify(issues))
   const result=readPackageJson<ShotResult>(files,'result.json')
+  for(const id of Object.keys(mergesArgs??{}))if(!Object.hasOwn(project.characters,id)||!result.edits.some(e=>e.characterId===id))throw new TypeError(`merges: nhân vật ${id} không có bản sửa trong kết quả`)
   // Only the native editor's actor displacement is scaled. Base world coordinates and Action bones stay canonical.
   for (const edit of result.edits) {
     const character = base.shot.characters.find((item) => item.characterId === edit.characterId)
@@ -62,7 +65,10 @@ export async function prepareShotResult(project: UnifiedProject,args: Record<str
     if(!binding||!character||!original||!binding.chain&&(binding.motionId!==original.id||project.bindings[binding.clipId]?.motionId!==original.id))throw new TypeError('Shot clip or original Motion changed')
     if(project.motions[edit.newActionUuid])throw new TypeError('New Action UUID already exists')
     const clip=project.scene.content.timeline.animation.motionClips.find(c=>c.id===binding.clipId)
-    if(binding.chain){
+    if(binding.scene){
+      // Scene mode: mọi clip của chuỗi phải còn nguyên; không đòi clip đầu bắt đầu đúng đầu khoảng (khung trống do sampler phủ).
+      if(!clip)throw new TypeError('Các clip của chuỗi đã trộn đã đổi sau khi xuất shot: hãy mở lại shot')
+    } else if(binding.chain){
       const last=Math.max(...binding.chain.map(c=>c.frameEnd))
       if(!clip||clip.frameStart!==base.shot.frameRange[0]||last!==base.shot.frameRange[1])throw new TypeError('Chuỗi clip đã trộn không còn khớp khoảng shot: hãy mở lại shot')
     } else if(!clip||clip.frameStart!==base.shot.frameRange[0]||clip.frameEnd!==base.shot.frameRange[1])throw new TypeError('MVP result import requires the complete MotionClip range')
@@ -93,14 +99,14 @@ export async function prepareShotResult(project: UnifiedProject,args: Record<str
     if(!motion||!compatible)throw new TypeError(nativeLibrary?'Result requires the character native skeleton':'Result requires a compatible Mixamo65 Action')
     const duration=(base.shot.frameRange[1]-base.shot.frameRange[0])/30
     if(Math.abs(motion.motion.durationSeconds-duration)>1/30+1e-6)throw new TypeError('Result Action duration must match the exported shot range')
-    const merge=binding.chain?mergeInfo(project,binding.chain,chainClips as MotionClip[],mergeArgs,nativeLibrary?libraryCharacterId!:undefined):undefined
-    return {edit,binding,character,original,imported,bytes,motion,nativeBobj,nativeLibraryId:nativeLibrary?libraryCharacterId:undefined,nativeLibraryRig:nativeLibrary?libraryCharacter!.baseModel!.rig:undefined,merge}
+    const merge=binding.chain?mergeInfo(project,binding.chain,chainClips as MotionClip[],binding.scene?(mergesArgs?.[edit.characterId]??(result.edits.length===1?mergeArgs:undefined)):mergeArgs,nativeLibrary?libraryCharacterId!:undefined):undefined
+    return {edit,binding,character,original,imported,bytes,motion,nativeBobj,nativeLibraryId:nativeLibrary?libraryCharacterId:undefined,nativeLibraryRig:nativeLibrary?libraryCharacter!.baseModel!.rig:undefined,merge,scene:binding.scene===true}
   }))
   return {base,result,edits,uploadId:upload.id}
 }
 export async function saveNativeShotVersions(prepared: Awaited<ReturnType<typeof prepareShotResult>>) {
   const saved: string[]=[]
-  for(const {edit,bytes,nativeLibraryId,nativeLibraryRig,nativeBobj,merge} of prepared.edits) if(nativeLibraryId){
+  for(const {edit,character,bytes,nativeLibraryId,nativeLibraryRig,nativeBobj,merge,scene} of prepared.edits) if(nativeLibraryId){
     const temp=await mkdtemp(path.join(os.tmpdir(),'bbs-app3-')),file=path.join(temp,`${edit.newActionUuid}.glb`)
     try {
       await writeFile(file,bytes)
@@ -111,6 +117,7 @@ export async function saveNativeShotVersions(prepared: Awaited<ReturnType<typeof
         :saveCharacterActionVersion({charId:nativeLibraryId,baseUuid:edit.originalActionUuid,glbFile:file,status:'edited',rig:nativeLibraryRig,actionUuid:edit.newActionUuid,nativeBobj,notes:'Animation Studio App3 shot edit'})
       saved.push(version.uuid)
     }
+    catch(error) { if(scene)throw new TypeError(`Không lưu được Thư viện cho nhân vật ${character.name}: ${error instanceof Error?error.message:String(error)}`); throw error }
     finally { await rm(temp,{recursive:true,force:true}) }
   }
   return saved
@@ -121,7 +128,8 @@ export async function applyShotResult(project: UnifiedProject,prepared: Awaited<
   const [start,end]=prepared.base.shot.frameRange
   const savedLibraryVersions=await saveNativeShotVersions(prepared)
   let mergedClipId: string|undefined
-  for(const {edit,binding,character,original,imported,bytes,motion,nativeLibraryId,nativeLibraryRig,merge} of prepared.edits) {
+  const mergedClipIds: Record<string,string>={}
+  for(const {edit,binding,character,original,imported,bytes,motion,nativeLibraryId,nativeLibraryRig,merge,scene} of prepared.edits) {
     let libraryActionUuid: string | undefined
     if(nativeLibraryId){
       libraryActionUuid=edit.newActionUuid
@@ -137,16 +145,16 @@ export async function applyShotResult(project: UnifiedProject,prepared: Awaited<
     if(merge&&binding.chain){
       // K5: thay cả chuỗi clip trộn bằng MỘT clip phủ [đầu clip đầu, cuối clip cuối]; Action gốc, bindings của chúng vẫn nằm trong project.motions.
       const ids=new Set(binding.chain.map(c=>c.clipId)),last=Math.max(...binding.chain.map(c=>c.frameEnd))
-      if(clip.frameStart!==start||last!==end)throw new TypeError('Chuỗi clip đã trộn không còn khớp khoảng shot')
+      if(!scene&&(clip.frameStart!==start||last!==end))throw new TypeError('Chuỗi clip đã trộn không còn khớp khoảng shot')
       const { blendIn: _blend, ...playback } = clip.playback as Record<string, unknown>
       void _blend
       const mergedName=merge.name
-      const merged={...clip,frameEnd:end,sourceDuration:motion.motion.durationSeconds,playback:{...playback,speed:1,loop:false,loopMode:'repeat'} as typeof clip.playback,
+      const merged={...clip,...(scene?{frameStart:start}:{}),frameEnd:end,sourceDuration:motion.motion.durationSeconds,playback:{...playback,speed:1,loop:false,loopMode:'repeat'} as typeof clip.playback,
         motion:{...clip.motion,assetId:edit.newActionUuid,url,name:mergedName,clipIndex:motion.clipIndex,time:0,sourceLengthSeconds:motion.motion.durationSeconds,speed:1,loop:false,reverse:false}}
       project.scene.content.timeline.animation.motionClips=timelineClips.filter(c=>!ids.has(c.id)||c.id===clip.id).map(c=>c.id===clip.id?merged:c)
       for(const id of ids)if(id!==clip.id)delete project.bindings[id]
       project.bindings[clip.id]={...project.bindings[clip.id]!,motionId:edit.newActionUuid,sourceStartSeconds:0,sourceLengthSeconds:motion.motion.durationSeconds,reverse:false,fadeInSeconds:0,fadeOutSeconds:0}
-      mergedClipId=clip.id
+      mergedClipId??=clip.id;mergedClipIds[character.id]=clip.id
     } else {
     // Partial clip replacement needs a split transaction, so reject rather than lose other frames.
     if(clip.frameStart!==start||clip.frameEnd!==end)throw new TypeError('MVP result import requires a shot matching the complete MotionClip range')
@@ -162,5 +170,5 @@ export async function applyShotResult(project: UnifiedProject,prepared: Awaited<
   }
   project.extensions.retargetMotionMetadata=metadata;project.extensions.app1Manifests=manifests
   project.extensions.topview={...(project.extensions.topview??{}),fcurves:FCurveSet.persist(curves,userKeys)}
-  return {shotId:prepared.result.shotId,motionIds:prepared.edits.map(e=>e.edit.newActionUuid),libraryActionUuids:savedLibraryVersions,policy:SHOT_PLACEMENT_POLICY,...(mergedClipId?{mergedClipId}:{})}
+  return {shotId:prepared.result.shotId,motionIds:prepared.edits.map(e=>e.edit.newActionUuid),libraryActionUuids:savedLibraryVersions,policy:SHOT_PLACEMENT_POLICY,...(mergedClipId?{mergedClipId,mergedClipIds}:{})}
 }

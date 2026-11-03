@@ -1370,7 +1370,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true })
     await saveShotExport(project, built)
     const job = await storeShotArtifact(project, built.bytes, built.shot.shotId)
-    const response = success(envelope.requestId, id, project.revision, { shotId: built.shot.shotId, baseShotSha256: createHash('sha256').update(built.files['shot.json']!).digest('hex'), jobId: job.jobId, state: job.state, sourceRevision: project.revision })
+    const response = success(envelope.requestId, id, project.revision, { shotId: built.shot.shotId, baseShotSha256: createHash('sha256').update(built.files['shot.json']!).digest('hex'), jobId: job.jobId, state: job.state, sourceRevision: project.revision, frameRange: built.shot.frameRange, ...(built.shot.sceneMode === true ? { sceneMode: true, characterIds: built.shot.characters.map(c => c.characterId), widened: built.shot.frameRange[0] !== envelope.args.frameStart || built.shot.frameRange[1] !== envelope.args.frameEnd } : {}) })
     await saveRequest(envelope, hash, response)
     return response
   }

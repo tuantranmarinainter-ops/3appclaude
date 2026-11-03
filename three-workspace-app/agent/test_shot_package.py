@@ -485,6 +485,62 @@ class ShotPackageTests(unittest.TestCase):
         self.assertEqual(run.returncode, 1, run.stderr)
         self.assertIn("ORIGINAL_ACTION_MISMATCH", [issue["code"] for issue in json.loads(run.stdout)])
 
+    # --- App 3 scene mode (S1): several editable characters ---------------------------------------------------
+    PARTNER_ORIGINAL = "44444444-4444-4444-8444-444444444444"
+    PARTNER_DERIVATIVE = "55555555-5555-4555-8555-555555555555"
+    PARTNER_GLB = b"shot-contract-partner-v1\n"
+    PARTNER_EDITED = b"shot-contract-partner-edited-v1\n"
+
+    def add_partner(self):
+        """Second editable character with its own GLB/manifest in the shot package (scene mode)."""
+        partner = copy.deepcopy(self.shot["characters"][0])
+        partner.update({"characterId": "partner", "glb": "characters/partner.glb",
+                        "manifest": "characters/partner.manifest.json",
+                        "glbSha256": sha(self.PARTNER_GLB), "actionUuid": self.PARTNER_ORIGINAL,
+                        "editable": True})
+        self.shot["characters"] = [self.shot["characters"][0], partner]
+        self.shot["sceneMode"] = True
+        (self.shot_dir / "characters/partner.glb").write_bytes(self.PARTNER_GLB)
+        write_json(self.shot_dir / "characters/partner.manifest.json", manifest(self.PARTNER_GLB, self.PARTNER_ORIGINAL))
+        self.save_shot()
+
+    def test_scene_mode_shot_with_two_editable_characters(self):
+        self.add_partner()
+        self.assertEqual([c["editable"] for c in self.shot["characters"]], [True, True])
+        self.assertEqual(validate_shot(self.shot_dir), [])
+        run = self.cli("validate-shot", self.shot_dir)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_scene_mode_result_with_two_edits(self):
+        self.add_partner()
+        shot_bytes = (self.shot_dir / "shot.json").read_bytes()
+        self.result = result_example(shot_bytes)
+        self.result["edits"].append({
+            "characterId": "partner", "originalActionUuid": self.PARTNER_ORIGINAL,
+            "newActionUuid": self.PARTNER_DERIVATIVE, "glb": "edits/partner.glb",
+            "manifest": "edits/partner.manifest.json", "glbSha256": sha(self.PARTNER_EDITED),
+            "placementKeys": [{"frame": 0, "position": [2, 0, 0], "yawDegrees": 10},
+                              {"frame": 60, "position": [3, 0, 0], "yawDegrees": 20}]})
+        (self.result_dir / "edits/partner.glb").write_bytes(self.PARTNER_EDITED)
+        write_json(self.result_dir / "edits/partner.manifest.json", manifest(self.PARTNER_EDITED, self.PARTNER_DERIVATIVE))
+        self.save_result()
+        self.assertEqual(validate_result(self.result_dir, self.shot_dir), [])
+        run = self.cli("validate-result", self.result_dir, "--shot", self.shot_dir)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        # Reusing one fresh UUID for both edits is still rejected.
+        self.result["edits"][1]["newActionUuid"] = DERIVATIVE
+        self.save_result()
+        self.check_issue("DUPLICATE_ACTION_UUID", result=True)
+
+    def test_scene_mode_must_be_boolean(self):
+        self.add_partner()
+        self.shot["sceneMode"] = "yes"
+        self.save_shot()
+        self.check_issue("INVALID_TYPE")
+        run = self.cli("validate-shot", self.shot_dir)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("INVALID_TYPE", [issue["code"] for issue in json.loads(run.stdout)])
+
     def test_cli_usage_errors(self):
         for args in [(), ("unknown",), ("validate-shot",), ("validate-result", self.result_dir)]:
             with self.subTest(args=args):

@@ -131,6 +131,15 @@ duration/FPS từng Action, mesh, texture, root motion hoặc fingerprint. Giữ
 validator chỉ kiểm các trường manifest cần cho liên kết gói (version, hash, UUID Action).
 Việc hash đúng không thay thế kiểm chất lượng GLB của App 1 và review của người điều phối.
 
+## sceneMode (2026-11-03)
+
+Cờ tùy chọn `sceneMode` (boolean) ở gốc `shot.json` và `result.json`. Thiếu cờ = hành vi cũ, gói một nhân vật giữ nguyên từng byte. Kiểu sai (không phải boolean) báo `INVALID_TYPE` ở cả validator TS và Python.
+
+- **Nhiều nhân vật sửa được.** Khi `sceneMode: true`, `shot.json` chấp nhận từ 1 nhân vật `editable: true` trở lên (gói cũ vẫn đúng 1). `shot.export` với `sceneMode: true` nới khoảng frame tới khi phủ trọn mọi clip chạm vào khoảng của mọi nhân vật (kẹp trong timeline, tối đa 9000 khung), rồi nướng MỌI nhân vật có clip trong khoảng (`rootPolicy: "skeletal"`, `editable: true`). Nhân vật đầu trong `editableCharacterIds` là nhân vật sửa đầu tiên.
+- **Kết quả nhiều bản sửa.** `result.json` có thể chứa nhiều phần tử `edits[]`, mỗi nhân vật một phần tử (GLB, manifest, `placementKeys` riêng). Nhân vật không có trong `edits[]` không bị đụng tới.
+- **`shot.result.import`** nhận thêm đối số `merges`: `{ "<characterId>": { "name": "...", "description": "..." } }` đặt tên và mô tả clip gộp cho từng nhân vật (khóa không có bản sửa trong kết quả bị từ chối). `merge` cũ vẫn dùng được khi chỉ có một bản sửa. Mỗi nhân vật được gộp thành một clip phủ trọn khoảng shot; mọi thứ nằm trong một revision (một Undo). Lưu Thư viện lỗi ở một nhân vật thì project không đổi và thông báo nêu tên nhân vật.
+- **Gói một nhân vật không đổi:** không có `sceneMode`, `merges` hay nhiều `edits[]` thì mọi quy tắc ở các mục trên áp dụng như cũ.
+
 ## 5. Ví dụ đầy đủ và fixture chạy test
 
 Hai JSON chính và hai manifest dưới đây là ví dụ được test đọc trực tiếp từ tài liệu, không chép lại
