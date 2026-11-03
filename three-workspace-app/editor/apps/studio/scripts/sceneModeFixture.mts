@@ -16,6 +16,8 @@
  *              5 by duplicating existing ones (character.add with the same assetId/skeletonId and library metadata if the node
  *              has it), offsets them (scene.layout.apply) and copies one existing clip each (motion.place with its motionId).
  *              This writes into the copy (one revision per command).
+ * --decode-draco  (default ON with --synthetic) rewrites every GLB that uses KHR_draco_mesh_compression (builtin characters) into
+ *              an uncompressed GLB before asset.import, using the Emscripten decoder shipped in three. Fixture-only.
  * Outputs      <out>/scene-<n>.zip (shot package from shot.export sceneMode:true, n = characters in the shot) and
  *              <out>/scene-<n>.reference.json = { projectId, frameRange, fps:30, exportMs, characters:[{characterId, name,
  *              frames:{ "<frame>": { root: actorWorldMatrix16, bones: { <name>: worldMatrix16 } } }}] } sampled with
@@ -33,7 +35,10 @@ import { parseArgs } from 'node:util'
 const { values } = parseArgs({ options: {
   synthetic: { type: 'boolean' }, characters: { type: 'string' }, out: { type: 'string' }, projects: { type: 'string' },
   project: { type: 'string' }, five: { type: 'boolean' }, first: { type: 'string' }, range: { type: 'string' },
+  'decode-draco': { type: 'boolean' },
 } })
+/** --decode-draco: default ON for --synthetic (builtin characters are Draco; App 3 has no DRACOLoader). Fixture-only. */
+const decodeDraco = values['decode-draco'] ?? Boolean(values.synthetic)
 
 const REAL_ROOTS = ['S:/Claude/w01-library', 'C:/w01-library', 'S:/Claude/w01-samples/tap15v3', 'S:/Claude/w01-samples/tall-projects', 'S:/Claude/w01-samples/tall-lib']
 const norm = (p: string) => p.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase()
@@ -78,6 +83,134 @@ const { getUnifiedJob, readUnifiedJobFile } = await import('../src/unifiedJobs.t
 type Project = Awaited<ReturnType<typeof readUnifiedProject>>
 const upload = (data: Uint8Array, name: string) => stageAssetUpload(name, new ReadableStream({ start(c) { c.enqueue(data); c.close() } }))
 
+// ------------------------------------------------------------------------------------------------ Draco -> plain GLB
+const GLB_MAGIC = 0x46546c67, CHUNK_JSON = 0x4e4f534a, CHUNK_BIN = 0x004e4942
+const COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 }
+const BYTES: Record<number, number> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }
+let dracoModule: Promise<any> | undefined
+function loadDracoModule() {
+  dracoModule ??= (async () => {
+    const { createRequire } = await import('node:module')
+    const pnpm = path.join(editor, 'node_modules/.pnpm')
+    const dir = readdirSync(pnpm).find((d) => d.startsWith('three@'))
+    if (!dir) throw new Error('Không tìm thấy three trong node_modules/.pnpm')
+    const file = path.join(pnpm, dir, 'node_modules/three/examples/jsm/libs/draco/draco_decoder.js')
+    const factory = createRequire(import.meta.url)(file) // pure-JS (asm.js) Emscripten build, UMD
+    return await factory({})
+  })()
+  return dracoModule
+}
+
+/** Returns the same bytes when the GLB has no Draco primitive; otherwise a plain GLB with decoded accessors. */
+async function decodeDracoGlb(input: Uint8Array): Promise<{ bytes: Uint8Array; primitives: number; accessors: Array<{ accessor: number; count: number }> }> {
+  const buf = Buffer.from(input.buffer, input.byteOffset, input.byteLength)
+  if (buf.readUInt32LE(0) !== GLB_MAGIC) throw new Error('Không phải GLB')
+  const jsonLen = buf.readUInt32LE(12)
+  const json = JSON.parse(buf.subarray(20, 20 + jsonLen).toString('utf8'))
+  const binHeader = 20 + jsonLen
+  const bin = binHeader < buf.length && buf.readUInt32LE(binHeader + 4) === CHUNK_BIN ? buf.subarray(binHeader + 8, binHeader + 8 + buf.readUInt32LE(binHeader)) : Buffer.alloc(0)
+  const EXT = 'KHR_draco_mesh_compression'
+  const prims: any[] = (json.meshes ?? []).flatMap((m: any) => m.primitives).filter((p: any) => p.extensions?.[EXT])
+  if (!prims.length) return { bytes: input, primitives: 0, accessors: [] }
+  const D = await loadDracoModule()
+  const dtypeOf: Record<number, [number, any]> = { 5120: [D.DT_INT8, Int8Array], 5121: [D.DT_UINT8, Uint8Array], 5122: [D.DT_INT16, Int16Array], 5123: [D.DT_UINT16, Uint16Array], 5125: [D.DT_UINT32, Uint32Array], 5126: [D.DT_FLOAT32, Float32Array] }
+  const dracoViews = new Set<number>(prims.map((p) => p.extensions[EXT].bufferView))
+  // New binary chunk: every surviving bufferView copied (4-aligned) then one new view per decoded accessor.
+  const chunks: Buffer[] = []
+  let cursor = 0
+  const append = (data: Uint8Array) => { const offset = cursor; chunks.push(Buffer.from(data.buffer, data.byteOffset, data.byteLength)); cursor += data.byteLength; const pad = (4 - (cursor % 4)) % 4; if (pad) { chunks.push(Buffer.alloc(pad)); cursor += pad } return offset }
+  const oldViews: any[] = json.bufferViews ?? []
+  const views: any[] = []
+  const remap = new Map<number, number>()
+  oldViews.forEach((view, index) => {
+    if (dracoViews.has(index)) return
+    const start = view.byteOffset ?? 0
+    remap.set(index, views.length)
+    views.push({ ...view, buffer: 0, byteOffset: append(bin.subarray(start, start + view.byteLength)) })
+  })
+  for (const accessor of json.accessors ?? []) if (accessor.bufferView !== undefined) accessor.bufferView = remap.get(accessor.bufferView) ?? accessor.bufferView
+  for (const image of json.images ?? []) if (image.bufferView !== undefined) image.bufferView = remap.get(image.bufferView)
+  const decoded: Array<{ accessor: number; count: number }> = []
+  const addAccessorData = (accessorIndex: number, data: Uint8Array, target?: number) => {
+    const accessor = json.accessors[accessorIndex]
+    views.push({ buffer: 0, byteOffset: append(data), byteLength: data.byteLength, ...(target ? { target } : {}) })
+    accessor.bufferView = views.length - 1
+    delete accessor.byteOffset
+    decoded.push({ accessor: accessorIndex, count: accessor.count })
+  }
+  for (const prim of prims) {
+    const ext = prim.extensions[EXT]
+    const view = oldViews[ext.bufferView]
+    const start = view.byteOffset ?? 0
+    const raw = bin.subarray(start, start + view.byteLength)
+    const decoder = new D.Decoder(), dbuf = new D.DecoderBuffer(), mesh = new D.Mesh()
+    try {
+      dbuf.Init(new Int8Array(raw.buffer, raw.byteOffset, raw.byteLength), raw.byteLength)
+      if (decoder.GetEncodedGeometryType(dbuf) !== D.TRIANGULAR_MESH) throw new Error('Draco: không phải TRIANGULAR_MESH')
+      const status = decoder.DecodeBufferToMesh(dbuf, mesh)
+      if (!status.ok() || !mesh.ptr) throw new Error(`Draco decode lỗi: ${status.error_msg()}`)
+      const points = mesh.num_points()
+      for (const [semantic, accessorIndex] of Object.entries<number>(prim.attributes)) {
+        const accessor = json.accessors[accessorIndex]
+        const [dtype, Ctor] = dtypeOf[accessor.componentType] ?? (() => { throw new Error(`componentType ${accessor.componentType}`) })()
+        const attr = decoder.GetAttributeByUniqueId(mesh, ext.attributes[semantic])
+        const n = COMPONENTS[accessor.type]!
+        if (attr.num_components() !== n) throw new Error(`${semantic}: ${attr.num_components()} thành phần, accessor ${n}`)
+        if (points !== accessor.count) throw new Error(`${semantic}: Draco ${points} điểm, accessor ${accessor.count}`)
+        const bytes = points * n * BYTES[accessor.componentType]!
+        const ptr = D._malloc(bytes)
+        try {
+          if (!decoder.GetAttributeDataArrayForAllPoints(mesh, attr, dtype, bytes, ptr)) throw new Error(`${semantic}: GetAttributeDataArrayForAllPoints thất bại`)
+          const data = new Ctor(D.HEAPU8.buffer.slice(ptr, ptr + bytes))
+          if (semantic === 'POSITION') {
+            const min = Array(n).fill(Infinity), max = Array(n).fill(-Infinity)
+            for (let i = 0; i < data.length; i++) { const c = i % n; if (data[i] < min[c]) min[c] = data[i]; if (data[i] > max[c]) max[c] = data[i] }
+            accessor.min = min; accessor.max = max
+          }
+          addAccessorData(accessorIndex, new Uint8Array(data.buffer), 34962)
+        } finally { D._free(ptr) }
+      }
+      if (prim.indices !== undefined) {
+        const accessor = json.accessors[prim.indices]
+        const faces = mesh.num_faces()
+        if (faces * 3 !== accessor.count) throw new Error(`indices: Draco ${faces * 3}, accessor ${accessor.count}`)
+        const bytes = faces * 3 * 4
+        const ptr = D._malloc(bytes)
+        try {
+          if (!decoder.GetTrianglesUInt32Array(mesh, bytes, ptr)) throw new Error('GetTrianglesUInt32Array thất bại')
+          const all = new Uint32Array(D.HEAPU8.buffer.slice(ptr, ptr + bytes))
+          const data = accessor.componentType === 5123 ? Uint16Array.from(all) : accessor.componentType === 5125 ? all : (() => { throw new Error(`indices componentType ${accessor.componentType}`) })()
+          addAccessorData(prim.indices, new Uint8Array(data.buffer, data.byteOffset, data.byteLength), 34963)
+        } finally { D._free(ptr) }
+      }
+    } finally { D.destroy(mesh); D.destroy(dbuf); D.destroy(decoder) }
+    delete prim.extensions[EXT]
+    if (!Object.keys(prim.extensions).length) delete prim.extensions
+  }
+  json.bufferViews = views
+  json.buffers = [{ byteLength: cursor }]
+  for (const key of ['extensionsRequired', 'extensionsUsed']) {
+    if (!json[key]) continue
+    json[key] = json[key].filter((e: string) => e !== EXT)
+    if (!json[key].length) delete json[key]
+  }
+  const jsonBytes = Buffer.from(JSON.stringify(json), 'utf8')
+  const jsonPadded = Buffer.concat([jsonBytes, Buffer.alloc((4 - (jsonBytes.length % 4)) % 4, 0x20)])
+  const binBytes = Buffer.concat(chunks)
+  const total = 12 + 8 + jsonPadded.length + 8 + binBytes.length
+  const header = Buffer.alloc(12); header.writeUInt32LE(GLB_MAGIC, 0); header.writeUInt32LE(2, 4); header.writeUInt32LE(total, 8)
+  const jh = Buffer.alloc(8); jh.writeUInt32LE(jsonPadded.length, 0); jh.writeUInt32LE(CHUNK_JSON, 4)
+  const bh = Buffer.alloc(8); bh.writeUInt32LE(binBytes.length, 0); bh.writeUInt32LE(CHUNK_BIN, 4)
+  return { bytes: new Uint8Array(Buffer.concat([header, jh, jsonPadded, bh, binBytes])), primitives: prims.length, accessors: decoded }
+}
+const maybeDecode = async (bytes: Uint8Array, label: string) => {
+  if (!decodeDraco) return bytes
+  const result = await decodeDracoGlb(bytes)
+  console.error(`[decode-draco] ${label}: ${result.primitives} primitive Draco -> ${result.accessors.length} accessor, ${bytes.byteLength} -> ${result.bytes.byteLength} byte`)
+  if (process.env.FIXTURE_DUMP_DECODED && result.primitives) writeFileSync(path.join(out, `${label}.decoded.glb`), result.bytes)
+  return result.bytes
+}
+
 function runner(projectId: string, startRevision: number) {
   let revision = startRevision
   return async (command: string, args: Record<string, unknown>) => {
@@ -115,14 +248,14 @@ async function buildSynthetic(count: number) {
     { cwd: path.join(editor, 'packages/builder'), encoding: 'utf8', timeout: 180000 })
   if (run.status !== 0) throw new Error(`normalize.ts failed: ${run.stdout}${run.stderr}`)
   const files = readdirSync(norm_out)
-  const glb = readFileSync(path.join(norm_out, files.find((f) => f.endsWith('.glb'))!))
+  const glb = await maybeDecode(readFileSync(path.join(norm_out, files.find((f) => f.endsWith('.glb'))!)), 'actions')
   const manifest = JSON.parse(readFileSync(path.join(norm_out, files.find((f) => f.endsWith('.manifest.json'))!), 'utf8'))
   const name = `SceneFixture${count}`
   const created = await executeUnifiedCommand({ requestId: randomUUID(), command: 'project.create', args: { name, scene: makeEmptyDraft(name, 30, 180, { fov: 50, position: { x: 0, y: 2, z: 8 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 } }) } })
   const projectId = created.projectId as string
   const send = runner(projectId, 0)
   await send('asset.import', { files: [(await upload(glb, 'actions.glb')).id], format: 'glb', manifest })
-  const model = await send('asset.import', { files: [(await upload(readFileSync(targetGlb), 'target.glb')).id], format: 'glb' })
+  const model = await send('asset.import', { files: [(await upload(await maybeDecode(readFileSync(targetGlb), 'target'), 'target.glb')).id], format: 'glb' })
   const ids: string[] = []
   for (const spec of specs) {
     const added = await send('character.add', { assetId: (model.result.assetIds as string[])[0], skeletonId: (model.result.skeletonIds as string[])[0], name: spec.name })

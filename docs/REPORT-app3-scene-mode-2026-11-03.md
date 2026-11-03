@@ -61,3 +61,51 @@ sẽ hiện đứng yên ở App 3. Mục này sẽ đo ở S2 khi App 3 đặt 
 
 Hai lỗi giống hệt nhau trên main và S1, không liên quan shot: "B33 recognises Minecraft launched from the game folder only"
 và "navigation hint dismissal is shared across ports through a cookie" (lỗi môi trường Linux, có sẵn từ trước).
+
+## S2: actor xem, bố cục "1 khung · Cả cảnh", phát đồng bộ, camera cảnh (nhánh `claude/app3-scene-s2`)
+
+### Đã làm
+- App 3 (`scene_shot.js` mới + `shot_controller.js`): gói `sceneMode` nạp nhân vật sửa đầu tiên như cũ, các nhân vật khác là **actor xem**
+  (mesh GLB + `AnimationMixer` phát bản nướng, không Control Rig/IK). Mọi nhân vật đặt theo `placement` của F2: điểm Y-up `(x,y,z)` →
+  editor Z-up `(x,−z,y)`, wrapper `B·T(p)·R_y(yaw)·S(heightScale)`; key của nhân vật sửa không đổi (chỉ wrapper). Không nạp đạo cụ.
+- Bố cục mới `sceneSingle` "1 khung · Cả cảnh" (sau 4 khung; 4 bố cục cũ không đổi), tự chọn khi mở gói cả cảnh.
+- Phát/tua: actor xem theo đúng thời gian editor.
+- "Nhìn qua camera cảnh" (`#sceneCameraBtn`): theo key camera từng khung (vị trí, lookAt, FOV), tỉ lệ khung `shot.camera.aspect`
+  (`readFilmFrameAspect`, B61) với viền đen; xoay/kéo/zoom chuột thoát về góc tự do.
+- **Sửa lỗi có sẵn** (cũng ảnh hưởng shot chuỗi clip K5): gói nướng có track trên node `<TÊN>_Armature` (không phải xương, K2 căn chỗ đứng);
+  rig App 3 chỉ ghi key xương nên nhân vật đang sửa lệch tới 2,3 cm theo trục dọc. Nay gộp chuyển động node cha vào key xương gốc.
+- Công cụ đo: `apps/studio/scripts/sceneModeFixture.mts` (tạo bản sao 2/5 nhân vật; `--projects … --five` nhân bản trên **bản sao**
+  dự án thật theo §10.7; từ chối kho/dự án thật và khi thiếu `W01_LIBRARY`; xuất gói + số mẫu App 2) và
+  `animation-studio/…/src/scene_shot_f2.measure.mjs` (mở gói trong App 3 thật bằng Chromium, so từng xương với số mẫu App 2).
+
+### Số đo S2 (App 3 build thật, Chromium headless; dự án tổng hợp, mesh giải nén Draco)
+| Mục | Ngưỡng | 2 nhân vật | 5 nhân vật | Trạng thái |
+| --- | --- | --- | --- | --- |
+| Root mỗi nhân vật so với sampler App 2 (khung đầu/giữa/cuối) | ≤ 1 cm, ≤ 1° | 0 cm, 0° | 0 cm, 0° | PASS |
+| Xoay xương, nhân vật đang sửa | ≤ 0,5° | 0,000031° | 0,000067° | PASS |
+| Xoay xương, actor xem | ≤ 0,5° | 0,000069° | 0,000050° | PASS |
+| Vị trí xương, nhân vật đang sửa (trước sửa lỗi Armature: 2,3345 cm) | — | 0,000035 cm | 0,000073 cm | đo được |
+| Số xương so sánh / thiếu | — | 390 / 0 | 975 / 0 | — |
+| Thời gian mở gói trong App 3 | ≤ 15 s | 0,79 s | 1,61 s | PASS (máy cloud) |
+| FPS khi phát | ≥ 30 | 1,0 | 1,2 | **BLOCKED**: máy chỉ có đồ họa phần mềm SwiftShader; shot 1 nhân vật cũ cũng chỉ 1,5–4,6 FPS. Phần đồng bộ actor xem tốn 0,22 ms/khung với 5 nhân vật. Cần đo trên máy có GPU. |
+| Khớp F2 trên Tập 15 · Shot 01 thật | §8 | — | — | BLOCKED (không có dữ liệu trên máy này) |
+
+Ảnh bằng chứng (không commit, binary): bố cục "1 khung · Cả cảnh" với 2 và 5 nhân vật, khung nhìn qua camera cảnh có viền đen, ảnh đang phát.
+
+### Vấn đề có sẵn phát hiện khi đo (chưa sửa, cần người dùng quyết)
+- **Draco**: 4 nhân vật builtin (`builtin-assets/characters/*.glb`) nén `KHR_draco_mesh_compression`; App 3 không có bộ giải Draco nên
+  shot nướng từ model builtin (kể cả shot một nhân vật K5) không hiện mesh trong App 3. Nhân vật Thư viện (Đen, Gỗ Xưa) đi đường model
+  thư viện, có thể không bị. Sửa trong App 3 cần thêm bộ giải (file WASM, binary). Dữ liệu đo ở trên giải nén trước khi nhập (chỉ trong script).
+
+### Test đã chạy (S2)
+| Bộ test | Kết quả |
+| --- | --- |
+| App 3: `scene_shot.test`, `layout_modes.test`, `shot_package.test`, `app3_bridge.test`, `app3_workflow_steps.test` | 70/70 đạt |
+| App 3: `scene_shot.browser.test` (Chromium) | 1/1 đạt |
+| App 3: `shot_export.test` | bỏ qua (cần `SHOT_TEST_ASSET`), giống main |
+| App 3: `layout_modes.browser.test` G5 | quá thời gian 240 s, **giống hệt trên bản build của main** (môi trường) |
+| `app3Embed.test.ts` (hash v1.34.0) | 3/3 đạt |
+| `app3SceneModeS1.test.ts` | 8/8 đạt |
+| `python -m unittest agent.test_shot_package` | 65/65 đạt |
+| `pnpm typecheck` toàn workspace | đạt |
+| Công cụ kiểm id App 3 | 497 → 499 (thêm `sceneCameraBtn`, `sceneCameraFrame`), thiếu 0 |
