@@ -115,6 +115,11 @@ let rig,
   mapping = {},
   targetToken = 0,
   importToken = 0;
+// B68: host display height (heightBlocks) for one rig; every place that resets the wrapper scale must use displayScale().
+let displayHint = null;
+function displayScale(r) {
+  return (displayHint && displayHint.root === r.root ? displayHint.height : 2) / r.height;
+}
 let sceneProject = SceneStudio.create(),
   scenePending = null,
   scenePreview = null,
@@ -1146,7 +1151,7 @@ function mount(v, r) {
   v.rig = r;
   r.editorUp = 'z';
   v.wrapper.quaternion.copy(C.kinematics.blenderBasis);
-  v.wrapper.scale.setScalar(2 / r.height);
+  v.wrapper.scale.setScalar(displayScale(r));
   v.wrapper.position.set(0, 0, 0);
   v.wrapper.add(r.root);
   v.wrapper.updateMatrixWorld(true);
@@ -9770,6 +9775,9 @@ try {
 } catch {}
 $('syncCameras').checked = false;
 window.__studio = {
+  setDisplayHint(root, height) {
+    displayHint = root && height > 0 ? { root, height } : null;
+  },
   silhouette: {
     set: setSilhouette,
     get enabled() {

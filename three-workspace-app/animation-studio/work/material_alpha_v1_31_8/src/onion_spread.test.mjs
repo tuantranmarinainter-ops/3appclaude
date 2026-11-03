@@ -17,13 +17,19 @@ test('onion spread settings validate defaults and bounds', () => {
 
 test('spread offsets honor rank, side, axes, and stationary motion fallback', () => {
   const screen = new T.Vector3(1, 0, 0), up = new T.Vector3(0, 0, 1);
-  const calc = (axis, motion, side='after', rank=1) => spreadOffset(axis, screen, motion, up, 2, 60, side, rank).toArray();
-  assert.deepEqual(calc('screen', new T.Vector3(), 'after', 10), [12, 0, 0]);
-  assert.deepEqual(calc('x', new T.Vector3(), 'before', 1), [-1.2, -0, -0]);
+  const calc = (axis, motion, side='after', rank=1) => spreadOffset(axis, screen, motion, up, 2, 60, side, rank).toArray().map((n) => n + 0);
+  // B70: raising the spread moves the 'before' ghost forward (+) and the 'after' ghost backward (-).
+  assert.deepEqual(calc('screen', new T.Vector3(), 'after', 10), [-12, 0, 0]);
+  assert.deepEqual(calc('screen', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
+  assert.deepEqual(calc('x', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
   assert.deepEqual(calc('z', new T.Vector3()), [0, 0, 1.2]);
-  assert.deepEqual(calc('motion', new T.Vector3(0, 2, 0)), [0, 1.2, 0]);
-  assert.deepEqual(calc('motion', new T.Vector3(0, .001, 0)), [1.2, 0, 0]);
-  assert.ok(Math.abs(calc('screen', new T.Vector3(), 'after', 10)[0] - calc('screen', new T.Vector3())[0] - 9 * .6 * 2) < 1e-12);
+  // "Trục Z" (vertical) follows the view's up vector.
+  assert.deepEqual(calc('up', new T.Vector3(), 'before', 1), [0, 0, 1.2]);
+  assert.deepEqual(calc('up', new T.Vector3()), [0, 0, -1.2]);
+  assert.equal(validate({onionSpreadAxis: 'up'}).onionSpreadAxis, 'up');
+  assert.deepEqual(calc('motion', new T.Vector3(0, 2, 0)), [0, -1.2, 0]);
+  assert.deepEqual(calc('motion', new T.Vector3(0, .001, 0)), [-1.2, 0, 0]);
+  assert.ok(Math.abs(calc('screen', new T.Vector3(), 'after', 10)[0] - calc('screen', new T.Vector3())[0] + 9 * .6 * 2) < 1e-12);
 });
 
 test('skeleton-only ghosts spread without changing the source or project', () => {
@@ -70,8 +76,8 @@ test('motion axis follows animated root at small wrapper scale without editing t
   const original = JSON.stringify(C.capture(rig)), onion = new OnionSkin({scene,wrapper,camera});
   const settings = validate({...defaults,onionEnabled:true,onionSampling:'interval',onionBefore:'1',onionAfter:'1',onionStep:'3',onionSpread:'100',onionSpreadAxis:'motion',onionParts:'bones'});
   onion.update(rig,project,1,settings,1,false,1000);
-  assert.ok(onion.slots[1].wrapper.position.y > 0);
-  assert.ok(onion.slots[0].wrapper.position.y < 0);
+  assert.ok(onion.slots[1].wrapper.position.y < 0);
+  assert.ok(onion.slots[0].wrapper.position.y > 0);
   assert.equal(JSON.stringify(C.capture(rig)),original);
   onion.clear();
 });
