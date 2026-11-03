@@ -1,0 +1,740 @@
+[
+ {
+  "key": "tap15-aura-honmang",
+  "source": "shadow/shadow-flames",
+  "name": "Lửa hỗn mang (aura Đen)",
+  "palette": "honmang",
+  "frames": 72,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   94,
+   99
+  ],
+  "app2": {
+   "frames": 72,
+   "columns": 9,
+   "rows": 8,
+   "fps": 30,
+   "sizeMeters": 4.689,
+   "pivot": [
+    0.4949,
+    0.101
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 48,
+   "strip": [
+    4512,
+    99
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    4.4526315789473685,
+    4.689473684210526
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-nguyen-honmang",
+  "source": "status/cursed",
+  "name": "Dấu nguyền hỗn mang",
+  "palette": "honmang",
+  "frames": 72,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   46,
+   81
+  ],
+  "app2": {
+   "frames": 72,
+   "columns": 9,
+   "rows": 8,
+   "fps": 30,
+   "sizeMeters": 3.837,
+   "pivot": [
+    0.4938,
+    0.0864
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 48,
+   "strip": [
+    2208,
+    81
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    2.1789473684210527,
+    3.836842105263158
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-tiep-dat",
+  "source": "impacts/heavy-landing",
+  "name": "Tiếp đất mạnh",
+  "palette": null,
+  "frames": 49,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   137,
+   40
+  ],
+  "app2": {
+   "frames": 49,
+   "columns": 7,
+   "rows": 7,
+   "fps": 30,
+   "sizeMeters": 6.489,
+   "pivot": [
+    0.5255,
+    0.1022
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 33,
+   "strip": [
+    4521,
+    40
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    6.489473684210527,
+    1.8947368421052633
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-dap-dat",
+  "source": "impacts/ground-slam",
+  "name": "Đập đất",
+  "palette": null,
+  "frames": 97,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   245,
+   189
+  ],
+  "app2": {
+   "frames": 97,
+   "columns": 10,
+   "rows": 10,
+   "fps": 30,
+   "sizeMeters": 11.605,
+   "pivot": [
+    0.498,
+    0.1755
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 10,
+   "frames": 32,
+   "strip": [
+    7840,
+    189
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    11.605263157894736,
+    8.952631578947368
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-dap-dat-honmang",
+  "source": "impacts/ground-slam",
+  "name": "Đập đất hỗn mang",
+  "palette": "honmang",
+  "frames": 97,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   245,
+   189
+  ],
+  "app2": {
+   "frames": 97,
+   "columns": 10,
+   "rows": 10,
+   "fps": 30,
+   "sizeMeters": 11.605,
+   "pivot": [
+    0.498,
+    0.1755
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 10,
+   "frames": 32,
+   "strip": [
+    7840,
+    189
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    11.605263157894736,
+    8.952631578947368
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-vet-gay-cauvong",
+  "source": "melee/sword-slash",
+  "name": "Vệt gậy cầu vồng",
+  "palette": "cauvong",
+  "frames": 24,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   126,
+   91
+  ],
+  "app2": {
+   "frames": 24,
+   "columns": 5,
+   "rows": 5,
+   "fps": 30,
+   "sizeMeters": 5.968,
+   "pivot": [
+    0.3492,
+    0.0873
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 16,
+   "strip": [
+    2016,
+    91
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    5.968421052631579,
+    4.310526315789474
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-chem-nang-cauvong",
+  "source": "melee/heavy-cleave",
+  "name": "Bổ gậy cầu vồng",
+  "palette": "cauvong",
+  "frames": 58,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   164,
+   107
+  ],
+  "app2": {
+   "frames": 58,
+   "columns": 8,
+   "rows": 8,
+   "fps": 30,
+   "sizeMeters": 7.768,
+   "pivot": [
+    0.3171,
+    0.122
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 39,
+   "strip": [
+    6396,
+    107
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    7.768421052631579,
+    5.068421052631579
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-trung-don",
+  "source": "impacts/blunt-hit",
+  "name": "Trúng đòn",
+  "palette": null,
+  "frames": 28,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   88,
+   81
+  ],
+  "app2": {
+   "frames": 28,
+   "columns": 6,
+   "rows": 5,
+   "fps": 30,
+   "sizeMeters": 4.168,
+   "pivot": [
+    0.5,
+    0.1705
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 19,
+   "strip": [
+    1672,
+    81
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    4.168421052631579,
+    3.836842105263158
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-pow",
+  "source": "explosions/cartoon-pow",
+  "name": "POW hoạt hình",
+  "palette": null,
+  "frames": 33,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   157,
+   135
+  ],
+  "app2": {
+   "frames": 33,
+   "columns": 6,
+   "rows": 6,
+   "fps": 30,
+   "sizeMeters": 7.437,
+   "pivot": [
+    0.5223,
+    0.4268
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 22,
+   "strip": [
+    3454,
+    135
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    7.436842105263158,
+    6.394736842105264
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-chi-mang",
+  "source": "impacts/crit-hit",
+  "name": "Chí mạng",
+  "palette": null,
+  "frames": 28,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   178,
+   131
+  ],
+  "app2": {
+   "frames": 28,
+   "columns": 6,
+   "rows": 5,
+   "fps": 30,
+   "sizeMeters": 8.432,
+   "pivot": [
+    0.4326,
+    0.1629
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 19,
+   "strip": [
+    3382,
+    131
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    8.431578947368422,
+    6.205263157894737
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-chi-mang-honmang",
+  "source": "impacts/crit-hit",
+  "name": "Chí mạng hỗn mang",
+  "palette": "honmang",
+  "frames": 28,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   178,
+   131
+  ],
+  "app2": {
+   "frames": 28,
+   "columns": 6,
+   "rows": 5,
+   "fps": 30,
+   "sizeMeters": 8.432,
+   "pivot": [
+    0.4326,
+    0.1629
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 19,
+   "strip": [
+    3382,
+    131
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    8.431578947368422,
+    6.205263157894737
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-vong-phep-go",
+  "source": "arcane/rune-circle",
+  "name": "Vòng phép Gỗ Xưa",
+  "palette": "go",
+  "frames": 120,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   118,
+   95
+  ],
+  "app2": {
+   "frames": 120,
+   "columns": 11,
+   "rows": 11,
+   "fps": 30,
+   "sizeMeters": 5.589,
+   "pivot": [
+    0.5,
+    0.1695
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 15,
+   "frames": 60,
+   "strip": [
+    7080,
+    95
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    5.589473684210526,
+    4.5
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-ket-gioi-go",
+  "source": "scifi/force-field",
+  "name": "Kết giới Gỗ Xưa",
+  "palette": "go",
+  "frames": 72,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   168,
+   96
+  ],
+  "app2": {
+   "frames": 72,
+   "columns": 9,
+   "rows": 8,
+   "fps": 30,
+   "sizeMeters": 7.958,
+   "pivot": [
+    0.3571,
+    0.1131
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 48,
+   "strip": [
+    8064,
+    96
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    7.957894736842105,
+    4.5473684210526315
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-loc-honmang",
+  "source": "fire/fire-tornado",
+  "name": "Lốc hỗn mang",
+  "palette": "honmang",
+  "frames": 60,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   116,
+   146
+  ],
+  "app2": {
+   "frames": 60,
+   "columns": 8,
+   "rows": 8,
+   "fps": 30,
+   "sizeMeters": 6.916,
+   "pivot": [
+    0.5,
+    0.1027
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 40,
+   "strip": [
+    4640,
+    146
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    5.494736842105263,
+    6.91578947368421
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-ho-den",
+  "source": "shadow/black-hole",
+  "name": "Hố đen",
+  "palette": null,
+  "frames": 120,
+  "fps": 30,
+  "loop": true,
+  "trimmed": [
+   166,
+   130
+  ],
+  "app2": {
+   "frames": 120,
+   "columns": 11,
+   "rows": 11,
+   "fps": 30,
+   "sizeMeters": 7.863,
+   "pivot": [
+    0.5181,
+    0.0422
+   ],
+   "blend": "alpha",
+   "loop": true
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 10,
+   "frames": 40,
+   "strip": [
+    6640,
+    130
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    7.863157894736842,
+    6.157894736842105
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-no-honmang",
+  "source": "shadow/dark-explosion",
+  "name": "Nổ hỗn mang",
+  "palette": "honmang",
+  "frames": 115,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   247,
+   244
+  ],
+  "app2": {
+   "frames": 115,
+   "columns": 11,
+   "rows": 11,
+   "fps": 30,
+   "sizeMeters": 11.7,
+   "pivot": [
+    0.502,
+    0.166
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 10,
+   "frames": 38,
+   "strip": [
+    8170,
+    212
+   ],
+   "textureScale": 0.873,
+   "billboardMeters": [
+    11.700000000000001,
+    11.557894736842105
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-bien-mat",
+  "source": "arcane/blink-out",
+  "name": "Dịch chuyển biến mất",
+  "palette": null,
+  "frames": 49,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   111,
+   94
+  ],
+  "app2": {
+   "frames": 49,
+   "columns": 7,
+   "rows": 7,
+   "fps": 30,
+   "sizeMeters": 5.258,
+   "pivot": [
+    0.5135,
+    0.1351
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 33,
+   "strip": [
+    3663,
+    94
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    5.257894736842105,
+    4.4526315789473685
+   ],
+   "error": null
+  }
+ },
+ {
+  "key": "tap15-xuat-hien",
+  "source": "arcane/blink-in",
+  "name": "Dịch chuyển xuất hiện",
+  "palette": null,
+  "frames": 43,
+  "fps": 30,
+  "loop": false,
+  "trimmed": [
+   108,
+   90
+  ],
+  "app2": {
+   "frames": 43,
+   "columns": 7,
+   "rows": 7,
+   "fps": 30,
+   "sizeMeters": 5.116,
+   "pivot": [
+    0.537,
+    0.1389
+   ],
+   "blend": "alpha",
+   "loop": false
+  },
+  "bbs": {
+   "status": "PASS",
+   "fps": 20,
+   "frames": 29,
+   "strip": [
+    3132,
+    90
+   ],
+   "textureScale": 1.0,
+   "billboardMeters": [
+    5.11578947368421,
+    4.2631578947368425
+   ],
+   "error": null
+  }
+ }
+]

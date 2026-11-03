@@ -1,0 +1,49 @@
+{
+  "palettes": {
+    "honmang": ["#120018", "#3a0a5c", "#6e1fa8", "#a84cf0", "#d9a4ff", "#f8eaff"],
+    "go": ["#021208", "#0a3a1a", "#1a7a3a", "#3cc46a", "#9cf5b8", "#effff4"],
+    "cauvong": ["#5a0a8c", "#1a3cff", "#18b04a", "#ffd21a", "#ff7a1a", "#ff2a3a"]
+  },
+  "effects": [
+    { "key": "tap15-aura-honmang", "src": "shadow/shadow-flames", "palette": "honmang", "name": "Lửa hỗn mang (aura Đen)" },
+    { "key": "tap15-nguyen-honmang", "src": "status/cursed", "palette": "honmang", "name": "Dấu nguyền hỗn mang" },
+    { "key": "tap15-tiep-dat", "src": "impacts/heavy-landing", "name": "Tiếp đất mạnh" },
+    { "key": "tap15-dap-dat", "src": "impacts/ground-slam", "name": "Đập đất" },
+    { "key": "tap15-dap-dat-honmang", "src": "impacts/ground-slam", "palette": "honmang", "name": "Đập đất hỗn mang" },
+    { "key": "tap15-vet-gay-cauvong", "src": "melee/sword-slash", "palette": "cauvong", "name": "Vệt gậy cầu vồng" },
+    { "key": "tap15-chem-nang-cauvong", "src": "melee/heavy-cleave", "palette": "cauvong", "name": "Bổ gậy cầu vồng" },
+    { "key": "tap15-trung-don", "src": "impacts/blunt-hit", "name": "Trúng đòn" },
+    { "key": "tap15-pow", "src": "explosions/cartoon-pow", "name": "POW hoạt hình" },
+    { "key": "tap15-chi-mang", "src": "impacts/crit-hit", "name": "Chí mạng" },
+    { "key": "tap15-chi-mang-honmang", "src": "impacts/crit-hit", "palette": "honmang", "name": "Chí mạng hỗn mang" },
+    { "key": "tap15-vong-phep-go", "src": "arcane/rune-circle", "palette": "go", "name": "Vòng phép Gỗ Xưa" },
+    { "key": "tap15-ket-gioi-go", "src": "scifi/force-field", "palette": "go", "name": "Kết giới Gỗ Xưa" },
+    { "key": "tap15-loc-honmang", "src": "fire/fire-tornado", "palette": "honmang", "name": "Lốc hỗn mang" },
+    { "key": "tap15-ho-den", "src": "shadow/black-hole", "name": "Hố đen" },
+    { "key": "tap15-no-honmang", "src": "shadow/dark-explosion", "palette": "honmang", "name": "Nổ hỗn mang" },
+    { "key": "tap15-bien-mat", "src": "arcane/blink-out", "name": "Dịch chuyển biến mất" },
+    { "key": "tap15-xuat-hien", "src": "arcane/blink-in", "name": "Dịch chuyển xuất hiện" }
+  ],
+  "shots": [
+    { "shot": "01", "seconds": 4.5, "what": "Hồi tưởng: Go thao túng Đen", "cue": "Aura tím quanh Đen", "library": ["aura01"],
+      "pixelfx": [{ "fx": "tap15-aura-honmang", "attach": "Đen · chân", "t": "0–4.5 s lặp" }, { "fx": "tap15-nguyen-honmang", "attach": "Đen · đầu", "t": "1.0–3.0 s" }] },
+    { "shot": "03", "seconds": 3, "what": "Hero xuất hiện từ trên cao", "cue": "Vòng sáng khi chạm đất", "library": ["simple_ring_shape1", "light"],
+      "pixelfx": [{ "fx": "tap15-tiep-dat", "attach": "Hero · chân, lúc land", "t": "≈1.8 s" }, { "fx": "tap15-dap-dat", "attach": "mặt đất dưới Hero", "t": "≈1.8 s" }] },
+    { "shot": "04", "seconds": 2, "what": "Hero gõ đầu Go bằng gậy cầu vồng", "cue": "Vệt gậy + ToonHit ở đầu Go", "library": ["simple_ribbon_sword", "toonhit"],
+      "pixelfx": [{ "fx": "tap15-vet-gay-cauvong", "attach": "Hero · tay phải", "t": "lúc swipe" }, { "fx": "tap15-trung-don", "attach": "Go · đầu", "t": "lúc chạm" }, { "fx": "tap15-pow", "attach": "Go · đầu", "t": "lúc chạm" }] },
+    { "shot": "09", "seconds": 3, "what": "Ma trận pháp, xích khoá Hero", "cue": "Barrier + vòng phép quanh Hero", "library": ["barrior01", "simple_ring_shape1"],
+      "pixelfx": [{ "fx": "tap15-vong-phep-go", "attach": "mặt đất dưới Hero", "t": "0.3–3 s lặp" }, { "fx": "tap15-ket-gioi-go", "attach": "Hero · thân", "t": "0.8–3 s lặp" }] },
+    { "shot": "10", "seconds": 2.5, "what": "Hero đập xích, gõ thêm 1 gậy", "cue": "Vệt gậy + ToonHit", "library": ["simple_ribbon_sword", "toonhit"],
+      "pixelfx": [{ "fx": "tap15-chem-nang-cauvong", "attach": "Hero · tay phải", "t": "lúc swipe thứ 2" }, { "fx": "tap15-chi-mang", "attach": "Go · thân", "t": "lúc chạm" }] },
+    { "shot": "12", "seconds": 2.5, "what": "Tiếng Đen vang lên, không thấy Đen", "cue": "Lốc hỗn mang ở xa", "library": ["forcefieldtornado"],
+      "pixelfx": [{ "fx": "tap15-loc-honmang", "attach": "xa trên đường chân trời, scale lớn", "t": "0–2.5 s lặp" }, { "fx": "tap15-ho-den", "attach": "tâm lốc, trên cao", "t": "0.5–2.5 s" }] },
+    { "shot": "14", "seconds": 2, "what": "Đen bật hỗn mang lao tới đấm Hero", "cue": "Aura tím quanh Đen + ToonHit", "library": ["aura01", "toonhit"],
+      "pixelfx": [{ "fx": "tap15-aura-honmang", "attach": "Đen · chân", "t": "0–2 s lặp" }, { "fx": "tap15-chi-mang-honmang", "attach": "Hero · thân", "t": "lúc punch" }] },
+    { "shot": "16", "seconds": 3, "what": "Đen nhảy đấm chiêu cuối, Hero dịch chuyển kịp", "cue": "Nổ + ToonHit; ánh sáng nơi Hero biến mất", "library": ["simple_turbulence_fireworks", "toonhit", "light"],
+      "pixelfx": [{ "fx": "tap15-bien-mat", "attach": "Hero · thân", "t": "ngay trước cú đập" }, { "fx": "tap15-no-honmang", "attach": "điểm đập", "t": "lúc land" }, { "fx": "tap15-dap-dat-honmang", "attach": "mặt đất điểm đập", "t": "lúc land" }] },
+    { "shot": "17", "seconds": 2, "what": "Hero ở chỗ khác", "cue": "— (đề xuất thêm)", "library": [],
+      "pixelfx": [{ "fx": "tap15-xuat-hien", "attach": "Hero · thân", "t": "0 s" }] },
+    { "shot": "18", "seconds": 2, "what": "Đen nhìn quanh", "cue": "Aura tím nhạt", "library": ["aura01"],
+      "pixelfx": [{ "fx": "tap15-nguyen-honmang", "attach": "Đen · đầu", "t": "0–2 s lặp" }] }
+  ]
+}
