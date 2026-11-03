@@ -112,11 +112,13 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   // E10: mặc định khoảng shot = toàn bộ chuỗi clip của nhân vật đang chọn (các clip trộn hoặc liền nhau gộp làm một),
   // không phải toàn timeline 0–300; chỉ áp một lần cho mỗi nhân vật để không ghi đè khoảng người dùng đã sửa tay.
   const shotRangeSyncedFor = useRef('')
+  // Clip có thể kéo dài quá cuối timeline; khoảng shot phải nằm trong timeline.
+  const clampToTimeline = ([start, end]: [number, number]): [number, number] => [Math.max(timeline.frameStart, start), Math.min(timeline.frameEnd, end)]
   useEffect(() => {
     if (shotRangeSyncedFor.current === characterId) return
     shotRangeSyncedFor.current = characterId
     const span = characterShotSpan(selectedClips)
-    if (span) { setShotRange(span); setShotRangeFromInOut(false) }
+    if (span) { setShotRange(clampToTimeline(span)); setShotRangeFromInOut(false) }
   }, [characterId, selectedClips])
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
@@ -191,7 +193,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         if (!plan.ok) { setError(plan.message); setStatus('Không mở được shot.'); return }
         if (plan.kind === 'chain') {
           chain = { defaults: defaultMergedClipInfo(plan.clips as never), characterName: character.name, span: plan.span }
-          range = plan.span
+          range = clampToTimeline(plan.span)
         }
       }
     }
@@ -223,7 +225,8 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   /** B66: bỏ shot đang mở (ô chọn nhân vật bị khoá khi editor có bản sửa chưa lưu) rồi mở shot của nhân vật vừa chọn. */
   function discardShotAndOpen() {
     const target = characterId
-    const range: [number, number] = characterShotSpan(selectedClips) ?? shotRange
+    const span = characterShotSpan(selectedClips)
+    const range: [number, number] = span ? clampToTimeline(span) : shotRange
     setShotId(''); setShotCharacterId(''); setChainInfo(null); setMergeDialog(null)
     setStatus('Đã bỏ shot cũ; đang mở shot mới…')
     shotRangeEdited.current = true; setShotRangeFromInOut(false)
