@@ -1033,7 +1033,9 @@ function applyViewportLayout() {
     v.container.style.display = i >= count ? 'none' : '';
   }
   if (activeEditView.container.hidden) activeEditView = editView;
-  $('viewportGrid').dataset.layout = layout;
+  // "1 khung · Cả cảnh" is a single view; without a scene shot open it behaves exactly like "single".
+  $('viewportGrid').dataset.layout =
+    layout === 'sceneSingle' && !window.__studio?.sceneShot?.active ? 'single' : layout;
   if (layout !== viewportLayoutApplied && count > 1) {
     const views =
       layout === 'quad'
@@ -2304,6 +2306,7 @@ function renderPoses() {
 }
 async function install(r) {
   window.__studio?.shot?.clear();
+  window.__studio?.sceneShot?.clear();
   directorCancel();
   endSourcePreview(false);
   assertEditingAllowed();
@@ -8652,6 +8655,7 @@ function frame(stamp) {
     drawCurve();
   }
   syncScenePreview?.();
+  window.__studio?.sceneShot?.tick(stamp);
   if (mode !== 'compare') {
     if (editView.container.clientWidth && editView.container.clientHeight) {
       if (sourcePreview) onion.hide();

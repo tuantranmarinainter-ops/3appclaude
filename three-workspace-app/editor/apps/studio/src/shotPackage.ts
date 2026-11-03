@@ -12,7 +12,7 @@ export interface ShotCharacter {
 export interface Shot {
   sceneMode?: boolean
   version: string; shotId: string; sceneId: string; fps: number; frameRange: [number, number]
-  camera: { keys: Array<{ frame: number; position: number[]; lookAt: number[]; fovYDegrees: number }> }
+  camera: { aspect?: number; keys: Array<{ frame: number; position: number[]; lookAt: number[]; fovYDegrees: number }> }
   characters: ShotCharacter[]; references: Array<{ file: string; sha256: string; transform: { position: number[]; rotationDegrees: number[]; scale: number[] } }>
 }
 export interface ShotEdit {
@@ -104,7 +104,7 @@ class Validator {
     const range=this.field(s,'frameRange','array',p)
     const valid=Array.isArray(range)&&range.length===2&&range.every(Number.isSafeInteger)&&range[0]>=0&&range[1]>=range[0]
     if(Array.isArray(range)&&!valid)this.issue('INVALID_FRAME_RANGE',p+'.frameRange','Invalid frame range')
-    const camera=this.field(s,'camera','object',p);if(object(camera))this.keys(camera,'keys',p+'.camera',valid?range as number[]:undefined,true)
+    const camera=this.field(s,'camera','object',p);if(object(camera)){if('aspect' in camera&&!(typeof camera.aspect==='number'&&Number.isFinite(camera.aspect)&&camera.aspect>0))this.issue('INVALID_VALUE',p+'.camera.aspect','Expected a positive finite number');this.keys(camera,'keys',p+'.camera',valid?range as number[]:undefined,true)}
     const ids=new Set<unknown>();let editable=false
     for(const [c,q] of this.rows(s,'characters',p)) {
       const id=this.field(c,'characterId','string',q);if(ids.has(id))this.issue('DUPLICATE_CHARACTER_ID',q+'.characterId','Duplicate character');ids.add(id)
