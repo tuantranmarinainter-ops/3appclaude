@@ -99,6 +99,16 @@ class Pane {
     if (fit) { this.updateBounds(); this.frame() }
   }
 
+  /** True when the loaded model is about the size and place of the last framed one (same rig/units). */
+  matchesFramed() {
+    const framed = this.framedBounds
+    if (!framed) return false
+    this.updateBounds()
+    const size = (box) => Math.max(...box.getSize(new THREE.Vector3()).toArray(), 1e-6)
+    const ratio = size(this.bounds) / size(framed)
+    return ratio > 0.5 && ratio < 2 && this.bounds.getCenter(new THREE.Vector3()).distanceTo(framed.getCenter(new THREE.Vector3())) < size(framed)
+  }
+
   applyVisibility() {
     this.object?.traverse((node) => { if (node.isMesh) node.visible = this.show.mesh })
     if (this.helper) this.helper.visible = this.show.skeleton
@@ -132,14 +142,10 @@ class Pane {
       if (!node.isSkinnedMesh || !node.visible || /wing/i.test(node.name)) return
       node.computeBoundingBox(); meshes.union(part.copy(node.boundingBox).applyMatrix4(node.matrixWorld))
     })
-    // Bones near the body only: League rigs carry locator bones (BUFFBONE_GLB_CHANNEL_LOC at 85 m) that would
-    // otherwise shrink the character to a dot.
-    const near = meshes.isEmpty() ? null : meshes.clone().expandByVector(meshes.getSize(new THREE.Vector3()).multiplyScalar(0.5))
-    subject.traverse((node) => {
-      if (!node.isBone) return
-      node.getWorldPosition(point)
-      if (!near || near.containsPoint(point)) box.expandByPoint(point)
-    })
+    // Posed skinned meshes are the character: game rigs carry locator/mover bones (League BUFFBONE_GLB_CHANNEL_LOC
+    // 85 m away, WoW Main/Root under the feet, attachment refs over the head) that shrink the figure or drop the floor
+    // below its feet. Bones frame the view only when there is no mesh.
+    if (meshes.isEmpty()) subject.traverse((node) => { if (node.isBone) box.expandByPoint(node.getWorldPosition(point)) })
     box.union(meshes)
     if (box.isEmpty()) box.setFromObject(subject)
     if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1))
@@ -148,6 +154,7 @@ class Pane {
 
   frame() {
     if (!this.bounds) return
+    this.framedBounds = this.bounds.clone()
     const center = this.bounds.getCenter(new THREE.Vector3()), size = this.bounds.getSize(new THREE.Vector3())
     const extent = Math.max(size.x, size.y, size.z, 1e-3)
     const distance = extent * 1.6 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) / 1.6
@@ -281,7 +288,11 @@ export class Viewer {
     const loaded = await loadModel(url, format)
     if (seq !== this.sourceSeq) return -1
     this.source = loaded
-    this.left.setModel(this.source.scene, null, !this.hasSourceFrame || this.autoFitOnAnimationChange)
+    // A batch of same-rig files keeps the user's view; a file in other units or size (metres → WC3 units) is reframed,
+    // otherwise the old camera sits inside the new model.
+    const keepView = this.hasSourceFrame && !this.autoFitOnAnimationChange
+    this.left.setModel(this.source.scene, null, !keepView)
+    if (keepView && !this.left.matchesFramed()) this.left.frame()
     this.hasSourceFrame = true
     return this.source.animations.length
   }
