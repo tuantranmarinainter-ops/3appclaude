@@ -185,6 +185,35 @@ export function addDraftToCharacter(options: LibraryOptions & { charId: string; 
   })
 }
 
+interface EditedGlbOptions { glbFile: string; rig?: string; actionUuid?: string; nativeBobj?: string }
+/** Shared validation for an edited/merged GLB that joins a character (new version or new standalone action). */
+function prepareEditedAction(root: string, character: CharacterMetadata, source: IndexedAction, options: EditedGlbOptions) {
+  const manifestContract = sourceManifestContract(root, source)
+  if (options.actionUuid && !UUID.test(options.actionUuid)) throw new Error('actionUuid must be a UUID')
+  if (options.rig && options.rig !== source.rig) {
+    const nativeModel = character.baseModelId ? readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json')) : null
+    if (!['verity', 'minecraft20'].includes(options.rig) || nativeModel?.rig !== options.rig || nativeModel.format !== 'bobj') throw new Error('Edited rig transition must target the character native BOBJ rig')
+  }
+  const editedSource = options.rig && options.rig !== source.rig ? { ...source, rig: options.rig } : source
+  const requestedUuid = options.actionUuid ?? randomUUID()
+  let nativeBobj: string | undefined
+  if (['verity', 'minecraft20'].includes(editedSource.rig) && character.baseModelId) {
+    const model = readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json'))
+    if (model.format !== 'bobj' || model.rig !== editedSource.rig) throw new Error('Edited rig must match the character base model')
+    const original = readFileSync(safeChild(root, 'models', character.baseModelId, model.model))
+    if (createHash('sha256').update(original).digest('hex') !== model.sha256) throw new Error('Native base checksum mismatch')
+    const expected = bobjModelToGlb(parseBobjModel(original.toString('utf8')), { faceForward: true }).bytes
+    if (nativeSkeletonFingerprint(expected) !== nativeSkeletonFingerprint(readFileSync(options.glbFile))) throw new Error('Edited native skeleton does not match the character base')
+    const suppliedUuid = options.nativeBobj?.slice(original.toString('utf8').length).match(/^an app3_([^\r\n]+)$/m)?.[1]
+    if (options.nativeBobj !== undefined && (!suppliedUuid || !UUID.test(suppliedUuid))) throw new Error('Edited native BOBJ has no valid Action identity')
+    nativeBobj = nativeActionBobj(original, readFileSync(options.glbFile), suppliedUuid ?? requestedUuid)
+    if (options.nativeBobj !== undefined && options.nativeBobj !== nativeBobj) throw new Error('Edited native BOBJ does not match the GLB')
+  }
+  const inspected = inspectEditedGlb(root, options.glbFile, editedSource.rig, manifestContract)
+  const editedHash = createHash('sha256').update(readFileSync(options.glbFile)).digest('hex')
+  return { manifestContract, editedSource, requestedUuid, nativeBobj, inspected, editedHash }
+}
+
 export function saveCharacterActionVersion(options: LibraryOptions & {
   charId: string; baseUuid: string; glbFile: string; status: 'edited'; notes?: string; rig?: string; actionUuid?: string; nativeBobj?: string
 }): IndexedAction {
@@ -196,29 +225,7 @@ export function saveCharacterActionVersion(options: LibraryOptions & {
     if (!member || source.ownerCharId !== character.charId || !source.variantOf || !source.version) throw new Error('Base action does not belong to this character')
     if (options.status !== 'edited') throw new Error('Saved character action versions must have edited status')
     if (!existsSync(options.glbFile)) throw new Error('Edited GLB file does not exist')
-    const manifestContract = sourceManifestContract(root, source)
-    if (options.actionUuid && !UUID.test(options.actionUuid)) throw new Error('actionUuid must be a UUID')
-    if (options.rig && options.rig !== source.rig) {
-      const nativeModel = character.baseModelId ? readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json')) : null
-      if (!['verity', 'minecraft20'].includes(options.rig) || nativeModel?.rig !== options.rig || nativeModel.format !== 'bobj') throw new Error('Edited rig transition must target the character native BOBJ rig')
-    }
-    const editedSource = options.rig && options.rig !== source.rig ? { ...source, rig: options.rig } : source
-    const requestedUuid = options.actionUuid ?? randomUUID()
-    let nativeBobj: string | undefined
-    if (['verity', 'minecraft20'].includes(editedSource.rig) && character.baseModelId) {
-      const model = readJsonFile<BaseModelMetadata>(safeChild(root, 'models', character.baseModelId, 'meta.json'))
-      if (model.format !== 'bobj' || model.rig !== editedSource.rig) throw new Error('Edited rig must match the character base model')
-      const original = readFileSync(safeChild(root, 'models', character.baseModelId, model.model))
-      if (createHash('sha256').update(original).digest('hex') !== model.sha256) throw new Error('Native base checksum mismatch')
-      const expected = bobjModelToGlb(parseBobjModel(original.toString('utf8')), { faceForward: true }).bytes
-      if (nativeSkeletonFingerprint(expected) !== nativeSkeletonFingerprint(readFileSync(options.glbFile))) throw new Error('Edited native skeleton does not match the character base')
-      const suppliedUuid = options.nativeBobj?.slice(original.toString('utf8').length).match(/^an app3_([^\r\n]+)$/m)?.[1]
-      if (options.nativeBobj !== undefined && (!suppliedUuid || !UUID.test(suppliedUuid))) throw new Error('Edited native BOBJ has no valid Action identity')
-      nativeBobj = nativeActionBobj(original, readFileSync(options.glbFile), suppliedUuid ?? requestedUuid)
-      if (options.nativeBobj !== undefined && options.nativeBobj !== nativeBobj) throw new Error('Edited native BOBJ does not match the GLB')
-    }
-    const inspected = inspectEditedGlb(root, options.glbFile, editedSource.rig, manifestContract)
-    const editedHash = createHash('sha256').update(readFileSync(options.glbFile)).digest('hex')
+    const { manifestContract, editedSource, requestedUuid, nativeBobj, inspected, editedHash } = prepareEditedAction(root, character, source, options)
     const existing = index.actions.find((action) => action.uuid.toLowerCase() === requestedUuid.toLowerCase())
     if (existing) {
       if (existing.ownerCharId === character.charId && existing.variantOf === source.variantOf && existing.parentUuid === (source.parentUuid ?? source.uuid) && existing.status === 'edited' && existing.rig === editedSource.rig && createHash('sha256').update(readFileSync(safeChild(root, 'packs', existing.packId, 'anim.glb'))).digest('hex') === editedHash && (nativeBobj === undefined || readFileSync(safeChild(root, 'packs', existing.packId, 'anim.original.bbs.bobj'), 'utf8') === nativeBobj)) return existing
@@ -230,6 +237,40 @@ export function saveCharacterActionVersion(options: LibraryOptions & {
       status: status(options.status), version, variantOf: source.variantOf, parentUuid: source.parentUuid ?? source.uuid,
       notes: options.notes, preserveAnimationIndex: false, durationSeconds: inspected.durationSeconds,
       license: sourceLicense(root, source), manifestContract, nativeBobj })
+    character.actions = [...memberships(root, character, index.actions), created.uuid]
+    writeCharacter(root, character); writeIndex(root)
+    return created
+  })
+}
+
+/**
+ * Standalone Action for a character from an edited/merged GLB (e.g. App 3 merging a blend chain): version 1 of its OWN variant chain
+ * with its own name and description, not grouped under `templateUuid`. The template (an Action the character already owns) only
+ * supplies rig, license, manifest contract, category and tags.
+ */
+export function addCharacterActionFromGlb(options: LibraryOptions & {
+  charId: string; templateUuid: string; glbFile: string; name: string; description?: string; rig?: string; actionUuid?: string; nativeBobj?: string
+}): IndexedAction {
+  const root = resolveLibraryPath(options)
+  return withLibraryLock(root, () => {
+    initializeLibrary(root)
+    const name = options.name.trim()
+    if (!name || name.length > 120) throw new Error('Action name must have 1-120 characters')
+    const index = writeIndex(root), character = characterAt(root, options.charId), template = actionAt(index.actions, options.templateUuid)
+    if (template.ownerCharId !== character.charId || !memberships(root, character, index.actions).some((uuid) => uuid.toLowerCase() === template.uuid.toLowerCase())) throw new Error('Template action does not belong to this character')
+    if (!existsSync(options.glbFile)) throw new Error('Edited GLB file does not exist')
+    const { manifestContract, editedSource, requestedUuid, nativeBobj, inspected, editedHash } = prepareEditedAction(root, character, template, options)
+    const existing = index.actions.find((action) => action.uuid.toLowerCase() === requestedUuid.toLowerCase())
+    if (existing) {
+      if (existing.ownerCharId === character.charId && existing.variantOf === existing.uuid && existing.name === name && createHash('sha256').update(readFileSync(safeChild(root, 'packs', existing.packId, 'anim.glb'))).digest('hex') === editedHash) return existing
+      throw new Error('Requested actionUuid already belongs to a different action')
+    }
+    const source: IndexedAction = { ...editedSource, name, nameVi: name, nameViSource: 'manual', loop: false, favorite: undefined }
+    delete source.sourceName
+    const created = createVersionPack(root, { source, ownerCharId: character.charId, glbFile: options.glbFile, uuid: requestedUuid,
+      status: 'edited', version: 1, variantOf: requestedUuid, parentUuid: template.parentUuid ?? template.uuid,
+      notes: options.description, preserveAnimationIndex: false, durationSeconds: inspected.durationSeconds,
+      license: sourceLicense(root, template), manifestContract, nativeBobj, favorite: false })
     character.actions = [...memberships(root, character, index.actions), created.uuid]
     writeCharacter(root, character); writeIndex(root)
     return created

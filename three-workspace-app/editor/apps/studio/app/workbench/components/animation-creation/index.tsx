@@ -55,6 +55,9 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, projectId])
   const [shotId, setShotId] = useState('')
+  // B66: nhân vật của shot đang mở (App 3 chỉ sửa MỘT nhân vật mỗi shot); chọn nhân vật khác -> hỏi trả hoặc bỏ shot hiện tại.
+  const [shotCharacterId, setShotCharacterId] = useState('')
+  const switchPending = !!shotId && !!shotCharacterId && characterId !== shotCharacterId
   // K5: shot mở từ chuỗi clip trộn -> trả về sẽ gộp thành một clip; hộp thoại "Lưu clip gộp" hỏi tên + mô tả.
   const [chainInfo, setChainInfo] = useState<{ defaults: { name: string; description: string }; characterName: string; span: [number, number] } | null>(null)
   const [mergeDialog, setMergeDialog] = useState<{ name: string; description: string } | null>(null)
@@ -205,6 +208,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       setShotRange(range)
       setMotionId(''); setClipId(''); setRevisionConflict(false)
       setChainInfo(chain)
+      setShotCharacterId(shotCharacterId)
       setShotId(String(response.result.shotId))
       openedRevision.current = latest.project.revision
       setOpened(true)
@@ -213,6 +217,16 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         : `Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
+  }
+
+  /** B66: bỏ shot đang mở (ô chọn nhân vật bị khoá khi editor có bản sửa chưa lưu) rồi mở shot của nhân vật vừa chọn. */
+  function discardShotAndOpen() {
+    const target = characterId
+    const range: [number, number] = selectedClips.length === 1 ? [selectedClips[0]!.frameStart, selectedClips[0]!.frameEnd] : shotRange
+    setShotId(''); setShotCharacterId(''); setChainInfo(null); setMergeDialog(null)
+    setStatus('Đã bỏ shot cũ; đang mở shot mới…')
+    shotRangeEdited.current = true; setShotRangeFromInOut(false)
+    void openShot(range, false, target)
   }
 
   /** App 3 → App 2: result package ZIP from the editor → upload → shot.result.import (new Motion, one Undo step). */
@@ -232,7 +246,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       const upload = await uploadUnifiedAsset(new File([zip], `${shotId}.result.zip`, { type: 'application/zip' }))
       const latest = await loadUnifiedProject(projectId)
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId, ...(merge ? { merge } : {}) } })
-      setShotId(''); setChainInfo(null)
+      setShotId(''); setShotCharacterId(''); setChainInfo(null)
       const updated = await loadUnifiedProject(projectId).catch(() => null)
       if (updated) onProject(updated.project)
       setStatus(merge
@@ -304,7 +318,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       <button type="button" disabled={!bridgeReady || !characterId || busy || editorDirty} onClick={() => void openEditor(motionId || undefined)}>{motionId ? 'Chỉnh animation' : 'Tạo animation'}</button>
       <button type="button" className="wb-host-primary" disabled={busy || !characterId || !opened} onClick={() => void saveMotion()}>Lưu vào project</button>
       {revisionConflict && editorDirty && <button type="button" disabled={busy} onClick={() => void saveMotion(true)}>Lưu thành animation mới</button>}
-      {editorDirty && <button type="button" disabled={busy} onClick={() => { setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); setChainInfo(null); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
+      {editorDirty && <button type="button" disabled={busy} onClick={() => { setBridgeReady(false); frame.current?.contentWindow?.location.reload(); setOpened(false); setShotId(''); setShotCharacterId(''); setChainInfo(null); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false); setStatus('Đã bỏ bản sửa chưa lưu; animation đã lưu trong project vẫn còn.') }}>Bỏ sửa</button>}
     </header>
     <header className="wb-animation-creation-toolbar" aria-label="Shot từ cảnh">
       <label>Camera<select value={cameraId} onChange={(event) => setCameraId(event.target.value)} disabled={busy || !!shotId || !cameras.length}>
@@ -312,10 +326,18 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       </select></label>
       <label>Từ frame<input type="number" value={shotRange[0]} min={timeline.frameStart} max={shotRange[1]} disabled={busy || !!shotId} onChange={(event) => { shotRangeEdited.current = true; setShotRangeFromInOut(false); setShotRange([Number(event.target.value), shotRange[1]]) }} /></label>
       <label>Đến frame<input type="number" value={shotRange[1]} min={shotRange[0]} max={timeline.frameEnd} disabled={busy || !!shotId} onChange={(event) => { shotRangeEdited.current = true; setShotRangeFromInOut(false); setShotRange([shotRange[0], Number(event.target.value)]) }} /></label>
-      <button type="button" className="cross-app-button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || !!shotId} onClick={() => void openShot()}>Mở shot từ cảnh</button>
+      <button type="button" className="cross-app-button" disabled={!bridgeReady || busy || editorDirty || !characterId || !cameraId || (!!shotId && !switchPending)} title={shotId && !switchPending ? 'Shot của nhân vật này đang mở.' : undefined} onClick={() => void openShot()}>Mở shot từ cảnh</button>
       <label><input type="checkbox" checked={withBobj} disabled={busy} onChange={(event) => setWithBobj(event.target.checked)} />Kèm .bobj</label>
       <button type="button" className="wb-host-primary cross-app-button" disabled={busy || !shotId} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
     </header>
+    {switchPending && <div className="wb-switch-shot" role="alert">
+      <p className="wb-animation-creation-error">Đang mở shot của {project.characters[shotCharacterId]?.name ?? 'nhân vật khác'} — trả kết quả hoặc bỏ sửa trước khi mở shot của {project.characters[characterId]?.name ?? 'nhân vật đã chọn'}.</p>
+      <div className="wb-merge-dialog-actions">
+        <button type="button" className="wb-host-primary" disabled={busy} onClick={() => void returnShot()}>Trả kết quả về cảnh</button>
+        <button type="button" disabled={busy} onClick={() => discardShotAndOpen()}>Bỏ shot này rồi mở shot của {project.characters[characterId]?.name ?? 'nhân vật đã chọn'}</button>
+        <button type="button" disabled={busy} onClick={() => setCharacterId(shotCharacterId)}>Giữ shot hiện tại</button>
+      </div>
+    </div>}
     {mergeDialog && chainInfo && <div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
       <h3>Lưu clip gộp</h3>
       <label>Nhân vật<input type="text" value={chainInfo.characterName} readOnly disabled /></label>

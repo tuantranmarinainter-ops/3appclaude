@@ -416,6 +416,64 @@
     if (studio.state.draft || studio.state.sourceClip || context.preview)
       throw Error('PATCH_PENDING');
   };
+  // B67: sau khi mở shot, khung nhìn phải thấy trọn nhân vật (kích thước theo chiều cao hiển thị), giữ nguyên hướng nhìn hiện tại.
+  function fitEditViews() {
+    const studio = window.__studio;
+    const views = studio?.editorViews?.() ?? [];
+    const sync = document.getElementById('syncCameras');
+    const syncWas = sync?.checked;
+    if (sync) sync.checked = false;
+    try {
+      for (const view of views) {
+        const root = view.rig?.root || view.wrapper;
+        if (!root || !view.container?.clientWidth || !view.container?.clientHeight) continue;
+        root.updateMatrixWorld(true);
+        const V = view.camera.position.constructor;
+        const min = new V(Infinity, Infinity, Infinity),
+          max = new V(-Infinity, -Infinity, -Infinity);
+        const add = (p) => {
+          min.min(p);
+          max.max(p);
+        };
+        root.traverse((o) => {
+          if (o.isBone) add(o.getWorldPosition(new V()));
+          else if (o.isMesh && o.geometry) {
+            if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+            const b = o.geometry.boundingBox;
+            if (!b) return;
+            for (let i = 0; i < 8; i++)
+              add(
+                new V(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(o.matrixWorld),
+              );
+          }
+        });
+        if (!Number.isFinite(min.x) || !Number.isFinite(max.x)) continue;
+        const center = min.clone().add(max).multiplyScalar(0.5),
+          radius = Math.max(0.4, max.clone().sub(min).length() / 2),
+          aspect = view.container.clientWidth / Math.max(1, view.container.clientHeight);
+        const direction = view.camera.position.clone().sub(view.orbit.target);
+        if (direction.lengthSq() < 1e-9) direction.set(2, -3.3, 0.65);
+        direction.normalize();
+        view.orbit.target.copy(center);
+        if (view.orthographic) {
+          const c = view.camera;
+          c.zoom = Math.min(c.top - c.bottom, c.right - c.left) / (2 * radius * 1.12);
+          c.position.copy(center).addScaledVector(direction, 5);
+        } else {
+          const fov = (view.camera.fov / 2) * (Math.PI / 180),
+            angle = Math.min(fov, Math.atan(Math.tan(fov) * aspect)),
+            distance = (radius / Math.sin(angle)) * 1.12;
+          view.camera.position.copy(center).addScaledVector(direction, distance);
+          if (view.camera.far < distance + radius * 2) view.camera.far = (distance + radius * 2) * 2;
+        }
+        view.camera.updateProjectionMatrix();
+        view.orbit.update();
+        view.dirty = true;
+      }
+    } finally {
+      if (sync) sync.checked = syncWas;
+    }
+  }
   async function openShot(bytes, interactive = true, blank = false) {
     const studio = window.__studio;
     if (!studio.shot?.openZip) throw Error('CONTRACT_UNSUPPORTED');
@@ -429,6 +487,15 @@
     if ((await studio.shot.openZip(bytes, { interactive, blank })) === false)
       throw Error('OPEN_CANCELLED');
     setDisplayHeight(studio.shot.session?.character?.heightBlocks);
+    try {
+      fitEditViews();
+      // Khung nhìn có thể chưa có kích thước ngay sau khi nạp: fit lại sau một nhịp.
+      setTimeout(() => {
+        try {
+          fitEditViews();
+        } catch {}
+      }, 350);
+    } catch {}
     savedSnapshot = JSON.stringify(studio.serialized(false));
     return shotIdentity();
   }

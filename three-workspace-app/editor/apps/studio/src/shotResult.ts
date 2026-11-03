@@ -9,7 +9,7 @@ import { attachApp1Manifest } from './app1Manifest'
 import { buildImportedAsset, persistImportedAssetFiles, readStagedAssetUpload } from './unifiedAssetFiles'
 import { loadShotExport } from './shotExchange'
 import { readPackageJson, unzipPackage, validateResult, sha256, type ShotResult } from './shotPackage'
-import { getAction, listCharacterActions, resolveCharacter, saveCharacterActionVersion, setActionMetadata } from '../../../packages/library/index'
+import { getAction, listCharacterActions, resolveCharacter, saveCharacterActionVersion, addCharacterActionFromGlb } from '../../../packages/library/index'
 import { defaultMergedClipInfo } from './shotChain'
 import { nativeShotBobj } from './nativeShotVersion'
 import { nativeSkeletonFingerprint } from '../../../packages/retarget/src/nativeSkeleton'
@@ -24,7 +24,7 @@ function parseMergeArgs(value: unknown): { name: string; description: string } {
   if(description.length>1000)throw new TypeError('Mô tả clip gộp tối đa 1000 ký tự')
   return {name,description}
 }
-/** K5: tên + mô tả clip gộp (mặc định theo các clip) và Action gốc của nhân vật thư viện để đánh số phiên bản. */
+/** K5: tên + mô tả clip gộp (mặc định theo các clip) và Action của nhân vật thư viện làm mẫu (rig/giấy phép) cho Action riêng của clip gộp. */
 function mergeInfo(project: UnifiedProject,chain: NonNullable<import('./shotExchange').SavedShotClip['chain']>,chainClips: MotionClip[],given: {name:string;description:string}|undefined,libraryCharacterId: string|undefined): MergeInfo {
   const defaults=defaultMergedClipInfo(chainClips as never)
   let libraryBaseUuid: string|undefined
@@ -104,9 +104,11 @@ export async function saveNativeShotVersions(prepared: Awaited<ReturnType<typeof
     const temp=await mkdtemp(path.join(os.tmpdir(),'bbs-app3-')),file=path.join(temp,`${edit.newActionUuid}.glb`)
     try {
       await writeFile(file,bytes)
-      const version=saveCharacterActionVersion({charId:nativeLibraryId,baseUuid:merge?.libraryBaseUuid??edit.originalActionUuid,glbFile:file,status:'edited',rig:nativeLibraryRig,actionUuid:edit.newActionUuid,nativeBobj,notes:merge?merge.description:'Animation Studio App3 shot edit'})
-      // Clip gộp mang tên người dùng đặt (Vietnamese) thay cho tên Action gốc; mô tả nằm ở notes.
-      if(merge)setActionMetadata({actionUuid:version.uuid,name:merge.name,nameVi:merge.name})
+      // K5: clip gộp là Action RIÊNG của nhân vật (version 1, chuỗi biến thể riêng, tên + mô tả người dùng đặt);
+      // gốc libraryBaseUuid chỉ cho rig/giấy phép/manifest. Chỉnh sửa một clip thường vẫn đi đường phiên bản mới.
+      const version=merge
+        ?addCharacterActionFromGlb({charId:nativeLibraryId,templateUuid:merge.libraryBaseUuid!,glbFile:file,name:merge.name,description:merge.description,rig:nativeLibraryRig,actionUuid:edit.newActionUuid,nativeBobj})
+        :saveCharacterActionVersion({charId:nativeLibraryId,baseUuid:edit.originalActionUuid,glbFile:file,status:'edited',rig:nativeLibraryRig,actionUuid:edit.newActionUuid,nativeBobj,notes:'Animation Studio App3 shot edit'})
       saved.push(version.uuid)
     }
     finally { await rm(temp,{recursive:true,force:true}) }
