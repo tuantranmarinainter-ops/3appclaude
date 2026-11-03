@@ -154,3 +154,36 @@ và "navigation hint dismissal is shared across ports through a cookie" (lỗi m
 | `python -m unittest agent.test_shot_package` | 66/66 đạt |
 | `pnpm typecheck` toàn workspace | đạt |
 | Công cụ kiểm id App 3 | 497 → 501 (thêm `sceneEditingLabel`, `sceneCharacterList`), thiếu 0 |
+
+## S4: "Mở cả cảnh", "Lưu clip gộp" nhiều dòng, trả về (nhánh `claude/app3-scene-s4`) — DỪNG GIỮA CHỪNG, BÀN GIAO
+
+### Đã làm
+- Host F3 (`animation-creation/index.tsx`, `src/sceneShotHost.ts`): nút **"Mở cả cảnh"** (`shot.export` `sceneMode`), trạng thái
+  "Đã nới khoảng a–b → c–d…", chọn nhân vật khác không hỏi kiểu B66; **"Trả kết quả về cảnh"** đọc `result.json`, mở hộp
+  **"Lưu clip gộp"** một dòng cho mỗi nhân vật đã sửa (mặc định như K5), gửi `merges`; **"Bỏ sửa"** hỏi lại khi đang mở cả cảnh.
+- App 3 (`shot_controller.js` `sceneExportFiles`, `shot_export.js` `sceneResultFiles`): một gói kết quả `sceneMode: true` có edit cho mọi
+  nhân vật khác bản F2 (GLB + manifest + placementKeys riêng), nhân vật không sửa không có edit; không sửa gì → `edits: []`.
+- Test trình duyệt `scene_export.browser.test.mjs`; script trọn luồng `apps/studio/scripts/sceneModeE2E.mjs` (Studio thật, cổng 3120,
+  bản sao project + `W01_LIBRARY` tạm).
+
+### Kết quả test trọn luồng §9 (Studio thật, dự án tổng hợp 2 nhân vật, embed `e71dcd20…`, trước khi ghép S3 gizmo)
+| Bước | Trạng thái | Ghi chú |
+| --- | --- | --- |
+| Mở F3 → "Mở cả cảnh": thấy 2 nhân vật đúng chỗ | PASS | root lệch 0 m so với sampler App 2 ở 3 khung; trạng thái báo đã nới 0–76 → 0–87 |
+| Phát: cả hai cùng chạy | PASS | |
+| Sửa A, click thật vào B: sang B, A mờ 0,5, ● cạnh A | PASS | chuyển 0,63 s (App 3) |
+| Sửa B, click lại A: bản sửa A còn; Ctrl+Z (bàn phím) chỉ hoàn tác A | PASS | hash A không đổi sau 10 vòng |
+| Onion chỉ nhân vật đang sửa | PASS | 0 bóng trên actor xem |
+| "Nhìn qua camera cảnh" | PASS | |
+| "Trả kết quả": hộp 2 dòng; xác nhận → mỗi nhân vật 1 clip gộp phủ khoảng, đúng tên | PASS | một revision |
+| Ctrl+Z một lần ở App 2 → project về như trước | PASS | hash scene/extensions/motions/bindings bằng trước |
+| Lần 2 chỉ sửa A: hộp 1 dòng, B giữ nguyên | **FAIL** | xem lỗi 2–3 dưới |
+| Thư viện (F5) có clip gộp | BLOCKED | nhân vật tổng hợp không phải nhân vật Thư viện → `libraryActionUuids: []` |
+| Thời gian từ bấm "Mở cả cảnh" tới thấy đủ nhân vật | **FAIL?** | 24,2 s trên máy cloud (App 3 tự mở 0,98 s; phần còn lại là xuất gói + tải phía Studio dev). Ngưỡng 15 s; cần đo trên máy người dùng |
+
+### Lỗi đã tìm, chưa sửa (việc tiếp theo cho Codex)
+1. Hộp "Lưu clip gộp" bị **danh sách animation nổi `#floatingAnimationList` che** (S3 mở danh sách này để hiện `#sceneCharacterList`).
+2. Sau khi trả kết quả thành công, App 3 **vẫn báo chưa lưu** (dirty) — host phải báo App 3 đóng/reset shot (hoặc `markSaved`) sau import.
+3. Trả lần 2 trong cùng phiên: App 3 vẫn giữ bản sửa cũ (so với bản F2 của shot cũ) nên hộp hiện cả nhân vật đã trả rồi. Sau import
+   thành công phải đóng shot cả cảnh (host đã xóa `sceneShot`; App 3 cần được reset hoặc mở lại shot mới).
+4. Mở cả cảnh qua Studio 24 s trên máy cloud: cần tách thời gian (shot.export phía server, tải job, postMessage, App 3) để biết chỗ chậm.
