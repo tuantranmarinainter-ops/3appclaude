@@ -254,9 +254,8 @@ try {
   const first5 = ui7.editing;
   const target = ui7.rows.map((r) => r[0]).filter((x) => x !== first5)[1] ?? ui7.rows[1][0];
   summary.five5SelectedBefore = await SS('()=>S.state.selected');
-  // The editor's rotate gizmo (XYZE sphere/ring picker) of the selected object is a control too and sits over crowded neighbours;
-  // select the Head bone so the gizmo is away from the body, then skip any candidate that still has a gizmo axis under the pointer.
-  summary.five5Deselect = await SS(`()=>{S.select(S.rig().records.find(r=>r.name==='mixamorig:Head').id);return S.state.selected}`);
+  // Default selection (root) is kept: the editor's rotate gizmo sphere is NOT avoided (S3 'Ưu tiên chuyển').
+  summary.five5Deselect = await SS('()=>S.state.selected');
   const cands = await SS(`(id)=>{const e=SS.registry.get(id),root=e.viewer.root;root.updateMatrixWorld(true);
      const v=S.editorViews()[0],c=v.camera;c.updateMatrixWorld(true);const r=v.renderer.domElement.getBoundingClientRect();const out=[];
      root.traverse(o=>{if(!o.isBone)return;const p=o.getWorldPosition(S.rig().root.position.clone());p.project(c);
@@ -277,7 +276,6 @@ try {
     // The editor's own transform gizmo (hovered axis) and the rig widgets are controls and keep priority; report who is under the pointer.
     const under = await SS(`(p)=>{const v=S.editorViews()[0],ev={clientX:p.x,clientY:p.y},sv=v.rootPickYields;v.rootPickYields=null;const without=S.widgetPick(v,ev)?.id||null;v.rootPickYields=sv;
       return {gizmoAxis:v.gizmo?.axis||v.moveGizmo?.axis||null,widgetWithoutYield:without,widgetNow:S.widgetPick(v,ev)?.id||null}}`, w);
-    if (under.gizmoAxis) { attempts.push({ bone: w.bone, skipped: 'transform gizmo under pointer', under }); continue; }
     const t0 = Date.now();
     await page.mouse.click(w.x, w.y);
     const ok = await page.waitForFunction((x) => window.__studio.sceneShot.editing() === x && !window.__studio.sceneShot.switching, target, { timeout: 4000 }).then(() => true, () => false);

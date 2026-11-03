@@ -604,3 +604,236 @@ test(
     }
   },
 );
+
+test(
+  'Cả cảnh S3 gizmo yield ("Ưu tiên chuyển"): a click inside the gizmo sphere over a neighbour switches; gizmo axis rings keep the drag; single mode unchanged',
+  { skip: !existsSync(artifact), timeout: 300000 },
+  async () => {
+    const server = createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html');
+      res.end(readFileSync(artifact));
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const browser = await chromium.launch(browserOptions({ headless: true }));
+    const errors = [];
+    const report = {};
+    try {
+      const open = async (opts) => {
+        const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+        page.on('pageerror', (e) => errors.push(e.message));
+        page.on('dialog', (d) => d.accept());
+        await useClassicLayout(page);
+        await page.goto(`http://127.0.0.1:${server.address().port}/`);
+        await page.waitForFunction(() => window.__studio?.ready);
+        await page.evaluate(
+          async ({ src, args }) => {
+            const { files } = await new Function('return ' + src)()(args);
+            await window.__studio.shot.openFiles(files);
+          },
+          { src: buildSceneShot.toString(), args: opts },
+        );
+        const SS = (fn, arg) =>
+          page.evaluate(new Function('arg', 'const SS=window.__studio.sceneShot,S=window.__studio;return (' + fn + ')(arg)'), arg);
+        const raf = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        return { page, SS, raf };
+      };
+      // Find a screen point where the rotate gizmo's hover axis equals `want` ('XYZE' trackball sphere or one of 'X'|'Y'|'Z'|'E').
+      const findAxisPoint = (SS, want, minR, maxR) =>
+        SS(
+          `(a)=>{const v=S.editorViews()[0],c=v.camera,r=v.renderer.domElement.getBoundingClientRect();c.updateMatrixWorld(true);
+            v.scene.updateMatrixWorld(true);const g=v.gizmo,o=g.object,V=c.position.constructor;
+            const p=o.getWorldPosition(new V()).project(c),cx=r.left+(p.x+1)/2*r.width,cy=r.top+(1-p.y)/2*r.height;
+            const hit=(x,y)=>{g.pointerHover({x:(x-r.left)/r.width*2-1,y:-(y-r.top)/r.height*2+1,button:-1});return g.axis};
+            const found=[];
+            for(let rad=a.minR;rad<=a.maxR;rad+=2)for(let k=0;k<72;k++){const t=k/72*Math.PI*2,x=cx+Math.cos(t)*rad,y=cy+Math.sin(t)*rad;
+              const top=document.elementFromPoint(x,y)===v.renderer.domElement;
+              if(top&&hit(x,y)===a.want){found.push({x,y,rad,k});if(found.length>200)break}}
+            g.axis=null;return {cx,cy,radius:v.gizmoRadius,found}}`,
+          { want, minR, maxR },
+        );
+      // Move char1's viewer so that its Spine1 bone projects onto the screen point (x,y).
+      const placeAt = (SS, pt) =>
+        SS(
+          `(a)=>{const v=S.editorViews()[0],c=v.camera,r=v.renderer.domElement.getBoundingClientRect(),V=c.position.constructor;
+            c.updateMatrixWorld(true);v.scene.updateMatrixWorld(true);
+            const e=SS.registry.get('char1'),g=e.viewer.group;g.position.set(...e.placement.position);g.updateMatrixWorld(true);
+            let b=null;e.viewer.root.traverse(o=>{if(o.isBone&&o.name==='mixamorig:Spine1')b=o});
+            const P=b.getWorldPosition(new V()),n=P.clone().project(c);
+            const Q=new V((a.x-r.left)/r.width*2-1,-(a.y-r.top)/r.height*2+1,n.z).unproject(c);g.position.add(Q.sub(P));g.updateMatrixWorld(true);return 1}`,
+          pt,
+        );
+      const bodyAt = (SS, pt) =>
+        SS(`(p)=>{const hits=SS.hitsAt(p.x,p.y).sort((a,b)=>a.distance-b.distance);return hits[0]?.characterId||null}`, pt);
+
+      // ---- scene mode, default selection `root`
+      {
+        const { page, SS, raf } = await open({ count: 2, aspect: 2, names: ['A', 'B'] });
+        const waitEditing = async (id) => {
+          await page.waitForFunction(
+            (x) => window.__studio.sceneShot.editing() === x && !window.__studio.sceneShot.switching,
+            id,
+            { timeout: 20000 },
+          );
+          await raf();
+        };
+        assert.equal(await SS('()=>SS.editing()'), 'char0');
+        assert.equal(await SS('()=>S.state.selected'), 'root', 'default selection is root');
+        // 1) trackball sphere: choose a point in the XYZE area, put B's body there, click.
+        const sph = await findAxisPoint(SS, 'XYZE', 4, 120);
+        assert.ok(sph.found.length > 0, 'the XYZE trackball sphere exists on screen ' + JSON.stringify(sph));
+        let spot = null;
+        for (const f of sph.found) {
+          await placeAt(SS, f);
+          await raf();
+          if ((await bodyAt(SS, f)) !== 'char1') continue;
+          await page.mouse.move(f.x - 2, f.y);
+          await page.mouse.move(f.x, f.y);
+          const axis = await SS('()=>S.editorViews()[0].gizmo.axis');
+          const widget = await SS('(p)=>S.widgetPick(S.editorViews()[0],{clientX:p.x,clientY:p.y})?.id||null', f);
+          if (axis === 'XYZE' && !widget) {
+            spot = f;
+            break;
+          }
+        }
+        assert.ok(spot, 'a viewer body inside the XYZE sphere under the pointer');
+        const hist0 = await SS('()=>S.state.historyIndex');
+        await page.mouse.down();
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.dragging'), false, 'pointerdown over a neighbour does not start the gizmo drag');
+        assert.equal(await SS('()=>!!S.state.draft'), false, 'no draft on pointerdown ' + JSON.stringify(await SS('()=>({sel:S.state.selected,en:S.editorViews()[0].gizmo.enabled,ax:S.editorViews()[0].gizmo.axis,mv:S.editorViews()[0].moveGizmo.axis,spot:0})')) + JSON.stringify(spot));
+        assert.equal(await SS('()=>S.state.selected'), 'root', 'selection untouched');
+        await page.mouse.up();
+        await waitEditing('char1');
+        assert.equal(await SS('()=>!!S.state.draft'), false, 'no draft after the switching click');
+        assert.equal(await SS('()=>S.state.historyIndex'), hist0, 'no history entry');
+        assert.deepEqual(await SS('()=>SS.edited()'), [], 'nothing edited');
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.enabled&&S.editorViews()[0].moveGizmo.enabled'), true, 'gizmos re-enabled after the click');
+        await SS('()=>SS.select("char0")');
+        await waitEditing('char0');
+
+        // 2) a real press+drag on the gizmo's X/Y/Z ring, even with a neighbour body under it, still rotates (draft, no switch)
+        let ring = null;
+        outer: for (const axis of ['X', 'Z', 'Y']) {
+          const r = await findAxisPoint(SS, axis, 4, 120);
+          for (const f of r.found) {
+            await placeAt(SS, f);
+            await raf();
+            const widget = await SS('(p)=>S.widgetPick(S.editorViews()[0],{clientX:p.x,clientY:p.y})?.id||null', f);
+            if (!widget && (await bodyAt(SS, f)) === 'char1') {
+              ring = { axis, ...f };
+              break outer;
+            }
+          }
+        }
+        assert.ok(ring, 'an X/Y/Z axis ring point (no rig widget) with a neighbour body under it');
+        const rotBefore = await SS('()=>JSON.stringify(S.rig().root.quaternion.toArray())');
+        await page.mouse.move(ring.x - 2, ring.y);
+        await page.mouse.move(ring.x, ring.y);
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.axis'), ring.axis, 'hovered axis is the ring');
+        await page.mouse.down();
+        await page.mouse.move(ring.x + 25, ring.y + 25, { steps: 8 });
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.dragging'), true, 'ring drag started ' + JSON.stringify(ring) + JSON.stringify(await SS('()=>{const v=S.editorViews()[0];return {sel:S.state.selected,en:v.gizmo.enabled,ax:v.gizmo.axis,mv:v.moveGizmo.axis,draft:!!S.state.draft,mode:v.gizmo.mode,obj:!!v.gizmo.object}}')));
+        await page.mouse.up();
+        await page.waitForTimeout(250);
+        assert.equal(await SS('()=>!!S.state.draft'), true, 'ring drag creates the draft as before');
+        assert.equal(await SS('()=>SS.editing()'), 'char0', 'ring drag never switches');
+        assert.notEqual(await SS('()=>JSON.stringify(S.rig().root.quaternion.toArray())'), rotBefore, 'root rotated by the ring drag');
+        await SS('()=>document.getElementById("undoBtn").click()');
+        assert.equal(await SS('()=>!!S.state.draft'), false);
+
+        // 3) view ring 'E': on its drawn stroke the drag keeps working; off the stroke (but still on the thick picker) over a
+        // neighbour body the click yields and switches.
+        const eAt = (arg) =>
+          SS(
+            `(a)=>{const v=S.editorViews()[0],g=v.gizmo,c=v.camera,r=v.renderer.domElement.getBoundingClientRect(),V=c.position.constructor;
+              c.updateMatrixWorld(true);v.scene.updateMatrixWorld(true);g.getHelper().updateMatrixWorld(true);
+              const h=g._gizmo.gizmo.rotate.children.find(x=>x.name==='E'),R=h.geometry.parameters.radius||1;
+              const px=(w)=>{const q=w.clone().project(c);return [r.left+(q.x+1)/2*r.width,r.top+(1-q.y)/2*r.height]};
+              const ctr=px(g.object.getWorldPosition(new V()));
+              const on=px(new V(Math.cos(a.t)*R,Math.sin(a.t)*R,0).applyMatrix4(h.matrixWorld));
+              const d=Math.hypot(on[0]-ctr[0],on[1]-ctr[1])||1,ux=(on[0]-ctr[0])/d,uy=(on[1]-ctr[1])/d;
+              const x=on[0]-ux*a.off,y=on[1]-uy*a.off;
+              g.pointerHover({x:(x-r.left)/r.width*2-1,y:-(y-r.top)/r.height*2+1,button:-1});
+              const axis=g.axis;g.axis=null;return {x,y,axis,ringPx:d}}`,
+            arg,
+          );
+        const isTop = (p) => SS('(p)=>document.elementFromPoint(p.x,p.y)===S.editorViews()[0].renderer.domElement', p);
+        const strokeCands = [],
+          offCands = [];
+        const eTries = [];
+        for (const t of [0.3, 0.8, 1.2, 1.7, 2.2, 2.8, 3.4, 3.9, 4.4, 4.9, 5.4, 5.9]) {
+          const on = await eAt({ t, off: 0 });
+          eTries.push([t, on.axis, Math.round(on.ringPx)]);
+          if (on.axis === 'E' && (await isTop(on))) strokeCands.push(on);
+          for (const off of [10, 13, 16, 20, 25]) {
+            const q = await eAt({ t, off });
+            if (q.axis === 'E' && (await isTop(q))) offCands.push({ ...q, off });
+          }
+        }
+        const usable = async (list) => {
+          for (const c of list) {
+            await placeAt(SS, c);
+            await raf();
+            const widget = await SS('(p)=>S.widgetPick(S.editorViews()[0],{clientX:p.x,clientY:p.y})?.id||null', c);
+            if (!widget && (await bodyAt(SS, c)) === 'char1') return c;
+          }
+          return null;
+        };
+        const strokePt = await usable(strokeCands);
+        assert.ok(strokePt, 'a point on the E ring stroke ' + JSON.stringify(eTries));
+        // on the stroke, with a neighbour body underneath: old behaviour (drag starts, draft)
+        await page.mouse.move(strokePt.x - 1, strokePt.y);
+        await page.mouse.move(strokePt.x, strokePt.y);
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.axis'), 'E');
+        await page.mouse.down();
+        await page.mouse.move(strokePt.x + 20, strokePt.y + 20, { steps: 8 });
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.dragging'), true, 'E ring stroke keeps the drag');
+        await page.mouse.up();
+        await page.waitForTimeout(250);
+        assert.equal(await SS('()=>!!S.state.draft'), true);
+        assert.equal(await SS('()=>SS.editing()'), 'char0');
+        await SS('()=>document.getElementById("undoBtn").click()');
+        const offPt = await usable(offCands);
+        report.eStroke = { eTries, offPt: offPt ? Math.round(offPt.off) : null };
+        if (offPt) {
+          await page.mouse.move(offPt.x - 1, offPt.y);
+          await page.mouse.move(offPt.x, offPt.y);
+          assert.equal(await SS('()=>S.editorViews()[0].gizmo.axis'), 'E');
+          await page.mouse.down();
+          assert.equal(await SS('()=>S.editorViews()[0].gizmo.dragging'), false, 'E ring away from its stroke yields');
+          await page.mouse.up();
+          await waitEditing('char1');
+          assert.equal(await SS('()=>!!S.state.draft'), false);
+        }
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+
+      // ---- outside scene mode: a normal single-character shot, gizmo sphere behaves as before
+      {
+        const { page, SS, raf } = await open({ count: 1, aspect: 2, names: ['Solo'], sceneMode: false });
+        assert.equal(await SS('()=>SS.active'), false, 'not a scene shot');
+        const sph = await findAxisPoint(SS, 'XYZE', 4, 120);
+        assert.ok(sph.found.length > 0, 'trackball sphere present in single mode');
+        const f = sph.found[Math.floor(sph.found.length / 2)];
+        await page.mouse.move(f.x - 2, f.y);
+        await page.mouse.move(f.x, f.y);
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.axis'), 'XYZE');
+        const rotBefore = await SS('()=>JSON.stringify(S.rig().root.quaternion.toArray())');
+        await page.mouse.down();
+        assert.equal(await SS('()=>S.editorViews()[0].gizmo.dragging'), true, 'single mode: pointerdown on the sphere starts the trackball');
+        await page.mouse.move(f.x + 30, f.y + 20, { steps: 8 });
+        await page.mouse.up();
+        await page.waitForTimeout(250);
+        assert.equal(await SS('()=>!!S.state.draft'), true, 'single mode: trackball drag creates the draft as before');
+        assert.notEqual(await SS('()=>JSON.stringify(S.rig().root.quaternion.toArray())'), rotBefore, 'single mode: root rotated');
+        void raf;
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+      console.log('S3 gizmo report', JSON.stringify(report));
+    } finally {
+      await browser.close();
+      server.close();
+    }
+  },
+);
