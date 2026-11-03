@@ -10,6 +10,7 @@ export interface ShotCharacter {
   placement: { position: number[]; yawDegrees: number }; rootPolicy: 'skeletal' | 'in-place'; editable: boolean
 }
 export interface Shot {
+  sceneMode?: boolean
   version: string; shotId: string; sceneId: string; fps: number; frameRange: [number, number]
   camera: { keys: Array<{ frame: number; position: number[]; lookAt: number[]; fovYDegrees: number }> }
   characters: ShotCharacter[]; references: Array<{ file: string; sha256: string; transform: { position: number[]; rotationDegrees: number[]; scale: number[] } }>
@@ -18,7 +19,7 @@ export interface ShotEdit {
   characterId: string; originalActionUuid: string; newActionUuid: string; glb: string; manifest: string; glbSha256: string
   placementKeys: Array<{ frame: number; position: number[]; yawDegrees: number }>
 }
-export interface ShotResult { version: string; shotId: string; baseShotSha256: string; edits: ShotEdit[] }
+export interface ShotResult { version: string; shotId: string; baseShotSha256: string; edits: ShotEdit[]; sceneMode?: boolean }
 export const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 export const jsonBytes = (value: unknown) => strToU8(JSON.stringify(value, null, 2) + '\n')
 export function safePackagePath(value: string): boolean {
@@ -99,6 +100,7 @@ class Validator {
     const s=this.json(this.file({file:'shot.json'},'file','shot.json'),'shot.json'); if(!s)return
     const p='shot.json';this.version(s,p);this.field(s,'shotId','string',p);this.field(s,'sceneId','string',p)
     const fps=this.field(s,'fps','integer',p);if(typeof fps==='number'&&fps!==30)this.issue('INVALID_FPS',p+'.fps','Expected 30 FPS')
+    if('sceneMode' in s&&typeof s.sceneMode!=='boolean')this.issue('INVALID_TYPE',p+'.sceneMode','Expected boolean')
     const range=this.field(s,'frameRange','array',p)
     const valid=Array.isArray(range)&&range.length===2&&range.every(Number.isSafeInteger)&&range[0]>=0&&range[1]>=range[0]
     if(Array.isArray(range)&&!valid)this.issue('INVALID_FRAME_RANGE',p+'.frameRange','Invalid frame range')
@@ -125,7 +127,7 @@ export function validateResult(files: PackageFiles, shotFiles: PackageFiles): Is
   const base=new Validator(shotFiles),s=base.shot(),v=new Validator(files)
   v.issues.push(...base.issues.map(i=>({...i,path:'shot/'+i.path})))
   const r=v.json(v.file({file:'result.json'},'file','result.json'),'result.json');if(!r)return v.issues
-  const p='result.json';v.version(r,p);const shotId=v.field(r,'shotId','string',p);v.hash(r,'baseShotSha256',p,shotFiles['shot.json'])
+  const p='result.json';if('sceneMode' in r&&typeof r.sceneMode!=='boolean')v.issue('INVALID_TYPE',p+'.sceneMode','Expected boolean');v.version(r,p);const shotId=v.field(r,'shotId','string',p);v.hash(r,'baseShotSha256',p,shotFiles['shot.json'])
   if(s&&typeof shotId==='string'&&shotId!==s.shotId)v.issue('SHOT_ID_MISMATCH',p+'.shotId','Wrong shot')
   const chars=Array.isArray(s?.characters)?s.characters.filter(object):[],seen=new Set<unknown>(),newIds=new Set<unknown>()
   for(const [e,q] of v.rows(r,'edits',p)) {

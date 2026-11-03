@@ -205,6 +205,8 @@ class _Validator:
         fps = self.field(shot, "fps", int, path)
         if fps is not None and fps != 30:
             self.issue("INVALID_FPS", f"{path}.fps", "Shot FPS must be 30.")
+        if "sceneMode" in shot and type(shot["sceneMode"]) is not bool:
+            self.issue("INVALID_TYPE", f"{path}.sceneMode", "Expected bool.")
         frames = self.field(shot, "frameRange", list, path)
         if frames is not None and (len(frames) != 2 or any(type(frame) is not int for frame in frames)
                                    or frames[0] < 0 or frames[1] < frames[0]):
@@ -272,6 +274,8 @@ def validate_result(directory: str | Path, shot_dir: str | Path) -> list[Issue]:
         return validator.issues
     path = "result.json"
     validator.version(result, path)
+    if "sceneMode" in result and type(result["sceneMode"]) is not bool:
+        validator.issue("INVALID_TYPE", f"{path}.sceneMode", "Expected bool.")
     shot_id = validator.field(result, "shotId", str, path)
     digest = validator.digest(result, "baseShotSha256", path)
     if shot is not None:

@@ -3,7 +3,7 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 
 // Process generation is part of every lease/ticket: a restarted broker never replays a dispatched command.
 export const APP3_EXPORT_TOOLS = ['export_animation', 'shotOpen', 'shotExport', 'libraryActionOpen'] as const
-export interface App3ShotProof { shotId: string; baseShotSha256: string; characterId: string; actionUuid: string; glbSha256: string; zipSha256: string; frameRange: [number, number]; fps: number; sourceRevision: number; jobId: string; fileId: string }
+export interface App3ShotProof { shotId: string; baseShotSha256: string; characterId: string; actionUuid: string; glbSha256: string; zipSha256: string; frameRange: [number, number]; fps: number; sourceRevision: number; jobId: string; fileId: string; sceneMode?: boolean; baked?: boolean }
 export interface App3LibraryActionProof { heightBlocks?: number; actionUuid: string; characterId: string; characterAssetId: string; characterSha256: string; packId: string; glbSha256: string; glbAnimationIndex: number; name: string }
 export const APP3_READ_TOOLS = ['read_keyframes', 'analyze_motion', 'get_scene_context', 'get_animation_context'] as const
 export const LOCAL_EDIT_TOOLS=['retime_segment','set_hold','smooth_motion','edit_keyframes','edit_curves','create_blocking','set_pose','insert_breakdown','set_marker','set_idea','preview_patch','apply_patch','cancel_patch','undo_animation'] as const;
@@ -111,7 +111,7 @@ function session(project: UnifiedProject, a: Record<string, unknown>, receiver =
   if (s.epoch !== a.epoch || s.characterId !== a.characterId) fail('SESSION_REPLACED')
   if (s.closedAt) { if (!resultOnly || Date.now() - s.closedAt > TTL * 5) fail('SESSION_REPLACED'); return s }
   if (Date.now() - s.heartbeat > TTL) fail('APP3_OFFLINE', 503)
-  if (s.shot ? s.shot.sourceRevision !== project.revision || s.sourceSha256 !== s.shot.glbSha256 || s.characterId !== s.shot.characterId || !project.characters[s.characterId] || !project.motions[s.shot.actionUuid] : !app3BindingCandidates(project, s.sourceSha256).some(c => c.characterId === s.characterId && c.sourceMotionId === s.sourceMotionId)) fail('SESSION_REPLACED')
+  if (s.shot ? s.shot.sourceRevision !== project.revision || s.sourceSha256 !== s.shot.glbSha256 || s.characterId !== s.shot.characterId || !project.characters[s.characterId] || (s.shot.baked !== true && !project.motions[s.shot.actionUuid]) : !app3BindingCandidates(project, s.sourceSha256).some(c => c.characterId === s.characterId && c.sourceMotionId === s.sourceMotionId)) fail('SESSION_REPLACED')
   if (receiver && a.receiverToken !== s.receiverToken) fail('RECEIVER_REJECTED', 403)
   return s
 }

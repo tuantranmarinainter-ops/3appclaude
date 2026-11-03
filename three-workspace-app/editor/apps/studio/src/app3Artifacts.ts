@@ -20,7 +20,7 @@ const published = new Map<string, { fingerprint: string; result: Record<string, 
 async function freshProject(project: UnifiedProject, fresh: () => Promise<UnifiedProject>) {
  const current=await fresh();if(current.revision!==project.revision)fail('REVISION_CONFLICT');return current
 }
-async function prepareShot(project: UnifiedProject, parameters: unknown): Promise<App3ShotProof> {
+async function prepareShot(project: UnifiedProject, parameters: unknown, characterId?: unknown): Promise<App3ShotProof> {
  validateApp3Export('shotOpen',parameters)
  const jobId=String(parameters.jobId),fileId=String(parameters.fileId),artifact=await readUnifiedJobFile(jobId,project.projectId,fileId)
  if(!artifact||artifact.mimeType!=='application/zip')fail('SHOT_PACKAGE_REQUIRED')
@@ -30,6 +30,16 @@ async function prepareShot(project: UnifiedProject, parameters: unknown): Promis
  if(sha256(artifact.bytes)!==base.saved.zipSha256||base.saved.sourceRevision!==project.revision)fail('REVISION_CONFLICT')
  await validateApp3ShotPython(files)
  const editable=shot.characters.filter(c=>c.editable)
+ if(shot.sceneMode===true){
+  if(!editable.length)fail('CONTRACT_UNSUPPORTED')
+  const c=editable.find(x=>x.characterId===characterId)??editable[0]!
+  // Scene mode: Action nướng không nằm trong project.motions; mọi nhân vật sửa được phải khớp bản ghi đã xuất.
+  for(const e of editable){
+   const saved=base.saved.clips[e.characterId]
+   if(!project.characters[e.characterId]||saved?.motionId!==e.actionUuid||!saved.chain?.length||saved.chain.some(item=>!project.motions[item.motionId]))fail('IDENTITY_MISMATCH')
+  }
+  return {shotId:shot.shotId,baseShotSha256:sha256(files['shot.json']!),characterId:c.characterId,actionUuid:c.actionUuid,glbSha256:c.glbSha256,zipSha256:sha256(artifact.bytes),frameRange:shot.frameRange,fps:shot.fps,sourceRevision:project.revision,jobId,fileId,sceneMode:true,baked:true}
+ }
  if(editable.length!==1)fail('CONTRACT_UNSUPPORTED')
  const c=editable[0]!
  if(!project.characters[c.characterId]||!project.motions[c.actionUuid]||base.saved.clips[c.characterId]?.motionId!==c.actionUuid)fail('IDENTITY_MISMATCH')
@@ -81,7 +91,7 @@ export async function executeApp3Artifacts(project:UnifiedProject,command:string
  if(command==='app3.command.submit'&&args.tool==='shotOpen'){
   // Schema/lease/revision checks precede package I/O; dry-run never opens an editor.
   executeApp3Bridge(project,command,args,requestId,true,expectedRevision)
-  const proof=await prepareShot(project,args.parameters)
+  const proof=await prepareShot(project,args.parameters,args.characterId)
   return executeApp3Bridge(await freshProject(project,fresh),command,args,requestId,dryRun,expectedRevision,proof)
  }
  if(command!=='app3.session.artifact')return executeApp3Bridge(project,command,args,requestId,dryRun,expectedRevision)
