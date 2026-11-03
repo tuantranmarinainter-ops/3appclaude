@@ -23,6 +23,10 @@ test('spread offsets honor rank, side, axes, and stationary motion fallback', ()
   assert.deepEqual(calc('screen', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
   assert.deepEqual(calc('x', new T.Vector3(), 'before', 1), [1.2, 0, 0]);
   assert.deepEqual(calc('z', new T.Vector3()), [0, 0, 1.2]);
+  // "Trục Z" (vertical) follows the view's up vector.
+  assert.deepEqual(calc('up', new T.Vector3(), 'before', 1), [0, 0, 1.2]);
+  assert.deepEqual(calc('up', new T.Vector3()), [0, 0, -1.2]);
+  assert.equal(validate({onionSpreadAxis: 'up'}).onionSpreadAxis, 'up');
   assert.deepEqual(calc('motion', new T.Vector3(0, 2, 0)), [0, -1.2, 0]);
   assert.deepEqual(calc('motion', new T.Vector3(0, .001, 0)), [-1.2, 0, 0]);
   assert.ok(Math.abs(calc('screen', new T.Vector3(), 'after', 10)[0] - calc('screen', new T.Vector3())[0] + 9 * .6 * 2) < 1e-12);

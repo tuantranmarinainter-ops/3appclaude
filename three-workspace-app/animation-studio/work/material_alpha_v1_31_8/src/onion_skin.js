@@ -33,7 +33,7 @@ export function validate(settings = {}) {
           onionSampling: ['interval', 'keys'],
           onionUnit: ['frames', 'ticks'],
           onionParts: ['mesh', 'bones', 'both'],
-          onionSpreadAxis: ['screen', 'x', 'z', 'motion'],
+          onionSpreadAxis: ['screen', 'x', 'z', 'up', 'motion'],
         }[id].includes(x)
       )
         result[id] = x;
@@ -104,6 +104,7 @@ export function spreadOffset(axis, screenRight, motion, up, height, spread, side
   if (axis === 'x') dir = new T.Vector3(1, 0, 0);
   // 'z' = three.js Z = Blender -Y; shown as "Trục Y" in the Z-up view, so point it at Blender +Y.
   else if (axis === 'z') dir = new T.Vector3(0, 0, -1);
+  else if (axis === 'up') dir = normal; // "Trục Z" in the Z-up view: vertical, along the view's up
   else if (axis === 'motion' && travel.length() >= height * 0.01) dir = travel.normalize();
   return dir.clone().multiplyScalar((side === 'before' ? 1 : -1) * rank * height * spread / 100);
 }
