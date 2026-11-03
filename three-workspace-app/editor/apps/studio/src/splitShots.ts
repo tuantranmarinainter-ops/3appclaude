@@ -165,8 +165,26 @@ export function planSplitShots(source: UnifiedProject, args: { sequenceId?: stri
     for (const clip of nextAnimation.motionClips) clip.motion.url = clip.motion.url.replace(`/api/unified/projects/${source.projectId}/`, `/api/unified/projects/${project.projectId}/`)
     for (const cue of vfx) if (cue.frameStart < start) warnings.push(`Hiệu ứng ${cue.id} bắt đầu trước shot — được phát lại từ đầu; chưa bảo toàn tuổi hiệu ứng tại điểm cắt.`)
     project.extensions.vfxCues = { version: 1, cues: vfx.map((cue) => ({ ...cue, frameStart: Math.max(start, cue.frameStart) - start, frameEnd: Math.min(end, cue.frameEnd) - start })) }
-    const audio = readAudioCueExtension(source).cues.filter((cue) => cue.frameStart <= end && Math.min((cue.frameEnd ?? Infinity) + 1, cue.frameStart + ((audioDurations.get(cue.assetId) ?? 0) - (cue.offsetSeconds ?? 0)) * timeline.fps) > start)
-    project.extensions.audioCues = { version: 1, cues: audio.map((cue) => ({ ...cue, frameStart: Math.max(start, cue.frameStart) - start, frameEnd: Math.min(end, cue.frameEnd ?? end) - start, offsetSeconds: (cue.offsetSeconds ?? 0) + Math.max(0, start - cue.frameStart) / timeline.fps })) }
+    // Last audible source frame: the authored trim, else the decoded length (unknown length keeps the shot end).
+    const audioEnd = (cue: ReturnType<typeof readAudioCueExtension>['cues'][number]) => {
+      const duration = audioDurations.get(cue.assetId)
+      const natural = duration ? Math.ceil(cue.frameStart + (duration - (cue.offsetSeconds ?? 0)) * timeline.fps) - 1 : end
+      return Math.min(cue.frameEnd ?? Infinity, natural)
+    }
+    const audio = readAudioCueExtension(source).cues.filter((cue) => cue.frameStart <= end && audioEnd(cue) >= start).filter((cue) => {
+      // A line or sfx that began in an earlier shot plays whole there; repeating its tail here would cut it mid-word.
+      if (cue.kind === 'music' || cue.frameStart >= start) return true
+      warnings.push(`Âm thanh ${cue.id} bắt đầu ở shot trước — đã bỏ phần đuôi để không đọc dở câu.`)
+      return false
+    })
+    // Dialogue/sfx starting inside the shot is never cut: the shot grows until the last one finishes.
+    const lineEnd = Math.max(end, ...audio.filter((cue) => cue.kind !== 'music').map(audioEnd))
+    if (lineEnd > end) {
+      timeline.frameEnd = lineEnd - start
+      for (const item of project.scene.content.editorial!.sequences[0]!.clips) item.sourceFrameEnd = lineEnd - start
+      for (const cue of audio) if (cue.kind !== 'music' && audioEnd(cue) > end) warnings.push(`Âm thanh ${cue.id} dài hơn shot — kéo shot tới khung ${lineEnd - start} để đọc trọn câu.`)
+    }
+    project.extensions.audioCues = { version: 1, cues: audio.map((cue) => ({ ...cue, frameStart: Math.max(start, cue.frameStart) - start, frameEnd: Math.min(lineEnd, audioEnd(cue)) - start, offsetSeconds: (cue.offsetSeconds ?? 0) + Math.max(0, start - cue.frameStart) / timeline.fps })) }
     project.characters = Object.fromEntries(Object.entries(project.characters).filter(([, item]) => keep.has(item.nodeId)))
     const motions = new Set(Object.values(project.bindings).map((binding) => binding.motionId))
     for (const clip of nextAnimation.motionClips) motions.add(clip.motion.assetId)
