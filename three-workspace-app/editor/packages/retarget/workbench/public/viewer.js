@@ -126,13 +126,21 @@ class Pane {
     const subject = this.frameLike ?? this.object
     subject.updateMatrixWorld(true)
     const point = new THREE.Vector3()
-    subject.traverse((node) => { if (node.isBone) box.expandByPoint(node.getWorldPosition(point)) })
-    // Meshes too (posed skinned bounds, wings left out): bone boxes stop at the neck/head joint on rigs without a head-top joint.
-    const part = new THREE.Box3()
+    // Meshes (posed skinned bounds, wings left out): bone boxes stop at the neck/head joint on rigs without a head-top joint.
+    const meshes = new THREE.Box3(), part = new THREE.Box3()
     subject.traverse((node) => {
       if (!node.isSkinnedMesh || !node.visible || /wing/i.test(node.name)) return
-      node.computeBoundingBox(); box.union(part.copy(node.boundingBox).applyMatrix4(node.matrixWorld))
+      node.computeBoundingBox(); meshes.union(part.copy(node.boundingBox).applyMatrix4(node.matrixWorld))
     })
+    // Bones near the body only: League rigs carry locator bones (BUFFBONE_GLB_CHANNEL_LOC at 85 m) that would
+    // otherwise shrink the character to a dot.
+    const near = meshes.isEmpty() ? null : meshes.clone().expandByVector(meshes.getSize(new THREE.Vector3()).multiplyScalar(0.5))
+    subject.traverse((node) => {
+      if (!node.isBone) return
+      node.getWorldPosition(point)
+      if (!near || near.containsPoint(point)) box.expandByPoint(point)
+    })
+    box.union(meshes)
     if (box.isEmpty()) box.setFromObject(subject)
     if (box.isEmpty()) box.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1))
     this.bounds = box
