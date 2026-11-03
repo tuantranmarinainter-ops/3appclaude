@@ -9770,7 +9770,12 @@ setupNumericInputs();
 setupSettingsWindow();
 applyMouseSettings();
 try {
-  const settings = JSON.parse(localStorage.getItem('animation-studio-settings') || 'null');
+  let settings = JSON.parse(localStorage.getItem('animation-studio-settings') || 'null');
+  // Onion ghost counts default to 5/5 now; upgrade an untouched old 2/2 once.
+  if (settings && localStorage.getItem('animation-studio-onion-counts') !== '5') {
+    settings = O.upgradeLegacyCounts(settings);
+    localStorage.setItem('animation-studio-onion-counts', '5');
+  }
   if (settings) applySettings(V.blenderSettings(settings));
 } catch {}
 $('syncCameras').checked = false;

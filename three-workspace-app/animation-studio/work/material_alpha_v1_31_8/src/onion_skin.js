@@ -4,8 +4,8 @@ import * as C from './core.js';
 export const defaults = {
   onionEnabled: false,
   onionSampling: 'interval',
-  onionBefore: '2',
-  onionAfter: '2',
+  onionBefore: '5',
+  onionAfter: '5',
   onionStep: '5',
   onionUnit: 'frames',
   onionParts: 'mesh',
@@ -19,6 +19,13 @@ export const defaults = {
   onionSpreadAxis: 'screen',
   onionSpreadGuides: true,
 };
+/** Saved settings from before the 5/5 default keep the old untouched 2/2; upgrade them once (user-chosen counts stay). */
+export function upgradeLegacyCounts(saved) {
+  if (!saved || typeof saved !== 'object') return saved;
+  const next = { ...saved };
+  for (const id of ['onionBefore', 'onionAfter']) if (String(next[id]) === '2') next[id] = defaults[id];
+  return next;
+}
 export function validate(settings = {}) {
   const result = { ...defaults };
   for (const [id, fallback] of Object.entries(defaults)) {

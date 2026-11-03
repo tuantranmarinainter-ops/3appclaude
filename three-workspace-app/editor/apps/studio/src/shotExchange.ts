@@ -32,7 +32,7 @@ export async function createShotPackage(project: UnifiedProject, args: ShotExpor
   const coverage=new Map<string,Extract<ShotCoverage<MotionClip>,{ok:true}>>()
   let rangeStart=args.frameStart,rangeEnd=args.frameEnd
   for(const character of Object.values(project.characters)) {
-    const plan=planShotCoverage(timeline.animation.motionClips,character.nodeId,args.frameStart,args.frameEnd,character.name)
+    const plan=planShotCoverage(timeline.animation.motionClips,character.nodeId,args.frameStart,args.frameEnd,character.name,{adjacent:args.editableCharacterIds.includes(character.id)})
     if(!plan.ok) { if(args.editableCharacterIds.includes(character.id)) throw new TypeError(plan.message); continue }
     coverage.set(character.id,plan)
     if(plan.kind==='chain'&&args.editableCharacterIds.includes(character.id)){rangeStart=Math.min(rangeStart,plan.span[0]);rangeEnd=Math.max(rangeEnd,plan.span[1])}

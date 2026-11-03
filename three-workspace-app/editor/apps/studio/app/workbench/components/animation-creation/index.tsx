@@ -10,7 +10,7 @@ import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { loadUnifiedJob, loadUnifiedJobFile, loadUnifiedProject, sendUnifiedCommand, uploadUnifiedAsset } from '../../../../src/unifiedApi'
 import { resolveTimelineInOutDefault } from '../../../../src/timelineInOut'
 import { BLEND_EDIT_REQUEST_EVENT, takePendingBlendEditRequest, type BlendEditRequest } from '../../../../src/blendEditRequest'
-import { defaultMergedClipInfo, planShotCoverage } from '../../../../src/shotChain'
+import { characterShotSpan, defaultMergedClipInfo, planShotCoverage } from '../../../../src/shotChain'
 import { APP3_BRIDGE_CHANNEL as CHANNEL, APP3_BRIDGE_URL as BRIDGE_URL, APP3_FRAME_URL as FRAME_URL, APP3_TITLE } from '../../../../src/app3Embed'
 
 type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { state?: { project?: Record<string, unknown> }; nativeProject?: Record<string, unknown>; derivativeBase64?: string; fps?: number; duration?: number; shotId?: string; characterId?: string; zip?: ArrayBuffer }; error?: string }
@@ -109,13 +109,14 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   }, [receive, onEditorDirty])
 
   useEffect(() => { if (!characters.some((character) => character.id === characterId)) setCharacterId(characters[0]?.id ?? '') }, [characters, characterId])
-  // E10: mặc định khoảng shot = khoảng clip của nhân vật đang chọn (không phải toàn timeline 0–300);
-  // chỉ áp một lần cho mỗi nhân vật để không ghi đè khoảng người dùng đã sửa tay.
+  // E10: mặc định khoảng shot = toàn bộ chuỗi clip của nhân vật đang chọn (các clip trộn hoặc liền nhau gộp làm một),
+  // không phải toàn timeline 0–300; chỉ áp một lần cho mỗi nhân vật để không ghi đè khoảng người dùng đã sửa tay.
   const shotRangeSyncedFor = useRef('')
   useEffect(() => {
     if (shotRangeSyncedFor.current === characterId) return
     shotRangeSyncedFor.current = characterId
-    if (selectedClips.length === 1) setShotRange([selectedClips[0]!.frameStart, selectedClips[0]!.frameEnd])
+    const span = characterShotSpan(selectedClips)
+    if (span) { setShotRange(span); setShotRangeFromInOut(false) }
   }, [characterId, selectedClips])
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
@@ -213,7 +214,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       openedRevision.current = latest.project.revision
       setOpened(true)
       setStatus(chain
-        ? `Đã mở chuỗi clip đã trộn (nướng sẵn) · shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh key xong bấm "Trả kết quả về cảnh" để gộp thành một clip.`
+        ? `Đã mở toàn bộ chuỗi clip (nướng sẵn) · shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh key xong bấm "Trả kết quả về cảnh" để gộp thành một clip.`
         : `Đã mở ${blank?'animation mới từ model nhân vật · ':''}shot ${String(response.result.shotId).slice(0, 8)} (frame ${range[0]}–${range[1]}). Chỉnh xong bấm "Trả kết quả về cảnh".`)
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setStatus('Không mở được shot.') }
     finally { setBusy(false) }
@@ -222,7 +223,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   /** B66: bỏ shot đang mở (ô chọn nhân vật bị khoá khi editor có bản sửa chưa lưu) rồi mở shot của nhân vật vừa chọn. */
   function discardShotAndOpen() {
     const target = characterId
-    const range: [number, number] = selectedClips.length === 1 ? [selectedClips[0]!.frameStart, selectedClips[0]!.frameEnd] : shotRange
+    const range: [number, number] = characterShotSpan(selectedClips) ?? shotRange
     setShotId(''); setShotCharacterId(''); setChainInfo(null); setMergeDialog(null)
     setStatus('Đã bỏ shot cũ; đang mở shot mới…')
     shotRangeEdited.current = true; setShotRangeFromInOut(false)
