@@ -16436,6 +16436,16 @@ function setupShotWorkspace() {
       action.setLoop(T.LoopOnce, 1);
       action.clampWhenFinished = true;
       action.play();
+      // The rig records bones only. A baked shot (K5 chain / scene mode) can also animate a non-bone node above the
+      // top bone (e.g. "<NAME>_Armature", K2 foot/ground placement); fold that motion into the top bone's local key
+      // (local' = restAncestors^-1 * nowAncestors * local) so the editor shows exactly what App 2 shows.
+      candidate.root.updateMatrixWorld(true);
+      const rootInverse = candidate.root.matrixWorld.clone().invert();
+      const ancestors = (r) => rootInverse.clone().multiply(r.o.parent.matrixWorld);
+      const wrapped = candidate.records
+        .filter((r) => !r.parent && r.o.parent && r.o.parent !== candidate.root)
+        .map((r) => ({ r, restInverse: ancestors(r).invert() }));
+      const foldP = new T.Vector3(), foldQ = new T.Quaternion(), foldS = new T.Vector3();
       try {
         for (let frame = 0; frame <= frames; frame++) {
           const t = frame / 30;
@@ -16443,7 +16453,14 @@ function setupShotWorkspace() {
           action.reset().play();
           mixer.setTime(ShotPackage.clipTime(character.clip, t));
           candidate.root.updateMatrixWorld(true);
-          for (const [id, value] of Object.entries(C.capture(candidate)))
+          const captured = C.capture(candidate);
+          for (const { r, restInverse } of wrapped) {
+            const delta = restInverse.clone().multiply(ancestors(r));
+            if (delta.elements.every((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) < 1e-9)) continue;
+            delta.multiply(r.o.matrix).decompose(foldP, foldQ, foldS);
+            captured[r.id] = { p: foldP.toArray(), q: foldQ.toArray(), s: foldS.toArray() };
+          }
+          for (const [id, value] of Object.entries(captured))
             C.addKey(baked, id, t, value, 'linear');
         }
       } finally {
