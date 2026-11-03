@@ -4,7 +4,7 @@ import { Matrix4, Quaternion, Vector3 } from 'three'
 import { packLibraryGlb, unpackLibraryGlb } from '../src/libraryModels'
 import { addBakedAnimationToGlb, type BakedFrame } from '../src/shotBake'
 import { BLEND_EDIT_REQUEST_KEY, parseBlendEditRequest, takePendingBlendEditRequest } from '../src/blendEditRequest'
-import { defaultMergedClipInfo, planShotCoverage, shotRangeSuggestions, type ShotChainClip } from '../src/shotChain'
+import { characterShotSpan, defaultMergedClipInfo, planShotCoverage, shotRangeSuggestions, type ShotChainClip } from '../src/shotChain'
 
 const blend = (frames: number, extra: Record<string, unknown> = {}) => ({ frames, curve: 'smooth', footLock: true, ...extra })
 function clip(id: string, start: number, end: number, blendIn?: Record<string, unknown>, nodeId = 'actor'): ShotChainClip & { playback: { blendIn?: any } } {
@@ -25,16 +25,28 @@ test('shot coverage: one clip, a blend chain, and the widened span', () => {
   assert.ok(three.ok && three.kind === 'chain' && three.clips.map((c) => c.id).join() === 'cast,walk' && three.span[0] === 44)
 })
 
-test('shot coverage: unconnected clips are rejected with Vietnamese clip list and suggested ranges', () => {
-  const clips = [clip('run', 0, 58), clip('cast', 59, 149)]
+test('shot coverage: clips with a gap are rejected with Vietnamese clip list and suggested ranges', () => {
+  const clips = [clip('run', 0, 58), clip('cast', 70, 149)]
   const result = planShotCoverage(clips, 'actor', 10, 100, 'Gỗ Xưa')
   assert.ok(!result.ok)
   assert.match(result.message, /cần đúng một MotionClip phủ hết frame 10–100/)
-  assert.match(result.message, /run \(0–58\) và cast \(59–149\)/)
-  assert.match(result.message, /Khoảng hợp lệ: 0–58, 59–149/)
-  assert.match(result.message, /Trộn với clip trước/)
-  assert.deepEqual(result.suggestions, [[0, 58], [59, 149]])
+  assert.match(result.message, /chỗ hở giữa run \(0–58\) và cast \(70–149\)/)
+  assert.match(result.message, /Khoảng hợp lệ: 0–58, 70–149/)
+  assert.deepEqual(result.suggestions, [[0, 58], [70, 149]])
   assert.deepEqual(shotRangeSuggestions([clip('A', 0, 58), clip('B', 44, 134, blend(15)), clip('C', 200, 260)]), [[0, 134], [200, 260]])
+})
+
+test('shot coverage: back-to-back clips without a blend form one chain; character span covers them all', () => {
+  // Gỗ Xưa: 0–58 then 59–149 (next frame), Đen: 0–22 then 22–76 (shared frame) then 68–142 blended.
+  const go = planShotCoverage([clip('run', 0, 58), clip('cast', 59, 149)], 'actor', 0, 149, 'Gỗ Xưa')
+  assert.ok(go.ok && go.kind === 'chain' && go.clips.map((c) => c.id).join() === 'run,cast' && go.span.join() === '0,149')
+  const den = [clip('stand', 0, 22), clip('stun', 22, 76), clip('stun2', 68, 142, blend(9))]
+  assert.deepEqual(characterShotSpan(den), [0, 142])
+  const all = planShotCoverage(den, 'actor', 0, 142, 'Đen')
+  assert.ok(all.ok && all.kind === 'chain' && all.clips.map((c) => c.id).join() === 'stand,stun,stun2')
+  assert.deepEqual(characterShotSpan([clip('A', 0, 30), clip('B', 50, 200)]), [50, 200])
+  assert.equal(characterShotSpan([]), null)
+  assert.equal(defaultMergedClipInfo([clip('run', 0, 58), clip('cast', 59, 149)] as never).description, 'Gộp từ run (khung 0–58) + cast (khung 59–149), nối liền')
 })
 
 test('shot coverage: neighbour clip that only shares the boundary frame is ignored', () => {

@@ -3,7 +3,7 @@ register('./shot_test_loader.mjs', import.meta.url);
 const { default: test } = await import('node:test');
 const { default: assert } = await import('node:assert/strict');
 const T = await import('three');
-const { defaults, validate, spreadOffset } = await import('./onion_skin.js');
+const { defaults, validate, spreadOffset, upgradeLegacyCounts } = await import('./onion_skin.js');
 
 test('onion spread settings validate defaults and bounds', () => {
   assert.equal(validate().onionSpread, '0');
@@ -13,6 +13,10 @@ test('onion spread settings validate defaults and bounds', () => {
   assert.equal(validate({onionSpread: 'NaN', onionSpreadAxis: 'bad', onionSpreadGuides: 'false'}).onionSpread, '0');
   assert.equal(validate({onionSpreadAxis: 'bad'}).onionSpreadAxis, 'screen');
   assert.equal(validate({onionSpreadGuides: 'false'}).onionSpreadGuides, true);
+  assert.equal(validate().onionBefore, '5');
+  assert.equal(validate().onionAfter, '5');
+  assert.deepEqual(upgradeLegacyCounts({onionBefore: '2', onionAfter: 2, onionStep: '5'}), {onionBefore: '5', onionAfter: '5', onionStep: '5'});
+  assert.deepEqual(upgradeLegacyCounts({onionBefore: '3', onionAfter: '0'}), {onionBefore: '3', onionAfter: '0'});
 });
 
 test('spread offsets honor rank, side, axes, and stationary motion fallback', () => {

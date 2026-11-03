@@ -5,7 +5,7 @@ tại commit `f206f2196dbfe5c2df2cb2ec72d33388b784dab8` bằng `node scripts/emb
 
 | Tệp | SHA-256 |
 | --- | --- |
-| `index.html` | `0d72b3a24bbb3017106e4fb4dc32916e44c0364d05af7b3ff821b1c52267cb71` |
+| `index.html` | `f3add92b96038e69e3ecd03ced9192f838293ef9413d5d0d00d50f4f32325ff7` |
 | `host-bridge.js` | `32fe73b1df290e593e9b47de2b20b84b26ff3e2033456e6cef95537c93f00ac3` (chép nguyên byte từ `src/host_bridge.js`) |
 
 Kênh cầu nối: `bbs-animation-studio-v1.33.0` (phiên bản giao thức, không đổi theo số build).

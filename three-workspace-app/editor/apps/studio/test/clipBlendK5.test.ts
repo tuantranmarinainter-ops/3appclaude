@@ -130,18 +130,22 @@ test('shot.export accepts a range covered by a blend chain and bakes the whole c
   }
 })
 
-test('shot.export still rejects ranges across unconnected clips, with a clear Vietnamese message', { skip }, async () => {
+test('shot.export rejects ranges across a gap between clips, with a clear Vietnamese message', { skip }, async () => {
   const project = structuredClone(await readUnifiedProject(projectId))
   const [a, b] = clipsOf(project).sort((x, y) => x.frameStart - y.frameStart)
   delete b!.playback.blendIn
-  b!.frameStart = 59; b!.frameEnd = 149
+  b!.frameStart = 70; b!.frameEnd = 160
   await assert.rejects(createShotPackage(project, { cameraNodeId, frameStart: 10, frameEnd: 100, editableCharacterIds: [characterId] }), (error: Error) => {
     assert.match(error.message, /Gỗ Xưa · Shot 01 cần đúng một MotionClip phủ hết frame 10–100/)
-    assert.match(error.message, /LocSpellPrecastBoth \(ID 920 variation 0\) \(0–58\)/)
-    assert.match(error.message, /DruReadySpellCast \(ID 940 variation 0\) \(59–149\)/)
-    assert.match(error.message, /Khoảng hợp lệ: 0–58, 59–149/)
+    assert.match(error.message, /chỗ hở giữa LocSpellPrecastBoth \(ID 920 variation 0\) \(0–58\)/)
+    assert.match(error.message, /DruReadySpellCast \(ID 940 variation 0\) \(70–160\)/)
+    assert.match(error.message, /Khoảng hợp lệ: 0–58, 70–160/)
     return true
   })
+  // Back-to-back clips (59 right after 58) now open as one chain covering both.
+  b!.frameStart = 59; b!.frameEnd = 149
+  const joined = await createShotPackage(project, { cameraNodeId, frameStart: 10, frameEnd: 100, editableCharacterIds: [characterId] })
+  assert.deepEqual(joined.clips[characterId]!.chain?.map((link: { clipId: string }) => link.clipId), [a!.id, b!.id])
   // Each single clip still exports through the unchanged one-clip path.
   const single = await createShotPackage(project, { cameraNodeId, frameStart: a!.frameStart, frameEnd: a!.frameEnd, editableCharacterIds: [characterId] })
   assert.equal(single.clips[characterId]!.chain, undefined)
