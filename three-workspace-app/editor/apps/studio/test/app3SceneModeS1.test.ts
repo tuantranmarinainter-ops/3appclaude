@@ -83,7 +83,9 @@ function writeFiles(files: Record<string, Uint8Array>, label: string) {
   for (const [name, data] of Object.entries(files)) { mkdirSync(path.dirname(path.join(folder, name)), { recursive: true }); writeFileSync(path.join(folder, name), data) }
   return folder
 }
-const python = (...args: string[]) => spawnSync('python3', ['-m', 'agent.shot_package', ...args], { cwd: path.join(editor, '..'), encoding: 'utf8' })
+// Same interpreter rule as src/app3Artifacts.ts: Windows ships `python`, not `python3`.
+const pythonExe = process.env.BBS_PYTHON?.trim() || (process.platform === 'win32' ? 'python' : 'python3')
+const python = (...args: string[]) => spawnSync(pythonExe, ['-m', 'agent.shot_package', ...args], { cwd: path.join(editor, '..'), encoding: 'utf8' })
 
 function tweakGlb(bytes: Uint8Array, label: string) {
   const source = Buffer.from(bytes), length = source.readUInt32LE(12), document = JSON.parse(source.subarray(20, 20 + length).toString())

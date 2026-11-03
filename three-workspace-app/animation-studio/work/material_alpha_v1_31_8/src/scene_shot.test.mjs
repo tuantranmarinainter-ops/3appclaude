@@ -200,3 +200,57 @@ test('shot package validator accepts sceneMode and camera.aspect and rejects bad
   for (const bad of [0, -1, '2', null, NaN, Infinity])
     assert.deepEqual(await codes((s) => { s.camera.aspect = bad; }), ['INVALID_VALUE shot.json.camera.aspect'], 'aspect ' + bad);
 });
+
+// ---- editor bake sampler (shot_controller openFiles): regression for held channels falling back to rest ----
+function sampleRig() {
+  const root = new T.Group(),
+    armature = new T.Object3D(),
+    hips = new T.Bone();
+  armature.name = 'Armature';
+  hips.name = 'Hips';
+  hips.position.set(0, 0.75, 0);
+  root.add(armature);
+  armature.add(hips);
+  const bind = (o, path) => o.uuid + '.' + path;
+  // frames 0..5 at 30 fps: height rises at frame 2 then is HELD (the failing case), yaw is held from frame 3.
+  const times = [0, 1, 2, 3, 4, 5].map((f) => f / 30);
+  const heights = [0, 0, 1, 1, 1, 1];
+  const position = new T.VectorKeyframeTrack(
+    bind(hips, 'position'), times, heights.flatMap((h) => [0, 0.75 + h * 0.07, 0]));
+  const yaw = [0, 0, 0, 1, 1, 1].map((k) => new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), k * 0.5));
+  const quaternion = new T.QuaternionKeyframeTrack(bind(hips, 'quaternion'), times, yaw.flatMap((q) => q.toArray()));
+  return { root, armature, hips, position, quaternion, times, heights, yaw, bind };
+}
+
+test('createClipSampler: held channels keep their value after the rig is reset to rest between frames', () => {
+  const { root, hips, position, quaternion, heights, yaw } = sampleRig();
+  const clip = new T.AnimationClip('c', -1, [position, quaternion]),
+    sampler = S.createClipSampler(clip, root);
+  assert.equal(sampler.channels, 2);
+  for (let frame = 0; frame <= 5; frame++) {
+    hips.position.set(0, 0.75, 0); // resetRig
+    hips.quaternion.identity();
+    sampler.sample(frame / 30);
+    near(hips.position.y, 0.75 + heights[frame] * 0.07, 1e-6, 'height frame ' + frame);
+    assert.ok(hips.quaternion.angleTo(yaw[frame]) < 1e-3, 'yaw frame ' + frame);
+  }
+  // time clamps to the clip like LoopOnce + clampWhenFinished
+  hips.position.set(0, 0.75, 0);
+  sampler.sample(99);
+  near(hips.position.y, 0.82, 1e-6, 'clamped past the end');
+  sampler.sample(-3);
+  near(hips.position.y, 0.75, 1e-6, 'clamped before the start');
+});
+
+test('createClipSampler.animates: only nodes the clip drives (a plain single shot has no animated ancestor)', () => {
+  const { root, armature, hips, position, bind } = sampleRig();
+  const plain = S.createClipSampler(new T.AnimationClip('p', -1, [position]), root);
+  assert.equal(plain.animates(hips), true);
+  assert.equal(plain.animates(armature), false, 'no Armature motion: the editor keeps the plain bone keys');
+  const armatureTrack = new T.VectorKeyframeTrack(bind(armature, 'position'), [0, 1], [0, 0, 0, 0, 0, 0.5]);
+  const chained = S.createClipSampler(new T.AnimationClip('c', -1, [position, armatureTrack]), root);
+  assert.equal(chained.animates(armature), true, 'baked chain / K2: Armature moves, so the fold runs');
+  // morph / unknown tracks and tracks for missing nodes are ignored
+  const ghost = new T.VectorKeyframeTrack('no-such-uuid.position', [0, 1], [0, 0, 0, 1, 1, 1]);
+  assert.equal(S.createClipSampler(new T.AnimationClip('g', -1, [ghost]), root).channels, 0);
+});

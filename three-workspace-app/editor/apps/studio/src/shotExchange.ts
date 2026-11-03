@@ -76,7 +76,9 @@ function widenSceneRange(project: UnifiedProject,start: number,end: number): [nu
     changed=false
     for(const [a,b] of spans)if(a<=end&&b>=start&&(a<start||b>end)){start=Math.min(start,a);end=Math.max(end,b);changed=true}
   }
-  if(start<timeline.frameStart||end>timeline.frameEnd||end-start>9000)throw new TypeError(`Khoảng cả cảnh sau khi nới (${start}–${end}) vượt ra ngoài timeline (${timeline.frameStart}–${timeline.frameEnd}) hoặc dài quá 9000 khung`)
+  // §10.1: nới rồi KẸP trong timeline — clip có thể kéo quá cuối timeline (vd Đen 76–150 trên timeline 0–149).
+  start=Math.max(timeline.frameStart,start);end=Math.min(timeline.frameEnd,end)
+  if(end-start>9000)throw new TypeError(`Khoảng cả cảnh sau khi nới (${start}–${end}) dài quá 9000 khung`)
   return [start,end]
 }
 export async function createShotPackage(project: UnifiedProject, args: ShotExportArgs) {
