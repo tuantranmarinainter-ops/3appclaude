@@ -77,3 +77,32 @@ test('review splitter: drag, persist, keyboard, bounds, hide and responsive heig
     assert.deepEqual(errors, [])
   } finally { await browser.close(); await new Promise(ok => server.close(ok)) }
 })
+
+test('source viewer keeps its 50% default when the page first lays out narrow (no 180px pin)', async () => {
+  const server = createServer(async (req, res) => {
+    const name = req.url === '/' ? 'index.html' : req.url.slice(1)
+    if (!['index.html', 'styles.css', 'resizable-panels.js'].includes(name)) { res.writeHead(404).end(); return }
+    let content = await readFile(new URL(name, publicDir), 'utf8')
+    if (name === 'index.html') content = content.replace(/<script type="module" src="\/app.js"><\/script>/, '')
+    res.setHeader('Content-Type', name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html; charset=utf-8')
+    res.end(content)
+  })
+  await new Promise(ok => server.listen(0, '127.0.0.1', ok))
+  const browser = await chromium.launch({ headless: true })
+  try {
+    // A hidden/narrow pane on first load used to compute 50% of ~0px and pin 180px forever.
+    const page = await browser.newPage({ viewport: { width: 400, height: 900 } })
+    await page.goto(`http://127.0.0.1:${server.address().port}`); await page.waitForTimeout(100)
+    await page.setViewportSize({ width: 2400, height: 1200 }); await page.waitForTimeout(200)
+    const widths = () => page.evaluate(() => ({ viewers: document.querySelector('.viewers').clientWidth, source: document.querySelector('#leftHost').closest('.pane').getBoundingClientRect().width }))
+    const wide = await widths()
+    assert.ok(Math.abs(wide.source - (wide.viewers - 6) / 2) <= 2, JSON.stringify(wide))
+    // A user drag is still remembered across resizes.
+    const handle = page.locator('[data-resize-panel="viewer"]'), box = await handle.boundingBox()
+    await page.mouse.move(box.x + 3, box.y + 50); await page.mouse.down(); await page.mouse.move(box.x - 200, box.y + 50, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(100)
+    const dragged = (await widths()).source
+    assert.ok(Math.abs(dragged - (wide.source - 203)) <= 4, JSON.stringify({ dragged, wide }))
+    await page.setViewportSize({ width: 2300, height: 1200 }); await page.waitForTimeout(200)
+    assert.equal((await widths()).source, dragged)
+  } finally { await browser.close(); await new Promise(ok => server.close(ok)) }
+})

@@ -27,6 +27,9 @@ function clearNumber(key) {
 
 const viewers = root?.querySelector('.viewers')
 const review = root?.querySelector('#review')
+// The source viewer follows its 50% default until the user sizes it; otherwise a first layout while the pane is
+// hidden or narrow (50% of ~0px) would pin the 180px minimum and keep the source character tiny.
+const userSizedViewer = { value: storedNumber('w01.workbench.panel.viewer') !== null }
 const targetFor = (name) => ['viewer', 'timeline', 'review'].includes(name) ? root?.querySelector('.stage') : root
 const reviewVisible = () => review && !review.hidden
 function panelSpec(name) {
@@ -74,7 +77,7 @@ function apply(name, value) {
   handle?.setAttribute('aria-orientation', spec.axis === 'x' ? 'vertical' : 'horizontal')
   if (name === 'review') {
     const current = Number.parseFloat(targetFor('viewer')?.style.getPropertyValue('--source-width'))
-    apply('viewer', current > 0 ? current : defaultValue('viewer', specs.viewer))
+    apply('viewer', userSizedViewer.value && current > 0 ? current : defaultValue('viewer', specs.viewer))
   }
   return next
 }
@@ -88,6 +91,7 @@ if (root) {
     for (const name of ['review', 'viewer']) {
       const spec = panelSpec(name)
       const current = Number.parseFloat(targetFor(name).style.getPropertyValue(spec.property))
+      if (name === 'viewer' && !userSizedViewer.value) { apply(name, defaultValue(name, spec)); continue }
       apply(name, current > 0 ? current : storedNumber(`w01.workbench.panel.${name}${spec.axis === 'y' && name === 'review' ? '.height' : ''}`) ?? defaultValue(name, spec))
     }
     for (const [name, spec] of Object.entries(specs)) {
@@ -113,6 +117,7 @@ if (root) {
       const range = bounds(name, spec)
       const current = Number.parseFloat(targetFor(name).style.getPropertyValue(spec.property)) || defaultValue(name, spec)
       const value = event.key === 'Home' ? range.min : event.key === 'End' ? range.max : current + (event.key === keys[0] ? -1 : 1) * spec.direction * (event.shiftKey ? 40 : 10)
+      if (name === 'viewer') userSizedViewer.value = true
       saveNumber(storageKey(), apply(name, value))
     })
 
@@ -127,6 +132,7 @@ if (root) {
       handle.classList.add('is-dragging')
       document.body.style.cursor = spec.axis === 'x' ? 'col-resize' : 'row-resize'
       document.body.style.userSelect = 'none'
+      if (name === 'viewer') userSizedViewer.value = true
       const move = (moveEvent) => {
         const point = spec.axis === 'x' ? moveEvent.clientX : moveEvent.clientY
         apply(name, current + spec.direction * (point - start))
@@ -149,6 +155,7 @@ if (root) {
     handle.addEventListener('dblclick', () => {
       const spec = panelSpec(name)
       clearNumber(storageKey())
+      if (name === 'viewer') userSizedViewer.value = false
       apply(name, defaultValue(name, spec))
     })
   }
