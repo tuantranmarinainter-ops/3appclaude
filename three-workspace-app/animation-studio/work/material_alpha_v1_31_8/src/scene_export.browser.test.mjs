@@ -202,3 +202,126 @@ test(
     }
   },
 );
+
+test(
+  'Cả cảnh S4: host "shotClose" after import closes the scene shot (not dirty, layout back, fresh reopen)',
+  { skip: !existsSync(artifact), timeout: 300000 },
+  async () => {
+    const bridge = readFileSync(new URL('./host_bridge.js', import.meta.url));
+    const server = createServer((req, res) => {
+      if (req.url === '/app') {
+        res.setHeader('content-type', 'text/html');
+        res.end(readFileSync(artifact));
+      } else if (req.url === '/host-bridge.js') {
+        res.setHeader('content-type', 'text/javascript');
+        res.end(bridge);
+      } else {
+        res.setHeader('content-type', 'text/html');
+        res.end('<!doctype html><iframe id="app" src="/app" style="width:1600px;height:900px;border:0"></iframe>');
+      }
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const browser = await chromium.launch(browserOptions({ headless: true }));
+    const errors = [];
+    try {
+      const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('dialog', (d) => d.accept());
+      await useClassicLayout(page);
+      await page.addInitScript(() => {
+        window.__msgs = [];
+        addEventListener('message', (e) => window.__msgs.push(e.data));
+      });
+      await page.goto(`http://127.0.0.1:${server.address().port}/`);
+      const frame = await (await page.waitForSelector('#app')).contentFrame();
+      await frame.waitForFunction(() => window.__studio?.ready);
+      await frame.evaluate(
+        () =>
+          new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = '/host-bridge.js';
+            s.onload = resolve;
+            s.onerror = reject;
+            document.body.append(s);
+          }),
+      );
+      await frame.evaluate(
+        async ({ src, args }) => {
+          const { files } = await new Function('return ' + src)()(args);
+          window.__shotFiles = files;
+          await window.__studio.shot.openFiles(files);
+        },
+        { src: buildSceneShot.toString(), args: { count: 3, aspect: 2 } },
+      );
+      const SS = (fn, arg) =>
+        frame.evaluate(new Function('arg', 'const SS=window.__studio.sceneShot,S=window.__studio;return (' + fn + ')(arg)'), arg);
+      const waitEditing = async (id) => {
+        await frame.waitForFunction(
+          (x) => window.__studio.sceneShot.editing() === x && !window.__studio.sceneShot.switching,
+          id,
+          { timeout: 20000 },
+        );
+        await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      };
+      const edit = (arg) =>
+        SS(
+          `(a)=>{S.seek(a.t);const id=S.rig().records.find(r=>r.name==='mixamorig:'+a.bone).id;S.select(id);
+           const e=document.getElementById('rz');e.value=String(a.deg);e.dispatchEvent(new Event('change',{bubbles:true}));
+           document.getElementById('keyBtn').click();return SS.keysHash(SS.editing())}`,
+          arg,
+        );
+      const lastDirty = () =>
+        page.evaluate(() => window.__msgs.filter((m) => m?.type === 'dirty').at(-1)?.dirty ?? null);
+      assert.equal(await SS('()=>SS.active'), true);
+      assert.equal(await frame.evaluate(() => document.getElementById('viewportLayout').value), 'sceneSingle');
+      await edit({ t: 1, bone: 'LeftArm', deg: 70 });
+      await SS('(id)=>SS.select(id)', 'char1');
+      await waitEditing('char1');
+      await edit({ t: 0.5, bone: 'RightArm', deg: -50 });
+      assert.deepEqual(await SS('()=>SS.edited()'), ['char0', 'char1']);
+      await page.waitForFunction(() => window.__msgs.some((m) => m?.type === 'dirty' && m.dirty === true), null, { timeout: 5000 });
+      assert.equal(await lastDirty(), true);
+
+      // the host exports + imports, then asks App 3 to close the shot
+      const reply = await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            const requestId = 'close-1';
+            const onMessage = (e) => {
+              if (e.data?.requestId !== requestId) return;
+              removeEventListener('message', onMessage);
+              resolve(e.data);
+            };
+            addEventListener('message', onMessage);
+            document
+              .getElementById('app')
+              .contentWindow.postMessage({ channel: 'bbs-animation-studio-v1.33.0', requestId, type: 'shotClose' }, location.origin);
+          }),
+      );
+      assert.equal(reply.ok, true, JSON.stringify(reply));
+      assert.deepEqual(reply.value, { closed: true, wasScene: true, hadShot: true });
+      assert.equal(await SS('()=>SS.active'), false);
+      assert.equal(await SS('()=>SS.anyDirty()'), false);
+      assert.deepEqual(await SS('()=>SS.edited()'), []);
+      assert.notEqual(await frame.evaluate(() => document.getElementById('viewportLayout').value), 'sceneSingle');
+      assert.equal(await frame.evaluate(() => window.__studio.shot.session), null);
+      assert.equal(await frame.evaluate(() => document.getElementById('sceneCharacterList').hidden), true);
+      assert.equal(await lastDirty(), false);
+      await new Promise((r) => setTimeout(r, 900)); // two poll ticks: still not dirty
+      assert.equal(await lastDirty(), false);
+
+      // reopen the same scene zip: fresh state, nothing edited, then a new edit is the only one
+      await frame.evaluate(async () => window.__studio.shot.openFiles(window.__shotFiles));
+      assert.equal(await SS('()=>SS.active'), true);
+      assert.deepEqual(await SS('()=>SS.edited()'), []);
+      assert.equal(await SS('()=>SS.anyDirty()'), false);
+      assert.equal(await frame.evaluate(() => document.getElementById('viewportLayout').value), 'sceneSingle');
+      await edit({ t: 1, bone: 'LeftArm', deg: 40 });
+      assert.deepEqual(await SS('()=>SS.edited()'), ['char0']);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+      server.close();
+    }
+  },
+);

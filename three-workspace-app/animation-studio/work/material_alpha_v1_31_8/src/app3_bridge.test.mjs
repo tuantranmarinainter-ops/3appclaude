@@ -935,3 +935,52 @@ test('receiver completes definite artifact validation failures and releases the 
   assert.equal(exports, 1);
   assert.equal(artifactAttempts, 1);
 });
+
+test('host shotClose drops the scene shot, re-baselines dirty and reports closed; plain editor still answers', async () => {
+  const f = await hostFixture();
+  let shotClears = 0,
+    sceneClears = 0,
+    scene = true;
+  f.studio.state = { dirty: true };
+  f.studio.shot = {
+    session: { shot: { shotId: 's' } },
+    clear: () => {
+      shotClears++;
+      f.studio.shot.session = null;
+    },
+  };
+  f.studio.sceneShot = {
+    get active() {
+      return scene;
+    },
+    anyDirty: () => scene,
+    clear: () => {
+      sceneClears++;
+      scene = false;
+    },
+  };
+  f.studio.serialized = () => ({ duration: 2, edited: true });
+  await f.timers.at(-1)();
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, true);
+  await f.send('shotClose', {});
+  assert.equal(
+    JSON.stringify(f.messages.at(-1).value),
+    JSON.stringify({ closed: true, wasScene: true, hadShot: true }),
+  );
+  assert.equal(f.messages.at(-1).ok, true);
+  assert.equal([shotClears, sceneClears].join(), '1,1');
+  // dirty is posted false immediately and stays false (savedSnapshot == current serialized state)
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, false);
+  await f.timers.at(-1)();
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, false);
+  // a second close is harmless and a following shotOpen is no longer blocked by "unsaved"
+  await f.send('shotClose', {});
+  assert.equal(
+    JSON.stringify(f.messages.at(-1).value),
+    JSON.stringify({ closed: true, wasScene: false, hadShot: false }),
+  );
+  // spoofed origin gets no reply
+  const count = f.messages.length;
+  await f.send('shotClose', {}, { origin: 'https://bad.example' });
+  assert.equal(f.messages.length, count);
+});

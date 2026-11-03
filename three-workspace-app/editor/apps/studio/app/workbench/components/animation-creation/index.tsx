@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { useHostControlsDock } from './hooks/useHostControlsDock'
 import { useSilhouetteSync } from './hooks/useSilhouetteSync'
@@ -20,7 +20,7 @@ type BridgeReply = { channel: string; requestId: string; ok: boolean; value?: { 
 export function AnimationCreationPanel({ projectId, project, active, onProject, onEditorDirty }: { projectId: string; project: UnifiedProject; active: boolean; onProject: (project: UnifiedProject) => void; onEditorDirty: (dirty: boolean) => void }) {
   const frame = useRef<HTMLIFrameElement>(null)
   useSilhouetteSync(frame)
-  const { controlsDock, attachControlsDock } = useHostControlsDock()
+  const { controlsDock, dialogLayer, attachControlsDock } = useHostControlsDock()
   const openedRevision = useRef<number | null>(null)
   const pending = useRef(new Map<string, { resolve: (value: BridgeReply['value']) => void; reject: (error: Error) => void }>())
   const [characterId, setCharacterId] = useState(Object.keys(project.characters)[0] ?? '')
@@ -129,7 +129,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
   useEffect(() => { if (motionId && !nativeMotions.some((motion) => motion.id === motionId)) { setMotionId(''); setClipId('') } }, [motionId, nativeMotions])
   useEffect(() => { frame.current?.contentWindow?.postMessage({ channel: CHANNEL, requestId: crypto.randomUUID(), type: 'active', value: { active } }, location.origin) }, [active])
 
-  function request(type: 'ping' | 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport', value?: unknown): Promise<BridgeReply['value']> {
+  function request(type: 'ping' | 'open' | 'save' | 'saved' | 'shotOpen' | 'shotExport' | 'shotClose', value?: unknown): Promise<BridgeReply['value']> {
     const target = frame.current?.contentWindow
     if (!target) return Promise.reject(new Error('Editor chưa mở.'))
     const requestId = crypto.randomUUID()
@@ -293,6 +293,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
       const response = await sendUnifiedCommand({ requestId: crypto.randomUUID(), projectId, expectedRevision: latest.project.revision, command: 'shot.result.import', args: { file: upload.uploadId, shotId: id, merges } })
       const count = response.result?.mergedClipIds && typeof response.result.mergedClipIds === 'object' ? Object.keys(response.result.mergedClipIds as Record<string, unknown>).length : Object.keys(merges).length
       sceneZip.current = null
+      await closeSceneShotInApp()
       setShotId(''); setShotCharacterId(''); setChainInfo(null); setSceneShot(null)
       const updated = await loadUnifiedProject(projectId).catch(() => null)
       if (updated) onProject(updated.project)
@@ -394,6 +395,18 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
     finally { setBusy(false) }
   }
 
+  /** Dialogs go to a modal layer on the editor's <body> (above its floating panels); inline when the editor is not docked. */
+  const inDialogLayer = (node: ReactElement) => dialogLayer ? createPortal(node, dialogLayer) : node
+
+  /** After a successful scene import the shot is spent: App 3 drops it (no dirty, no scene layout, fresh F2 next time). If the
+   *  editor build does not know `shotClose`, reload the iframe like "Bỏ sửa" (the import is already committed, so never throw). */
+  async function closeSceneShotInApp() {
+    try { await request('shotClose') } catch {
+      setBridgeReady(false); frame.current?.contentWindow?.location.reload()
+    }
+    setOpened(false); openedRevision.current = null; setEditorDirty(false); onEditorDirty(false)
+  }
+
   const controls = <details className="wb-animation-host-controls" open>
     <summary>Dự án &amp; trao đổi với cảnh</summary>
     <header className="wb-animation-creation-toolbar">
@@ -428,7 +441,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         <button type="button" disabled={busy} onClick={() => setCharacterId(shotCharacterId)}>Giữ shot hiện tại</button>
       </div>
     </div>}
-    {sceneDialog && sceneShot && <div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
+    {sceneDialog && sceneShot && inDialogLayer(<div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
       <h3>Lưu clip gộp</h3>
       {sceneDialog.map((row, index) => <fieldset key={row.characterId} className="wb-scene-merge-row">
         <label>Nhân vật<input type="text" value={row.characterName} readOnly disabled /></label>
@@ -440,8 +453,8 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         <button type="button" onClick={() => { sceneZip.current = null; setSceneDialog(null) }} disabled={busy}>Hủy</button>
         <button type="button" className="wb-host-primary" disabled={busy || sceneDialog.some((row) => !row.name.trim())} onClick={() => void returnSceneShot(Object.fromEntries(sceneDialog.map((row) => [row.characterId, { name: row.name.trim(), description: row.description.trim() }])))}>Lưu clip gộp</button>
       </div>
-    </div>}
-    {mergeDialog && chainInfo && <div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
+    </div>)}
+    {mergeDialog && chainInfo && inDialogLayer(<div className="wb-merge-dialog" role="dialog" aria-modal="true" aria-label="Lưu clip gộp">
       <h3>Lưu clip gộp</h3>
       <label>Nhân vật<input type="text" value={chainInfo.characterName} readOnly disabled /></label>
       <label>Tên<input type="text" value={mergeDialog.name} maxLength={120} autoFocus onChange={(event) => setMergeDialog({ ...mergeDialog, name: event.target.value })} /></label>
@@ -451,7 +464,7 @@ export function AnimationCreationPanel({ projectId, project, active, onProject, 
         <button type="button" onClick={() => setMergeDialog(null)} disabled={busy}>Hủy</button>
         <button type="button" className="wb-host-primary" disabled={busy || !mergeDialog.name.trim()} onClick={() => void returnShot({ name: mergeDialog.name.trim(), description: mergeDialog.description.trim() })}>Lưu clip gộp</button>
       </div>
-    </div>}
+    </div>)}
     {shotRangeFromInOut && <p className="wb-animation-creation-status" role="status">Khoảng shot đang dùng mặc định In/Out của timeline (đã làm tròn về lưới 20 tick).</p>}
     {error && <p className="wb-animation-creation-error" role="alert">{error}</p>}
     <p className="wb-animation-creation-status" role="status">{status}</p>

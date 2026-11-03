@@ -878,6 +878,7 @@
       type === 'open' ||
       type === 'shotOpen' ||
       type === 'libraryActionOpen' ||
+      type === 'shotClose' ||
       type === 'app3-bind';
     if (replaces && (opening || artifactBusy)) {
       reply(requestId, false, 'APP3_BUSY');
@@ -931,6 +932,22 @@
         savedSnapshot = JSON.stringify(studio.serialized(false));
         studio.sceneShot?.markSaved?.();
         reply(requestId, true, { saved: true });
+      } else if (type === 'shotClose') {
+        // The host imported the shot result into the project: drop the shot (scene layout, per-character edits, F2 baseline)
+        // so nothing stays dirty and the next "Mở cả cảnh" starts from fresh bakes of the changed project.
+        const wasScene = !!studio.sceneShot?.active;
+        const hadShot = !!studio.shot?.session || wasScene;
+        studio.shot?.clear?.();
+        studio.sceneShot?.clear?.();
+        await resetLocal();
+        loadedSha = null;
+        loadedRig = null;
+        savedSnapshot = JSON.stringify(studio.serialized(false));
+        if (lastDirty) {
+          lastDirty = false;
+          parent.postMessage({ channel: CHANNEL, type: 'dirty', dirty: false }, location.origin);
+        }
+        reply(requestId, true, { closed: true, wasScene, hadShot });
       } else if (type === 'active') {
         localActive = value.active === true;
         if (!value.active && studio.state.playing) document.getElementById('playBtn')?.click();
