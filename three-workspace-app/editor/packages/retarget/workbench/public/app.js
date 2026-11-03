@@ -83,7 +83,18 @@ async function api(path, { method = 'GET', json, body, headers } = {}) {
 const viewer = new Viewer($('leftHost'), $('rightHost'), onViewerFrame)
 let displaySettings = jointSettings()
 try { displaySettings = jointSettings(JSON.parse(localStorage.getItem(JOINT_SETTINGS_KEY))) } catch { /* Storage may be unavailable. */ }
-function applyJointSettings() { for (const pane of [viewer.left, viewer.right]) pane.joints.settings = displaySettings }
+const jointInputs = {}
+function applyJointSettings() {
+  for (const pane of [viewer.left, viewer.right]) pane.joints.settings = displaySettings
+  // The toolbar "Điểm khớp" box and the one in the settings panel show the same value.
+  $('tgPoints').checked = displaySettings.points
+  if (jointInputs.points) jointInputs.points.checked = displaySettings.points
+}
+function setJointSetting(key, value) {
+  displaySettings = jointSettings({ ...displaySettings, [key]: value })
+  applyJointSettings()
+  try { localStorage.setItem(JOINT_SETTINGS_KEY, JSON.stringify(displaySettings)) } catch { /* Display still works without persistence. */ }
+}
 applyJointSettings()
 for (const [key, title, type, min, max] of [
   ['points', 'Điểm khớp', 'checkbox'], ['color', 'Màu điểm', 'color'], ['size', 'Cỡ điểm (px)', 'range', 3, 20],
@@ -93,13 +104,11 @@ for (const [key, title, type, min, max] of [
   if (type === 'select') for (const [value, text] of [['selected', 'Khớp đang chọn'], ['all', 'Tất cả khớp'], ['unmapped', 'Chỉ khớp chưa map']]) input.append(h('option', { value, text }))
   if (type === 'checkbox') input.checked = displaySettings[key]
   else input.value = displaySettings[key]
-  input.addEventListener('input', () => {
-    displaySettings = jointSettings({ ...displaySettings, [key]: type === 'checkbox' ? input.checked : type === 'range' ? Number(input.value) : input.value })
-    applyJointSettings()
-    try { localStorage.setItem(JOINT_SETTINGS_KEY, JSON.stringify(displaySettings)) } catch { /* Display still works without persistence. */ }
-  })
+  input.addEventListener('input', () => setJointSetting(key, type === 'checkbox' ? input.checked : type === 'range' ? Number(input.value) : input.value))
+  jointInputs[key] = input
   $('jointSettings').append(h('label', {}, title, input))
 }
+$('tgPoints').addEventListener('change', (event) => setJointSetting('points', event.target.checked))
 let mappingUndo = null
 let activeMappingTarget = null
 let hoveredMappingTarget = null
