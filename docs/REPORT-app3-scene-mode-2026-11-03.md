@@ -109,3 +109,48 @@ và "navigation hint dismissal is shared across ports through a cookie" (lỗi m
 | `python -m unittest agent.test_shot_package` | 65/65 đạt |
 | `pnpm typecheck` toàn workspace | đạt |
 | Công cụ kiểm id App 3 | 497 → 499 (thêm `sceneCameraBtn`, `sceneCameraFrame`), thiếu 0 |
+
+## S3: click chọn nhân vật, bản sửa/Undo từng nhân vật, mờ nhân vật xem (nhánh `claude/app3-scene-s3`)
+
+### Đã làm
+- Click vào thân nhân vật khác trong khung 3D (hoặc bấm dòng trong danh sách mới ở cột trái `#sceneCharacterList`) để sửa nhân vật đó.
+  Control của rig đang sửa vẫn ưu tiên; kéo xoay khung (> 4 px) không chuyển. Vòng Root lớn nhường cho thân nhân vật xem nằm trong vòng,
+  trừ khi bấm đúng nét vòng.
+- Bộ nhớ trạng thái từng nhân vật: key, Undo/Redo, lựa chọn; rig parse một lần rồi giữ lại; quay lại rig cũ thì đặt về tư thế nghỉ trước
+  khi dựng IK (giống lần đầu); cài rig lỗi giữa chừng thì quay về nhân vật trước.
+- Nhân vật đã sửa nhưng không đang sửa chạy theo key mới (nướng thành clip cho actor xem); nhân vật chưa sửa chạy bản nướng F2.
+- Nhân vật xem mờ 50%, không rig, không nhãn; nhãn "Đang sửa: <tên>" (`#sceneEditingLabel`); dấu "●" cạnh nhân vật đã sửa; onion chỉ
+  cho nhân vật đang sửa. Gói cả cảnh mang tên nhân vật (`name`, tùy chọn; TS/Python/App 3 validator nhận).
+- Không cho chuyển khi đang có tư thế chưa ghi key, khi ở "Dựng cảnh" chỉ xem, hoặc ở Animation Lab (thông báo tiếng Việt).
+- Phiên cầu nối App 2 (broker) giữ định danh nhân vật mở shot, nên chuyển nhân vật không làm đóng phiên.
+  "Chưa lưu" = khác lần lưu gần nhất (`markSaved` khi host báo đã lưu); "●" = khác bản F2.
+
+### Số đo S3 (App 3 build thật, Chromium headless, SwiftShader; dự án tổng hợp)
+| Mục | Ngưỡng | Đo | Trạng thái |
+| --- | --- | --- | --- |
+| A → B → A 10 lần (20 lần chuyển): hash key của A | không đổi | giống nhau cả 20 lần, bằng giá trị ngay sau khi sửa | PASS |
+| Actor xem của A hiện đúng tư thế vừa sửa | — | lệch 1,8·10⁻⁷ | PASS |
+| B nướng từ GLB so với clip F2 | — | lệch 6·10⁻⁸ | PASS |
+| Undo theo từng nhân vật (Ctrl+Z hoàn tác A, B không đổi) | — | đúng | PASS |
+| Onion chỉ nhân vật đang sửa | — | rig đang sửa có bóng, actor xem 0 | PASS |
+| IK rest sau B→A→B so với lần đầu vào B | — | ≤ 1·10⁻⁶ | PASS |
+| Click thật chuyển nhân vật, cảnh 2 nhân vật | — | chuyển được | PASS |
+| Click thật chuyển nhân vật, cảnh 5 nhân vật | — | chuyển được khi bấm chỗ không có gizmo (xem mục mở) | PASS có điều kiện |
+| Thời gian chuyển nhân vật lần đầu / các lần sau | — | 1,3–1,9 s / trung bình 0,38–0,45 s (tối đa 0,67 s) | đo được (máy không GPU) |
+
+### Điểm mở (cần người dùng chốt)
+- Gizmo xoay của đối tượng đang chọn (mặc định Root) có vùng quả cầu xoay tự do lớn, phủ lên các nhân vật đứng sát; bấm vào thân nhân vật
+  đó sẽ bắt đầu xoay thay vì chuyển nhân vật. Hiện vẫn chuyển được bằng danh sách cột trái hoặc bấm chỗ ngoài gizmo.
+- Redo trong App 3 là Ctrl+Shift+Z (Ctrl+Y không gán), hành vi có sẵn.
+
+### Test đã chạy (S3)
+| Bộ test | Kết quả |
+| --- | --- |
+| App 3 unit: `scene_shot`, `layout_modes`, `shot_package`, `scene_select`, `app3_bridge`, `app3_workflow_steps`, `app3_director` | 85/85 đạt |
+| App 3 trình duyệt: `scene_select.browser` (3 ca: §9 bước 3–5 + chuyển 10 lần, các lỗi review, vòng Root nhường) | 3/3 đạt |
+| App 3 trình duyệt: `scene_shot.browser` | 1/1 đạt |
+| `scene_select_evidence.mjs` (click thật, ảnh từng bước, 2 và 5 nhân vật) | mọi mục đạt |
+| `app3Embed.test.ts` / `app3SceneModeS1.test.ts` | 3/3 / 8/8 đạt |
+| `python -m unittest agent.test_shot_package` | 66/66 đạt |
+| `pnpm typecheck` toàn workspace | đạt |
+| Công cụ kiểm id App 3 | 497 → 501 (thêm `sceneEditingLabel`, `sceneCharacterList`), thiếu 0 |

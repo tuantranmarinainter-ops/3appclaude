@@ -549,6 +549,10 @@ function setupSceneShotView() {
     return hits;
   }
   const pickAt = (x, y) => SceneSelect.pickCharacter(hitsAt(x, y));
+  // Consulted by the Control Rig root-widget pick: in scene mode the big root ring yields to a viewer character whose
+  // body is under the pointer (and not hidden behind the editing character's own mesh).
+  editView.rootPickYields = (e) =>
+    !!state && !switching && !silhouetteView.enabled && !sourcePreview && mode !== 'compare' && !!pickAt(e.clientX, e.clientY);
   (() => {
     const canvas = editView.renderer.domElement;
     let down = null;

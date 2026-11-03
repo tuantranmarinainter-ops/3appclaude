@@ -431,3 +431,176 @@ test(
     }
   },
 );
+
+test(
+  'Cả cảnh S3 root-ring yield: a viewer inside the editing rig root ring is clickable, ring stroke and IK widgets keep priority',
+  { skip: !existsSync(artifact), timeout: 300000 },
+  async () => {
+    const server = createServer((_req, res) => {
+      res.setHeader('content-type', 'text/html');
+      res.end(readFileSync(artifact));
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const browser = await chromium.launch(browserOptions({ headless: true }));
+    const errors = [];
+    try {
+      const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+      page.on('pageerror', (e) => errors.push(e.message));
+      page.on('dialog', (d) => d.accept());
+      await useClassicLayout(page);
+      await page.goto(`http://127.0.0.1:${server.address().port}/`);
+      await page.waitForFunction(() => window.__studio?.ready);
+      await page.evaluate(
+        async ({ src, args }) => {
+          const { files } = await new Function('return ' + src)()(args);
+          await window.__studio.shot.openFiles(files);
+        },
+        { src: buildSceneShot.toString(), args: { count: 2, aspect: 2, names: ['A', 'B'] } },
+      );
+      const SS = (fn, arg) =>
+        page.evaluate(new Function('arg', 'const SS=window.__studio.sceneShot,S=window.__studio;return (' + fn + ')(arg)'), arg);
+      const waitEditing = async (id) => {
+        await page.waitForFunction(
+          (x) => window.__studio.sceneShot.editing() === x && !window.__studio.sceneShot.switching,
+          id,
+          { timeout: 20000 },
+        );
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      };
+      const raf = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      assert.equal(await SS('()=>SS.editing()'), 'char0');
+      // Put char1's viewer so that its spine bone projects onto screen point (kind 'ring': 0.75 of the root ring radius to
+      // the right of the root centre, i.e. inside the filled hit area but away from the drawn stroke; kind 'at': a widget).
+      const placeViewerAt = (arg) =>
+        SS(
+          `(a)=>{const v=S.editorViews()[0],c=v.camera,cv=v.renderer.domElement,r=cv.getBoundingClientRect(),V=c.position.constructor;
+            c.updateMatrixWorld(true);v.scene.updateMatrixWorld(true);
+            const e=SS.registry.get('char1'),g=e.viewer.group;g.updateMatrixWorld(true);
+            let b=null;e.viewer.root.traverse(o=>{if(o.isBone&&o.name==='mixamorig:Spine1')b=o});
+            const P=b.getWorldPosition(new V()),n=P.clone().project(c);
+            let target;
+            if(a.kind==='ring'){const w=v.widgets.find(d=>d.id==='root');const p0=w.shape.position.clone().project(c);
+              const ex=new V(1,0,0).applyQuaternion(w.shape.quaternion).multiplyScalar(w.shape.scale.x).add(w.shape.position).project(c);
+              const px=Math.hypot((ex.x-p0.x)*r.width/2,(ex.y-p0.y)*r.height/2);
+              target={x:p0.x+(a.dx||0)*(ex.x-p0.x)*0.75,y:p0.y+(a.dy||0)*(ex.y-p0.y)*0.75};}
+            else{const w=v.widgets.find(d=>d.id===a.id);const p=w.shape.position.clone().project(c);target={x:p.x,y:p.y}}
+            const Q=new V(target.x,target.y,n.z).unproject(c);g.position.add(Q.sub(P));g.updateMatrixWorld(true);
+            return {x:r.left+(target.x+1)/2*r.width,y:r.top+(1-target.y)/2*r.height}}`,
+          arg,
+        );
+      const probe = (pt) =>
+        SS(
+          `(p)=>{const v=S.editorViews()[0],saved=v.rootPickYields;const ev={clientX:p.x,clientY:p.y};
+            const hits=SS.hitsAt(p.x,p.y).sort((a,b)=>a.distance-b.distance);
+            v.rootPickYields=null;const without=S.widgetPick(v,ev)?.id||null;v.rootPickYields=saved;
+            const withHook=S.widgetPick(v,ev)?.id||null;
+            return {without,withHook,nearest:hits[0]?.characterId||null,top:document.elementFromPoint(p.x,p.y)===v.renderer.domElement}}`,
+          pt,
+        );
+      const rootSample = (angle) =>
+        SS(
+          `(a)=>{const v=S.editorViews()[0],c=v.camera,r=v.renderer.domElement.getBoundingClientRect(),V=c.position.constructor;
+            const w=v.widgets.find(d=>d.id==='root');w.shape.updateWorldMatrix(true,false);
+            const p=new V(Math.cos(a),0,Math.sin(a)).applyMatrix4(w.shape.matrixWorld).project(c);
+            return {x:r.left+(p.x+1)/2*r.width,y:r.top+(1-p.y)/2*r.height}}`,
+          angle,
+        );
+
+      // ---- 1) a viewer standing inside the root ring: the bug scenario, then the fix
+      const selectHead = () => SS(`()=>{S.select(S.rig().records.find(r=>r.name==='mixamorig:Head').id);return 1}`);
+      await selectHead();
+      // The editor's own transform gizmo (selected object) is a control too and keeps priority: choose a spot clear of it.
+      let spot = null,
+        p1 = null;
+      const tried = [];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [0.6, 0.6], [-0.6, 0.6]]) {
+        await SS('()=>{const e=SS.registry.get("char1");e.viewer.group.position.set(...e.placement.position);return 1}');
+        const pt = await placeViewerAt({ kind: 'ring', dx, dy });
+        await raf();
+        await page.mouse.move(pt.x - 3, pt.y);
+        await page.mouse.move(pt.x, pt.y);
+        const pr = await probe(pt);
+        const gizmoAxis = await SS('()=>{const v=S.editorViews()[0];return v.gizmo?.axis||v.moveGizmo?.axis||null}');
+        tried.push([dx, dy, Math.round(pt.x), Math.round(pt.y), pr, gizmoAxis]);
+        if (pr.nearest === 'char1' && pr.without === 'root' && pr.top && !gizmoAxis) {
+          spot = pt;
+          p1 = pr;
+          break;
+        }
+      }
+      assert.ok(spot, 'a spot inside the root ring over a viewer body, clear of the gizmo ' + JSON.stringify(tried));
+      assert.notEqual(p1.withHook, 'root', 'with the yield the root ring does not take the click: ' + JSON.stringify(p1));
+      const hist0 = await SS('()=>S.state.historyIndex');
+      const sel0 = await SS('()=>S.state.selected');
+      await page.mouse.move(spot.x, spot.y);
+      await page.mouse.down();
+      assert.equal(await SS('()=>!!S.state.draft'), false, 'pointerdown on the yielded ring creates no draft');
+      assert.equal(await SS('()=>S.state.selected'), sel0, 'pointerdown on the yielded ring selects nothing');
+      await page.mouse.up();
+      await waitEditing('char1').catch(async (e) => {
+        throw Error(e.message + ' ' + JSON.stringify(await SS('()=>({ed:SS.editing(),sel:S.state.selected,draft:!!S.state.draft,status:document.getElementById("status")?.textContent,sw:SS.switching})')) + ' ' + JSON.stringify(spot) + errors.join('|'));
+      });
+      assert.equal(await SS('()=>!!S.state.draft'), false);
+      assert.equal(await SS('()=>S.state.historyIndex'), hist0, 'no history entry created by the click');
+      assert.deepEqual(await SS('()=>SS.edited()'), [], 'nothing was edited');
+      await SS('()=>SS.select("char0")');
+      await waitEditing('char0');
+      await selectHead();
+
+      // ---- 2) press+drag that starts on the ring stroke (with a viewer body under the stroke) still drags the root
+      let strokePt = null;
+      for (const dx of [1, -1, 0]) {
+        for (const dy of [0, 1, -1]) {
+          await SS('()=>{const e=SS.registry.get("char1");e.viewer.group.position.set(...e.placement.position);return 1}');
+          await placeViewerAt({ kind: 'ring', dx: dx * 1.33, dy: dy * 1.33 }); // 0.75*1.33 = the stroke radius
+          await raf();
+          for (let k = 0; k < 24 && !strokePt; k++) {
+            const pt = await rootSample((k / 24) * Math.PI * 2);
+            const pr = await probe(pt);
+            if (pr.nearest === 'char1' && pr.top && pr.withHook === 'root') strokePt = pt;
+          }
+          if (strokePt) break;
+        }
+        if (strokePt) break;
+      }
+      assert.ok(strokePt, 'a ring stroke point with a viewer body underneath');
+      const rootBefore = await SS('()=>JSON.stringify(S.rig().root.position.toArray())');
+      await page.mouse.move(strokePt.x, strokePt.y);
+      await page.mouse.down();
+      await page.mouse.move(strokePt.x + 30, strokePt.y + 12, { steps: 6 });
+      assert.equal(await SS('()=>S.state.selected'), 'root', 'pointerdown on the ring stroke selects root as before');
+      await page.mouse.up();
+      assert.equal(await SS('()=>!!S.state.draft'), true, 'a drag on the ring stroke creates the draft as before');
+      assert.equal(await SS('()=>SS.editing()'), 'char0', 'dragging the ring never switches');
+      assert.notEqual(await SS('()=>JSON.stringify(S.rig().root.position.toArray())'), rootBefore, 'root moved by the drag');
+      await SS('()=>document.getElementById("undoBtn").click()');
+      assert.equal(await SS('()=>!!S.state.draft'), false);
+
+      // ---- 3) an IK widget over a viewer keeps full priority
+      const iks = await SS('()=>S.editorViews()[0].widgets.filter(d=>d.kind==="box"&&d.shape.visible).map(d=>d.id)');
+      assert.ok(iks.length > 0, 'IK widgets visible');
+      let ikDone = null;
+      for (const id of iks) {
+        await SS('()=>{const e=SS.registry.get("char1");e.viewer.group.position.set(...e.placement.position);return 1}');
+        const pt = await placeViewerAt({ kind: 'at', id });
+        await raf();
+        const pr = await probe(pt);
+        if (pr.nearest !== 'char1' || !pr.top) continue;
+        assert.equal(pr.withHook, id, 'the IK widget wins the pick over the viewer body: ' + JSON.stringify(pr));
+        await page.mouse.move(pt.x, pt.y);
+        await page.mouse.click(pt.x, pt.y);
+        await page.waitForTimeout(300);
+        assert.equal(await SS('()=>SS.editing()'), 'char0', 'clicking an IK widget over a viewer does not switch');
+        assert.equal(await SS('()=>S.state.selected'), id, 'the IK widget got selected');
+        ikDone = id;
+        await SS('()=>document.getElementById("undoBtn").click()').catch(() => {});
+        break;
+      }
+      assert.ok(ikDone, 'found an IK widget with a viewer body under it');
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+      server.close();
+    }
+  },
+);
