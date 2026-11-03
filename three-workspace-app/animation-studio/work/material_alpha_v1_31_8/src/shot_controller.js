@@ -393,27 +393,27 @@ function setupShotWorkspace() {
       baked.fps = 30;
       baked.duration = duration;
       baked.loop = [0, duration];
-      const mixer = new T.AnimationMixer(candidate.root),
-        action = mixer.clipAction(clip);
-      action.setLoop(T.LoopOnce, 1);
-      action.clampWhenFinished = true;
-      action.play();
+      const sampler = SceneShot.createClipSampler(clip, candidate.root);
       // The rig records bones only. A baked shot (K5 chain / scene mode) can also animate a non-bone node above the
       // top bone (e.g. "<NAME>_Armature", K2 foot/ground placement); fold that motion into the top bone's local key
-      // (local' = restAncestors^-1 * nowAncestors * local) so the editor shows exactly what App 2 shows.
+      // (local' = restAncestors^-1 * nowAncestors * local) so the editor shows exactly what App 2 shows. Only when the
+      // clip really animates such an ancestor: every other shot keeps the plain bone keys.
       candidate.root.updateMatrixWorld(true);
       const rootInverse = candidate.root.matrixWorld.clone().invert();
       const ancestors = (r) => rootInverse.clone().multiply(r.o.parent.matrixWorld);
+      const animatesAncestor = (r) => {
+        for (let o = r.o.parent; o && o !== candidate.root; o = o.parent) if (sampler.animates(o)) return true;
+        return false;
+      };
       const wrapped = candidate.records
-        .filter((r) => !r.parent && r.o.parent && r.o.parent !== candidate.root)
+        .filter((r) => !r.parent && r.o.parent && r.o.parent !== candidate.root && animatesAncestor(r))
         .map((r) => ({ r, restInverse: ancestors(r).invert() }));
       const foldP = new T.Vector3(), foldQ = new T.Quaternion(), foldS = new T.Vector3();
       try {
         for (let frame = 0; frame <= frames; frame++) {
           const t = frame / 30;
           C.resetRig(candidate);
-          action.reset().play();
-          mixer.setTime(ShotPackage.clipTime(character.clip, t));
+          sampler.sample(ShotPackage.clipTime(character.clip, t));
           candidate.root.updateMatrixWorld(true);
           const captured = C.capture(candidate);
           for (const { r, restInverse } of wrapped) {
@@ -426,8 +426,7 @@ function setupShotWorkspace() {
             C.addKey(baked, id, t, value, 'linear');
         }
       } finally {
-        mixer.stopAllAction();
-        mixer.uncacheRoot(candidate.root);
+        C.resetRig(candidate);
         disposeObject(candidate.root);
       }
       // Scene mode: parse every other character first (same rule as above: a broken GLB must not replace the editor).
