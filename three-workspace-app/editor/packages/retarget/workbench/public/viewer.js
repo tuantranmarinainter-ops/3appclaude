@@ -164,7 +164,10 @@ class Pane {
     this.controls.target.copy(center)
     this.controls.update()
     this.grid.scale.setScalar(this.metricGrid ? 2.5 : extent * 1.5 / 2)
-    this.grid.position.set(center.x, this.bounds.min.y, center.z)
+    // Game rigs stand on their origin: a prop below the feet (Jayce's hammer at -0.34 m in rest) must not lower the
+    // floor. Keep the origin when it lies in the lowest quarter of the figure; hip-origin models fall back to the box.
+    const floor = this.bounds.min.y <= 0 && 0 <= this.bounds.min.y + size.y * 0.25 ? 0 : this.bounds.min.y
+    this.grid.position.set(center.x, floor, center.z)
   }
 
   render() {
