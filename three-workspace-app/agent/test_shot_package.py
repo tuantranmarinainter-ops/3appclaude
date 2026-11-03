@@ -541,6 +541,31 @@ class ShotPackageTests(unittest.TestCase):
         self.assertEqual(run.returncode, 1)
         self.assertIn("INVALID_TYPE", [issue["code"] for issue in json.loads(run.stdout)])
 
+    def test_camera_aspect_is_optional_positive_finite(self):
+        self.assertNotIn("aspect", self.shot["camera"])
+        self.assertEqual(validate_shot(self.shot_dir), [])
+        for good in (16 / 9, 1, 0.5625, 2.39):
+            self.shot["camera"]["aspect"] = good
+            self.save_shot()
+            self.assertEqual(validate_shot(self.shot_dir), [], good)
+        for bad, code in ((0, "INVALID_VALUE"), (-1.5, "INVALID_VALUE"), ("2", "INVALID_TYPE"), (True, "INVALID_TYPE"), (None, "INVALID_TYPE")):
+            self.shot["camera"]["aspect"] = bad
+            self.save_shot()
+            issues = validate_shot(self.shot_dir)
+            self.assertIn((code, "shot.json.camera.aspect"), [(i["code"], i["path"]) for i in issues], (bad, issues))
+
+    def test_camera_aspect_nan_is_rejected(self):
+        # json.dumps writes NaN/Infinity as non-standard tokens; they must never validate as an aspect.
+        for token in ("NaN", "Infinity"):
+            self.shot["camera"]["aspect"] = 1
+            self.save_shot()
+            text = (self.shot_dir / "shot.json").read_text().replace('"aspect": 1', '"aspect": ' + token)
+            self.assertIn(token, text)
+            (self.shot_dir / "shot.json").write_text(text)
+            issues = validate_shot(self.shot_dir)
+            self.assertTrue(issues, token)
+            self.assertTrue({"INVALID_TYPE", "INVALID_JSON"} & {i["code"] for i in issues}, issues)
+
     def test_cli_usage_errors(self):
         for args in [(), ("unknown",), ("validate-shot",), ("validate-result", self.result_dir)]:
             with self.subTest(args=args):

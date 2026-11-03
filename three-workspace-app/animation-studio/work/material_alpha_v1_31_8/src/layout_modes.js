@@ -210,7 +210,7 @@ export function installModeLayout({ save, workflow, invalidate, restoreClassic }
   ];
   const quickTitles = [
     ['#cameraPreset', 'Góc camera'],
-    ['#viewportLayout', 'Bố cục khung 3D · 1 / 2 / 3 / 4 khung'],
+    ['#viewportLayout', 'Bố cục khung 3D · 1 / 2 / 3 / 4 khung · 1 khung cả cảnh (khi mở shot cả cảnh)'],
     ['#rigOptions', 'Chọn kiểu Control Rig'],
     ['#onionOptions', 'Tùy chỉnh Bóng pose'],
   ];

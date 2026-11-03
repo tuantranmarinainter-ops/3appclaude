@@ -214,6 +214,12 @@ class _Validator:
             frames = None
         camera = self.field(shot, "camera", dict, path)
         if camera is not None:
+            if "aspect" in camera:
+                aspect = camera["aspect"]
+                if type(aspect) not in (int, float) or not math.isfinite(aspect):
+                    self.issue("INVALID_TYPE", f"{path}.camera.aspect", "Expected a finite number.")
+                elif aspect <= 0:
+                    self.issue("INVALID_VALUE", f"{path}.camera.aspect", "Expected a positive number.")
             self.keys(camera, "keys", f"{path}.camera", frames, camera=True)
         character_ids = set()
         editable = False

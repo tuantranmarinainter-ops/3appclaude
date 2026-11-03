@@ -256,6 +256,14 @@ for (const file of ['scene_evaluator', 'scene_package', 'scene_panel']) {
 imports['@studio/shot-package'] =
   'data:text/javascript;base64,' +
   Buffer.from(await fs.readFile(path.join(root, 'src/shot_package.js'), 'utf8')).toString('base64');
+imports['@studio/scene-shot'] =
+  'data:text/javascript;base64,' +
+  Buffer.from(
+    (await fs.readFile(path.join(root, 'src/scene_shot.js'), 'utf8')).replace(
+      "'./shot_package.js'",
+      "'@studio/shot-package'",
+    ),
+  ).toString('base64');
 imports['@studio/shot-export'] =
   'data:text/javascript;base64,' +
   Buffer.from(
@@ -313,6 +321,7 @@ const app = (
   .replace("'./extra_bones.js'", "'@studio/extra-bones'")
   .replace("'./shot_export.js'", "'@studio/shot-export'")
   .replace("'./shot_package.js'", "'@studio/shot-package'")
+  .replace("'./scene_shot.js'", "'@studio/scene-shot'")
   .replace("'./animation_director.js'", "'@studio/animation-director'")
   .replace("'./director_panel.js'", "'@studio/director-panel'")
   .replace("'./studio_bridge.js'", "'@studio/studio-bridge'")

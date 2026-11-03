@@ -124,6 +124,7 @@ test('1. two-character scene export: both editable, sceneMode, first editing cha
   for (const order of [[b, a], [a, b]]) {
     const { response, files, shot } = await exportShot(fx, union, order)
     assert.equal(shot.sceneMode, true)
+    assert.equal(shot.camera.aspect, 16 / 9, 'scene path writes the film frame aspect (B61)')
     assert.equal(shot.characters.length, 2)
     assert.ok(shot.characters.every((c: any) => c.editable === true))
     assert.equal(shot.characters[0].characterId, order[0], 'first editing character is characters[0]')
@@ -139,6 +140,14 @@ test('1. two-character scene export: both editable, sceneMode, first editing cha
     assert.equal(checked.status, 0, checked.stdout + checked.stderr)
     assert.ok(validateShot({ ...files, 'shot.json': Buffer.from(JSON.stringify({ ...shot, sceneMode: 'yes' })) }).some((i) => i.code === 'INVALID_TYPE'))
     assert.equal(python('validate-shot', writeFiles({ ...files, 'shot.json': Buffer.from(JSON.stringify({ ...shot, sceneMode: 'yes' })) }, 'shot-bad')).status, 1)
+    for (const aspect of [0, -2, '2']) {
+      const bad = { ...files, 'shot.json': Buffer.from(JSON.stringify({ ...shot, camera: { ...shot.camera, aspect } })) }
+      assert.ok(validateShot(bad).some((i) => i.path === 'shot.json.camera.aspect'), 'TS rejects aspect ' + aspect)
+      assert.equal(python('validate-shot', writeFiles(bad, 'shot-bad-aspect')).status, 1, 'Python rejects aspect ' + aspect)
+    }
+    const portrait = { ...files, 'shot.json': Buffer.from(JSON.stringify({ ...shot, camera: { ...shot.camera, aspect: 9 / 16 } })) }
+    assert.deepEqual(validateShot(portrait), [])
+    assert.equal(python('validate-shot', writeFiles(portrait, 'shot-portrait')).status, 0)
   }
   assert.deepEqual(await fx.current(), before, 'export must not change the project')
 })

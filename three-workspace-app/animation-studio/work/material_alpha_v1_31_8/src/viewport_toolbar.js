@@ -229,6 +229,8 @@ export class ViewportToolbar {
     }
     for (const h of this.handles || [])
       h.hidden =
-        h.dataset.axis === 'x' ? layout === 'single' : !['triple', 'quad'].includes(layout);
+        h.dataset.axis === 'x'
+          ? layout === 'single' || layout === 'sceneSingle'
+          : !['triple', 'quad'].includes(layout);
   }
 }

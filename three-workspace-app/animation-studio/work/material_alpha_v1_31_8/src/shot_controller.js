@@ -2,10 +2,252 @@
 import { minecraft20BOBJ } from './minecraft20_export.js';
 import * as ShotExport from './shot_export.js';
 import * as ShotPackage from './shot_package.js';
+import * as SceneShot from './scene_shot.js';
 import { unzipSync, zipSync } from 'three/addons/libs/fflate.module.js';
+// "1 khung · Cả cảnh": viewer actors (mesh + mixer, no rig), placement, shot camera, letterbox, debug hooks.
+// Only active while a shot with sceneMode === true is open; everything else in this file is unchanged.
+function setupSceneShotView() {
+  const registry = SceneShot.createRegistry(),
+    button = $('sceneCameraBtn'),
+    frameBox = document.createElement('div');
+  frameBox.id = 'sceneCameraFrame';
+  frameBox.hidden = true;
+  frameBox.setAttribute('aria-hidden', 'true');
+  editView.container.append(frameBox);
+  let state = null,
+    editing = null;
+  const shotPlacement = (character) => ({
+    scale: character.heightScale > 0 ? character.heightScale : 1,
+    placement: character.placement,
+  });
+  async function parseViewer(bytes, character, manifest) {
+    const entry = manifest.actions.find((a) => a.uuid === character.actionUuid),
+      index = entry?.glbAnimationIndex;
+    if (!Number.isInteger(index) || index < 0)
+      throw Error('Manifest thiếu glbAnimationIndex hợp lệ cho ' + character.characterId + '.');
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      gltf = await new GLTFLoader().parseAsync(buffer, ''),
+      clip = gltf.animations[index];
+    if (!clip) {
+      disposeObject(gltf.scene);
+      throw Error('glbAnimationIndex không tồn tại trong GLB của ' + character.characterId + '.');
+    }
+    SceneShot.prepareViewerRoot(gltf.scene, gltf.animations);
+    gltf.scene.traverse((o) => {
+      if (o.isSkinnedMesh) o.frustumCulled = false;
+    });
+    const mixer = new T.AnimationMixer(gltf.scene),
+      action = mixer.clipAction(clip);
+    action.setLoop(T.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.play();
+    return { root: gltf.scene, mixer, action };
+  }
+  function mountViewer(entry, parsed, visible) {
+    const group = new T.Group();
+    group.name = 'SceneViewer:' + entry.characterId;
+    group.visible = visible;
+    SceneShot.applyPlacement(group, entry.placement, entry.scale);
+    group.add(parsed.root);
+    editView.scene.add(group);
+    entry.viewer = { group, ...parsed };
+    if (!entry.editing) {
+      entry.group = group;
+      entry.root = parsed.root;
+    }
+  }
+  function disposeViewer(entry) {
+    const v = entry.viewer;
+    if (!v) return;
+    v.mixer.stopAllAction();
+    v.mixer.uncacheRoot(v.root);
+    v.group.removeFromParent();
+    disposeObject(v.root);
+    entry.viewer = null;
+  }
+  const containerSize = () => [editView.container.clientWidth, editView.container.clientHeight];
+  function placeFrameBox() {
+    const [w, h] = containerSize();
+    if (!w || !h || !state) return;
+    const r = SceneShot.filmRect(state.aspect, w, h);
+    Object.assign(frameBox.style, {
+      left: r.x + 'px',
+      top: r.y + 'px',
+      width: r.w + 'px',
+      height: r.h + 'px',
+    });
+  }
+  function updateCamera() {
+    const [w, h] = containerSize();
+    if (!state?.camera || !w || !h) return;
+    const frame = state.shot.frameRange[0] + time * state.shot.fps,
+      raw = SceneShot.sampleCameraKeys(state.shot.camera.keys, frame);
+    if (!raw) return;
+    const s = SceneShot.cameraToZUp(raw),
+      fov = SceneShot.viewportFov(s.fovYDegrees, state.aspect, w, h),
+      signature = [...s.position.toArray(), ...s.lookAt.toArray(), fov, w, h].join();
+    if (signature === state.signature) return;
+    state.signature = signature;
+    if (editView.camera !== editView.perspective) {
+      V.projection(editView, false);
+      syncProjectionButton(editView);
+    }
+    const camera = editView.perspective;
+    camera.position.copy(s.position);
+    editView.orbit.target.copy(s.lookAt);
+    camera.lookAt(s.lookAt);
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    placeFrameBox();
+    for (const v of editViews) v.dirty = true;
+  }
+  function setCamera(on) {
+    if (!state || state.camera === !!on) return;
+    state.camera = !!on;
+    state.signature = '';
+    button.setAttribute('aria-pressed', String(state.camera));
+    button.classList.toggle('active', state.camera);
+    frameBox.hidden = !state.camera;
+    if (state.camera) {
+      state.savedFov = editView.perspective.fov;
+      updateCamera();
+    } else if (state.savedFov) {
+      editView.perspective.fov = state.savedFov;
+      editView.perspective.updateProjectionMatrix();
+      for (const v of editViews) v.dirty = true;
+    }
+  }
+  button.onclick = () => setCamera(!state?.camera);
+  // Dragging the view (orbit/pan/zoom start) or choosing another preset/projection leaves the shot camera.
+  editView.orbit.addEventListener('start', () => setCamera(false));
+  $('cameraPreset').addEventListener('change', () => setCamera(false));
+  $('projectionBtn').addEventListener('click', () => setCamera(false));
+  function clear() {
+    for (const entry of registry.list()) disposeViewer(entry);
+    registry.clear();
+    if (state) {
+      setCamera(false);
+      if ($('viewportLayout').value === 'sceneSingle')
+        $('viewportLayout').value = state.previousLayout;
+    }
+    state = null;
+    editing = null;
+    button.hidden = true;
+    frameBox.hidden = true;
+  }
+  return {
+    registry,
+    get active() {
+      return registry.active;
+    },
+    get cameraActive() {
+      return !!state?.camera;
+    },
+    get shot() {
+      return state?.shot ?? null;
+    },
+    clear,
+    setCamera,
+    /** Parse every non-editing character before the editor is replaced, so a broken GLB changes nothing. */
+    async prepare(files, shot, editingCharacter) {
+      const parsed = [];
+      try {
+        for (const character of shot.characters) {
+          if (character === editingCharacter) continue;
+          const manifest = ShotPackage.readJSON(files, character.manifest);
+          parsed.push({ character, parsed: await parseViewer(files[character.glb], character, manifest) });
+        }
+      } catch (error) {
+        for (const p of parsed) disposeObject(p.parsed.root);
+        throw error;
+      }
+      return parsed;
+    },
+    /** After the editing character is installed: place everything and switch to the "Cả cảnh" layout. */
+    attach(files, shot, editingCharacter, parsedViewers, startedAt) {
+      const duration = (shot.frameRange[1] - shot.frameRange[0]) / shot.fps,
+        previousLayout =
+          $('viewportLayout').value === 'sceneSingle' ? 'single' : $('viewportLayout').value;
+      state = {
+        files,
+        shot,
+        aspect: SceneShot.filmAspect(shot),
+        camera: false,
+        previousLayout,
+        signature: '',
+      };
+      const base = (character) => ({
+        characterId: character.characterId,
+        character,
+        bytes: files[character.glb],
+        duration,
+        ...shotPlacement(character),
+        viewer: null,
+      });
+      editing = registry.add({
+        ...base(editingCharacter),
+        editing: true,
+        rig,
+        group: editView.wrapper,
+        root: rig.root,
+      });
+      // The editor keeps the wrapper scale from this hint across later resets; placement is a visual parent transform only.
+      editing.matrix = SceneShot.placementMatrix(editing.placement, editing.scale);
+      window.__studio.setDisplayHint(rig.root, editing.scale * rig.height);
+      SceneShot.applyPlacement(editView.wrapper, editing.placement, editing.scale);
+      for (const { character, parsed } of parsedViewers)
+        mountViewer(registry.add({ ...base(character), editing: false, rig: null }), parsed, true);
+      registry.sync(time, true);
+      button.hidden = false;
+      button.setAttribute('aria-pressed', 'false');
+      button.classList.remove('active');
+      $('viewportLayout').value = 'sceneSingle';
+      applyViewportLayout();
+      for (const v of editViews) v.dirty = true;
+      registry.setOpenMs(performance.now() - startedAt);
+      return editing;
+    },
+    /** Build (once) a hidden viewer for the editing character, so a later switch needs no GLB re-parse. */
+    async ensureViewer(characterId) {
+      const entry = registry.get(characterId);
+      if (!entry) throw Error('Không có nhân vật ' + characterId + ' trong cảnh.');
+      if (entry.viewer) return entry;
+      const manifest = ShotPackage.readJSON(state.files, entry.character.manifest);
+      mountViewer(entry, await parseViewer(entry.bytes, entry.character, manifest), false);
+      return entry;
+    },
+    /** Called every rAF frame from frame(): follow the editor time, drive the shot camera, measure FPS. */
+    tick(stamp) {
+      registry.tick(stamp, playing);
+      if (!state) return;
+      // "Dựng cảnh" (the other scene mode) resets the wrapper on exit; put the editing character back at its F2 place.
+      if (!sceneMode && editing && editing.rig === rig) {
+        editView.wrapper.updateMatrix();
+        if (!SceneShot.matrixClose(editView.wrapper.matrix, editing.matrix)) {
+          SceneShot.applyPlacement(editView.wrapper, editing.placement, editing.scale);
+          for (const v of editViews) v.dirty = true;
+        }
+      }
+      if (registry.sync(time)) for (const v of editViews) v.dirty = true;
+      if (state.camera) updateCamera();
+    },
+    setTime(t) {
+      seek(t);
+      registry.sync(time, true);
+    },
+    sample() {
+      registry.sync(time, true);
+      return registry.sample();
+    },
+    stats: () => registry.stats(),
+    /** Object3D roots a host should frame after opening: every character in the scene. */
+    fitRoots: () => registry.list().map((e) => e.root),
+  };
+}
 function setupShotWorkspace() {
   let session = null,
     busy = false;
+  const sceneShotView = (window.__studio.sceneShot = setupSceneShotView());
   const menu = $('fileMenu').querySelector('div'),
     open = document.createElement('button'),
     input = document.createElement('input');
@@ -103,7 +345,8 @@ function setupShotWorkspace() {
   });
   async function openFiles(files, { interactive = true, blank = false } = {}) {
     if (busy) throw Error('Đang xử lý gói shot.');
-    const openingRig = rig,
+    const startedAt = performance.now(),
+      openingRig = rig,
       openingRevision = directorRevision(),
       verifySource = () => {
         if (!interactive && (rig !== openingRig || directorRevision() !== openingRevision))
@@ -170,11 +413,25 @@ function setupShotWorkspace() {
         mixer.uncacheRoot(candidate.root);
         disposeObject(candidate.root);
       }
-      if ((dirty || draft) && !interactive) throw Error('UNSAVED_CHANGES');
-      if ((dirty || draft) && !confirm('Thay bài đang chỉnh bằng gói shot?')) return false;
+      // Scene mode: parse every other character first (same rule as above: a broken GLB must not replace the editor).
+      const viewers =
+        shot.sceneMode === true ? await sceneShotView.prepare(files, shot, character) : [];
+      if ((dirty || draft) && !interactive) {
+        for (const v of viewers) disposeObject(v.parsed.root);
+        throw Error('UNSAVED_CHANGES');
+      }
+      if ((dirty || draft) && !confirm('Thay bài đang chỉnh bằng gói shot?')) {
+        for (const v of viewers) disposeObject(v.parsed.root);
+        return false;
+      }
       if (sceneMode) sceneExit();
-      verifySource();
-      await loadModel(buffer, character.glb, true, [], [], verifySource);
+      try {
+        verifySource();
+        await loadModel(buffer, character.glb, true, [], [], verifySource);
+      } catch (error) {
+        for (const v of viewers) disposeObject(v.parsed.root);
+        throw error;
+      }
       if (blank) {
         baked.keys = {};
         baked.name = 'Animation mới';
@@ -197,6 +454,12 @@ function setupShotWorkspace() {
         rigFingerprint: rig.fingerprint,
         placementKeys: [{ frame: shot.frameRange[0], ...C.clone(character.placement) }],
       };
+      if (shot.sceneMode === true) {
+        const editing = sceneShotView.attach(files, shot, character, viewers, startedAt);
+        // The host reads this to keep the wrapper at the scene scale (instead of heightBlocks / rig.height).
+        session.displayHeight = editing.scale * rig.height;
+        session.sceneMode = true;
+      }
       metadata.textContent =
         'Shot: ' +
         shot.shotId +
@@ -211,7 +474,10 @@ function setupShotWorkspace() {
         '°\nRoot: ' +
         character.rootPolicy +
         '\nCamera (chỉ xem):\n' +
-        JSON.stringify(shot.camera, null, 2);
+        JSON.stringify(shot.camera, null, 2) +
+        (shot.sceneMode === true
+          ? '\nCả cảnh: ' + shot.characters.length + ' nhân vật (chỉ nhân vật đầu được sửa)'
+          : '');
       panel.hidden = false;
       exportButton.hidden = false;
       info('Đã mở shot ' + shot.shotId + ' · ' + character.characterId);

@@ -427,7 +427,9 @@
       for (const view of views) {
         const root = view.rig?.root || view.wrapper;
         if (!root || !view.container?.clientWidth || !view.container?.clientHeight) continue;
-        root.updateMatrixWorld(true);
+        // Scene mode (1 khung · Cả cảnh): frame every character, not only the editing one.
+        const roots = [root, ...(studio.sceneShot?.active ? studio.sceneShot.fitRoots() : [])];
+        for (const r of roots) r.updateMatrixWorld(true);
         const V = view.camera.position.constructor;
         const min = new V(Infinity, Infinity, Infinity),
           max = new V(-Infinity, -Infinity, -Infinity);
@@ -435,18 +437,19 @@
           min.min(p);
           max.max(p);
         };
-        root.traverse((o) => {
-          if (o.isBone) add(o.getWorldPosition(new V()));
-          else if (o.isMesh && o.geometry) {
-            if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-            const b = o.geometry.boundingBox;
-            if (!b) return;
-            for (let i = 0; i < 8; i++)
-              add(
-                new V(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(o.matrixWorld),
-              );
-          }
-        });
+        for (const r of roots)
+          r.traverse((o) => {
+            if (o.isBone) add(o.getWorldPosition(new V()));
+            else if (o.isMesh && o.geometry) {
+              if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+              const b = o.geometry.boundingBox;
+              if (!b) return;
+              for (let i = 0; i < 8; i++)
+                add(
+                  new V(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(o.matrixWorld),
+                );
+            }
+          });
         if (!Number.isFinite(min.x) || !Number.isFinite(max.x)) continue;
         const center = min.clone().add(max).multiplyScalar(0.5),
           radius = Math.max(0.4, max.clone().sub(min).length() / 2),
@@ -486,7 +489,10 @@
       throw Error('UNSAVED_CHANGES');
     if ((await studio.shot.openZip(bytes, { interactive, blank })) === false)
       throw Error('OPEN_CANCELLED');
-    setDisplayHeight(studio.shot.session?.character?.heightBlocks);
+    // Scene mode keeps the exact F2 scale (heightScale · rig.height) instead of heightBlocks / rig.height.
+    setDisplayHeight(
+      studio.shot.session?.displayHeight ?? studio.shot.session?.character?.heightBlocks,
+    );
     try {
       fitEditViews();
       // Khung nhìn có thể chưa có kích thước ngay sau khi nạp: fit lại sau một nhịp.

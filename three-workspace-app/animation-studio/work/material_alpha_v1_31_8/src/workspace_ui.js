@@ -107,7 +107,12 @@ function setupStudioWorkspace() {
   transform.prepend(transform.querySelector('summary'), transform.lastElementChild);
   const toolbar = document.querySelector('.stage-toolbar'),
     row = toolbar.querySelector(':scope>.row');
-  group(row, 'Camera và bố cục', [$('cameraPreset'), $('projectionBtn'), $('viewportLayout')]);
+  group(row, 'Camera và bố cục', [
+    $('cameraPreset'),
+    $('sceneCameraBtn'),
+    $('projectionBtn'),
+    $('viewportLayout'),
+  ]);
   group(row, 'Điều khiển rig', [
     document.querySelector('.minimal-rig-actions'),
     document.querySelector('.onion-actions'),

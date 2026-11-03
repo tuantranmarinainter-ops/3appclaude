@@ -10,6 +10,7 @@ import { Quaternion, Vector3, Euler } from 'three'
 import { createFrameSnapshot, evaluateFrame } from '@topview/3d-builder/evaluate'
 import { isRecord, type UnifiedProject } from '@bbs/animation-workspace-shared'
 import { resolveProjectBlob, resolveUnifiedAssetFile } from './unifiedAssetFiles'
+import { readFilmFrameAspect } from './filmFrame'
 import { projectEvaluationScene } from './unifiedSkeletonEvaluation'
 import { jsonBytes, sha256, validateShot, zipPackage, unzipPackage, readPackageJson, type PackageFiles, type Shot } from './shotPackage'
 import { getAction, resolveCharacter } from '../../../packages/library/index'
@@ -174,6 +175,7 @@ async function createSceneShotPackage(project: UnifiedProject,args: ShotExportAr
   const files: PackageFiles={},clips: SavedShot['clips']={},scene=projectEvaluationScene(project),snapshot=createFrameSnapshot()
   const shot: Shot={version:'1.0.0',shotId:randomUUID(),sceneId:project.projectId,fps:30,frameRange:[rangeStart,rangeEnd],camera:{keys:[]},characters:[],references:[],sceneMode:true}
   shot.camera.keys=shotCameraKeys(scene,snapshot,args.cameraNodeId,rangeStart,rangeEnd)
+  shot.camera.aspect=readFilmFrameAspect(project.extensions)
   for(const character of sceneCharacters) {
     const inRange=clipsOf(character),baked=await packBakedCharacter(project,character,inRange,[rangeStart,rangeEnd],snapshot,files,shot,true)
     clips[character.id]={clipId:inRange[0]!.id,motionId:baked.actionUuid,scene:true,chain:chainInfo(project,inRange)}

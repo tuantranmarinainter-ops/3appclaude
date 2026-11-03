@@ -167,7 +167,16 @@ export async function validateShot(files) {
     issue('INVALID_FRAME_RANGE', p + '.frameRange', 'Expected integer 0 <= start <= end.');
     range = undefined;
   }
+  // sceneMode (boolean, optional): the package may carry several editable characters.
+  if (Object.hasOwn(shot, 'sceneMode') && typeof shot.sceneMode !== 'boolean')
+    issue('INVALID_TYPE', p + '.sceneMode', 'Expected boolean.');
   const camera = field(shot, 'camera', 'object', p);
+  if (
+    camera &&
+    Object.hasOwn(camera, 'aspect') &&
+    !(typeof camera.aspect === 'number' && Number.isFinite(camera.aspect) && camera.aspect > 0)
+  )
+    issue('INVALID_VALUE', p + '.camera.aspect', 'Expected a positive finite number.');
   let previous;
   if (camera)
     for (const [k, q] of entries(camera, 'keys', p + '.camera', true)) {
