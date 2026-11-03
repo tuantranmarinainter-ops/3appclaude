@@ -205,6 +205,12 @@ $('speedSel').addEventListener('change', (event) => { viewer.speed = Number(even
 $('tgMesh').addEventListener('change', (event) => viewer.setToggle('mesh', event.target.checked))
 $('tgSkel').addEventListener('change', (event) => viewer.setToggle('skeleton', event.target.checked))
 $('tgGrid').addEventListener('change', (event) => viewer.setToggle('grid', event.target.checked))
+try { viewer.setStaff(localStorage.getItem('w01.workbench.rainbowStaff') === 'true') } catch { /* Preview works without storage. */ }
+$('tgStaff').checked = viewer.showStaff
+$('tgStaff').addEventListener('change', (event) => {
+  viewer.setStaff(event.target.checked)
+  try { localStorage.setItem('w01.workbench.rainbowStaff', String(event.target.checked)) } catch { /* Preview works without storage. */ }
+})
 $('frameBtn').addEventListener('click', () => viewer.frameAll())
 try { viewer.autoFitOnAnimationChange = localStorage.getItem('w01.workbench.autoFitCamera') === 'true' } catch { /* Camera control works without storage. */ }
 $('autoFitCamera').checked = viewer.autoFitOnAnimationChange

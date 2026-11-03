@@ -240,6 +240,32 @@ export async function buildSteve(data, textureUrl) {
   return group
 }
 
+const RAINBOW = ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#3949ab', '#8e24aa']
+
+/**
+ * Preview-only rainbow staff for Minecraft20 characters (Đen has no staff model yet): seven 2-px block segments, upright
+ * through the right fist at rest, parented to the wrist bone so it follows the hand. Never exported.
+ */
+function attachRainbowStaff(model) {
+  const wrist = model.getObjectByName(steveNode('low_right_arm.end'))
+  if (!wrist) return null
+  model.updateMatrixWorld(true)
+  const height = bodyHeight(model), pixel = height / 32, length = height * 0.75, thick = pixel * 2
+  const staff = new THREE.Group(); staff.name = 'rainbow-staff'
+  RAINBOW.forEach((color, index) => {
+    const part = new THREE.Mesh(new THREE.BoxGeometry(thick, length / RAINBOW.length, thick), new THREE.MeshLambertMaterial({ color }))
+    part.position.y = (index + 0.5) * length / RAINBOW.length
+    staff.add(part)
+  })
+  // Held like a Minecraft tool: pointing forward (+Z, the way the character faces) and up from the fist, gripped a third of
+  // the way along, so it stands clear of the hanging arm. Built in rest world space; attach() keeps that world pose.
+  const along = new THREE.Vector3(0, 0.6, 0.8)
+  staff.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), along)
+  staff.position.copy(wrist.getWorldPosition(new THREE.Vector3())).addScaledVector(along, -length / 3)
+  model.add(staff); staff.updateMatrixWorld(true); wrist.attach(staff)
+  return staff
+}
+
 /** Server clip JSON (per-tick bone-local tracks) → AnimationClips addressing the Steve bones. */
 export function steveClips(clips) {
   return clips.map((clip) => new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.flatMap((track) => [
@@ -257,6 +283,7 @@ export class Viewer {
     this.onFrame = onFrame
     this.time = 0; this.duration = 1; this.playing = true; this.speed = 1
     this.autoFitOnAnimationChange = false
+    this.showStaff = false
     this.hasSourceFrame = false
     this.source = null // { scene, animations }
     this.sourceSeq = 0
@@ -351,11 +378,13 @@ export class Viewer {
     if (!this.steve) {
       const info = await (await fetch(skinId ? `/api/mc20/${encodeURIComponent(skinId)}` : '/api/steve')).json()
       const scene = await buildSteve(info.mesh, info.textureUrl)
+      const staff = attachRainbowStaff(scene)
       // The mannequin is authored in BBS model units; show it at the target character's height so both panes compare
       // at one scale (display only, the exported .bobj is untouched).
       const holder = new THREE.Group(); holder.name = 'steve-holder'; holder.add(scene)
-      this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [], skinId }
+      this.steve = { kind: info.mesh.kind, scene: holder, model: scene, clips: [], skinId, staff }
     }
+    if (this.steve.staff) this.steve.staff.visible = this.showStaff
     const fit = !this.steveMode || this.autoFitOnAnimationChange
     this.fitSteveToTarget()
     this.steveMode = true
@@ -416,6 +445,9 @@ export class Viewer {
   }
 
   setToggle(key, value) { for (const pane of [this.left, this.right]) { pane.show[key] = value; pane.applyVisibility() } }
+
+  /** Rainbow staff in the Minecraft20 character's right hand (preview only). */
+  setStaff(value) { this.showStaff = value; if (this.steve?.staff) this.steve.staff.visible = value }
 
   frameAll() { this.left.updateBounds(); this.right.updateBounds(); this.left.frame(); this.right.frame() }
 }
