@@ -8,9 +8,12 @@ export type RulerVisibility = Record<TimelineUnit, boolean>
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
-/** B4: all three rulers show until the user hides one. */
+/**
+ * Người dùng chốt 2026-11-05: mỗi lần mở timeline chỉ hiện thước Giây; Khung/Tick tắt, bật tay khi cần
+ * (lựa chọn chỉ sống trong phiên đó, không nhớ sang lần mở sau).
+ */
 export function defaultRulerVisibility(_unit?: TimelineUnit): RulerVisibility {
-  return { seconds: true, frames: true, ticks: true }
+  return { seconds: true, frames: false, ticks: false }
 }
 
 export function visibleRulers(visibility: RulerVisibility): TimelineUnit[] {

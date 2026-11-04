@@ -27,8 +27,12 @@ test('pinned rows persist per project in storage and survive bad data', () => {
 })
 
 test('rulers: at least one stays visible, order is seconds/frames/ticks, choice persists', () => {
+  // 2026-11-05: mặc định chỉ thước Giây; bật Khung + Tick bằng tay.
   let vis = defaultRulerVisibility('frames')
-  assert.deepEqual(visibleRulers(vis), ['seconds', 'frames', 'ticks'], 'all three by default')
+  assert.deepEqual(visibleRulers(vis), ['seconds'], 'only seconds by default')
+  assert.equal(toggleRuler(vis, 'seconds'), vis, 'the last ruler can not be hidden')
+  vis = toggleRuler(toggleRuler(vis, 'frames'), 'ticks')
+  assert.deepEqual(visibleRulers(vis), ['seconds', 'frames', 'ticks'])
   vis = toggleRuler(toggleRuler(vis, 'ticks'), 'seconds')
   assert.deepEqual(visibleRulers(vis), ['frames'])
   assert.equal(toggleRuler(vis, 'frames'), vis)
@@ -39,7 +43,7 @@ test('rulers: at least one stays visible, order is seconds/frames/ticks, choice 
   writeRulerVisibility(storage, vis)
   assert.deepEqual(readRulerVisibility(storage, 'frames'), vis)
   data.set('topview.builder.timeline.rulers', JSON.stringify({ seconds: false, frames: false, ticks: false }))
-  assert.deepEqual(visibleRulers(readRulerVisibility(storage, 'ticks')), ['seconds', 'frames', 'ticks'])
+  assert.deepEqual(visibleRulers(readRulerVisibility(storage, 'ticks')), ['seconds'])
 })
 
 test('context menu flips up/left near the viewport edges', () => {
