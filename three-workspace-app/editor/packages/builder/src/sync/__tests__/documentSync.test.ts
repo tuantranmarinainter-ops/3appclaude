@@ -428,3 +428,278 @@ test('B44: fresh save after reload waits for old request and then persists the n
   assert.equal(writes[1]!.content.timeline.frameEnd, 350)
   assert.equal(session.dirty, false)
 })
+
+test('timeline checkpoints keep prior edits and each gesture in FIFO order, even while first save waits', async () => {
+  const initial = makeEmptyDraft('fifo', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  const writes: { id: string; frame: number; end: number }[] = []
+  let release!: () => void
+  const editor = new EditorStore('fifo')
+  const session = new StudioSession(engineStub(), new DirectorDoc(), editor, new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial), loadFCurves: async () => fc.encode(),
+    saveDocumentState: async (id: string, doc: DirectorDocument, curves: unknown) => {
+      writes.push({ id, frame: FCurveSet.parse(curves).tracksForNode(nodeId)[0]!.keys[0]!.frame, end: doc.content.timeline.frameEnd })
+      if (writes.length === 1) await new Promise<void>((resolve) => { release = resolve })
+    },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('fifo')
+  session.setTimelineRange(0, 110)
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  session.setTimelineRange(0, 115)
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 15 }], 5)
+  const save = session.save({ captureCover: false })
+  assert.deepEqual(writes, [{ id: 'fifo', frame: 10, end: 110 }])
+  release()
+  assert.equal(await save, null)
+  assert.deepEqual(writes, [
+    { id: 'fifo', frame: 10, end: 110 }, { id: 'fifo', frame: 15, end: 110 },
+    { id: 'fifo', frame: 15, end: 115 }, { id: 'fifo', frame: 20, end: 115 },
+  ])
+  assert.equal(session.dirty, false)
+})
+
+test('failed checkpoint is retained and retried before a later gesture or document switch', async () => {
+  const initial = makeEmptyDraft('old-id', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  const writes: Array<[string, number]> = []
+  let fail = true
+  const editor = new EditorStore('old-id')
+  const session = new StudioSession(engineStub(), new DirectorDoc(), editor, new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async (id: string) => id === 'old-id' ? structuredClone(initial) : makeEmptyDraft(id, 30, 200),
+    loadFCurves: async (id: string) => id === 'old-id' ? fc.encode() : null,
+    saveDocumentState: async (id: string, _doc: DirectorDocument, curves: unknown) => {
+      writes.push([id, FCurveSet.parse(curves).tracksForNode(nodeId)[0]!.keys[0]!.frame])
+      if (fail) throw new Error('offline')
+    },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('old-id')
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  await session.flushPendingUserWrites()
+  assert.equal(session.saveState, 'error')
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 15 }], 5)
+  await session.flushPendingUserWrites()
+  editor.setDraftId('new-id')
+  await assert.rejects(session.loadDraft('new-id'), /offline/)
+  assert.equal(session.docModel.fcurves!.tracksForNode(nodeId)[0]!.keys[0]!.frame, 20)
+  fail = false
+  await session.loadDraft('new-id')
+  assert.equal(session.doc!.content.timeline.frameEnd, 200)
+  assert.deepEqual(writes.slice(-2), [['old-id', 15], ['old-id', 20]])
+  assert.ok(writes.every(([id]) => id === 'old-id'))
+})
+
+test('external reload while timeline writes are pending preserves local changes', async () => {
+  const initial = makeEmptyDraft('external', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  let release!: () => void
+  let loads = 0
+  const session = new StudioSession(engineStub(), new DirectorDoc(), new EditorStore('external'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => { loads++; return structuredClone(initial) }, loadFCurves: async () => fc.encode(),
+    saveDocumentState: async () => { await new Promise<void>((resolve) => { release = resolve }) },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('external')
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  await assert.rejects(session.reloadFromHost(), /Unsaved local changes/)
+  assert.equal(loads, 1)
+  assert.equal(session.docModel.fcurves!.tracksForNode(nodeId)[0]!.keys[0]!.frame, 15)
+  release()
+  await session.flushPendingUserWrites()
+})
+
+test('failed periodic save retains its snapshot before later timeline gestures', async () => {
+  const initial = makeEmptyDraft('autosave-retry', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  let fail = true
+  const writes: Array<[number, number]> = []
+  const session = new StudioSession(engineStub(), new DirectorDoc(), new EditorStore('autosave-retry'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial), loadFCurves: async () => fc.encode(),
+    saveDocumentState: async (_id: string, doc: DirectorDocument, curves: unknown) => {
+      writes.push([doc.content.timeline.frameEnd, FCurveSet.parse(curves).tracksForNode(nodeId)[0]!.keys[0]!.frame])
+      if (fail) throw new Error('unknown response')
+    },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('autosave-retry')
+  session.setTimelineRange(0, 110)
+  assert.equal(await session.save({ captureCover: false }), 'unknown response')
+  session.setTimelineRange(0, 115)
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  await session.flushPendingUserWrites()
+  fail = false
+  assert.equal(await session.save({ captureCover: false }), null)
+  assert.deepEqual(writes.slice(-3), [[110, 10], [115, 10], [115, 15]])
+  assert.equal(session.dirty, false)
+})
+
+test('reload conflict keeps local edits editable, blocks save, and requires explicit recovery', async () => {
+  const initial = makeEmptyDraft('conflict', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  let delayed = false
+  let release!: (raw: unknown) => void
+  let invalidated = 0
+  let confirmed = 0
+  const model = new DirectorDoc()
+  const session = new StudioSession(engineStub(), model, new EditorStore('conflict'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial),
+    loadFCurves: async () => delayed ? new Promise((resolve) => { release = resolve }) : fc.encode(),
+    saveDocumentState: async () => undefined,
+    invalidateLoadedRevision: () => { invalidated++ },
+    confirmHostReload: () => { confirmed++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('conflict')
+  delayed = true
+  const reload = session.reloadFromHost()
+  while (!release) await Promise.resolve()
+  model.toContract()!.content.timeline.frameEnd = 111
+  model.touch()
+  release(fc.encode())
+  await assert.rejects(reload, /Local changes/)
+  assert.equal(model.snapshot!.content.timeline.frameEnd, 111)
+  assert.equal(session.hostReloadConflict, true)
+  assert.equal(session.writeLocked, false)
+  assert.match((await session.save({ captureCover: false }))!, /conflict/i)
+  assert.equal(invalidated, 1)
+  assert.equal(confirmed, 0)
+  delayed = false
+  await session.recoverHostReloadConflict()
+  assert.equal(session.hostReloadConflict, false)
+  assert.equal(model.snapshot!.content.timeline.frameEnd, 120)
+  assert.equal(confirmed, 1)
+})
+
+test('conflict recovery refuses a concurrent reload and does not discard checkpoints', async () => {
+  const initial = makeEmptyDraft('recover-race', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  let gate = false
+  let release!: (raw: unknown) => void
+  let confirmed = 0
+  const session = new StudioSession(engineStub(), new DirectorDoc(), new EditorStore('recover-race'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial),
+    loadFCurves: async () => gate ? new Promise((resolve) => { release = resolve }) : null,
+    saveDocumentState: async () => undefined,
+    confirmHostReload: () => { confirmed++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('recover-race')
+  gate = true
+  const loading = session.reloadFromHost()
+  while (!release) await Promise.resolve()
+  session.offerHostReloadRecovery()
+  await assert.rejects(session.recoverHostReloadConflict(), /already in progress/)
+  assert.equal(confirmed, 0)
+  release(null)
+  await assert.rejects(loading, /Local changes/)
+  assert.equal(session.hostReloadConflict, true)
+  gate = false
+  await session.recoverHostReloadConflict()
+  assert.equal(confirmed, 1)
+  assert.equal(session.hostReloadConflict, false)
+})
+
+test('setDraft waits for a pending checkpoint and never writes the old document to the new ID', async () => {
+  const initial = makeEmptyDraft('old', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  let release!: () => void
+  const ids: string[] = []
+  const editor = new EditorStore('old')
+  const engine = { ...engineStub(), clearDrawPreview() {}, endFollow() {}, setOrbitEnabled() {}, endProgramPreview() {} } as unknown as DirectorEngine
+  const session = new StudioSession(engine, new DirectorDoc(), editor, new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial), loadFCurves: async () => fc.encode(),
+    saveDocumentState: async (id: string) => { ids.push(id); await new Promise<void>((resolve) => { release = resolve }) },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('old')
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  session.setDraft('new')
+  assert.equal(editor.draftId, 'old')
+  release()
+  await session.flushPendingUserWrites()
+  assert.deepEqual(ids, ['old'])
+  assert.equal(editor.draftId, 'new')
+})
+
+test('close waits for pending timeline checkpoints before reporting success', async () => {
+  const initial = makeEmptyDraft('close-fifo', 30, 120, { fov: 35, position: { x: 0, y: 1, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 0, z: 0 } })
+  const nodeId = initial.content.nodes[0]!.id
+  const fc = FCurveSet.empty(); fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  let release!: () => void
+  const session = new StudioSession(engineStub(), new DirectorDoc(), new EditorStore('close-fifo'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial), loadFCurves: async () => fc.encode(),
+    saveDocumentState: async () => { await new Promise<void>((resolve) => { release = resolve }) },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('close-fifo')
+  session.moveTimelineKeys([], [{ nodeId, propPath: 'transform.scale', frame: 10 }], 5)
+  const close = await session.beginCloseSave()
+  assert.ok(close.done)
+  let settled = false
+  void close.done.then(() => { settled = true })
+  await Promise.resolve()
+  assert.equal(settled, false)
+  release()
+  assert.equal(await close.done, null)
+  assert.equal(session.dirty, false)
+})
+
+test('recovery preserves a newer change made while the confirmed reload is waiting', async () => {
+  const initial = makeEmptyDraft('recovery-new-edit', 30, 120)
+  let gate = false
+  let release!: (raw: unknown) => void
+  let confirmed = 0
+  const model = new DirectorDoc()
+  const session = new StudioSession(engineStub(), model, new EditorStore('recovery-new-edit'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial),
+    loadFCurves: async () => gate ? new Promise((resolve) => { release = resolve }) : null,
+    saveDocumentState: async () => undefined,
+    confirmHostReload: () => { confirmed++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('recovery-new-edit')
+  session.offerHostReloadRecovery()
+  gate = true
+  const recovery = session.recoverHostReloadConflict()
+  while (!release) await Promise.resolve()
+  model.toContract()!.content.timeline.frameEnd = 111
+  model.touch()
+  release(null)
+  await assert.rejects(recovery, /Local changes/)
+  assert.equal(model.snapshot!.content.timeline.frameEnd, 111)
+  assert.equal(session.hostReloadConflict, true)
+  assert.equal(confirmed, 0)
+})
+
+test('reload does not mark edits during engine refresh as saved', async () => {
+  const initial = makeEmptyDraft('refresh-race', 30, 120)
+  const model = new DirectorDoc()
+  let release!: () => void
+  let gate = false
+  let invalidated = 0
+  const engine = { ...engineStub(), ready: true, refreshDocument: async () => { if (gate) await new Promise<void>((resolve) => { release = resolve }) } } as unknown as DirectorEngine
+  const session = new StudioSession(engine, model, new EditorStore('refresh-race'), new History(), {
+    preserveTimelineHistory: true,
+    loadDocument: async () => structuredClone(initial), loadFCurves: async () => null,
+    saveDocumentState: async () => undefined,
+    invalidateLoadedRevision: () => { invalidated++ },
+  } as unknown as HostAdapter<DirectorDocument>)
+  await session.loadDraft('refresh-race')
+  gate = true
+  const reload = session.reloadFromHost()
+  while (!release) await Promise.resolve()
+  model.toContract()!.content.timeline.frameEnd = 111
+  model.touch()
+  release()
+  await assert.rejects(reload, /Local changes/)
+  assert.equal(model.snapshot!.content.timeline.frameEnd, 111)
+  assert.equal(session.dirty, true)
+  assert.equal(session.hostReloadConflict, true)
+  assert.equal(invalidated, 1)
+})

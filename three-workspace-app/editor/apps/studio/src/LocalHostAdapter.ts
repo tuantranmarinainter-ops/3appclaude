@@ -86,6 +86,7 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   dismissNavigationHint = navigationHintPreference.dismiss
 
   readonly readOnly: boolean
+  readonly preserveTimelineHistory: boolean
   private readonly base: string
   private readonly revisions = new Map<string, number>()
   // Only a scene actually delivered to the editor may authorize a full replacement.
@@ -93,6 +94,18 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
   private readonly loadGenerations = new Map<string, number>()
   private readonly projects = new Map<string, UnifiedProject>()
   private readonly pendingSnapshots = new Map<string, UnifiedProject>()
+  private readonly savedScenes = new Map<string, string>()
+  private readonly pendingSceneSaves = new Map<string, { payload: string; requestId: string; expectedRevision: number }>()
+
+  /** A load that the editor could not apply must not authorize a later replacement. */
+  invalidateLoadedRevision(documentId: string): void {
+    this.loadedRevisions.delete(documentId)
+  }
+
+  /** The user explicitly discarded the local checkpoint and reloaded the project. */
+  confirmHostReload(documentId: string): void {
+    this.pendingSceneSaves.delete(documentId)
+  }
 
   /** One reload can consume this exact committed revision without fetching it a second time. */
   async withProjectSnapshot(project: UnifiedProject, reload: () => Promise<void>): Promise<void> {
@@ -108,23 +121,39 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   constructor(source: LocalDocumentSource = 'draft') {
     this.readOnly = false
+    this.preserveTimelineHistory = source === 'unified'
     this.base = source === 'unified' ? '/api/unified/projects' : source === 'project' ? '/api/projects' : '/api/drafts'
     if (source === 'unified') {
       this.saveDocumentState = async (documentId, doc, fcurves) => {
+        const snapshot = structuredClone({ document: doc, fcurves: fcurves ?? null })
+        const payload = JSON.stringify(snapshot)
         window.dispatchEvent(new CustomEvent('bbs-unified-project-saving', { detail: { projectId: documentId } }))
         try {
           const expectedRevision = this.loadedRevisions.get(documentId)
           if (expectedRevision === undefined) throw new Error('Project revision is unavailable; reload before saving')
           if (expectedRevision !== this.revisions.get(documentId)) throw new Error('Dự án đã thay đổi sau khi mở trình biên tập; tải lại trước khi lưu')
+          const pending = this.pendingSceneSaves.get(documentId)
+          if (pending && pending.payload !== payload) throw new Error('Retry the previous scene save before saving a newer change')
+          if (pending && pending.expectedRevision !== expectedRevision) throw new Error('Project revision changed while a scene save was pending')
+          if (!pending && this.savedScenes.get(documentId) === payload) {
+            window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: documentId, revision: expectedRevision, sceneSaveAdapter: this } }))
+            return
+          }
+          const checkpoint = pending ?? { payload, requestId: crypto.randomUUID(), expectedRevision }
+          this.pendingSceneSaves.set(documentId, checkpoint)
           const generation = this.loadGenerations.get(documentId)
           const result = await sendUnifiedCommand({
-            requestId: crypto.randomUUID(), projectId: documentId, expectedRevision,
-            command: 'scene.apply', args: { operations: [{ type: 'document.replace', document: doc, fcurves }] },
+            requestId: checkpoint.requestId, projectId: documentId, expectedRevision: checkpoint.expectedRevision,
+            command: 'scene.apply', args: { operations: [{ type: 'document.replace', ...snapshot }] },
           })
+          this.pendingSceneSaves.delete(documentId)
           this.revisions.set(documentId, Math.max(this.revisions.get(documentId) ?? -1, result.revision))
-          if (this.loadGenerations.get(documentId) === generation) this.loadedRevisions.set(documentId, result.revision)
-          window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: documentId, revision: result.revision } }))
-          window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: documentId } }))
+          if (this.loadGenerations.get(documentId) === generation) {
+            this.loadedRevisions.set(documentId, result.revision)
+            this.savedScenes.set(documentId, payload)
+          }
+          window.dispatchEvent(new CustomEvent('bbs-unified-project-saved', { detail: { projectId: documentId, revision: result.revision, sceneSaveAdapter: this } }))
+          window.dispatchEvent(new CustomEvent('bbs-unified-project-commit', { detail: { projectId: documentId, sceneSaveAdapter: this } }))
         } catch (error) {
           window.dispatchEvent(new CustomEvent('bbs-unified-project-save-failed', { detail: { projectId: documentId, message: error instanceof Error ? error.message : String(error) } }))
           throw error
@@ -146,6 +175,7 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
       this.projects.set(documentId, structuredClone(project))
       this.revisions.set(documentId, project.revision)
       this.loadedRevisions.set(documentId, project.revision)
+      this.savedScenes.set(documentId, JSON.stringify({ document: project.scene, fcurves: project.extensions.topview?.fcurves ?? null }))
       return structuredClone(project.scene)
     }
     const doc = (await fetchJson(`${this.base}/${documentId}`)) as DirectorDocument

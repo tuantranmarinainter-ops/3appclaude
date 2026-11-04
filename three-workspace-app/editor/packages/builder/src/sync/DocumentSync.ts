@@ -60,7 +60,7 @@ export class DocumentSync {
           if (session.writeLocked) return
           if (!doc || typeof session.adapter.onDocumentChange !== 'function') return
           session.adapter.onDocumentChange(
-            session.draftId,
+            session.loadedDraftId,
             doc,
             FCurveSet.persist(docModel.fcurves, docModel.userKeys),
           )

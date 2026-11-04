@@ -14,10 +14,19 @@ Test bổ sung kiểm vị trí lấy mẫu của đường đi dẫn xuất, fr
 
 Kiểm tra khởi động riêng: Chromium hệ thống mở Studio ở cổng 3141 với `W01_LIBRARY` và `BBS_UNIFIED_PROJECTS_DIR` trỏ thư mục trống trong `/tmp`; trang hiển thị 0 dự án. Ảnh `/tmp/f1-studio-synthetic.png` chỉ chứng minh trang mở được, không chứng minh thao tác F1.
 
-## F2 — kiểm tra tổng hợp trong Chromium
+## F2 — lịch sử kiểm tra trước sửa host
 
 - Project tổng hợp riêng ở `/tmp/f2-projects`, thư viện trống `/tmp/f2-library`, Studio cổng 3142. Rê khung chọn 5 fcurve vị trí tại 38, 44, 50, 52, 56 và một user key xoay tại 36; 12 hình thoi ở dòng nhóm và dòng con sáng. Kéo +10 cho fcurve 48, 54, 60, 62, 66. Ảnh `/tmp/f2-timeline-initial.png` là trước lượt kéo đó. Ảnh `/tmp/f2-before.png`, `/tmp/f2-selected.png`, `/tmp/f2-after.png` ghi lượt sau: 48/54/60/62/66 → 56/62/68/70/74 (+8 khi bật snap).
 - Một lần Ctrl+Z và Ctrl+Y sau một lần kéo đã khôi phục rồi làm lại đúng các khung trên khi đợi host đồng bộ; một phép đo undo cập nhật DOM sau 336 ms. Hai lần kéo liên tiếp được xác nhận cùng độ dời (+8 mỗi lần khi bật snap), và vùng chọn còn hiệu lực sau lần thứ nhất.
 - **FAIL — một lần Undo cho mỗi thao tác ở host unified:** hai lần kéo liên tiếp 56/62/68/70/74 → 64/70/76/78/82 → 72/78/84/86/90; một Ctrl+Z trở về 56/62/68/70/74 thay vì trạng thái sau lần kéo đầu. Host gộp hai thay đổi chưa lưu vào một snapshot khi flush trước history.undo. Đã thử hàng đợi snapshot và kiểm thành công kịch bản này, nhưng loại thử nghiệm khỏi diff vì chưa xử lý an toàn xung đột revision và chuyển project. F2 bị chặn cho đến khi có giải pháp lịch sử host an toàn. Ảnh `/tmp/f2-selected-twice.png` và `/tmp/f2-after-twice.png` được chụp trong bản thử nghiệm, không đại diện cho diff hiện tại.
 - Số liệu Shot 03 và đạo cụ 150 khóa thật vẫn **BLOCKED** do thiếu bản sao; không suy luận PASS từ project tổng hợp. Chưa có ảnh trước/sau của dữ liệu thật.
 - Gate trên diff F2 cuối: build builder PASS; typecheck toàn workspace PASS; test builder 780 PASS / 1 SKIP. Test riêng kiểm kẹp biên theo mọi thành phần và xóa sai số 1e-6 không lan sang khóa ngoài nhóm. Các gate này không thay đổi kết quả FAIL Undo host ở trên.
+
+## F2 — sửa lịch sử unified sau khi mở rộng phạm vi host
+
+- **PASS trên project tổng hợp:** hai lần kéo 96/102/108/110/114 → 104/110/116/118/122 → 112/118/124/126/130. Hai lần Ctrl+Z khôi phục lần lượt hai trạng thái trước; lưu khi không có thay đổi phát sinh **0** lệnh `scene.apply`; hai Ctrl+Y làm lại đúng. Ảnh sau làm lại: `/tmp/f2-final-redo.png`.
+- **PASS trên project tổng hợp:** mô phỏng một response 409 không có event commit, thay đổi local vẫn hiển thị, giao diện có Xuất bản đang sửa / Thử lưu lại / Tải lại từ dự án. Lần thử lại dùng cùng request ID, hoàn tất và ẩn thông báo. Ảnh: `/tmp/f2-conflict-409.png`. Nút Đóng chờ request lưu chậm hoàn tất trước khi đóng.
+- Hàng đợi snapshot theo revision và document ID được kiểm với save đầu bị treo, chỉnh sửa xen kẽ, autosave lỗi rồi retry, đổi project, host reload đồng thời, xung đột trong khi đọc hoặc engine refresh, và thao tác recovery có xác nhận. Không tự ghi đè khi gặp xung đột.
+- Gate F2 sau sửa: `pnpm build` và `pnpm typecheck` PASS; builder 790 PASS / 1 SKIP; host revision/history 5/5 PASS.
+- Ghép thử E1 #224 trong worktree tạm: 3 conflict tại StudioOverlay, StudioSession và documentSync test đã được giải trong bản thử; build + typecheck PASS, 62/62 test save/exit/Ctrl+S/F2/ripple PASS. Chromium bản ghép: Ctrl+S trong lúc request chậm không phát request trùng; Về danh sách thoát sau khi lưu. Chưa ghép E1 vào nhánh F2 chính.
+- Các mục đo trên bản sao Shot 03 và đạo cụ 150 khóa thật vẫn **BLOCKED** vì dữ liệu không có trong môi trường. Các kết quả tổng hợp không thay thế phép đo đó.
