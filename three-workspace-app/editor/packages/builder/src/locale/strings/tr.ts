@@ -47,6 +47,9 @@ export const tr: LocaleDict = {
     "failed": "Açılamadı"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "Kaydediliyor...",
     "saved": "Kaydedildi",
     "unsaved": "Kaydedilmedi",

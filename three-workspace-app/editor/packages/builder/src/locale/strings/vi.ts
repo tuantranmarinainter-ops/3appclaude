@@ -47,6 +47,9 @@ export const vi: LocaleDict = {
     "failed": "Không thể mở"
   },
   "save": {
+    "exitToList": "Về danh sách",
+    "exitOnError": "Lưu lỗi. Vẫn rời đi?",
+    "locked": "Không thể lưu khi đang khoá ghi",
     "saving": "Đang lưu...",
     "saved": "Đã lưu",
     "unsaved": "Chưa lưu",

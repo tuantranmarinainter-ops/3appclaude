@@ -1681,10 +1681,13 @@ export class StudioSession implements StudioView {
   }
 
   save = (opts?: SaveOptions): Promise<string | null> => {
+    if (this.saveInFlight && this.saveGeneration === this.loadSeq) {
+      if (!this.writeLocked) this.pendingSaveCaptureCover ||= opts?.captureCover !== false
+      return this.saveInFlight
+    }
     if (this.writeLocked) return Promise.resolve(null)
     this.pendingSaveCaptureCover ||= opts?.captureCover !== false
     if (this.saveInFlight) {
-      if (this.saveGeneration === this.loadSeq) return this.saveInFlight
       // A fresh edit after reload needs its own save, after the old request settles.
       return this.saveInFlight.then(() => this.save(opts))
     }

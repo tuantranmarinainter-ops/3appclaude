@@ -392,3 +392,25 @@ test('B44: fresh save after reload waits for old request and then persists the n
   assert.equal(writes[1]!.content.timeline.frameEnd, 350)
   assert.equal(session.dirty, false)
 })
+
+
+test('closing during a save waits for the in-flight save even after write lock', async () => {
+  const model = new DirectorDoc()
+  model.replace(makeEmptyDraft('save-lock', 30, 150))
+  let finish!: () => void
+  let writes = 0
+  const session = new StudioSession(engineStub(), model, new EditorStore('save-lock'), new History(), {
+    saveDocumentState: async () => { writes++; await new Promise<void>((resolve) => { finish = resolve }) },
+  } as unknown as HostAdapter<DirectorDocument>)
+  const pending = session.save({ captureCover: false })
+  session.hostReadOnly = true
+  const onClose = session.save({ captureCover: false })
+  assert.equal(onClose, pending)
+  let settled = false
+  void onClose.then(() => { settled = true })
+  await Promise.resolve()
+  assert.equal(settled, false)
+  finish()
+  assert.equal(await onClose, null)
+  assert.equal(writes, 1)
+})

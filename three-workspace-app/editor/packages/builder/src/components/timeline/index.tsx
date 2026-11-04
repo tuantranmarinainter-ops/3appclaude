@@ -3,7 +3,9 @@ import { TimelineFrameField, TimelineRangeField, TransportButton } from './Timel
 import { useTimelineMarquee } from './hooks/useTimelineMarquee'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TrackProp } from '../../evaluate/curves/KeyframeTrack'
-import { useDirector } from '../../bridge/DirectorContext'
+import { useDirector, useExitToList } from '../../bridge/DirectorContext'
+import { resolveSaveStatus } from '../topbar/saveStatus'
+import { saveBeforeExit } from './saveBeforeExit'
 import { useT } from '../../locale'
 import { clampTimelineHeight, PX_PER_FRAME_MAX, TIMELINE_HEIGHT_DEFAULT } from '../../stores/EditorStore'
 import { nodeIdsOf } from '../../stores/nodeSelection'
@@ -58,7 +60,23 @@ export function TimelinePanel() {
 
 function SceneTimeline() {
   const t = useT()
-  const { stage, useStore } = useDirector()
+  const { stage, useStore, session } = useDirector()
+  const exitToList = useExitToList()
+  const ready = useStore((s) => s.ready)
+  const dirty = useStore((s) => s.dirty)
+  const saveState = useStore((s) => s.saveState)
+  const saveError = useStore((s) => s.saveError)
+  const saveStatus = resolveSaveStatus({ ready, dirty, saveState, saveError, t })
+  const exitBusy = useRef(false)
+  const exit = async () => {
+    if (!exitToList || exitBusy.current) return
+    exitBusy.current = true
+    try {
+      const mayExit = await saveBeforeExit(useStore.getState().writeLocked, session.dirty, session.saveState,
+        () => session.save({ captureCover: false }), () => window.confirm(t('save.exitOnError')))
+      if (mayExit) exitToList()
+    } finally { exitBusy.current = false }
+  }
   const doc = useStore((s) => s.doc)
   const clipMovePreview = useStore((s) => s.clipMovePreview)
   const clipResizePreview = useStore((s) => s.clipResizePreview)
@@ -467,6 +485,9 @@ function SceneTimeline() {
       ) : null}
       <div className="t3d-timeline-toolbar">
         <FilmModeSwitch />
+        <button type="button" className="t3d-timeline-auto-key" disabled={!ready || writeLocked} title={writeLocked ? t('save.locked') : t('save.action')} onClick={() => { void session.save({ captureCover: false }) }}>{t('save.action')}</button>
+        {saveStatus && <span role="status" className={`t3d-topbar-save t3d-topbar-save-${saveStatus.tone}`}>{saveStatus.text}</span>}
+        {exitToList && <button type="button" className="t3d-timeline-auto-key" onClick={() => { void exit() }}>{t('save.exitToList')}</button>}
         <div className="t3d-timeline-group">
           <TransportButton label={t('timeline.toStart')} onClick={() => setFrame(tl.frameStart)}>
             <IconToStart />

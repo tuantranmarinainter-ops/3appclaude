@@ -47,6 +47,9 @@ export const zhTW: LocaleDict = {
     "failed": "開啟失敗"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "儲存中…",
     "saved": "已儲存",
     "unsaved": "未儲存",

@@ -47,6 +47,9 @@ export const en: LocaleDict = {
     "failed": "Couldn't open"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "Saving...",
     "saved": "Saved",
     "unsaved": "Unsaved",

@@ -154,3 +154,9 @@ export function OverlayCloseProvider({
 export function useOverlayClose(): (() => boolean | Promise<boolean>) | undefined {
   return useContext(OverlayCloseContext)
 }
+
+export const ExitToListContext = createContext<(() => void) | undefined>(undefined)
+export function useExitToList() { return useContext(ExitToListContext) }
+
+export const SceneKeyboardActiveContext = createContext(true)
+export function useSceneKeyboardActive() { return useContext(SceneKeyboardActiveContext) }

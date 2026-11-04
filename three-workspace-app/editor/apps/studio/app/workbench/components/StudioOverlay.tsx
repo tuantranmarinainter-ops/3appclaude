@@ -185,6 +185,22 @@ export function StudioOverlay({
     installDebugHooks(api)
     setApi(api)
   }, [setApi])
+  const closeAfterSaving = async () => {
+    if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return
+    const live = getLiveStudio()
+    const needsSave = live?.documentId === documentId && (live.session.dirty || live.session.saveState === 'saving' || live.session.saveState === 'error')
+    const error = needsSave && live
+      ? live.useStore.getState().writeLocked && live.session.saveState !== 'saving'
+        ? 'save.locked'
+        : await live.session.save({ captureCover: false })
+      : null
+    if (error && !window.confirm(vi ? 'Lưu lỗi. Vẫn rời đi?' : 'Saving failed. Leave anyway?')) return
+    onClose()
+  }
+  const exitAfterTimelineSave = () => {
+    if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return
+    onClose()
+  }
   const runHistory = useCallback(async (command: 'history.undo' | 'history.redo') => {
     if (historyBusy) return
     setHistoryBusy(true)
@@ -639,7 +655,7 @@ export function StudioOverlay({
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>
             <button type="button" className="wb-host-primary" onClick={() => setDrawer('export')}>{vi ? 'Xuất' : 'Export'} ▾</button>
             <details className="wb-host-more"><summary aria-label={vi ? 'Tùy chọn khác' : 'More options'}>⋯</summary><div className="wb-host-more-menu"><LanguageMenu /><button type="button" disabled={assetBusy} onClick={() => void cleanupResources()}>{vi ? 'Dọn tài nguyên thừa' : 'Clean unused resources'}</button><button type="button" onClick={() => setDrawer('diagnostics')}>{vi ? 'Chẩn đoán' : 'Diagnostics'}</button><button type="button" onClick={() => window.dispatchEvent(new Event('bbs-unified-open-devtools'))}>{vi ? 'Công cụ phát triển' : 'Developer tools'}</button><details><summary>{vi ? 'Chi tiết dự án' : 'Project details'}</summary><small>{vi ? 'Revision' : 'Revision'} {project?.revision ?? '—'} · {assetCount} {vi ? 'tài nguyên' : 'assets'}</small></details></div></details>
-            <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
+            <button type="button" className="wb-unified-close" onClick={() => { void closeAfterSaving() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
         <WorkspaceNavigationSlot />
@@ -647,7 +663,7 @@ export function StudioOverlay({
         <main className="wb-unified-main">
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
+          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} onExitToList={exitAfterTimelineSave} sceneKeyboardActive={activeWorkspace === 'scene'} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>

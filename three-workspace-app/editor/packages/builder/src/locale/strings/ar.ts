@@ -47,6 +47,9 @@ export const ar: LocaleDict = {
     "failed": "تعذر الفتح"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "جارٍ الحفظ...",
     "saved": "تم الحفظ",
     "unsaved": "غير محفوظ",

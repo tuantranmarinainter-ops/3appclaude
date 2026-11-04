@@ -5,9 +5,11 @@ import {
   isAppKeyboardOwner,
   releaseAppKeyboard,
   useDirector,
+  useSceneKeyboardActive,
 } from '../../bridge/DirectorContext'
 import { nodeIdsOf } from '../../stores/nodeSelection'
 import { createSpaceTap } from './spaceTap'
+import { isSaveShortcut } from './saveShortcut'
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -29,7 +31,8 @@ function isInStudioDialog(target: EventTarget | null, root: HTMLElement): boolea
 }
 
 export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): void {
-  const { useStore } = useDirector()
+  const { useStore, session } = useDirector()
+  const sceneKeyboardActive = useSceneKeyboardActive()
 
   useEffect(() => {
     const root = rootRef.current
@@ -218,14 +221,24 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
       e.preventDefault()
       spaceTap.keyUp()
     }
+    const onSaveKey = (e: KeyboardEvent) => {
+      if (!isSaveShortcut(e, sceneKeyboardActive, isAppKeyboardOwner(root))) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.repeat) return
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      window.setTimeout(() => { if (!useStore.getState().writeLocked) void session.save({ captureCover: false }) }, 0)
+    }
+    window.addEventListener('keydown', onSaveKey, true)
     root.addEventListener('pointerdown', onPointerDown)
     root.addEventListener('keydown', onKey)
     root.addEventListener('keyup', onKeyUp)
     return () => {
+      window.removeEventListener('keydown', onSaveKey, true)
       root.removeEventListener('pointerdown', onPointerDown)
       root.removeEventListener('keydown', onKey)
       root.removeEventListener('keyup', onKeyUp)
       releaseAppKeyboard(root)
     }
-  }, [rootRef, useStore])
+  }, [rootRef, useStore, session, sceneKeyboardActive])
 }

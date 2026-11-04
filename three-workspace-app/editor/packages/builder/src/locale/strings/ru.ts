@@ -47,6 +47,9 @@ export const ru: LocaleDict = {
     "failed": "Не удалось открыть"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "Сохранение...",
     "saved": "Сохранено",
     "unsaved": "Не сохранено",
