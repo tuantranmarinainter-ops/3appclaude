@@ -58,7 +58,7 @@ import type {
   WorkspaceMode,
 } from '../stores/types'
 import { buildNodeSelection, isLookAtPickTarget, isPathApplyPickTarget, isPathApplyTarget, isPathEditTarget, isPlaceOnSupportPickTarget, nodeIdsOf, unlockedNodeIds } from '../stores/nodeSelection'
-import { clipRefsOf, keyframeRefsOf, makeKeyframeSelection, type ClipRef } from '../stores/types'
+import { clipRefsOf, fcurveRefsOf, keyframeRefsOf, makeKeyframeSelection, makeTimelineBoxSelection, type ClipRef } from '../stores/types'
 import { clampInOutRange, normalizeInOutRange } from '../stores/inOutPreference'
 import type { EditorStore } from '../stores/EditorStore'
 import type { StudioView } from '../stores/types'
@@ -995,6 +995,12 @@ export class StudioSession implements StudioView {
       this.pushDocSnapshot('移动关键帧', before)
       this.pruneKeyframeSelection(next)
       const selection = this.editor.selection
+      if (selection?.kind === 'timelineBox' && selection.fcurves?.length) {
+        const updated = selection.fcurves.map((ref) => curves.some((moved) =>
+          moved.nodeId === ref.nodeId && moved.propPath === ref.propPath && Math.abs(moved.frame - ref.frame) <= 1e-6,
+        ) ? { ...ref, frame: ref.frame + delta } : ref)
+        this.editor.select(makeTimelineBoxSelection(selection.clips, selection.keys, updated))
+      }
       if (selection?.kind === 'transformKeyframe' &&
         (users.some(({ ref, frame }) => ref.nodeId === selection.nodeId && Math.abs(frame - selection.frame) <= 1e-6) ||
           curves.some((ref) => ref.nodeId === selection.nodeId && Math.abs(ref.frame - selection.frame) <= 1e-6))) {
@@ -1007,7 +1013,7 @@ export class StudioSession implements StudioView {
   /** 合并掉的键 id 已不存在，留在 selection 里会让工具栏和删除操作点空。 */
   private pruneKeyframeSelection(userKeys: UserKeys): void {
     const sel = this.editor.selection
-    if (sel?.kind !== 'keyframe') return
+    if (sel?.kind !== 'keyframe' && sel?.kind !== 'timelineBox') return
     const alive = new Set<string>()
     for (const tracks of Object.values(userKeys)) {
       if (!tracks) continue
@@ -1018,7 +1024,11 @@ export class StudioSession implements StudioView {
     const refs = keyframeRefsOf(sel)
     const remain = refs.filter((ref) => alive.has(ref.keyId))
     if (remain.length === refs.length) return
-    this.editor.select(makeKeyframeSelection(remain) ?? { kind: 'node', nodeId: sel.nodeId })
+    if (sel.kind === 'timelineBox') {
+      this.editor.select(makeTimelineBoxSelection(sel.clips, remain, fcurveRefsOf(sel)))
+    } else {
+      this.editor.select(makeKeyframeSelection(remain) ?? { kind: 'node', nodeId: sel.nodeId })
+    }
   }
 
   removeKeyframe = (nodeId: string, prop: TrackProp, keyId: string): void => {
@@ -1081,73 +1091,75 @@ export class StudioSession implements StudioView {
     if (cameraMotionOwnsKeyframes(this.docModel.snapshot, nodeId)) return
     const before = snapshotDocState(this.docModel)
     if (!before) return
-    const prevUserKeys = this.docModel.userKeys
-    let changed = false
-    let positionRemoved = false
-    // userKeys 层
-    const uk = this.docModel.userKeys[nodeId]
-    let userKeys = this.docModel.userKeys
-    if (uk) {
-      const rest = { ...uk }
-      for (const prop of ['position', 'rotation', 'scale', 'lookAt', 'fov'] as const) {
-        const track = rest[prop]
-        if (!track) continue
-        const next = track.filter((k) => k.frame !== frame)
-        if (next.length === track.length) continue
-        changed = true
-        if (prop === 'position') positionRemoved = true
-        if (next.length) rest[prop] = next
-        else delete rest[prop]
-      }
-      if (changed) {
-        userKeys = { ...userKeys }
-        if (Object.keys(rest).length) userKeys[nodeId] = rest
-        else delete userKeys[nodeId]
-      }
-    }
-    // fcurves 层
-    const fc = this.docModel.fcurves
-    if (fc) {
-      for (const [prop, path] of [
-        ['position', 'transform.position'],
-        ['rotation', 'transform.rotation'],
-        ['scale', 'transform.scale'],
-        ['lookAt', 'camera.lookAt'],
-        ['fov', 'camera.fov'],
-      ] as const) {
-        const removed = fc.removeKeysAtFrame(nodeId, path, frame)
-        if (removed > 0) {
+    runInAction(() => {
+      const prevUserKeys = this.docModel.userKeys
+      let changed = false
+      let positionRemoved = false
+      // userKeys 层
+      const uk = this.docModel.userKeys[nodeId]
+      let userKeys = this.docModel.userKeys
+      if (uk) {
+        const rest = { ...uk }
+        for (const prop of ['position', 'rotation', 'scale', 'lookAt', 'fov'] as const) {
+          const track = rest[prop]
+          if (!track) continue
+          const next = track.filter((k) => Math.abs(k.frame - frame) > 1e-6)
+          if (next.length === track.length) continue
           changed = true
           if (prop === 'position') positionRemoved = true
+          if (next.length) rest[prop] = next
+          else delete rest[prop]
+        }
+        if (changed) {
+          userKeys = { ...userKeys }
+          if (Object.keys(rest).length) userKeys[nodeId] = rest
+          else delete userKeys[nodeId]
         }
       }
-    }
-    if (!changed) return
-    const live = this.docModel.toContract()
-    if (live && positionRemoved) {
-      rederiveWalkPaths(live, nodeId, fc ?? FCurveSet.empty(), userKeys)
-      this.engine.syncPathNodes()
-    }
-    // 删键落座：静态 transform 回到剩余最早键（或删空前最早键）的位置
-    if (userKeys !== prevUserKeys) this.reseatBaseAfterKeyDelete(prevUserKeys, userKeys)
-    if (userKeys !== this.docModel.userKeys) this.docModel.setUserKeys(userKeys)
-    if (fc) {
-      this.docModel.setFcurves(fc)
-      this.engine.setFcurves(fc)
-    }
-    this.docModel.touch()
-    this.pushDocSnapshot('删除变换关键帧', before)
-    // 选中态清理：组合选中或子轨道选中键刚好被删时回退到节点
-    const sel = this.editor.selection
-    if (sel?.kind === 'transformKeyframe' && sel.nodeId === nodeId && sel.frame === frame) {
-      this.editor.select({ kind: 'node', nodeId })
-    } else if (
-      sel?.kind === 'keyframe' &&
-      sel.nodeId === nodeId &&
-      !(this.docModel.userKeys[nodeId]?.[sel.prop] ?? []).some((k) => k.id === sel.keyId)
-    ) {
-      this.editor.select({ kind: 'node', nodeId })
-    }
+      // fcurves 层
+      const fc = this.docModel.fcurves
+      if (fc) {
+        for (const [prop, path] of [
+          ['position', 'transform.position'],
+          ['rotation', 'transform.rotation'],
+          ['scale', 'transform.scale'],
+          ['lookAt', 'camera.lookAt'],
+          ['fov', 'camera.fov'],
+        ] as const) {
+          const removed = fc.removeKeysAtFrame(nodeId, path, frame)
+          if (removed > 0) {
+            changed = true
+            if (prop === 'position') positionRemoved = true
+          }
+        }
+      }
+      if (!changed) return
+      const live = this.docModel.toContract()
+      if (live && positionRemoved) {
+        rederiveWalkPaths(live, nodeId, fc ?? FCurveSet.empty(), userKeys)
+        this.engine.syncPathNodes()
+      }
+      // 删键落座：静态 transform 回到剩余最早键（或删空前最早键）的位置
+      if (userKeys !== prevUserKeys) this.reseatBaseAfterKeyDelete(prevUserKeys, userKeys)
+      if (userKeys !== this.docModel.userKeys) this.docModel.setUserKeys(userKeys)
+      if (fc) {
+        this.docModel.setFcurves(fc)
+        this.engine.setFcurves(fc)
+      }
+      this.docModel.touch()
+      this.pushDocSnapshot('删除变换关键帧', before)
+      // 选中态清理：组合选中或子轨道选中键刚好被删时回退到节点
+      const sel = this.editor.selection
+      if (sel?.kind === 'transformKeyframe' && sel.nodeId === nodeId && sel.frame === frame) {
+        this.editor.select({ kind: 'node', nodeId })
+      } else if (
+        sel?.kind === 'keyframe' &&
+        sel.nodeId === nodeId &&
+        !(this.docModel.userKeys[nodeId]?.[sel.prop] ?? []).some((k) => k.id === sel.keyId)
+      ) {
+        this.editor.select({ kind: 'node', nodeId })
+      }
+    })
   }
 
   setKeyframeInterp = (nodeId: string, prop: TrackProp, keyId: string, interp: Interpolation): void => {
@@ -2693,27 +2705,56 @@ export class StudioSession implements StudioView {
       const before = snapshotDocState(this.docModel)
       if (!before) return
       const clips = [...clipRefsOf(sel)]
-      const keys = [...keyframeRefsOf(sel)]
-      if (clips.length === 1 && keys.length === 0) {
+      const editable = (nodeId: string) => {
+        const node = this.docModel.snapshot?.content.nodes.find((item) => item.id === nodeId)
+        return !!node && !node.locked && !cameraMotionOwnsKeyframes(this.docModel.snapshot, nodeId)
+      }
+      const keys = keyframeRefsOf(sel).filter((ref) => editable(ref.nodeId))
+      const fcurves = fcurveRefsOf(sel).filter((ref) => editable(ref.nodeId))
+      if (!clips.length && !keys.length && !fcurves.length) return
+      if (clips.length === 1 && keys.length === 0 && fcurves.length === 0) {
         this.deleteClip(clips[0].clipType, clips[0].clipId)
         return
       }
-      this.history.beginInteraction()
-      try {
-        // "Tự dời": xoá clip muộn trước để mỗi lần dời tính trên vị trí còn đúng.
-        const startOf = (ref: ClipRef) => {
-          const anim = this.docModel.toContract()?.content.timeline.animation
-          const list = ref.clipType === 'motion' ? anim?.motionClips : ref.clipType === 'camera' ? anim?.cameraMotionClips : anim?.pathMotionClips
-          return list?.find((c) => c.id === ref.clipId)?.frameStart ?? 0
+      // Flush observers only after the interaction ends so the host receives the
+      // complete transaction once, including both key layers.
+      runInAction(() => {
+        this.history.beginInteraction()
+        try {
+          // "Tự dời": xoá clip muộn trước để mỗi lần dời tính trên vị trí còn đúng.
+          const startOf = (ref: ClipRef) => {
+            const anim = this.docModel.toContract()?.content.timeline.animation
+            const list = ref.clipType === 'motion' ? anim?.motionClips : ref.clipType === 'camera' ? anim?.cameraMotionClips : anim?.pathMotionClips
+            return list?.find((c) => c.id === ref.clipId)?.frameStart ?? 0
+          }
+          const ordered = [...clips].sort((a, b) => startOf(b) - startOf(a))
+          for (const ref of ordered) this.deleteClip(ref.clipType, ref.clipId)
+          if (keys.length) this.removeKeyframes(keys)
+          const fc = this.docModel.fcurves
+          const positionNodes = new Set<string>()
+          let removed = 0
+          if (fc) for (const ref of fcurves) {
+            const count = fc.removeKeysAtFrame(ref.nodeId, ref.propPath, ref.frame)
+            removed += count
+            if (count && ref.propPath === 'transform.position') positionNodes.add(ref.nodeId)
+          }
+          if (fc && removed) {
+            const live = this.docModel.toContract()
+            if (live && positionNodes.size) {
+              for (const nodeId of positionNodes) rederiveWalkPaths(live, nodeId, fc, this.docModel.userKeys)
+              this.engine.syncPathNodes()
+            }
+            this.docModel.setFcurves(fc)
+            this.engine.setFcurves(fc)
+            this.docModel.touch()
+          }
+          this.editor.select(makeTimelineBoxSelection([], keyframeRefsOf(sel).filter((ref) => !editable(ref.nodeId)),
+            fcurveRefsOf(sel).filter((ref) => !editable(ref.nodeId))))
+        } finally {
+          this.history.endInteraction()
         }
-        const ordered = [...clips].sort((a, b) => startOf(b) - startOf(a))
-        for (const ref of ordered) this.deleteClip(ref.clipType, ref.clipId)
-        if (keys.length) this.removeKeyframes(keys)
-        this.editor.select(null)
-      } finally {
-        this.history.endInteraction()
-      }
-      this.pushDocSnapshot('删除选中片段与关键帧', before)
+        this.pushDocSnapshot('删除选中片段与关键帧', before)
+      })
       return
     }
     this.deleteNodes(nodeIdsOf(sel))

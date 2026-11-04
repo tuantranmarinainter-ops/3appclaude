@@ -4,8 +4,11 @@ import { reaction } from 'mobx'
 import { makeEmptyDraft } from '../../contract/emptyDraft'
 import type { DirectorDocument } from '../../contract/types'
 import { DirectorDoc } from '../../document/DirectorDoc'
+import { FCurveSet } from '../../evaluate/curves/FCurveSet'
+import { makeKeyframe } from '../../evaluate/curves/KeyframeTrack'
 import { History } from '../../document/History'
 import { EditorStore } from '../../stores/EditorStore'
+import { makeTimelineBoxSelection } from '../../stores/types'
 import type { DirectorEngine } from '../../engine/DirectorEngine'
 import type { HostAdapter } from '../../host/types'
 import { DocumentSync } from '../DocumentSync'
@@ -91,6 +94,39 @@ test('writeLocked 时 revision 变化不通知宿主', () => {
   unlocked.model.touch()
   assert.equal(changes.length, 1)
   unlocked.sync.dispose()
+})
+
+test('mixed key deletion notifies the host once with both layers removed', () => {
+  const doc = makeEmptyDraft('mixed-delete-sync', 24, 120, {
+    fov: 35, position: { x: 0, y: 1.6, z: 4 }, rotation: { x: 0, y: 0, z: 0 }, lookAt: { x: 0, y: 1, z: 0 },
+  })
+  const model = new DirectorDoc()
+  model.replace(doc)
+  const nodeId = doc.content.nodes[0]!.id
+  const fc = FCurveSet.empty()
+  fc.upsertKey(nodeId, 'transform.scale', 0, 10, 2)
+  model.setFcurves(fc)
+  const key = makeKeyframe(10, [1, 2, 3])
+  model.setUserKeys({ [nodeId]: { position: [key] } })
+  const editor = new EditorStore('mixed-delete-sync')
+  const changes: string[] = []
+  const session = new StudioSession(engineStub(), model, editor, new History(), {
+    onDocumentChange: (_id: string, _doc: DirectorDocument, curves: unknown) => changes.push(JSON.stringify(curves)),
+  } as unknown as HostAdapter<DirectorDocument>)
+  const sync = new DocumentSync(session)
+  editor.select(makeTimelineBoxSelection([], [{ nodeId, prop: 'position', keyId: key.id }], [
+    { nodeId, propPath: 'transform.scale', frame: 10 },
+  ]))
+  session.deleteSelection()
+  assert.equal(changes.length, 1)
+  assert.equal(changes[0], JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)))
+  assert.equal(model.userKeys[nodeId]?.position?.length, 0)
+  assert.equal(model.fcurves?.tracksForNode(nodeId).length, 0)
+  session.undo()
+  assert.equal(changes.length, 2)
+  assert.equal(model.userKeys[nodeId]?.position?.length, 1)
+  assert.equal(model.fcurves?.tracksForNode(nodeId).length, 1)
+  sync.dispose()
 })
 
 test('hostReadOnly 只阻止草稿写入，仍允许选择和面板浏览', () => {

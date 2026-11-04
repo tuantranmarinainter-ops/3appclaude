@@ -12,6 +12,7 @@ import {
 } from 'react'
 import type { TrackProp } from '../../../evaluate/curves/KeyframeTrack'
 import { useDirector } from '../../../bridge/DirectorContext'
+import { cameraMotionOwnsKeyframes } from '../../../evaluate/camera/cameraMotionExclusive'
 import { KEY_MOVE_COMMIT_PX } from '../constants'
 import { clampKeyframeGroupDelta, type KeyframeDragItem } from '../utils'
 import type { SnapFrameFn } from './useSnapFrame'
@@ -47,12 +48,14 @@ export function KeyframeDragPreviewProvider({ children }: { children: ReactNode 
  */
 export function useKeyframeDrag(
   pxPerFrame: number,
-  onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void,
+  _onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void,
   snap?: SnapFrameFn,
 ) {
   const shared = useContext(KeyframeDragPreviewContext)
   const [localPreview, setLocalPreview] = useState<KeyframeDragPreview | null>(null)
   const { useStore } = useDirector()
+  const doc = useStore((s) => s.doc)
+  const moveTimelineKeys = useStore((s) => s.moveTimelineKeys)
   const frameStart = useStore((s) => s.doc?.content.timeline.frameStart ?? 0)
   const frameEnd = useStore((s) => s.doc?.content.timeline.frameEnd ?? Number.POSITIVE_INFINITY)
   const preview = shared ? shared.preview : localPreview
@@ -78,7 +81,12 @@ export function useKeyframeDrag(
   }
 
   const begin = (e: PointerEvent<HTMLElement>, items: KeyframeDragItem[]) => {
-    if (e.button !== 0 || items.length === 0) return
+    if (e.button !== 0) return
+    items = items.filter((item) => {
+      const node = doc?.content.nodes.find((n) => n.id === item.nodeId)
+      return !!node && !node.locked && !cameraMotionOwnsKeyframes(doc, item.nodeId)
+    })
+    if (!items.length) return
     drag.current = { pointerId: e.pointerId, startX: e.clientX, items }
     setPreview({ df: 0, keyIds: new Set(items.map((item) => item.keyId)) })
     try {
@@ -109,14 +117,9 @@ export function useKeyframeDrag(
     setPreview(null)
     if (Math.abs(dx) <= KEY_MOVE_COMMIT_PX) return
     if (df === 0) return
-    onMoveKeyframes(
-      state.items.map((item) => ({
-        nodeId: item.nodeId,
-        prop: item.prop,
-        keyId: item.keyId,
-        newFrame: item.origFrame + df,
-      })),
-    )
+    const keys = state.items.filter((item) => !item.fcurve).map(({ nodeId, prop, keyId }) => ({ nodeId, prop, keyId }))
+    const curves = state.items.flatMap((item) => item.fcurve ? [item.fcurve] : [])
+    moveTimelineKeys(keys, curves, df)
   }
 
   const cancel = (e: PointerEvent<HTMLElement>) => {

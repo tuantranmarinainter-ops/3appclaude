@@ -1,4 +1,7 @@
 import { useRef, useState, type RefObject, type KeyboardEvent, type PointerEvent } from 'react'
+import type { FcurveKeyRef } from '../../../evaluate/curves/FCurveSet'
+import { fcurveRefsOf } from '../../../stores/types'
+import { sameFcurve } from '../utils/fcurveSelection'
 import type { DirectorDocument } from '../../../contract/types'
 import { clipRefsOf, keyframeRefsOf, makeTimelineBoxSelection, type ClipRef, type KeyframeRef, type Selection } from '../../../stores/types'
 import { clipIntersectsMarquee, DRAG_THRESHOLD_PX, MARQUEE_HIT_SLOP_PX } from '../constants'
@@ -36,9 +39,9 @@ export function useTimelineMarquee({ contentRef, doc, selection, select, setFram
     y0: number,
     x1: number,
     y1: number,
-  ): { keys: KeyframeRef[]; clips: ClipRef[] } => {
+  ): { keys: KeyframeRef[]; clips: ClipRef[]; curves: FcurveKeyRef[] } => {
     const root = contentRef.current
-    if (!root) return { keys: [], clips: [] }
+    if (!root) return { keys: [], clips: [], curves: [] }
     const left = Math.min(x0, x1)
     const top = Math.min(y0, y1)
     const right = Math.max(x0, x1)
@@ -46,12 +49,20 @@ export function useTimelineMarquee({ contentRef, doc, selection, select, setFram
     const slop = MARQUEE_HIT_SLOP_PX
     const keys: KeyframeRef[] = []
     const clips: ClipRef[] = []
-    for (const el of root.querySelectorAll<HTMLElement>('[data-kf-id]')) {
+    const curves: FcurveKeyRef[] = []
+    for (const el of root.querySelectorAll<HTMLElement>('[data-kf-id], [data-fcurve-bundle]')) {
       const r = el.getBoundingClientRect()
       const cx = r.left + r.width / 2
       const cy = r.top + r.height / 2
       // canvas: center ±6 vs box
       if (cx + slop < left || cx - slop > right || cy + slop < top || cy - slop > bottom) continue
+      if (el.dataset.fcurveBundle) {
+        try {
+          for (const ref of JSON.parse(el.dataset.fcurveBundle) as FcurveKeyRef[]) {
+            if (!curves.some((item) => sameFcurve(item, ref))) curves.push(ref)
+          }
+        } catch { /* Ignore invalid DOM data. */ }
+      }
       let refs: KeyframeRef[] = []
       if (el.dataset.kfBundle) {
         try {
@@ -80,7 +91,7 @@ export function useTimelineMarquee({ contentRef, doc, selection, select, setFram
       if (!clipId || !clipType) continue
       if (!clips.some((item) => item.clipId === clipId)) clips.push({ clipType, clipId })
     }
-    return { keys, clips }
+    return { keys, clips, curves }
   }
 
   const applyBoxPick = (
@@ -94,6 +105,7 @@ export function useTimelineMarquee({ contentRef, doc, selection, select, setFram
     const picked = pickTimelineItemsInClientRect(x0, y0, x1, y1)
     let clips = picked.clips
     let keys = picked.keys
+    let curves = picked.curves
     if (additive) {
       const mergedClips = [...clipRefsOf(previous)]
       for (const ref of clips) {
@@ -103,10 +115,13 @@ export function useTimelineMarquee({ contentRef, doc, selection, select, setFram
       for (const ref of keys) {
         if (!mergedKeys.some((item) => item.keyId === ref.keyId)) mergedKeys.push(ref)
       }
+      const mergedCurves = [...fcurveRefsOf(previous)]
+      for (const ref of curves) if (!mergedCurves.some((item) => sameFcurve(item, ref))) mergedCurves.push(ref)
       clips = mergedClips
       keys = mergedKeys
+      curves = mergedCurves
     }
-    const next = makeTimelineBoxSelection(clips, keys)
+    const next = makeTimelineBoxSelection(clips, keys, curves)
     if (next) select(next)
     else if (!additive) {
       const collapsed = collapseTimelineItemSelection(doc, previous)

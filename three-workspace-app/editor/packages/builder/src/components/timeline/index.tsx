@@ -415,7 +415,7 @@ function SceneTimeline() {
     selection?.kind === 'keyframe' ||
     selection?.kind === 'transformKeyframe' ||
     selection?.kind === 'clip' ||
-    (selection?.kind === 'timelineBox' && (selection.clips.length > 0 || selection.keys.length > 0))
+    (selection?.kind === 'timelineBox' && (selection.clips.length > 0 || selection.keys.length > 0 || (selection.fcurves?.length ?? 0) > 0))
 
   const onAddKeyframe = (nodeId: string, props: TrackProp | TrackProp[]) => {
     if (cameraMotionOwnsKeyframes(doc, nodeId)) return

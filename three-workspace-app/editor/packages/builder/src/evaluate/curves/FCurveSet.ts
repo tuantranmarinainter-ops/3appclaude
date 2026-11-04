@@ -401,7 +401,7 @@ export class FCurveSet {
   }
 
   /**
-   * 删除某属性路径在指定帧（严格相等）的关键帧：所有分量曲线同帧一起删，
+   * 删除某属性路径在指定帧（容差 1e-6）的关键帧：所有分量曲线同帧一起删，
    * 返回删除的键数。删空的曲线/属性路径/节点壳一并清掉，避免落盘留下 k:[]。
    */
   removeKeysAtFrame(nodeId: string, propPath: string, frame: number): number {
@@ -411,7 +411,7 @@ export class FCurveSet {
     let removed = 0
     for (const [index, curve] of byIndex) {
       const before = curve.keys.length
-      curve.keys = curve.keys.filter((k) => k.frame !== frame)
+      curve.keys = curve.keys.filter((k) => Math.abs(k.frame - frame) > 1e-6)
       removed += before - curve.keys.length
       if (curve.keys.length === 0) {
         byIndex.delete(index)

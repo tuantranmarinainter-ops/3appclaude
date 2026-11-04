@@ -13,9 +13,10 @@ import {
   type Selection,
 } from '../../stores/types'
 import { displayNodeName } from '../displayNames'
-import { CAMERA_XFORM_PROPS, LEFT_W, NODE_XFORM_PROPS, TRACK_INSET } from './constants'
+import { CAMERA_XFORM_PROPS, FC_PROP_PATH, LEFT_W, NODE_XFORM_PROPS, TRACK_INSET } from './constants'
 import { PX_PER_FRAME_MAX, PX_PER_FRAME_MIN } from '../../stores/EditorStore'
 import type { TimelineRow, TimelineSummary } from './types'
+import { fcurveFrames } from './utils/trackRow'
 
 function baseOf(n: DirectorDocument['content']['nodes'][number]) {
   return { nodeId: n.id, nodeName: n.name, nodeType: n.type }
@@ -389,8 +390,10 @@ export function collectSnapTargets(
   }
   if (fcurves) {
     for (const node of doc.content.nodes) {
-      for (const curve of fcurves.tracksForNode(node.id)) {
-        for (const key of curve.keys) targets.push({ frame: key.frame })
+      for (const [prop, propPath] of Object.entries(FC_PROP_PATH) as [TrackProp, string][]) {
+        for (const frame of fcurveFrames(fcurves, node.id, prop)) {
+          targets.push({ frame, keyId: `fcurve:${JSON.stringify([node.id, propPath, frame])}` })
+        }
       }
     }
   }
@@ -439,11 +442,12 @@ export function isSameSelection(a: Selection | null, b: Selection): boolean {
   if (a.kind === 'clip' && b.kind === 'clip') return a.clipId === b.clipId
   if (a.kind === 'keyframe' && b.kind === 'keyframe') return a.keyId === b.keyId
   if (a.kind === 'timelineBox' && b.kind === 'timelineBox') {
-    if (a.clips.length !== b.clips.length || a.keys.length !== b.keys.length) return false
+    if (a.clips.length !== b.clips.length || a.keys.length !== b.keys.length || (a.fcurves?.length ?? 0) !== (b.fcurves?.length ?? 0)) return false
     const clipIds = new Set(a.clips.map((c) => c.clipId))
     const keyIds = new Set(a.keys.map((k) => k.keyId))
     return (
-      b.clips.every((c) => clipIds.has(c.clipId)) && b.keys.every((k) => keyIds.has(k.keyId))
+      b.clips.every((c) => clipIds.has(c.clipId)) && b.keys.every((k) => keyIds.has(k.keyId)) &&
+      (b.fcurves ?? []).every((ref) => (a.fcurves ?? []).some((item) => item.nodeId === ref.nodeId && item.propPath === ref.propPath && Math.abs(item.frame - ref.frame) <= 1e-6))
     )
   }
   if (a.kind === 'transformKeyframe' && b.kind === 'transformKeyframe') {
@@ -457,6 +461,9 @@ export type KeyframeDragItem = {
   prop: TrackProp
   keyId: string
   origFrame: number
+  fcurve?: import('../../evaluate/curves/FCurveSet').FcurveKeyRef
+  minFrame?: number
+  maxFrame?: number
 }
 
 /** 某节点在指定帧上仍存在的用户关键帧（位移 / 旋转 / 缩放 / 看点 / FOV）。 */
@@ -611,14 +618,17 @@ export function nextBundleSelection(
  */
 export function clampKeyframeGroupDelta(
   df: number,
-  items: readonly { origFrame: number }[],
+  items: readonly { origFrame: number; minFrame?: number; maxFrame?: number }[],
   bounds?: { frameStart: number; frameEnd: number } | null,
 ): number {
   let delta = Math.round(df) || 0
   if (items.length === 0 || !bounds) return delta
-  const minOrig = Math.min(...items.map((item) => item.origFrame))
-  const maxOrig = Math.max(...items.map((item) => item.origFrame))
-  delta = Math.min(Math.max(delta, bounds.frameStart - minOrig), bounds.frameEnd - maxOrig)
+  const minOrig = Math.min(...items.map((item) => item.minFrame ?? item.origFrame))
+  const maxOrig = Math.max(...items.map((item) => item.maxFrame ?? item.origFrame))
+  const minDelta = Math.ceil(bounds.frameStart - minOrig)
+  const maxDelta = Math.floor(bounds.frameEnd - maxOrig)
+  if (minDelta > maxDelta) return 0
+  delta = Math.min(Math.max(delta, minDelta), maxDelta)
   return delta || 0
 }
 /** Kẹp px/frame trong giới hạn zoom của timeline (khớp EditorStore.setPxPerFrame). */

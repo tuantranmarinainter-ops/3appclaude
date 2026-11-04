@@ -73,7 +73,7 @@ export type Selection =
   | { kind: 'clip'; clipType: 'camera' | 'motion' | 'path'; clipId: string; clips?: ClipRef[] }
   | { kind: 'keyframe'; nodeId: string; prop: TrackProp; keyId: string; keys?: KeyframeRef[] }
   /** 时间轴框选：运镜/动作/路径片段与关键帧可混合选中。 */
-  | { kind: 'timelineBox'; clips: ClipRef[]; keys: KeyframeRef[] }
+  | { kind: 'timelineBox'; clips: ClipRef[]; keys: KeyframeRef[]; fcurves?: FcurveKeyRef[] }
   /** 「变换」轨道的组合关键帧：同一帧上变换子轨道的键集合 */
   | { kind: 'transformKeyframe'; nodeId: string; frame: number }
 
@@ -83,6 +83,10 @@ export function keyframeRefsOf(sel: Selection | null): KeyframeRef[] {
   return sel.keys?.length
     ? sel.keys
     : [{ nodeId: sel.nodeId, prop: sel.prop, keyId: sel.keyId }]
+}
+
+export function fcurveRefsOf(sel: Selection | null): FcurveKeyRef[] {
+  return sel?.kind === 'timelineBox' ? sel.fcurves ?? [] : []
 }
 
 export function makeKeyframeSelection(refs: KeyframeRef[]): Selection | null {
@@ -135,10 +139,12 @@ export function nextClipSelection(sel: Selection | null, ref: ClipRef, additive:
   return makeTimelineBoxSelection(
     includes ? refs.filter((item) => item.clipType !== ref.clipType || item.clipId !== ref.clipId) : [...refs, ref],
     keyframeRefsOf(sel),
+    fcurveRefsOf(sel),
   )
 }
 
-export function makeTimelineBoxSelection(clips: ClipRef[], keys: KeyframeRef[]): Selection | null {
+export function makeTimelineBoxSelection(clips: ClipRef[], keys: KeyframeRef[], fcurves: FcurveKeyRef[] = []): Selection | null {
+  if (fcurves.length) return { kind: 'timelineBox', clips, keys, fcurves }
   if (clips.length === 0 && keys.length === 0) return null
   if (clips.length === 0) return makeKeyframeSelection(keys)
   if (keys.length === 0) return makeClipSelection(clips)
