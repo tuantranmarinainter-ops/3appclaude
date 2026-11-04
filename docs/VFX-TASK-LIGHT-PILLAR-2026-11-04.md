@@ -14,7 +14,8 @@ simple_turbulence_fireworks, toonhit`); không có cột sáng đúng màu. Shot
 - Xung kích lúc chạm đất đã có: `simple_ring_shape1` (36–100) + `barrior01` (36–62) — giữ nguyên.
 
 ## Yêu cầu hiệu ứng mới (tên gợi ý `light_pillar_cyan`)
-- Cột sáng **dọc**, cao ~10 m, rộng ~1,2–1,5 m; **lõi trắng, viền/quầng cyan** (#5FF3FF tham khảo), có hạt sáng bay lên dọc cột.
+- **Cột trụ tròn** (hình trụ đứng, tiết diện tròn, nhìn từ mọi phía đều thấy là một ống trụ ánh sáng bao quanh Hero), KHÔNG phải tia laser/chùm tia xoè như `laser01` (người dùng 2026-11-04: "nó phải là cột ánh sáng, là cột trụ tròn").
+- Cao ~10 m, đường kính ~1,2–1,5 m (đủ bao Hero); thành trụ sáng mờ, **lõi trắng, viền/quầng cyan** (#5FF3FF tham khảo), có hạt sáng bay lên dọc cột.
 - Thời lượng ~40 khung (30 fps): mở nhanh (0–6), giữ sáng trong lúc Hero hạ xuống, **chớp sáng mạnh rồi tắt** khi chạm đất (~khung 36).
 - Không lặp (loop false); pivot đáy cột (hoặc ghi rõ pivot để đặt `position.y`).
 - **Phải chạy được trong BBS FS thật** (quy tắc App 4 MVP) + có preview sheet trong `vfx-previews` để App 2 hiện.
