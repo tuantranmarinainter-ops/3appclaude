@@ -20,6 +20,13 @@ simple_turbulence_fireworks, toonhit`); không có cột sáng đúng màu. Shot
 - Không lặp (loop false); pivot đáy cột (hoặc ghi rõ pivot để đặt `position.y`).
 - **Phải chạy được trong BBS FS thật** (quy tắc App 4 MVP) + có preview sheet trong `vfx-previews` để App 2 hiện.
 
+## Nhịp (người dùng 2026-11-04, lần 3)
+- `laser01` tạm **sai ý**: là hình nón/chùm tia và chạy **quá nhanh**. Cần **hình trụ** đứng bao quanh Hero, đổi sáng **chậm, êm**.
+- Shot đã sửa nhịp Hero (project rev ≥ 58): khung 0–28 Hero trôi **chậm** từ 6,8 m xuống 4,8 m trong cột sáng; khung 28–36
+  rơi **tăng tốc đột ngột**, chạm đất "rầm" ở khung 36 → xung kích (`simple_ring_shape1` + `barrior01`) đẩy Gỗ Xưa ra xa.
+- Vậy cột sáng: bật dần khung 0–8, **giữ đều, hạt bay lên chậm** khung 8–30, co/sáng gắt khi Hero lao xuống (30–36),
+  **chớp trắng rồi tắt** ở khung 36–42. Tâm cột tại Hero (x −0,6; z 1,2), đáy ở mặt đất, cao ≥ 8 m.
+
 ## Đạt khi
 - Thay cue `laser01` của Shot 03 bằng hiệu ứng mới (cùng khung, cùng vị trí), ảnh "Xem như BBS" khung 0, 18, 36 thấy cột trắng-cyan bao
   Hero; xuất film Shot 03 vào BBS FS chạy được, ảnh trong game.
