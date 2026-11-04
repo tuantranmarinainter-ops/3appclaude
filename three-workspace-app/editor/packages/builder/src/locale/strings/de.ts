@@ -110,6 +110,7 @@ export const de: LocaleDict = {
     "shortcutNextFrame": "Nächstes Bild",
     "shortcutUndo": "Rückgängig machen",
     "shortcutRedo": "Wiederholen",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Ziehen nach links",
     "shortcutRightDrag": "Rechts ziehen",
     "shortcutMiddleDrag": "Mittelwiderstand",

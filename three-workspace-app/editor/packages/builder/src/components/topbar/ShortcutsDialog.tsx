@@ -147,6 +147,7 @@ function buildGroups(t: TranslateFn, mod: string): Array<{
         { labelKey: 'topbar.shortcutNextFrame', keys: [['→']] },
         { labelKey: 'topbar.shortcutUndo', keys: [[mod, 'Z']] },
         { labelKey: 'topbar.shortcutRedo', keys: [[mod, 'Shift', 'Z']] },
+        { labelKey: 'topbar.shortcutSplitClip', keys: [[mod, 'B']] },
       ],
     },
   ]

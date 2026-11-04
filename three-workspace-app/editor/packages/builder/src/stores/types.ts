@@ -214,6 +214,7 @@ export interface StudioView {
   timelineSnap: boolean
   /** "Cho chồng để trộn": mặc định bật, nhớ theo người dùng (localStorage). */
   clipBlendOverlap: boolean
+  clipRipple: boolean
   viewportLocked: boolean
   /** 已有变换关键帧的节点，当前帧尚未确认的候选值；有值时禁止挪播放头。 */
   pendingKeyframe: PendingKeyframe | null
@@ -344,6 +345,9 @@ export interface StudioView {
   toggleAutoKeyframe: () => void
   toggleTimelineSnap: () => void
   setClipBlendOverlap: (enabled: boolean) => void
+  setClipRipple: (enabled: boolean) => void
+  /** Ctrl+B: cắt clip động tác tại đầu phát (clip đang chọn, hoặc clip dưới đầu phát của nhân vật đang chọn). */
+  splitMotionClipAtPlayhead: () => TimelineClipResult
   /** Chuột phải "Trộn với clip trước": dời clip sau sớm hơn 1 giây và đặt blendIn (một bước Undo). */
   blendMotionClipWithPrevious: (clipId: string) => boolean
   /** Đổi số khung / kiểu chuyển của blendIn (một bước Undo). false = không hợp lệ, không đổi gì. */

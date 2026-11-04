@@ -1,3 +1,4 @@
+import { emitTimelineNotice } from '../timeline/utils/clipMenu'
 import { useEffect, type RefObject } from 'react'
 import {
   claimAppKeyboard,
@@ -88,6 +89,16 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
           || s.hostReadOnly
         ) return
         s.duplicateSelection({ kind: 'offset', delta: { position: [0.5, 0, 0] } })
+        return
+      }
+      // Ctrl+B: cắt clip động tác tại đầu phát (như "Cắt tại đầu phát" trong menu clip).
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'KeyB') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (film || s.writeLocked || s.hostReadOnly || s.exporting) return
+        const result = s.splitMotionClipAtPlayhead()
+        if (result.error === 'ambiguous') emitTimelineNotice('Ctrl+B: đầu phát nằm trong clip của nhiều nhân vật — bấm chọn clip muốn cắt rồi Ctrl+B')
+        else if (result.error === 'not-applicable') emitTimelineNotice('Ctrl+B: đưa đầu phát vào giữa một clip động tác rồi bấm lại')
         return
       }
       if (e.code === 'Space') {

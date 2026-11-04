@@ -110,6 +110,7 @@ export const zhCN: LocaleDict = {
     "shortcutNextFrame": "下一帧",
     "shortcutUndo": "撤销",
     "shortcutRedo": "重做",
+    "shortcutSplitClip": "在播放头处切分动作片段",
     "shortcutLeftDrag": "左键拖拽",
     "shortcutRightDrag": "右键拖拽",
     "shortcutMiddleDrag": "中键拖拽",

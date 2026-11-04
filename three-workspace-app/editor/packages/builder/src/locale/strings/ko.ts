@@ -110,6 +110,7 @@ export const ko: LocaleDict = {
     "shortcutNextFrame": "다음 프레임",
     "shortcutUndo": "실행 취소",
     "shortcutRedo": "다시 실행",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "왼쪽 버튼 드래그",
     "shortcutRightDrag": "오른쪽 버튼 드래그",
     "shortcutMiddleDrag": "가운데 버튼 드래그",

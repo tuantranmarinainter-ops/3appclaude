@@ -110,6 +110,7 @@ export const vi: LocaleDict = {
     "shortcutNextFrame": "Khung hình tiếp theo",
     "shortcutUndo": "Hoàn tác",
     "shortcutRedo": "Làm lại",
+    "shortcutSplitClip": "Cắt clip động tác tại đầu phát",
     "shortcutLeftDrag": "Kéo chuột trái",
     "shortcutRightDrag": "Kéo chuột phải",
     "shortcutMiddleDrag": "Kéo chuột giữa",

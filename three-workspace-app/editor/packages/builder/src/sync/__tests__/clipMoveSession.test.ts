@@ -103,7 +103,9 @@ test('动作和轨迹 Handler 预览不改文档，松手后一次提交', () =>
     session.resizeClip(kind, '失败者', 'end', 80)
     assert.equal(JSON.stringify(doc), original)
     assert.equal(model.revision, revision)
-    assert.deepEqual(editor.clipResizePreview, {
+    // Clip động tác ("Tự dời" bật mặc định) có thêm positions cho các clip dời theo.
+    const { positions: _positions, ...preview } = editor.clipResizePreview ?? {}
+    assert.deepEqual(preview, {
       clipType: kind, clipId: '失败者', frameStart: 0, frameEnd: 80,
     })
     session.endClipResize()

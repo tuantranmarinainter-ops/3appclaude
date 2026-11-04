@@ -110,6 +110,7 @@ export const id: LocaleDict = {
     "shortcutNextFrame": "Bingkai berikutnya",
     "shortcutUndo": "Batalkan",
     "shortcutRedo": "Ulangi",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Tarik ke kiri",
     "shortcutRightDrag": "Tarik ke kanan",
     "shortcutMiddleDrag": "Tarikan tengah",

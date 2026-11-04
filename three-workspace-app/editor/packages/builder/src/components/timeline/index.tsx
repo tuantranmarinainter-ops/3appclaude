@@ -12,7 +12,7 @@ import { RangeSlider } from '../common/RangeSlider'
 import { browserPanelStorage } from '../common/panelLayout'
 import type { TimelineUnit } from '../../stores/types'
 import { timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
-import { readClipBlendOverlap, writeClipBlendOverlap } from './utils/blendPreference'
+import { readClipBlendOverlap, readClipRipple, writeClipBlendOverlap, writeClipRipple } from './utils/blendPreference'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Tooltip } from '../common/Tooltip'
 import { useVerticalResize } from '../leftrail/hooks/usePanelResize'
@@ -71,6 +71,8 @@ function SceneTimeline() {
   const autoKeyframe = useStore((s) => s.autoKeyframe)
   const timelineSnap = useStore((s) => s.timelineSnap)
   const clipBlendOverlap = useStore((s) => s.clipBlendOverlap)
+  const clipRipple = useStore((s) => s.clipRipple)
+  const setClipRipple = useStore((s) => s.setClipRipple)
   const viewportLocked = useStore((s) => s.viewportLocked)
   const chainCameraMotion = useStore((s) => s.chainCameraMotion)
   const pxPerFrame = useStore((s) => s.pxPerFrame)
@@ -183,6 +185,20 @@ function SceneTimeline() {
     }
     writeClipBlendOverlap(browserPanelStorage(), clipBlendOverlap)
   }, [clipBlendOverlap, setClipBlendOverlap])
+
+  // "Tự dời": mặc định bật, nhớ theo người dùng.
+  const rippleHydrated = useRef(false)
+  useEffect(() => {
+    if (!rippleHydrated.current) {
+      rippleHydrated.current = true
+      const stored = readClipRipple(browserPanelStorage())
+      if (stored !== clipRipple) {
+        setClipRipple(stored)
+        return
+      }
+    }
+    writeClipRipple(browserPanelStorage(), clipRipple)
+  }, [clipRipple, setClipRipple])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -497,6 +513,16 @@ function SceneTimeline() {
             onClick={() => setClipBlendOverlap(!clipBlendOverlap)}
           >
             Cho chồng để trộn
+          </button>
+        </Tooltip>
+        <Tooltip label="Cắt (Ctrl+B), tỉa mép hoặc xoá clip động tác thì các clip sau của cùng nhân vật tự dời theo, không để khoảng trống" side="top">
+          <button
+            type="button"
+            className={cx('t3d-timeline-auto-key', clipRipple && 'is-active')}
+            aria-pressed={clipRipple}
+            onClick={() => setClipRipple(!clipRipple)}
+          >
+            Tự dời
           </button>
         </Tooltip>
         <Tooltip label={t('timeline.lockViewTitle')} side="top">

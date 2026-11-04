@@ -110,6 +110,7 @@ export const ja: LocaleDict = {
     "shortcutNextFrame": "次のフレーム",
     "shortcutUndo": "元に戻す",
     "shortcutRedo": "やり直し",
+    "shortcutSplitClip": "再生ヘッドでモーションクリップを分割",
     "shortcutLeftDrag": "左ドラッグ",
     "shortcutRightDrag": "右ドラッグ",
     "shortcutMiddleDrag": "ミドルドラグ",
