@@ -1,6 +1,6 @@
 import type { DirectorDocument, MotionClip } from '../contract/types'
 
-export type TimelineClipResult = { id: string | null; error: 'no-gap' | 'unavailable' | 'not-applicable' | null }
+export type TimelineClipResult = { id: string | null; error: 'no-gap' | 'unavailable' | 'not-applicable' | 'ambiguous' | null }
 
 export interface FrameRange { start: number; end: number }
 

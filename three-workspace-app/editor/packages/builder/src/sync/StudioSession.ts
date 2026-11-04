@@ -1462,6 +1462,13 @@ export class StudioSession implements StudioView {
       if (sel && (sel.kind === 'keyframe' || sel.kind === 'transformKeyframe')) nodes.add(sel.nodeId)
       clip = clips.find((c) => nodes.has(c.target.nodeId) && covers(c))
     }
+    if (!clip) {
+      // Người dùng chốt: "rê thanh chạy vào clip, Ctrl+B là cắt". Không chọn gì mà dưới đầu phát chỉ có MỘT clip
+      // động tác thì cắt clip đó; có nhiều clip (nhiều nhân vật) thì phải chọn để khỏi cắt nhầm.
+      const under = clips.filter(covers)
+      if (under.length === 1) clip = under[0]
+      else if (under.length > 1) return { id: null, error: 'ambiguous' }
+    }
     if (!clip) return { id: null, error: 'not-applicable' }
     return this.splitMotionClipAt(clip.id, frame)
   }

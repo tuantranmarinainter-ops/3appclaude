@@ -81,7 +81,8 @@ function fixture() {
   } as unknown as DirectorEngine
   const session = new StudioSession(engine, model, editor, history, {} as HostAdapter<DirectorDocument>)
   const clips = () => model.toContract()!.content.timeline.animation.motionClips
-  return { model, editor, history, session, engine, clips }
+  const seek = (frame: number) => { state.currentFrame = frame }
+  return { model, editor, history, session, engine, clips, seek }
 }
 
 describe('Ctrl+B + tự dời trong session', () => {
@@ -110,7 +111,24 @@ describe('Ctrl+B + tự dời trong session', () => {
     const cut = session.splitMotionClipAtPlayhead()
     expect(cut.error).toBeNull()
     expect(clips().filter((c) => c.target.nodeId === 'actor2').map((c) => [c.frameStart, c.frameEnd])).toEqual([[0, 45], [45, 200]])
+    // Chọn đối tượng không có clip: rơi về "clip duy nhất dưới đầu phát" (ở khung 45 chỉ còn AB chứa đầu phát).
     editor.select({ kind: 'node', nodeId: 'nobody' })
+    expect(session.splitMotionClipAtPlayhead().error).toBeNull()
+    expect(clips().filter((c) => c.target.nodeId === 'actor').map((c) => [c.frameStart, c.frameEnd])).toEqual([[0, 45], [45, 120], [120, 180]])
+  })
+
+  it('không chọn gì: dưới đầu phát chỉ một clip thì cắt luôn; nhiều nhân vật thì báo ambiguous; ngoài clip thì not-applicable', () => {
+    const { session, editor, seek, clips } = fixture()
+    editor.select(null)
+    expect(session.splitMotionClipAtPlayhead().error).toBe('ambiguous') // khung 45: AB và other
+    seek(150) // chỉ C (120–180) và other (0–200)… vẫn hai
+    expect(session.splitMotionClipAtPlayhead().error).toBe('ambiguous')
+    seek(190) // chỉ other
+    const cut = session.splitMotionClipAtPlayhead()
+    expect(cut.error).toBeNull()
+    expect(clips().filter((c) => c.target.nodeId === 'actor2').map((c) => [c.frameStart, c.frameEnd])).toEqual([[0, 190], [190, 200]])
+    seek(250)
+    editor.select(null)
     expect(session.splitMotionClipAtPlayhead().error).toBe('not-applicable')
   })
 

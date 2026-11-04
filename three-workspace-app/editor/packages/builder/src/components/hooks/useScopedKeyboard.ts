@@ -97,7 +97,8 @@ export function useScopedKeyboard(rootRef: RefObject<HTMLDivElement | null>): vo
         e.stopPropagation()
         if (film || s.writeLocked || s.hostReadOnly || s.exporting) return
         const result = s.splitMotionClipAtPlayhead()
-        if (result.error === 'not-applicable') emitTimelineNotice('Ctrl+B: chọn clip động tác (hoặc nhân vật) có đầu phát nằm trong clip')
+        if (result.error === 'ambiguous') emitTimelineNotice('Ctrl+B: đầu phát nằm trong clip của nhiều nhân vật — bấm chọn clip muốn cắt rồi Ctrl+B')
+        else if (result.error === 'not-applicable') emitTimelineNotice('Ctrl+B: đưa đầu phát vào giữa một clip động tác rồi bấm lại')
         return
       }
       if (e.code === 'Space') {
