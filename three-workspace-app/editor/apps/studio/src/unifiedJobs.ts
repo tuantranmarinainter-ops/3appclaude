@@ -26,7 +26,7 @@ import { filmAudioPackage } from './audioMix'
 import { getAction, resolveCharacter } from '../../../packages/library/index'
 import { resolveLibraryPath } from '../../../packages/library/index'
 import { bobjModelToGlb, buildBobjModel, parseBobjModel } from '../../../packages/retarget/src/bobjModel'
-import { LIBRARY_GLB_OPTIONS } from './libraryModels'
+import { LIBRARY_GLB_OPTIONS, libraryCharacterModel } from './libraryModels'
 
 export type UnifiedJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -666,6 +666,21 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
     await persist(record)
     const localAssets = await stageAssets(snapshot, assetsDir)
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
+    // Library characters load from /api/library?modelCharacter=…, which the headless page cannot reach (it got the
+    // 404 HTML and failed parsing it as glTF): stage each skinned library GLB and point the render copy at it.
+    const renderScene = structuredClone(snapshot.scene)
+    for (const node of renderScene.content.nodes) {
+      const url = node.metadata?.modelUrl
+      const charId = typeof url === 'string' ? /^\/api\/library\?modelCharacter=([^&]+)/.exec(url)?.[1] : undefined
+      if (!charId) continue
+      const key = `w01-library/${encodeURIComponent(decodeURIComponent(charId))}.glb`
+      if (!localAssets[key]) {
+        const file = path.join(assetsDir, `library-${Object.keys(localAssets).length}.glb`)
+        await writeFile(file, (await libraryCharacterModel(decodeURIComponent(charId))).bytes, { flag: 'wx' })
+        localAssets[key] = file
+      }
+      node.metadata = { ...node.metadata, modelUrl: `/${key}` }
+    }
     const fcurves = snapshot.extensions.topview && typeof snapshot.extensions.topview === 'object'
       ? (snapshot.extensions.topview as Record<string, unknown>).fcurves ?? null
       : null
@@ -684,7 +699,7 @@ async function runSceneRender(runtime: Runtime, snapshot: UnifiedProject, args: 
     for (const [cameraIndex, cameraNodeId] of args.cameraNodeIds.entries()) {
       if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
       const result = await renderFrames({
-        document: snapshot.scene, fcurves, frames: args.frames, width: args.width, height: args.height, ...(vfx ? { vfx } : {}),
+        document: renderScene, fcurves, frames: args.frames, width: args.width, height: args.height, ...(vfx ? { vfx } : {}),
         cameraNodeId, sceneSequence: snapshot.scene.content.editorial?.sequences?.[0]?.id,
         outputDir: path.join(renders, `camera_${cameraIndex}`), localAssets, ...(args.silhouette ? { silhouette: true } : {}), ...(args.bbsLook ? { bbsLook: true } : {}),
       }, { signal, onProgress: async (completed, total) => {
