@@ -1,4 +1,4 @@
-"""Cài phim BBS — giao diện chọn gói ZIP (xuất từ App 2) + thư mục game, cài/gỡ phim. Chạy: pythonw film_installer.pyw [gói.zip]"""
+"""Import ZIP to BBS FS Tool — giao diện chọn gói ZIP (xuất từ App 2) + thư mục game, cài/gỡ phim. Chạy: pythonw film_installer.pyw [gói.zip]"""
 from __future__ import annotations
 
 import json
@@ -12,8 +12,9 @@ from tkinter import filedialog, messagebox, ttk
 
 import installer_core as core
 
-APP_NAME = 'Cài phim BBS'
+APP_NAME = 'Import ZIP to BBS FS Tool'
 VERSION = '1.0.0'
+# Giữ thư mục cũ 'CaiPhimBBS' để không mất cài đặt của bản trước.
 SETTINGS = Path(os.environ.get('APPDATA', Path.home())) / 'CaiPhimBBS' / 'settings.json'
 
 BG, PANEL, FIELD, TEXT, MUTED = '#16181d', '#1f232b', '#2a2f39', '#e8eaef', '#9aa3b2'
@@ -96,7 +97,7 @@ class App(tk.Tk):
     def _build(self):
         head = ttk.Frame(self, padding=(20, 16, 20, 6))
         head.pack(fill='x')
-        ttk.Label(head, text='Cài phim BBS FS', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(head, text='Import ZIP to BBS FS Tool', style='Title.TLabel').pack(anchor='w')
         ttk.Label(head, text='Chọn gói phim .zip (xuất từ App 2) và thư mục game, rồi bấm Cài. Không cần cài thêm gì.', style='Sub.TLabel').pack(anchor='w')
 
         self.banner = tk.Label(self, text='', bg=BG, fg='white', font=('Segoe UI Semibold', 10), anchor='w', padx=20, pady=6)
