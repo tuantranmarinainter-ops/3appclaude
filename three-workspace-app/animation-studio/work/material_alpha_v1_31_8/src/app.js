@@ -117,6 +117,8 @@ let rig,
   importToken = 0;
 // B68: host display height (heightBlocks) for one rig; every place that resets the wrapper scale must use displayScale().
 let displayHint = null;
+// Scene mode (S3): rigs of non-editing scene characters stay alive across mount() so switching never re-parses a GLB.
+const retainedRigs = new WeakSet();
 function displayScale(r) {
   return (displayHint && displayHint.root === r.root ? displayHint.height : 2) / r.height;
 }
@@ -689,7 +691,10 @@ function makeView(container, edit = false) {
       node.updateWorldMatrix(true, false);
     }
     const picks = ray.intersectObjects(candidates);
-    if (v.edit && pickOnionPose(ray, picks[0]?.distance)) return;
+    if (v.edit && pickOnionPose(ray, picks[0]?.distance)) {
+      e.studioPicked = true;
+      return;
+    }
     let picked = picks[0]?.object;
     if (!picked) {
       picked = candidates
@@ -709,6 +714,7 @@ function makeView(container, edit = false) {
     }
     if (picked) {
       const id = picked.userData.boneId;
+      e.studioPicked = true; // lets later listeners (scene character picking) know this click was consumed
       if (edit) selectUser(id);
       else selectCompare(v === compareA ? 'A' : 'B', id);
     }
@@ -1068,6 +1074,23 @@ function applyViewportLayout() {
   viewportToolbar?.sync();
   dirtyViews();
 }
+/** True when the pointer is within `px` screen pixels of the rotate gizmo's drawn view ring ('E' handle). */
+function gizmoRingNear(g, e, rect, px) {
+  const handle = g._gizmo?.gizmo?.rotate?.children.find((c) => c.name === 'E');
+  if (!handle) return true;
+  g.getHelper().updateMatrixWorld(true);
+  const ray = new T.Raycaster(),
+    point = new T.Vector2();
+  for (let i = -1; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2,
+      dx = i < 0 ? 0 : Math.cos(a) * px,
+      dy = i < 0 ? 0 : Math.sin(a) * px;
+    point.set(((e.clientX + dx - rect.left) / rect.width) * 2 - 1, (-(e.clientY + dy - rect.top) / rect.height) * 2 + 1);
+    ray.setFromCamera(point, g.camera);
+    if (ray.intersectObject(handle, true).length) return true;
+  }
+  return false;
+}
 function installGizmoPriority(v) {
   const canvas = v.renderer.domElement;
   canvas.addEventListener(
@@ -1094,6 +1117,19 @@ function installGizmoPriority(v) {
           v.gizmo.enabled = false;
         else if (radius > v.gizmoRadius * 0.5) v.moveGizmo.enabled = false;
         else v.gizmo.enabled = false;
+      }
+      // Scene mode ("Ưu tiên chuyển"): the free-rotate trackball and the view ring yield to a neighbour character's body
+      // under the pointer; the pointerup handler in shot_controller then switches the editing character.
+      for (const g of [v.gizmo, v.moveGizmo]) {
+        if (!g.enabled || !g.axis) continue;
+        const ring = g.mode === 'rotate' && g.axis === 'E';
+        if (
+          (g.mode === 'rotate' && g.axis === 'XYZE' && v.rootPickYields?.(e)) ||
+          (ring && v.rootPickYields?.(e) && !gizmoRingNear(g, e, rect, 6))
+        ) {
+          g.enabled = false;
+          g.axis = null;
+        }
       }
     },
     true,
@@ -1127,9 +1163,13 @@ function clearView(v) {
 }
 function placeAnimationRig(v, r) {
   const placement = CompareSpace.alignClip(r, v.wrapper, 'z', true);
-  if (placement.warning) r.warnings.push(placement.warning);
+  // A rig can be mounted again (scene character switch): never repeat a warning it already carries.
+  const warn = (text) => {
+    if (!r.warnings.includes(text)) r.warnings.push(text);
+  };
+  if (placement.warning) warn(placement.warning);
   if (placement.source.startsWith('đáy mesh'))
-    r.warnings.push('Không nhận diện được xương bàn chân; dùng đáy mesh để đặt mặt đất.');
+    warn('Không nhận diện được xương bàn chân; dùng đáy mesh để đặt mặt đất.');
 }
 function mount(v, r) {
   V.clearMeshDisplay(v);
@@ -1142,7 +1182,7 @@ function mount(v, r) {
   clearView(v);
   if (v.rig) {
     v.wrapper.remove(v.rig.root);
-    disposeObject(v.rig.root);
+    if (!retainedRigs.has(v.rig)) disposeObject(v.rig.root);
     for (const c of Object.values(v.rig.controls)) {
       c.object.removeFromParent();
       disposeObject(c.object);
@@ -2304,9 +2344,11 @@ function renderPoses() {
     $('poseList').append(row);
   });
 }
-async function install(r) {
-  window.__studio?.shot?.clear();
-  window.__studio?.sceneShot?.clear();
+async function install(r, { keepScene = false } = {}) {
+  if (!keepScene) {
+    window.__studio?.shot?.clear();
+    window.__studio?.sceneShot?.clear();
+  }
   directorCancel();
   endSourcePreview(false);
   assertEditingAllowed();
@@ -8417,6 +8459,7 @@ listen('reportCsv', 'click', () => {
   );
 });
 window.addEventListener('beforeunload', (e) => {
+  if (window.__bbsAllowUnload) return;
   if (
     dirty ||
     Object.entries(editorSlots).some(([side, slot]) => side !== activeEditorSlot && slot?.dirty)

@@ -533,6 +533,34 @@ function updateLabels(view, settings) {
   }
 }
 
+/** True when the pointer is within `px` screen pixels of the root ring's drawn line (circle + heading arrow). */
+function strokeNear(view, d, event, rect, px) {
+  d.shape.updateWorldMatrix(true, false);
+  const flat = d.drawn.geometry?.type === 'RingGeometry';
+  const at = (x, z) => {
+    const p = (flat ? new T.Vector3(x, z, 0) : new T.Vector3(x, 0, z))
+      .applyMatrix4(d.shape.matrixWorld)
+      .project(view.camera);
+    return [((p.x + 1) * rect.width) / 2 + rect.left, ((1 - p.y) * rect.height) / 2 + rect.top];
+  };
+  const r = flat ? 0.89 : 1;
+  const path = [];
+  for (let i = 0; i <= 64; i++) path.push(at(Math.cos((i / 64) * Math.PI * 2) * r, Math.sin((i / 64) * Math.PI * 2) * r));
+  const arrow = flat
+    ? []
+    : [at(0, -1), at(0, -1.45), at(-0.2, -1.2), at(0, -1.45), at(0.2, -1.2)];
+  const dist = (a, b) => {
+    const dx = b[0] - a[0],
+      dy = b[1] - a[1],
+      l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((event.clientX - a[0]) * dx + (event.clientY - a[1]) * dy) / l2)) : 0;
+    return Math.hypot(event.clientX - a[0] - t * dx, event.clientY - a[1] - t * dy);
+  };
+  for (const line of [path, arrow])
+    for (let i = 1; i < line.length; i++) if (dist(line[i - 1], line[i]) <= px) return true;
+  return false;
+}
+
 export function pick(view, event) {
   if (!view.widgets?.length) return null;
   const rect = view.renderer.domElement.getBoundingClientRect();
@@ -553,6 +581,9 @@ export function pick(view, event) {
     const valid = (hit) => !d.clipPlane || d.clipPlane.distanceToPoint(hit.point) >= -1e-6;
     const hit = precise.find(valid) || padded.find(valid);
     if (!hit) continue;
+    // Scene mode: the large root ring yields to a character standing behind it unless the pointer is on its stroke.
+    if (d.kind === 'root' && view.rootPickYields?.(event) && !strokeNear(view, d, event, rect, 6))
+      continue;
     if (!d.inFront) {
       const meshHit = ray.intersectObjects(
         view.rig.mesh.filter((m) => m.visible),

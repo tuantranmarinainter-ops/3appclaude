@@ -504,6 +504,16 @@ class ShotPackageTests(unittest.TestCase):
         write_json(self.shot_dir / "characters/partner.manifest.json", manifest(self.PARTNER_GLB, self.PARTNER_ORIGINAL))
         self.save_shot()
 
+    def test_scene_mode_character_name_is_optional_non_empty_string(self):
+        self.add_partner()
+        self.shot["characters"][1]["name"] = "Đen"
+        self.save_shot()
+        self.assertEqual(validate_shot(self.shot_dir), [])
+        for bad in ("", 5):
+            self.shot["characters"][1]["name"] = bad
+            self.save_shot()
+            self.assertIn("INVALID_VALUE", [i["code"] for i in validate_shot(self.shot_dir)])
+
     def test_scene_mode_shot_with_two_editable_characters(self):
         self.add_partner()
         self.assertEqual([c["editable"] for c in self.shot["characters"]], [True, True])

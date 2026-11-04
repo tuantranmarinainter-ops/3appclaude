@@ -109,3 +109,108 @@ và "navigation hint dismissal is shared across ports through a cookie" (lỗi m
 | `python -m unittest agent.test_shot_package` | 65/65 đạt |
 | `pnpm typecheck` toàn workspace | đạt |
 | Công cụ kiểm id App 3 | 497 → 499 (thêm `sceneCameraBtn`, `sceneCameraFrame`), thiếu 0 |
+
+## S3: click chọn nhân vật, bản sửa/Undo từng nhân vật, mờ nhân vật xem (nhánh `claude/app3-scene-s3`)
+
+### Đã làm
+- Click vào thân nhân vật khác trong khung 3D (hoặc bấm dòng trong danh sách mới ở cột trái `#sceneCharacterList`) để sửa nhân vật đó.
+  Control của rig đang sửa vẫn ưu tiên; kéo xoay khung (> 4 px) không chuyển. Vòng Root lớn nhường cho thân nhân vật xem nằm trong vòng,
+  trừ khi bấm đúng nét vòng.
+- Bộ nhớ trạng thái từng nhân vật: key, Undo/Redo, lựa chọn; rig parse một lần rồi giữ lại; quay lại rig cũ thì đặt về tư thế nghỉ trước
+  khi dựng IK (giống lần đầu); cài rig lỗi giữa chừng thì quay về nhân vật trước.
+- Nhân vật đã sửa nhưng không đang sửa chạy theo key mới (nướng thành clip cho actor xem); nhân vật chưa sửa chạy bản nướng F2.
+- Nhân vật xem mờ 50%, không rig, không nhãn; nhãn "Đang sửa: <tên>" (`#sceneEditingLabel`); dấu "●" cạnh nhân vật đã sửa; onion chỉ
+  cho nhân vật đang sửa. Gói cả cảnh mang tên nhân vật (`name`, tùy chọn; TS/Python/App 3 validator nhận).
+- Không cho chuyển khi đang có tư thế chưa ghi key, khi ở "Dựng cảnh" chỉ xem, hoặc ở Animation Lab (thông báo tiếng Việt).
+- Phiên cầu nối App 2 (broker) giữ định danh nhân vật mở shot, nên chuyển nhân vật không làm đóng phiên.
+  "Chưa lưu" = khác lần lưu gần nhất (`markSaved` khi host báo đã lưu); "●" = khác bản F2.
+
+### Số đo S3 (App 3 build thật, Chromium headless, SwiftShader; dự án tổng hợp)
+| Mục | Ngưỡng | Đo | Trạng thái |
+| --- | --- | --- | --- |
+| A → B → A 10 lần (20 lần chuyển): hash key của A | không đổi | giống nhau cả 20 lần, bằng giá trị ngay sau khi sửa | PASS |
+| Actor xem của A hiện đúng tư thế vừa sửa | — | lệch 1,8·10⁻⁷ | PASS |
+| B nướng từ GLB so với clip F2 | — | lệch 6·10⁻⁸ | PASS |
+| Undo theo từng nhân vật (Ctrl+Z hoàn tác A, B không đổi) | — | đúng | PASS |
+| Onion chỉ nhân vật đang sửa | — | rig đang sửa có bóng, actor xem 0 | PASS |
+| IK rest sau B→A→B so với lần đầu vào B | — | ≤ 1·10⁻⁶ | PASS |
+| Click thật chuyển nhân vật, cảnh 2 nhân vật | — | chuyển được | PASS |
+| Click thật chuyển nhân vật, cảnh 5 nhân vật | — | chuyển được khi bấm chỗ không có gizmo (xem mục mở) | PASS có điều kiện |
+| Thời gian chuyển nhân vật lần đầu / các lần sau | — | 1,3–1,9 s / trung bình 0,38–0,45 s (tối đa 0,67 s) | đo được (máy không GPU) |
+
+### Điểm mở (cần người dùng chốt)
+- Gizmo xoay của đối tượng đang chọn (mặc định Root) có vùng quả cầu xoay tự do lớn, phủ lên các nhân vật đứng sát; bấm vào thân nhân vật
+  đó sẽ bắt đầu xoay thay vì chuyển nhân vật. Hiện vẫn chuyển được bằng danh sách cột trái hoặc bấm chỗ ngoài gizmo.
+- Redo trong App 3 là Ctrl+Shift+Z (Ctrl+Y không gán), hành vi có sẵn.
+
+### Test đã chạy (S3)
+| Bộ test | Kết quả |
+| --- | --- |
+| App 3 unit: `scene_shot`, `layout_modes`, `shot_package`, `scene_select`, `app3_bridge`, `app3_workflow_steps`, `app3_director` | 85/85 đạt |
+| App 3 trình duyệt: `scene_select.browser` (3 ca: §9 bước 3–5 + chuyển 10 lần, các lỗi review, vòng Root nhường) | 3/3 đạt |
+| App 3 trình duyệt: `scene_shot.browser` | 1/1 đạt |
+| `scene_select_evidence.mjs` (click thật, ảnh từng bước, 2 và 5 nhân vật) | mọi mục đạt |
+| `app3Embed.test.ts` / `app3SceneModeS1.test.ts` | 3/3 / 8/8 đạt |
+| `python -m unittest agent.test_shot_package` | 66/66 đạt |
+| `pnpm typecheck` toàn workspace | đạt |
+| Công cụ kiểm id App 3 | 497 → 501 (thêm `sceneEditingLabel`, `sceneCharacterList`), thiếu 0 |
+
+## S4: "Mở cả cảnh", "Lưu clip gộp" nhiều dòng, trả về (nhánh `claude/app3-scene-s4`)
+
+### Đã làm
+- Host F3 (`animation-creation/index.tsx`, `src/sceneShotHost.ts`): nút **"Mở cả cảnh"** (`shot.export` `sceneMode`), trạng thái
+  "Đã nới khoảng a–b → c–d…", chọn nhân vật khác không hỏi kiểu B66; **"Trả kết quả về cảnh"** đọc `result.json`, mở hộp
+  **"Lưu clip gộp"** một dòng cho mỗi nhân vật đã sửa (tên/mô tả mặc định như K5), gửi `merges`; **"Bỏ sửa"** hỏi lại một lần.
+- Hộp "Lưu clip gộp" (cả bản K5 một nhân vật) nằm trong lớp hộp thoại riêng `#bbsHostDialogs` trên `body` của App 3, luôn nổi trên
+  các bảng nổi của App 3 (trước đây bị `#floatingAnimationList` che).
+- App 3 (`sceneExportFiles`, `sceneResultFiles`): một gói kết quả `sceneMode: true` có edit cho mọi nhân vật khác bản F2 (GLB + manifest
+  + placementKeys riêng); nhân vật không sửa không có edit; không sửa gì → `edits: []` (host báo "Chưa sửa nhân vật nào").
+- Lệnh cầu nối mới `shotClose`: sau khi nhập kết quả thành công, host đóng shot cả cảnh trong App 3 (hết "chưa lưu", lần mở sau nướng lại
+  từ project mới). `allowUnload`: "Bỏ sửa" ở chế độ cả cảnh không hiện thêm hộp "Rời trang?" của trình duyệt (luồng một nhân vật giữ nguyên).
+- Test: `scene_export.browser.test.mjs` (2 ca), test cầu nối `shotClose`; script trọn luồng `apps/studio/scripts/sceneModeE2E.mjs`
+  (Studio thật qua `next dev` cổng 3120, bản sao project + `W01_LIBRARY` tạm, click chuột thật).
+
+### Bài test §9 trọn luồng (Studio thật, dự án tổng hợp 2 nhân vật A/B; lần chạy cuối, embed hiện tại)
+| Bước | Trạng thái | Số / ghi chú |
+| --- | --- | --- |
+| 1. F3 → chọn A → "Mở cả cảnh": thấy A và B đúng chỗ như F2 | PASS | root lệch 0 m so với sampler App 2 ở 3 khung; báo "Đã nới khoảng 0–76 → 0–87" |
+| 2. Phát: cả hai chạy cùng lúc | PASS | |
+| 3. Sửa A, click thật vào thân B: sang B, A mờ 0,5, ● cạnh A, A chạy bản vừa sửa | PASS | chuyển 0,26 s (App 3), 1,6 s tính cả click |
+| 4. Sửa B, click lại A: bản sửa A còn, Ctrl+Z (bàn phím) chỉ hoàn tác A | PASS | hash key A không đổi sau 10 vòng A→B→A |
+| 5. Onion chỉ nhân vật đang sửa | PASS | 0 bóng trên actor xem |
+| 6. "Nhìn qua camera cảnh" | PASS | |
+| 7. "Trả kết quả": hộp 2 dòng (không bị che); đặt tên → F2 mỗi nhân vật 1 clip gộp phủ 0–87 đúng tên; Ctrl+Z một lần về như trước | PASS | một revision; hash scene/extensions/motions/bindings sau Undo = trước |
+| 7b. Lần 2 chỉ sửa A: hộp 1 dòng, clip/binding của B giữ nguyên hash | PASS | |
+| 8. Thư viện (F5) có clip gộp đúng tên | BLOCKED | nhân vật tổng hợp không phải nhân vật Thư viện (`libraryActionUuids: []`); cần bản sao `tall-projects` + `tall-lib` |
+| "Bỏ sửa": hỏi lại 1 lần, chấp nhận thì bỏ hết | PASS | |
+
+### Thời gian "Mở cả cảnh" qua Studio (≤ 15 s), tính từ click thật tới App 3 hiện đủ nhân vật
+| Trường hợp | 2 nhân vật | 5 nhân vật |
+| --- | --- | --- |
+| Lần đầu sau khi bật `next dev` (biên dịch route) | 9,3 s | 10,7 s |
+| Các lần sau | 5,9–6,5 s | 4,9–6,8 s |
+Trạng thái: PASS trên máy cloud (không GPU). App 3 tự mở chỉ 0,4–0,6 s; còn lại là các request HTTP tuần tự và luồng chính trình duyệt
+bị chậm. Con số 24 s đo trước là do script tính cả thời gian Playwright chờ nút (2,7–5,5 s) cộng vòng chờ.
+
+### Test đã chạy (S4, bản cuối)
+| Bộ test | Kết quả |
+| --- | --- |
+| App 3 unit (7 file) | 86/86 đạt |
+| App 3 trình duyệt `scene_export` / `scene_select` / `scene_shot` | 2/2, 4/4, 1/1 đạt |
+| Studio: `app3Embed`, `app3SceneModeS1`, `sceneShotHost`, `animationCreationEntry`, `app1Import`, `exportShotSelection`, `clipBlendK5.pure` | 39/39 đạt |
+| Python `agent.test_shot_package`, `test_unified_cli`, `test_unified_mcp` | đạt |
+| `sceneModeE2E.mjs` (§9 trọn luồng) | 13 PASS, 1 BLOCKED (Thư viện), 0 FAIL |
+| `pnpm typecheck` toàn workspace | đạt |
+| Công cụ kiểm id App 3 | 497 → 501, thiếu 0 |
+
+## Tổng kết §8
+| Mục | Ngưỡng | Kết quả (máy cloud, dự án tổng hợp) | Trạng thái |
+| --- | --- | --- | --- |
+| Khớp F2: root mỗi nhân vật | ≤ 1 cm, ≤ 1° | 0 cm, 0° (2 và 5 nhân vật) | PASS |
+| Khớp F2: xương | ≤ 0,5° | ≤ 0,00007° | PASS |
+| Nhân vật không sửa sau khi trả về | hash giữ nguyên | giữ nguyên (test S1 + bước 7b) | PASS |
+| A → B → A 10 lần | key A không đổi | không đổi | PASS |
+| 5 nhân vật khi phát | ≥ 30 FPS | 1–5 FPS (SwiftShader, không GPU; shot 1 nhân vật cũ cũng vậy) | BLOCKED |
+| Mở shot 5 nhân vật | ≤ 15 s | 4,9–10,7 s | PASS |
+| Không hồi quy (test App 3, K5, kiểm id) | — | đạt; kiểm id thiếu 0 | PASS |
+| Tất cả mục trên Tập 15 · Shot 01 thật | §8 | — | BLOCKED (không có `S:\` trên máy này) |

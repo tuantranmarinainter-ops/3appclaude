@@ -200,7 +200,8 @@ export function createRegistry() {
         if (!v || (e.editing && !v.group.visible)) continue;
         const t = Math.max(0, Math.min(time, e.duration));
         v.action.reset().play();
-        v.mixer.setTime(ShotPackage.clipTime(e.character.clip, t));
+        // An edited character plays its baked edit clip (shot time == clip time); the others play the F2 clip.
+        v.mixer.setTime(v.direct ? t : ShotPackage.clipTime(e.character.clip, t));
         v.group.updateMatrixWorld(true);
       }
       return true;

@@ -333,6 +333,43 @@ test('host self-registers, polls authenticated local queue and retains active/pi
   f.handlers.pagehide();
   assert.equal(f.parentHandlers['bbs-app3-project'], undefined);
 });
+test('scene shot: bridge identity stays pinned to the opened character while the editing character switches', async () => {
+  const f = await hostFixture(),
+    bridge = f.sandbox.window.__app3LocalBridge,
+    original = f.studio.rig(),
+    pin = Object.freeze({
+      character: { characterId: 'charA', actionUuid: 'act-A', glbSha256: 'a'.repeat(64) },
+      rig: f.context.rig,
+      rootUuid: f.context.rootUuid,
+      slot: f.context.slot,
+      activeRoot: f.context.activeRoot,
+      rigObject: original,
+    }),
+    shotSession = {
+      shot: { shotId: 'shot-1', frameRange: [0, 30], fps: 30 },
+      baseShotSha256: 'b'.repeat(64),
+      character: pin.character,
+    };
+  f.studio.sceneShot = { active: true, bridgePin: () => pin };
+  f.studio.shot = { session: shotSession };
+  const before = bridge.identity();
+  assert.equal(before.shot.characterId, 'charA');
+  assert.equal(JSON.parse(before.editor)[1], pin.rootUuid);
+  // Switch: new rig (asset, fingerprint, root uuid) and session.character moves to B, as onEditingChanged does.
+  f.context.rig = 'rigB';
+  f.context.rootUuid = randomUUID();
+  f.studio.rig = () => ({ asset: { data: Buffer.from('another character').toString('base64') } });
+  shotSession.character = { characterId: 'charB', actionUuid: 'act-B', glbSha256: 'f'.repeat(64) };
+  assert.deepEqual(bridge.identity(), before, 'identity constant across the switch');
+  await f.timers[0]();
+  assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 1, 'broker session survives the switch');
+  assert.equal(bridge.status().bound, true);
+  // Control: without the pin (not a scene shot) the same change replaces the session, as before.
+  f.studio.sceneShot = { active: false };
+  assert.notEqual(bridge.identity().editor, before.editor);
+  await f.timers[0]();
+  assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 0);
+});
 test('host auto-binding fails closed for shared asset; parent-only explicit binding resolves verified SHA', async () => {
   const f = await hostFixture(true);
   assert.equal(call(f.p, 'app3.session.list', {}).sessions.length, 0);
@@ -897,4 +934,53 @@ test('receiver completes definite artifact validation failures and releases the 
   await f.timers[0]();
   assert.equal(exports, 1);
   assert.equal(artifactAttempts, 1);
+});
+
+test('host shotClose drops the scene shot, re-baselines dirty and reports closed; plain editor still answers', async () => {
+  const f = await hostFixture();
+  let shotClears = 0,
+    sceneClears = 0,
+    scene = true;
+  f.studio.state = { dirty: true };
+  f.studio.shot = {
+    session: { shot: { shotId: 's' } },
+    clear: () => {
+      shotClears++;
+      f.studio.shot.session = null;
+    },
+  };
+  f.studio.sceneShot = {
+    get active() {
+      return scene;
+    },
+    anyDirty: () => scene,
+    clear: () => {
+      sceneClears++;
+      scene = false;
+    },
+  };
+  f.studio.serialized = () => ({ duration: 2, edited: true });
+  await f.timers.at(-1)();
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, true);
+  await f.send('shotClose', {});
+  assert.equal(
+    JSON.stringify(f.messages.at(-1).value),
+    JSON.stringify({ closed: true, wasScene: true, hadShot: true }),
+  );
+  assert.equal(f.messages.at(-1).ok, true);
+  assert.equal([shotClears, sceneClears].join(), '1,1');
+  // dirty is posted false immediately and stays false (savedSnapshot == current serialized state)
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, false);
+  await f.timers.at(-1)();
+  assert.equal(f.messages.filter((m) => m.type === 'dirty').at(-1).dirty, false);
+  // a second close is harmless and a following shotOpen is no longer blocked by "unsaved"
+  await f.send('shotClose', {});
+  assert.equal(
+    JSON.stringify(f.messages.at(-1).value),
+    JSON.stringify({ closed: true, wasScene: false, hadShot: false }),
+  );
+  // spoofed origin gets no reply
+  const count = f.messages.length;
+  await f.send('shotClose', {}, { origin: 'https://bad.example' });
+  assert.equal(f.messages.length, count);
 });

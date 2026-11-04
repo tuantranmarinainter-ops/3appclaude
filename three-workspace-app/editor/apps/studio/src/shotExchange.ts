@@ -40,7 +40,7 @@ function shotCameraKeys(scene: ReturnType<typeof projectEvaluationScene>,snapsho
   return keys
 }
 /** Nướng một chuỗi clip của một nhân vật thành GLB + manifest trong gói và thêm vào shot (dùng chung cho K5 và scene mode). */
-async function packBakedCharacter(project: UnifiedProject,character: UnifiedProject['characters'][string],clips: MotionClip[],range: [number,number],snapshot: EvalSnapshot,files: PackageFiles,shot: Shot,editable: boolean) {
+async function packBakedCharacter(project: UnifiedProject,character: UnifiedProject['characters'][string],clips: MotionClip[],range: [number,number],snapshot: EvalSnapshot,files: PackageFiles,shot: Shot,editable: boolean,name?: string) {
   const node=project.scene.content.nodes.find(n=>n.id===character.nodeId)
   const libraryCharacterId=typeof node?.metadata?.libraryCharacterId==='string'?node.metadata.libraryCharacterId:null
   const baked=await bakeShotChain(project,character,clips,range,libraryCharacterId)
@@ -51,7 +51,7 @@ async function packBakedCharacter(project: UnifiedProject,character: UnifiedProj
   if(Math.abs(t.rotation.x)>1e-6||Math.abs(t.rotation.z)>1e-6||xyz(t.scale).some(v=>Math.abs(v-(height?.heightScale??1))>1e-6))throw new TypeError('Shot placement supports translation/yaw at unit scale only')
   let shotHeight=height
   if(height) { try { shotHeight={...height,heightScale:height.heightBlocks/libraryCharacterBoundingBoxHeight(Buffer.from(baked.bytes))} } catch { /* Animation-only GLB retains the source model's canonical units. */ } }
-  shot.characters.push({...shotHeight,characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(baked.bytes),actionUuid:baked.actionUuid,clip:{sourceStartSeconds:0,sourceEndSeconds:baked.durationSeconds,speed:1,loop:false,reverse:false},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:'skeletal',editable})
+  shot.characters.push({...shotHeight,...(name?{name}:{}),characterId:character.id,glb,manifest:manifestPath,glbSha256:sha256(baked.bytes),actionUuid:baked.actionUuid,clip:{sourceStartSeconds:0,sourceEndSeconds:baked.durationSeconds,speed:1,loop:false,reverse:false},placement:{position:xyz(t.position),yawDegrees:t.rotation.y},rootPolicy:'skeletal',editable})
   return baked
 }
 const chainInfo=(project: UnifiedProject,clips: MotionClip[])=>clips.map(c=>({clipId:c.id,motionId:project.bindings[c.id]?.motionId??c.motion.assetId,frameStart:c.frameStart,frameEnd:c.frameEnd}))
@@ -179,7 +179,7 @@ async function createSceneShotPackage(project: UnifiedProject,args: ShotExportAr
   shot.camera.keys=shotCameraKeys(scene,snapshot,args.cameraNodeId,rangeStart,rangeEnd)
   shot.camera.aspect=readFilmFrameAspect(project.extensions)
   for(const character of sceneCharacters) {
-    const inRange=clipsOf(character),baked=await packBakedCharacter(project,character,inRange,[rangeStart,rangeEnd],snapshot,files,shot,true)
+    const inRange=clipsOf(character),baked=await packBakedCharacter(project,character,inRange,[rangeStart,rangeEnd],snapshot,files,shot,true,character.name.trim()||undefined)
     clips[character.id]={clipId:inRange[0]!.id,motionId:baked.actionUuid,scene:true,chain:chainInfo(project,inRange)}
   }
   await packShotReferences(project,snapshot,files,shot)

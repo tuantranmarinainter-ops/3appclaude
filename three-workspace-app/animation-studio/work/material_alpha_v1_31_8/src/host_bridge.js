@@ -167,7 +167,19 @@
       return false;
     }
   };
-  const localContext = () => window.__studio?.director?.context() || { ready: false };
+  // Scene shot ("Cả cảnh"): the broker leased the ORIGINALLY opened character. Switching the editing character must not
+  // change what the bridge reports, so identity/sha/shot identity come from the pin frozen at shotOpen.
+  const scenePin = () => {
+    const s = window.__studio?.sceneShot;
+    return s?.active ? (s.bridgePin?.() ?? null) : null;
+  };
+  const localContext = () => {
+    const c = window.__studio?.director?.context() || { ready: false },
+      pin = scenePin();
+    return pin && c.ready
+      ? { ...c, rig: pin.rig, rootUuid: pin.rootUuid, slot: pin.slot, activeRoot: pin.activeRoot }
+      : c;
+  };
   const candidates = () => {
     const matches = [];
     for (const project of Object.values(parentAccessible ? parent.__bbsApp3Projects || {} : {})) {
@@ -221,7 +233,7 @@
       } catch {}
   }
   async function actualSha() {
-    const data = window.__studio?.rig?.()?.asset?.data;
+    const data = (scenePin()?.rigObject ?? window.__studio?.rig?.())?.asset?.data;
     if (typeof data !== 'string') throw Error('IDENTITY_MISMATCH');
     const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
     return digest(bytes);
@@ -386,16 +398,18 @@
     }
   }
   const shotIdentity = () => {
-    const session = window.__studio?.shot?.session;
+    const session = window.__studio?.shot?.session,
+      // Scene mode: session.character follows the editing character; the lease belongs to the opened one.
+      character = scenePin()?.character ?? session?.character;
     return session
       ? {
           shotId: session.shot.shotId,
           baseShotSha256: session.baseShotSha256,
-          characterId: session.character.characterId,
-          actionUuid: session.character.actionUuid,
+          characterId: character.characterId,
+          actionUuid: character.actionUuid,
           frameRange: session.shot.frameRange,
           fps: session.shot.fps,
-          sourceSha256: session.character.glbSha256,
+          sourceSha256: character.glbSha256,
         }
       : null;
   };
@@ -482,6 +496,7 @@
     if (!studio.shot?.openZip) throw Error('CONTRACT_UNSUPPORTED');
     if (
       studio.state.draft ||
+      studio.sceneShot?.anyDirty?.() ||
       (studio.state.dirty &&
         JSON.stringify(studio.serialized(false)) !== savedSnapshot &&
         savedSnapshot)
@@ -825,6 +840,8 @@
           }
         : {}),
     }),
+    // What the bridge reports about the editor/shot (test hook): constant across scene character switches.
+    identity: () => ({ editor: editorIdentity(), shot: shotIdentity() }),
   };
 
   const reply = (requestId, ok, value) =>
@@ -861,6 +878,7 @@
       type === 'open' ||
       type === 'shotOpen' ||
       type === 'libraryActionOpen' ||
+      type === 'shotClose' ||
       type === 'app3-bind';
     if (replaces && (opening || artifactBusy)) {
       reply(requestId, false, 'APP3_BUSY');
@@ -878,7 +896,9 @@
       } else if (type === 'open') {
         const current = JSON.stringify(studio.serialized(false));
         if (
-          (studio.state.draft || (studio.state.dirty && current !== savedSnapshot)) &&
+          (studio.state.draft ||
+            studio.sceneShot?.anyDirty?.() ||
+            (studio.state.dirty && current !== savedSnapshot)) &&
           savedSnapshot
         )
           throw new Error(
@@ -910,7 +930,28 @@
         });
       } else if (type === 'saved') {
         savedSnapshot = JSON.stringify(studio.serialized(false));
+        studio.sceneShot?.markSaved?.();
         reply(requestId, true, { saved: true });
+      } else if (type === 'allowUnload') {
+        // Scene-mode "Bỏ sửa": the host already asked the user, so the reload must not show a second browser prompt.
+        window.__bbsAllowUnload = true;
+        reply(event.data.requestId, true, { allowUnload: true });
+      } else if (type === 'shotClose') {
+        // The host imported the shot result into the project: drop the shot (scene layout, per-character edits, F2 baseline)
+        // so nothing stays dirty and the next "Mở cả cảnh" starts from fresh bakes of the changed project.
+        const wasScene = !!studio.sceneShot?.active;
+        const hadShot = !!studio.shot?.session || wasScene;
+        studio.shot?.clear?.();
+        studio.sceneShot?.clear?.();
+        await resetLocal();
+        loadedSha = null;
+        loadedRig = null;
+        savedSnapshot = JSON.stringify(studio.serialized(false));
+        if (lastDirty) {
+          lastDirty = false;
+          parent.postMessage({ channel: CHANNEL, type: 'dirty', dirty: false }, location.origin);
+        }
+        reply(requestId, true, { closed: true, wasScene, hadShot });
       } else if (type === 'active') {
         localActive = value.active === true;
         if (!value.active && studio.state.playing) document.getElementById('playBtn')?.click();
@@ -920,6 +961,7 @@
         // Shot package ZIP from App 2 (shot.export). Opening replaces the editor content, so unsaved work blocks it.
         if (
           studio.state.draft ||
+          studio.sceneShot?.anyDirty?.() ||
           (studio.state.dirty &&
             JSON.stringify(studio.serialized(false)) !== savedSnapshot &&
             savedSnapshot)
@@ -965,7 +1007,11 @@
     if (!studio?.ready) return;
     syncDisplayHeight();
     const current = JSON.stringify(studio.serialized(false));
-    const dirty = !!studio.state.draft || (!!studio.state.dirty && current !== savedSnapshot);
+    // Scene mode: a character that is edited but not being edited right now still counts (its keys live in memory only).
+    const dirty =
+      !!studio.state.draft ||
+      !!studio.sceneShot?.anyDirty?.() ||
+      (!!studio.state.dirty && current !== savedSnapshot);
     if (dirty !== lastDirty) {
       lastDirty = dirty;
       parent.postMessage({ channel: CHANNEL, type: 'dirty', dirty }, location.origin);

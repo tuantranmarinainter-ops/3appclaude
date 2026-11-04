@@ -173,7 +173,7 @@ export async function bakeEditedGLB(rig, project, name) {
     root.clear();
   }
 }
-export async function resultFiles(session, glb, placementKeys) {
+async function editParts(session, glb, placementKeys) {
   const id = crypto.randomUUID(),
     h = await sha256(glb),
     stem = session.character.characterId.replace(/[^a-zA-Z0-9_-]/g, '_') || 'character',
@@ -194,25 +194,48 @@ export async function resultFiles(session, glb, placementKeys) {
       },
     ],
   };
+  const edit = {
+    characterId: session.character.characterId,
+    originalActionUuid: session.character.actionUuid,
+    newActionUuid: id,
+    glb: path + '.glb',
+    manifest: path + '.manifest.json',
+    glbSha256: h,
+    placementKeys,
+  };
+  return { edit, path, manifest };
+}
+export async function resultFiles(session, glb, placementKeys) {
+  const { edit, path, manifest } = await editParts(session, glb, placementKeys);
   const result = {
     version: '1.0.0',
     shotId: session.shot.shotId,
     baseShotSha256: session.baseShotSha256,
-    edits: [
-      {
-        characterId: session.character.characterId,
-        originalActionUuid: session.character.actionUuid,
-        newActionUuid: id,
-        glb: path + '.glb',
-        manifest: path + '.manifest.json',
-        glbSha256: h,
-        placementKeys,
-      },
-    ],
+    edits: [edit],
   };
   return {
     'result.json': encode(result),
     [path + '.glb']: glb,
     [path + '.manifest.json']: encode(manifest),
   };
+}
+/**
+ * Scene mode ("1 khung · Cả cảnh"): ONE result package with one edit per edited character.
+ * `items` = [{ session, glb, placementKeys, bobj? }] where `session` carries that character's own
+ * { shot, character, manifest, entry }. Zero items give a valid package with `edits: []`.
+ */
+export async function sceneResultFiles(shot, baseShotSha256, items) {
+  const result = { version: '1.0.0', shotId: shot.shotId, baseShotSha256, sceneMode: true, edits: [] },
+    files = {};
+  for (const { session, glb, placementKeys, bobj } of items) {
+    const { edit, path, manifest } = await editParts(session, glb, placementKeys);
+    files[path + '.glb'] = glb;
+    files[path + '.manifest.json'] = encode(manifest);
+    if (bobj != null) {
+      edit.bobj = path + '.minecraft20.bobj';
+      files[edit.bobj] = new TextEncoder().encode(bobj);
+    }
+    result.edits.push(edit);
+  }
+  return { 'result.json': encode(result), ...files };
 }
