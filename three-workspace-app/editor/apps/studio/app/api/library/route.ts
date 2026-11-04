@@ -8,17 +8,28 @@ import { addLibraryCharacterToProject, approveCharacterAction, characterActions,
 
 export const runtime = 'nodejs'
 
+/** The model a scene node was added with: current bytes, or the legacy (not face-forward) variant; null when the library changed. */
+async function matchingLibraryModel(charId: string, fingerprint: string | null) {
+  const model = await libraryCharacterModel(charId)
+  if (fingerprint === model.fingerprint) return model
+  const legacy = await libraryCharacterModel(charId, false)
+  return legacy.fingerprint === fingerprint ? legacy : null
+}
+
 export async function GET(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url)
     const heightCharacter = url.searchParams.get('heightCharacter')
     if (heightCharacter) return Response.json(await readLibraryCharacterHeight(heightCharacter), { headers: { 'Cache-Control': 'no-store' } })
+    const modelCheck = url.searchParams.get('modelCheck')
+    if (modelCheck) {
+      const model = await matchingLibraryModel(modelCheck, url.searchParams.get('fingerprint'))
+      return Response.json({ current: !!model }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const modelCharacter = url.searchParams.get('modelCharacter')
     if (modelCharacter) {
-      const fingerprint = url.searchParams.get('fingerprint')
-      let model = await libraryCharacterModel(modelCharacter)
-      if (fingerprint !== model.fingerprint) { const legacy = await libraryCharacterModel(modelCharacter, false); if (legacy.fingerprint === fingerprint) model = legacy }
-      if (fingerprint !== model.fingerprint) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
+      const model = await matchingLibraryModel(modelCharacter, url.searchParams.get('fingerprint'))
+      if (!model) return Response.json({ error: 'Library model or skin changed; add the character again' }, { status: 409 })
       const headers = { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'private, max-age=31536000, immutable', ETag: `"${model.fingerprint}"` }
       if (request.headers.get('if-none-match')?.split(',').some(tag => tag.trim().replace(/^W\//, '') === headers.ETag || tag.trim() === '*')) return new Response(null, { status: 304, headers })
       return new Response(new Uint8Array(model.bytes), { headers })

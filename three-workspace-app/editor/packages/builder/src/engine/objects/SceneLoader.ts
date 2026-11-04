@@ -36,8 +36,11 @@ export async function loadDocument(
     }))
     const urls = [...new Set(urlByNode.values())]
     if (stale()) return
+    // B72: one broken character model (e.g. a stale library fingerprint → 409) must not blank the whole scene;
+    // the other characters still load and the missing one is skipped below.
     await Promise.all(urls.map((url) => loader.loadCharacterTemplate(url, onProgress,
-      charNodes.find((node) => urlByNode.get(node.id) === url)?.metadata?.modelFormat === 'fbx' ? 'fbx' : 'gltf')))
+      charNodes.find((node) => urlByNode.get(node.id) === url)?.metadata?.modelFormat === 'fbx' ? 'fbx' : 'gltf')
+      .catch((e) => { console.warn(`[Stage] 角色模型加载失败 ${url}`, e) })))
     if (stale()) return
     const mixamorigTpl = loader.mixamorigTemplate()
     if (mixamorigTpl) graph.motionPlayer.setMixamorigTemplate(mixamorigTpl)

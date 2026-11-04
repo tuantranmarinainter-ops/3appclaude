@@ -89,6 +89,9 @@ test('two library characters reuse one base asset and retain distinct per-node s
     rendered.push(binary.subarray(view.byteOffset, view.byteOffset + view.byteLength).toString('hex'))
     const stale = await GET(new Request(`http://localhost/api/library?modelCharacter=${node.metadata!.libraryCharacterId}&fingerprint=${'0'.repeat(64)}`))
     assert.equal(stale.status, 409)
+    const check = async (fingerprint: string) => (await (await GET(new Request(`http://localhost/api/library?modelCheck=${node.metadata!.libraryCharacterId}&fingerprint=${fingerprint}`))).json()).current
+    assert.equal(await check(model.fingerprint), true, 'B72: current link reports current')
+    assert.equal(await check('0'.repeat(64)), false, 'B72: stale link is reported without downloading the GLB')
     const skin = (await listLibraryCharacterDetails()).find(item => item.charId === node.metadata!.libraryCharacterId)!.textures[0]!
     writeFileSync(path.join(process.env.W01_LIBRARY!, skin.path), png(127))
     const changed = await GET(new Request(`http://localhost/api/library?modelCharacter=${node.metadata!.libraryCharacterId}&fingerprint=${model.fingerprint}`))
