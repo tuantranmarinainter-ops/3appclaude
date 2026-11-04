@@ -11,8 +11,9 @@ import {
   type SetStateAction,
 } from 'react'
 import type { TrackProp } from '../../../evaluate/curves/KeyframeTrack'
+import { useDirector } from '../../../bridge/DirectorContext'
 import { KEY_MOVE_COMMIT_PX } from '../constants'
-import type { KeyframeDragItem } from '../utils'
+import { clampKeyframeGroupDelta, type KeyframeDragItem } from '../utils'
 import type { SnapFrameFn } from './useSnapFrame'
 
 export type { KeyframeDragItem } from '../utils'
@@ -51,6 +52,9 @@ export function useKeyframeDrag(
 ) {
   const shared = useContext(KeyframeDragPreviewContext)
   const [localPreview, setLocalPreview] = useState<KeyframeDragPreview | null>(null)
+  const { useStore } = useDirector()
+  const frameStart = useStore((s) => s.doc?.content.timeline.frameStart ?? 0)
+  const frameEnd = useStore((s) => s.doc?.content.timeline.frameEnd ?? Number.POSITIVE_INFINITY)
   const preview = shared ? shared.preview : localPreview
   const setPreview = shared ? shared.setPreview : setLocalPreview
   const drag = useRef<{
@@ -59,12 +63,18 @@ export function useKeyframeDrag(
     items: KeyframeDragItem[]
   } | null>(null)
 
-  /** 整组按第一颗键吸附，保持组内相对间距；拖动中的键自身不当锚点。 */
+  /**
+   * 整组按第一颗键吸附，保持组内相对间距；拖动中的键自身不当锚点。
+   * Sau đó làm tròn về khung nguyên và kẹp trong [frameStart, frameEnd] như lúc ghi (không lấn khung âm).
+   */
   const snapDelta = (df: number, items: KeyframeDragItem[]) => {
     const lead = items[0]
-    if (!snap || !lead) return df
-    const keyIds = new Set(items.map((item) => item.keyId))
-    return snap(lead.origFrame + df, { keyIds }) - lead.origFrame
+    let snapped = df
+    if (snap && lead) {
+      const keyIds = new Set(items.map((item) => item.keyId))
+      snapped = snap(lead.origFrame + df, { keyIds }) - lead.origFrame
+    }
+    return clampKeyframeGroupDelta(snapped, items, { frameStart, frameEnd })
   }
 
   const begin = (e: PointerEvent<HTMLElement>, items: KeyframeDragItem[]) => {
@@ -98,7 +108,7 @@ export function useKeyframeDrag(
     drag.current = null
     setPreview(null)
     if (Math.abs(dx) <= KEY_MOVE_COMMIT_PX) return
-    if (Math.abs(df) < 1 / pxPerFrame) return
+    if (df === 0) return
     onMoveKeyframes(
       state.items.map((item) => ({
         nodeId: item.nodeId,

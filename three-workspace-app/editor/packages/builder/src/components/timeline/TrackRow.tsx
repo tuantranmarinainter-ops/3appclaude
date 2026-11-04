@@ -23,7 +23,7 @@ nextKeyframeSelection
 
 import { CameraClips, MotionClips, PathClips } from './TimelineClipRows'
 import { AddKeyframeButton, AggregateKeyframes, GhostKeyframes } from './TimelineKeyframeRows'
-import { fcurveFrames, isAdditiveMod, transformKeyframeFrames } from './utils/trackRow'
+import { fcurveFrames, isAdditiveMod, nextRowSelection, transformKeyframeFrames } from './utils/trackRow'
 
 export function TrackRow({
   row,
@@ -95,7 +95,12 @@ export function TrackRow({
             't3d-timeline-name-selected',
         )}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => {
+        onClick={(e) => {
+          // Ctrl/Cmd/Shift + bấm tên dòng: thêm/bỏ node vào nhóm chọn nhiều dòng.
+          if (isAdditiveMod(e)) {
+            onSelect(nextRowSelection(selection, row.nodeId, true))
+            return
+          }
           // A path sub-track represents a selectable path object rather than
           // only its target character. Selecting its first clip keeps the
           // target filtered in Timeline and makes the corresponding path
@@ -135,14 +140,14 @@ export function TrackRow({
         {row.kind === 'node' ? (
           <span
             className="t3d-timeline-node-name"
-            onClick={hasKids ? () => onToggle(row.key) : undefined}
+            onClick={hasKids ? (e) => { if (!isAdditiveMod(e)) onToggle(row.key) } : undefined}
           >
             {row.label}
           </span>
         ) : (
           <span
             className="t3d-timeline-track-label"
-            onClick={hasKids ? () => onToggle(row.key) : undefined}
+            onClick={hasKids ? (e) => { if (!isAdditiveMod(e)) onToggle(row.key) } : undefined}
           >
             {row.label}
           </span>
@@ -390,7 +395,7 @@ export function TrackRow({
                       return
                     }
                     const clicked: KeyframeRef = { nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }
-                    const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame)
+                    const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame, userKeys)
                     if (next !== selection) onSelect(next)
                     if (writeLocked) {
                       setFrame(kf.frame)
