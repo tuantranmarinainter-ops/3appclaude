@@ -21,7 +21,7 @@ simple_turbulence_fireworks, toonhit`); không có cột sáng đúng màu. Shot
 - **Phải chạy được trong BBS FS thật** (quy tắc App 4 MVP) + có preview sheet trong `vfx-previews` để App 2 hiện.
 
 ## Hình mẫu: luồng sáng UFO (người dùng 2026-11-04, lần 4)
-Ảnh mẫu người dùng gửi: `S:\Claude\w01-samples	ap15v3ef-vfx\cot-sang-ufo-mau.png` (ngoài repo, không commit).
+Ảnh mẫu người dùng gửi: `S:/Claude/w01-samples/tap15v3/ref-vfx/cot-sang-ufo-mau.png` (ngoài repo, không commit).
 - Giống **tia hút của UFO chiếu thẳng xuống đất**: cột sáng đứng, thành mờ trong suốt, sáng nhất ở lõi giữa và nhạt dần ra mép;
   hai mép thẳng, **gần như không xoè** (chỉ hơi rộng ra ở đáy).
 - Có **khói/sương sáng mờ** bao quanh thân cột, **bụi hạt lấp lánh** lơ lửng trong cột và rơi lả tả ở chân cột.
