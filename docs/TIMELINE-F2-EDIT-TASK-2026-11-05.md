@@ -97,7 +97,10 @@ clip; đổi menu clip hiện có; đổi cách tự lưu; sửa `packages/retar
 | E3 | Kéo nhóm lẫn clip + keyframe, một bước hoàn tác | Test `planTimelineGroupShift` + session xanh; mục 8.5 |
 
 Thứ tự nhánh: E1 từ `main` (độc lập, không đụng file keyframe). E2 xếp trên nhánh F2 (`claude/timeline-fcurve-f2`) nếu F2 chưa merge,
-không thì từ main. E3 xếp trên E2. Nhánh `claude/timeline-f2-e<n>`. Không tự merge.
+không thì từ main. E3 xếp trên E2.
+Việc timeline khác đang chạy song song (không đè): PR #220 `claude/timeline-kf-shift-fix` (Shift+bấm giữ khung Biến đổi; F1 xếp trên nó),
+thước thời gian mặc định chỉ "Giây" (`components/timeline/utils/rulers.ts`, phiên Claude khác). E1 đặt nút trên thanh F2 không được
+đổi mặc định thước; gặp xung đột thì rebase lên main mới nhất, giữ cả hai thay đổi. Nhánh `claude/timeline-f2-e<n>`. Không tự merge.
 
 ## 8. Đo số (bắt buộc)
 Dữ liệu: bản sao Shot 03 Tập 15 (`5673640e-…` từ `S:\Claude\w01-samples\tap15v3\projects`, copy bằng skill `w01-test-sandbox`;
