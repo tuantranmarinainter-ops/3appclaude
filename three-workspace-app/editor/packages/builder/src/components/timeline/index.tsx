@@ -11,7 +11,7 @@ import { cx } from '../common/cx'
 import { RangeSlider } from '../common/RangeSlider'
 import { browserPanelStorage } from '../common/panelLayout'
 import type { TimelineUnit } from '../../stores/types'
-import { readTimelineUnit, timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
+import { timelineUnitRuler, writeTimelineUnit } from './utils/timeUnit'
 import { readClipBlendOverlap, writeClipBlendOverlap } from './utils/blendPreference'
 import { ScrubNumberInput } from '../common/ScrubNumberInput'
 import { Tooltip } from '../common/Tooltip'
@@ -40,7 +40,7 @@ import { InOutOverlay } from './InOutOverlay'
 import { formatFrameInUnit } from './utils/timeUnit'
 import { Ruler } from './Ruler'
 import { orderPinnedRows, readPinnedRows, togglePinned, writePinnedRows } from './utils/pinnedRows'
-import { RULER_HEIGHT, readRulerVisibility, toggleRuler, visibleRulers, writeRulerVisibility, type RulerVisibility } from './utils/rulers'
+import { RULER_HEIGHT, defaultRulerVisibility, toggleRuler, visibleRulers, type RulerVisibility } from './utils/rulers'
 import { TIMELINE_NOTICE_EVENT } from './utils/clipMenu'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
@@ -118,12 +118,12 @@ function SceneTimeline() {
     writePinnedRows(browserPanelStorage(), draftId, ids)
     setPinnedState({ draftId, ids })
   }
-  const [rulers, setRulers] = useState<RulerVisibility>(() => readRulerVisibility(browserPanelStorage(), timelineUnit))
+  // Luôn mở với chỉ thước Giây (không đọc lựa chọn cũ); bật Khung/Tick chỉ có hiệu lực trong phiên.
+  const [rulers, setRulers] = useState<RulerVisibility>(() => defaultRulerVisibility())
   const shownRulers = visibleRulers(rulers)
   const toggleRulerUnit = (unit: TimelineUnit) => {
     const next = toggleRuler(rulers, unit)
     if (next === rulers) return
-    writeRulerVisibility(browserPanelStorage(), next)
     setRulers(next)
     setTimelineUnit(visibleRulers(next)[0])
   }
@@ -156,14 +156,14 @@ function SceneTimeline() {
   const [viewW, setViewW] = useState(0)
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({})
 
-  // N3: nhớ đơn vị hiển thị (giây/frame/tick) như các preference panel khác.
   const unitHydrated = useRef(false)
   useEffect(() => {
     if (!unitHydrated.current) {
       unitHydrated.current = true
-      const stored = readTimelineUnit(browserPanelStorage())
-      if (stored !== timelineUnit) {
-        setTimelineUnit(stored)
+      // Đơn vị hiển thị đi theo thước đầu tiên đang hiện; lúc mở chỉ có Giây.
+      const initial = visibleRulers(defaultRulerVisibility())[0]
+      if (initial !== timelineUnit) {
+        setTimelineUnit(initial)
         return
       }
     }
