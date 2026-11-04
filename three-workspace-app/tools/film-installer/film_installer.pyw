@@ -92,9 +92,6 @@ class App(tk.Tk):
         s.configure('Treeview', background=FIELD, fieldbackground=FIELD, foreground=TEXT, rowheight=26, borderwidth=0)
         s.configure('Treeview.Heading', background=PANEL, foreground=MUTED, relief='flat')
         s.map('Treeview', background=[('selected', ACCENT)])
-        s.configure('TNotebook', background=BG, borderwidth=0)
-        s.configure('TNotebook.Tab', background=PANEL, foreground=MUTED, padding=(18, 8), font=('Segoe UI Semibold', 10))
-        s.map('TNotebook.Tab', background=[('selected', FIELD)], foreground=[('selected', TEXT)], expand=[('selected', (0, 0, 0, 0))])
 
     def _build(self):
         head = ttk.Frame(self, padding=(20, 16, 20, 6))
@@ -104,15 +101,41 @@ class App(tk.Tk):
 
         self.banner = tk.Label(self, text='', bg=BG, fg='white', font=('Segoe UI Semibold', 10), anchor='w', padx=20, pady=6)
 
-        tabs = ttk.Notebook(self)
-        tabs.pack(fill='both', expand=True, padx=20, pady=(8, 16))
-        self.tab_install = ttk.Frame(tabs, padding=0)
-        self.tab_list = ttk.Frame(tabs, padding=0)
-        tabs.add(self.tab_install, text='  Cài phim  ')
-        tabs.add(self.tab_list, text='  Phim đã cài  ')
-        tabs.bind('<<NotebookTabChanged>>', lambda _e: self.refresh_installs() if tabs.index('current') == 1 else None)
+        # Thanh tab tự vẽ: tab đang chọn nổi lên (nền sáng, chữ trắng, gạch tím), tab kia chìm (nền tối, chữ mờ).
+        bar = tk.Frame(self, bg=BG)
+        bar.pack(fill='x', padx=20, pady=(8, 0))
+        body = ttk.Frame(self)
+        body.pack(fill='both', expand=True, padx=20, pady=(0, 16))
+        self.tab_install = ttk.Frame(body, padding=0)
+        self.tab_list = ttk.Frame(body, padding=0)
+        self.tabs = []
+        for index, (title, frame) in enumerate((('Cài phim', self.tab_install), ('Phim đã cài', self.tab_list))):
+            tab = tk.Frame(bar, bg=BG, cursor='hand2')
+            tab.pack(side='left', padx=(0, 4), anchor='s')
+            label = tk.Label(tab, text=title, font=('Segoe UI Semibold', 11), padx=22, pady=8, cursor='hand2')
+            label.pack()
+            line = tk.Frame(tab, height=3)
+            line.pack(fill='x')
+            for widget in (tab, label):
+                widget.bind('<Button-1>', lambda _e, i=index: self.select_tab(i))
+            self.tabs.append((tab, label, line, frame))
+        tk.Frame(self, bg=FIELD, height=1).place(in_=bar, relx=0, rely=1, relwidth=1, y=-1)
         self._build_install(self.tab_install)
         self._build_list(self.tab_list)
+        self.select_tab(0)
+
+    def select_tab(self, index: int):
+        for i, (tab, label, line, frame) in enumerate(self.tabs):
+            if i == index:
+                label.configure(bg=FIELD, fg='white', pady=10)
+                line.configure(bg=ACCENT)
+                frame.pack(fill='both', expand=True)
+            else:
+                label.configure(bg=PANEL, fg=MUTED, pady=6)
+                line.configure(bg=PANEL)
+                frame.pack_forget()
+        if index == 1:
+            self.refresh_installs()
 
     def _step(self, parent, number: str, title: str):
         box = ttk.Frame(parent, style='Panel.TFrame', padding=(14, 10))
@@ -129,13 +152,14 @@ class App(tk.Tk):
         self.pkg_info = ttk.Label(s1, text='', style='Muted.TLabel', justify='left')
         self.pkg_info.grid(row=1, column=0, columnspan=3, sticky='w', pady=(6, 0))
 
-        s2 = self._step(tab, '②', 'Thư mục game')
+        s2 = self._step(tab, '②', 'Thư mục game (Minecraft 1.20.1)')
         self.game_var = tk.StringVar(value='Chưa chọn thư mục game')
         ttk.Label(s2, textvariable=self.game_var, style='Muted.TLabel').grid(row=0, column=1, sticky='w', padx=12)
         ttk.Button(s2, text='Chọn thư mục…', command=self.pick_game).grid(row=0, column=2)
         self.mod_frame = ttk.Frame(s2, style='Panel.TFrame')
         self.mod_frame.grid(row=1, column=0, columnspan=3, sticky='w', pady=(6, 0))
-        ttk.Label(s2, text='Là thư mục có mods, saves, config (thường là .minecraft hoặc thư mục instance của launcher).',
+        ttk.Label(s2, text='Phải là game Minecraft 1.20.1 (Forge hoặc Fabric) đã có BBS FS 2.7 — thư mục có mods, saves, config '
+                           '(vd .minecraft hoặc instance 1.20.1 của launcher).',
                   style='Muted.TLabel').grid(row=2, column=0, columnspan=3, sticky='w', pady=(4, 0))
 
         s3 = self._step(tab, '③', 'World để xem phim')
@@ -278,7 +302,8 @@ class App(tk.Tk):
                 self.mods_ok = False
             else:
                 for ok, text in check.lines:
-                    ttk.Label(self.mod_frame, text=('✓  ' if ok else '✗  ') + text, style='Muted.TLabel', foreground=OK if ok else BAD).pack(anchor='w')
+                    mark, color = ('✓  ', OK) if ok else ('!  ', WARN) if ok is None else ('✗  ', BAD)
+                    ttk.Label(self.mod_frame, text=mark + text, style='Muted.TLabel', foreground=color).pack(anchor='w')
                 self.mods_ok = check.ok
             self.update_button()
         self.background(lambda: core.check_mods(root, pkg), done, 'Đang kiểm mod…')

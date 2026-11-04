@@ -8,7 +8,7 @@ Tool nhỏ cho **máy khác** (đối tác) cài gói phim `.zip` xuất từ Ap
 2. **① Chọn gói** `.zip`. Tool hiện tên phim, dung lượng, có hiệu ứng hay không, mod cần có.
 3. **② Chọn thư mục game**: thư mục có `mods`, `saves`, `config` (vd `%APPDATA%\.minecraft` hay thư mục instance của launcher).
    Chọn thư mục con cũng được, tool tự tìm lên thư mục có `mods`. Lần sau tự nhớ.
-   Tool đọc mod: cần **BBS FS 2.7**; phim có hiệu ứng cần thêm **AAA Particles** và **bbs-aaaddon** (thiếu thì chặn cài để game không sập).
+   Game phải là **Minecraft 1.20.1** (Forge hoặc Fabric). Tool đọc mod: cần **BBS FS 2.7**; phim có hiệu ứng cần thêm **AAA Particles** và **bbs-aaaddon** (thiếu thì chặn cài để game không sập).
 4. **③ Chọn world** để xem phim. **④ Xem trước** các file sẽ chép, rồi bấm **Cài vào game**.
 5. Vào game → mở world đó → BBS → Film.
 

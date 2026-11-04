@@ -596,13 +596,52 @@ def scan_mods(root: Path) -> list[dict]:
 @dataclass
 class ModCheck:
     ok: bool
-    lines: list[tuple[bool, str]]   # (đạt?, mô tả)
+    lines: list[tuple[bool | None, str]]   # (đạt? / None = chưa chắc, mô tả)
+
+
+REQUIRED_MC = '1.20.1'
+MC_IN_TEXT = re.compile(r'(?<![\d.])1\.(\d{1,2})(?:\.(\d{1,2}))?(?![\d.])')
+
+
+def minecraft_version(root: Path, rows: list[dict]) -> str | None:
+    """Phiên bản Minecraft của thư mục game: thư mục versions/, rồi đuôi phiên bản BBS ("2.7-1.20.1"), rồi đa số tên jar trong mods."""
+    def found(text: str) -> str | None:
+        m = MC_IN_TEXT.search(text)
+        return m.group(0) if m else None
+    versions = root / 'versions'
+    if versions.is_dir():
+        names = {v for v in (found(p.name) for p in versions.iterdir() if p.is_dir()) if v}
+        if len(names) == 1:
+            return names.pop()
+        if REQUIRED_MC in names:
+            return REQUIRED_MC
+    bbs = next((m for m in rows if m['id'] in ('bbs', 'bbs_mod')), None)
+    if bbs and '-' in bbs['version']:
+        hit = found(bbs['version'].split('-', 1)[1])
+        if hit:
+            return hit
+    votes: dict[str, int] = {}
+    mods = root / 'mods'
+    if mods.is_dir():
+        for jar in mods.iterdir():
+            if jar.suffix.lower() == '.jar':
+                hit = found(jar.stem)
+                if hit:
+                    votes[hit] = votes.get(hit, 0) + 1
+    return max(votes, key=votes.get) if votes else None
 
 
 def check_mods(root: Path, package: Package) -> ModCheck:
     rows = scan_mods(root)
     find = lambda ids: next((m for m in rows if m['id'] in ids), None)  # noqa: E731
-    lines: list[tuple[bool, str]] = []
+    lines: list[tuple[bool | None, str]] = []
+    mc = minecraft_version(root, rows)
+    if mc == REQUIRED_MC:
+        lines.append((True, f'Minecraft {mc}'))
+    elif mc:
+        lines.append((False, f'Game là Minecraft {mc} — phim BBS FS 2.7 cần Minecraft {REQUIRED_MC}'))
+    else:
+        lines.append((None, f'Chưa xác định được phiên bản game — cần Minecraft {REQUIRED_MC}'))
     bbs = find(('bbs', 'bbs_mod'))
     if bbs and re.match(r'^2\.7(?:[.\-+]|$)', bbs['version']):
         lines.append((True, f'BBS FS {bbs["version"]}'))
@@ -614,7 +653,7 @@ def check_mods(root: Path, package: Package) -> ModCheck:
         aaa, addon = find(('aaa_particles',)), find(('bbs-aaaddon',))
         lines.append((bool(aaa), f'AAA Particles {aaa["version"]}' if aaa else 'Phim có hiệu ứng nhưng chưa có mod AAA Particles (game có thể sập)'))
         lines.append((bool(addon), f'Addon BBS–AAA {addon["version"]}' if addon else 'Phim có hiệu ứng nhưng chưa có addon BBS–AAA (bbs-aaaddon)'))
-    return ModCheck(all(ok for ok, _ in lines), lines)
+    return ModCheck(all(ok is not False for ok, _ in lines), lines)
 
 
 def game_running(root: Path) -> tuple[bool, bool]:

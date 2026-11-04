@@ -145,6 +145,25 @@ class CoreTest(unittest.TestCase):
         add_mod(self.game, 'bbs', '2.7-1.20.1')
         self.assertTrue(core.check_mods(root, pkg).ok)
 
+    def test_minecraft_version(self):
+        root = core.canonical_game_dir(str(self.game))
+        pkg = core.read_package(str(make_zip(self.dir)))
+        add_mod(self.game, 'bbs', '2.7-1.20.1')
+        check = core.check_mods(root, pkg)
+        self.assertEqual(check.lines[0], (True, 'Minecraft 1.20.1'))
+        (self.game / 'versions' / '1.19.2-forge-43.2.0').mkdir(parents=True)
+        bad = core.check_mods(root, pkg)
+        self.assertFalse(bad.ok)
+        self.assertIn('1.19.2', bad.lines[0][1])
+
+    def test_unknown_version_does_not_block(self):
+        root = core.canonical_game_dir(str(self.game))
+        pkg = core.read_package(str(make_zip(self.dir)))
+        add_mod(self.game, 'bbs', '2.7')
+        check = core.check_mods(root, pkg)
+        self.assertIsNone(check.lines[0][0])
+        self.assertTrue(check.ok)
+
     def test_reference_key(self):
         self.assertEqual(core.asset_reference_key('models/unified/ab-cd/textures/x/default.png'), 'unified/ab-cd')
         self.assertEqual(core.asset_reference_key('effeks/aaa/fx.efkefc'), 'effeks/aaa')
