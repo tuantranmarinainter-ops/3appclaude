@@ -498,12 +498,24 @@ export function isGroupKeyframeSelected(
   return refs.length > 0 && refs.every((ref) => isKeyframeSelected(selection, ref.keyId))
 }
 
+/**
+ * Các khóa đang chọn, kể cả khi lựa chọn là một khung biến đổi (transformKeyframe không có keyId riêng):
+ * khi có userKeys thì đổi khung đó ra khóa vị trí/xoay/tỷ lệ tại khung, để Shift+bấm cộng thêm thay vì làm mất nó.
+ */
+export function selectedKeyRefs(current: Selection | null, userKeys?: UserKeys): KeyframeRef[] {
+  if (current?.kind === 'transformKeyframe') {
+    return userKeys ? userKeyRefsAtFrame(userKeys, current.nodeId, current.frame) : []
+  }
+  return keyframeRefsOf(current)
+}
+
 /** 对齐 canvas selectKeys：非累加时若已选中该键则保持整组；累加则 toggle。 */
 export function nextKeyframeSelection(
   current: Selection | null,
   ref: KeyframeRef,
   additive: boolean,
   frame?: number,
+  userKeys?: UserKeys,
 ): Selection {
   if (
     !additive &&
@@ -513,7 +525,7 @@ export function nextKeyframeSelection(
   ) {
     return current
   }
-  const existing = keyframeRefsOf(current)
+  const existing = additive ? selectedKeyRefs(current, userKeys) : keyframeRefsOf(current)
   if (!additive) {
     if (existing.some((item) => item.keyId === ref.keyId)) return current ?? makeKeyframeSelection([ref])!
     return makeKeyframeSelection([ref])!
@@ -577,16 +589,16 @@ export function nextBundleSelection(
   frame: number,
   refs: KeyframeRef[],
   additive: boolean,
+  userKeys?: UserKeys,
 ): Selection {
   const single: Selection = { kind: 'transformKeyframe', nodeId, frame }
-  const existing = keyframeRefsOf(current)
+  const existing = additive ? selectedKeyRefs(current, userKeys) : keyframeRefsOf(current)
   const has = (ref: KeyframeRef) => existing.some((item) => item.keyId === ref.keyId)
   const allIn = refs.length > 0 && refs.every(has)
   if (!additive) {
     if (allIn && existing.length > refs.length) return current!
     return isSameSelection(current, single) ? current! : single
   }
-  // Nhóm đang là một khung biến đổi (không có keyId riêng) thì coi như rỗng: Shift chỉ thêm bó mới.
   const keys = allIn
     ? existing.filter((item) => !refs.some((ref) => ref.keyId === item.keyId))
     : [...existing, ...refs.filter((ref) => !has(ref))]

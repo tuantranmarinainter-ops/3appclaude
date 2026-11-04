@@ -175,3 +175,26 @@ test('Ctrl/Shift + bấm tên dòng: chọn nhiều dòng tuỳ ý, bấm lại 
   const fromKey = nextRowSelection({ kind: 'transformKeyframe', nodeId: 'a', frame: 10 }, 'den', true)
   assert.deepEqual(nodeIdsOf(fromKey), ['den'])
 })
+
+test('bấm thường một hình thoi tổng rồi Shift+bấm hình thoi khác: giữ cả khung đầu (lỗi báo sau #219)', () => {
+  const keys = twoActorKeys()
+  const [a10, a30] = collectFrameBundles('a', [...XFORM], keys)
+  const [b10] = collectFrameBundles('b', [...XFORM], keys)
+  const first = nextBundleSelection(null, 'a', 10, a10.refs, false, keys)
+  assert.deepEqual(first, { kind: 'transformKeyframe', nodeId: 'a', frame: 10 })
+  const second = nextBundleSelection(first, 'a', 30, a30.refs, true, keys)
+  const third = nextBundleSelection(second, 'b', 10, b10.refs, true, keys)
+  const ids = new Set(keyframeRefsOf(third).map((r) => r.keyId))
+  for (const r of [...a10.refs, ...a30.refs, ...b10.refs]) assert.ok(ids.has(r.keyId), r.prop)
+  assert.equal(ids.size, 9)
+  // Shift+bấm lại đúng khung đầu thì bỏ nó.
+  const back = nextBundleSelection(third, 'a', 10, a10.refs, true, keys)
+  assert.equal(keyframeRefsOf(back).length, 6)
+})
+
+test('bấm thường hình thoi tổng rồi Shift+bấm khóa con ở khung khác: giữ khung đầu', () => {
+  const keys = twoActorKeys()
+  const posA30 = { nodeId: 'a', prop: 'position' as const, keyId: keys.a.position![1].id }
+  const next = nextKeyframeSelection({ kind: 'transformKeyframe', nodeId: 'a', frame: 10 }, posA30, true, 30, keys)
+  assert.equal(keyframeRefsOf(next).length, 4)
+})
