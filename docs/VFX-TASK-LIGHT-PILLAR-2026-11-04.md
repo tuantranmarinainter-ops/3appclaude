@@ -26,7 +26,8 @@ simple_turbulence_fireworks, toonhit`); không có cột sáng đúng màu. Shot
   hai mép thẳng, **gần như không xoè** (chỉ hơi rộng ra ở đáy).
 - Có **khói/sương sáng mờ** bao quanh thân cột, **bụi hạt lấp lánh** lơ lửng trong cột và rơi lả tả ở chân cột.
 - **Vệt sáng tròn trên mặt đất** ở đáy cột (đĩa sáng, mép mềm).
-- Ảnh mẫu màu xanh lá chỉ để tham khảo **hình dáng**; màu Shot 03 vẫn là **lõi trắng, viền và quầng cyan**.
+- Ảnh mẫu màu xanh lá chỉ để tham khảo **hình dáng**. **Màu: trắng pha cyan** (người dùng 2026-11-04) — cả cột một tông trắng ánh cyan nhạt
+  (tham khảo #DFFBFF ở lõi → #8FEFFF ở mép/quầng), không phải trắng tách riêng với viền cyan đậm.
 - Không có UFO; đỉnh cột mờ dần lên trời (hoặc ra khỏi khung hình).
 
 ## Nhịp (người dùng 2026-11-04, lần 3)
