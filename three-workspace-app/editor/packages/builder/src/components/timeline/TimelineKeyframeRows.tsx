@@ -113,7 +113,7 @@ export function GhostKeyframes({
         onPointerDown={(e) => {
           e.stopPropagation()
           const clicked: KeyframeRef = { nodeId, prop, keyId: kf.id }
-          const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame)
+          const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame, userKeys)
           if (next !== selection) onSelect(next)
           onSeek(kf.frame)
           if (!readOnly) drag.begin(e, selectedKeyframeDragItems(next, userKeys))
@@ -191,7 +191,7 @@ export function AggregateKeyframes({
           }
           // Giống clip: bấm vào bó đã nằm trong nhóm (vd vừa rê khung) thì giữ nhóm và kéo cả nhóm.
           const additive = isAdditiveMod(e)
-          const next = nextBundleSelection(selection, nodeId, bundle.frame, bundle.refs, additive)
+          const next = nextBundleSelection(selection, nodeId, bundle.frame, bundle.refs, additive, userKeys)
           if (!isSameSelection(selection, next)) onSelect(next)
           onSeek(bundle.frame)
           if (readOnly || additive) return

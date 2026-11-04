@@ -395,7 +395,7 @@ export function TrackRow({
                       return
                     }
                     const clicked: KeyframeRef = { nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }
-                    const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame)
+                    const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame, userKeys)
                     if (next !== selection) onSelect(next)
                     if (writeLocked) {
                       setFrame(kf.frame)
