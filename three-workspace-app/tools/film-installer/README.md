@@ -1,9 +1,11 @@
-# Cài phim BBS (CaiPhimBBS.exe)
+# Import ZIP to BBS FS Tool (Import ZIP to BBS FS Tool.exe)
+
+Trước đây tên là "Cài phim BBS" / `CaiPhimBBS.exe`.
 
 Tool nhỏ cho **máy khác** (đối tác) cài gói phim `.zip` xuất từ App 2 vào game Minecraft có BBS FS, không cần Node hay project W01.
 
 ## Dùng (đối tác)
-1. Chép `CaiPhimBBS.exe` và gói phim `.zip` sang máy. Bấm đúp `CaiPhimBBS.exe` (hoặc kéo file `.zip` thả lên exe).
+1. Chép `Import ZIP to BBS FS Tool.exe` và gói phim `.zip` sang máy. Bấm đúp `Import ZIP to BBS FS Tool.exe` (hoặc kéo file `.zip` thả lên exe).
    Lần đầu Windows có thể hiện "Windows protected your PC" → **More info → Run anyway** (exe chưa ký số).
 2. **① Chọn gói** `.zip`. Tool hiện tên phim, dung lượng, có hiệu ứng hay không, mod cần có.
 3. **② Chọn thư mục game**: thư mục có `mods`, `saves`, `config` (vd `%APPDATA%\.minecraft` hay thư mục instance của launcher).
@@ -26,6 +28,6 @@ Tab **Phim đã cài**: liệt kê các lần cài (kể cả lần cài từ Ap
 ```powershell
 python -m unittest test_installer_core          # trong thư mục này; FI_REAL_ZIP=<gói thật> để thử thêm gói xuất từ App 2
 pythonw film_installer.pyw [gói.zip]             # chạy giao diện từ mã nguồn
-pip install pyinstaller; python build.py --out <thư mục>   # ra CaiPhimBBS.exe (~10 MB); không commit exe
+pip install pyinstaller; python build.py --out <thư mục>   # ra "Import ZIP to BBS FS Tool.exe" (~10 MB); không commit exe
 ```
-Settings lưu ở `%APPDATA%\CaiPhimBBS\settings.json` (thư mục game, world, thư mục ZIP gần nhất).
+Settings lưu ở `%APPDATA%\CaiPhimBBS\settings.json` (giữ tên thư mục cũ để máy đã dùng bản trước không mất cài đặt) (thư mục game, world, thư mục ZIP gần nhất).
