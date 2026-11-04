@@ -110,6 +110,7 @@ export const ms: LocaleDict = {
     "shortcutNextFrame": "Bingkai seterusnya",
     "shortcutUndo": "Buat asal",
     "shortcutRedo": "Buat semula",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Seret ke kiri",
     "shortcutRightDrag": "Seret kanan",
     "shortcutMiddleDrag": "Seret tengah",

@@ -110,6 +110,7 @@ export const en: LocaleDict = {
     "shortcutNextFrame": "Next frame",
     "shortcutUndo": "Undo",
     "shortcutRedo": "Redo",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Left drag",
     "shortcutRightDrag": "Right drag",
     "shortcutMiddleDrag": "Middle drag",

@@ -110,6 +110,7 @@ export const pt: LocaleDict = {
     "shortcutNextFrame": "Próximo quadro",
     "shortcutUndo": "Desfazer",
     "shortcutRedo": "Refazer",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Arrastar para a esquerda",
     "shortcutRightDrag": "Arrastar para a direita",
     "shortcutMiddleDrag": "Arrasto do meio",

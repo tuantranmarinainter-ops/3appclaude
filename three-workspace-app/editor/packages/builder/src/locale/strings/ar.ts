@@ -110,6 +110,7 @@ export const ar: LocaleDict = {
     "shortcutNextFrame": "الإطار التالي",
     "shortcutUndo": "تراجع",
     "shortcutRedo": "إعادة",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "السحب الأيسر",
     "shortcutRightDrag": "السحب الأيمن",
     "shortcutMiddleDrag": "السحب الأوسط",

@@ -66,6 +66,8 @@ export class EditorStore {
   timelineSnap = true
   /** "Cho chồng để trộn" (K1): kéo clip đè lên clip kề cùng nhân vật thì tạo blendIn thay vì đẩy clip ra. */
   clipBlendOverlap = true
+  /** "Tự dời" (2026-11-05): cắt/tỉa/xoá clip động tác thì các clip sau cùng nhân vật dời theo, không để khoảng trống. */
+  clipRipple = true
   /** Khoá khung 3D (B2): camera khung nhìn không nhận phím tắt/lăn/kéo. */
   viewportLocked = false
   chainCameraMotion = false
@@ -163,6 +165,7 @@ export class EditorStore {
       autoKeyframe: observable,
       timelineSnap: observable,
       clipBlendOverlap: observable,
+      clipRipple: observable,
       viewportLocked: observable,
       chainCameraMotion: observable,
       pxPerFrame: observable,
@@ -256,6 +259,7 @@ export class EditorStore {
       toggleAutoKeyframe: action.bound,
       toggleTimelineSnap: action.bound,
       setClipBlendOverlap: action.bound,
+      setClipRipple: action.bound,
       toggleViewportLocked: action.bound,
       toggleChainCameraMotion: action.bound,
       setExporting: action.bound,
@@ -433,6 +437,10 @@ export class EditorStore {
 
   setClipBlendOverlap(enabled: boolean): void {
     this.clipBlendOverlap = enabled
+  }
+
+  setClipRipple(enabled: boolean): void {
+    this.clipRipple = enabled
   }
 
   toggleTimelineSnap(): void {

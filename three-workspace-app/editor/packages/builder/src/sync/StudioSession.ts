@@ -83,6 +83,7 @@ import {
 import { remapFrame } from '../evaluate/timecode'
 import { findEditClip, pruneMissingCameraClips } from '../evaluate/editSequenceOps'
 import { duplicateGapStart, extendedClipEnd, splitMotionClip, type TimelineClipResult } from './timelineClipOps'
+import { rippleDeleteMotionClips, rippleTrimMotionClip } from './motionRipple'
 import {
   pathArcLength,
   pathClipDurationFrames,
@@ -114,6 +115,8 @@ export class StudioSession implements StudioView {
   }
   private clipResizeBefore: DocSnapshotState | null = null
   private clipResizeRevision = 0
+  /** "Tự dời" khi kéo mép clip động tác: danh sách clip đã tính sẵn cho lần thả. */
+  private clipRippleClips: MotionClip[] | null = null
   private clipMoveBefore: DocSnapshotState | null = null
   private clipMoveSelection: ClipRef[] = []
   private clipMoveRevision = 0
@@ -216,6 +219,9 @@ export class StudioSession implements StudioView {
   }
   get clipBlendOverlap(): boolean {
     return this.editor.clipBlendOverlap
+  }
+  get clipRipple(): boolean {
+    return this.editor.clipRipple
   }
   get viewportLocked(): boolean {
     return this.editor.viewportLocked
@@ -498,6 +504,7 @@ export class StudioSession implements StudioView {
 
   toggleTimelineSnap = (): void => this.editor.toggleTimelineSnap()
   setClipBlendOverlap = (enabled: boolean): void => this.editor.setClipBlendOverlap(enabled)
+  setClipRipple = (enabled: boolean): void => this.editor.setClipRipple(enabled)
   toggleViewportLocked = (): void => {
     this.editor.toggleViewportLocked()
     this.engine.setViewLocked(this.editor.viewportLocked)
@@ -1433,6 +1440,30 @@ export class StudioSession implements StudioView {
     this.pushDocSnapshot('Cắt clip tại đầu phát', before)
     this.select({ kind: 'clip', clipType: 'motion', clipId: id })
     return { id, error: null }
+  }
+
+  /**
+   * Ctrl+B: cắt tại đầu phát. Ưu tiên clip động tác đang chọn có chứa đầu phát; không có thì lấy clip dưới đầu phát
+   * của nhân vật đang chọn.
+   */
+  splitMotionClipAtPlayhead = (): TimelineClipResult => {
+    const live = this.docModel.toContract()
+    if (this.writeLocked || !live) return { id: null, error: 'unavailable' }
+    const frame = Math.round(this.engine.currentFrame)
+    const clips = live.content.timeline.animation.motionClips
+    const covers = (c: MotionClip) => frame > c.frameStart && frame < c.frameEnd
+    const sel = this.editor.selection
+    let clip = clipRefsOf(sel)
+      .filter((ref) => ref.clipType === 'motion')
+      .map((ref) => clips.find((c) => c.id === ref.clipId))
+      .find((c): c is MotionClip => !!c && covers(c))
+    if (!clip) {
+      const nodes = new Set(nodeIdsOf(sel))
+      if (sel && (sel.kind === 'keyframe' || sel.kind === 'transformKeyframe')) nodes.add(sel.nodeId)
+      clip = clips.find((c) => nodes.has(c.target.nodeId) && covers(c))
+    }
+    if (!clip) return { id: null, error: 'not-applicable' }
+    return this.splitMotionClipAt(clip.id, frame)
   }
 
   /** Stretch a motion clip to the next clip of the same node or the shot end. */
@@ -2586,7 +2617,14 @@ export class StudioSession implements StudioView {
       }
       this.history.beginInteraction()
       try {
-        for (const ref of clips) this.deleteClip(ref.clipType, ref.clipId)
+        // "Tự dời": xoá clip muộn trước để mỗi lần dời tính trên vị trí còn đúng.
+        const startOf = (ref: ClipRef) => {
+          const anim = this.docModel.toContract()?.content.timeline.animation
+          const list = ref.clipType === 'motion' ? anim?.motionClips : ref.clipType === 'camera' ? anim?.cameraMotionClips : anim?.pathMotionClips
+          return list?.find((c) => c.id === ref.clipId)?.frameStart ?? 0
+        }
+        const ordered = [...clips].sort((a, b) => startOf(b) - startOf(a))
+        for (const ref of ordered) this.deleteClip(ref.clipType, ref.clipId)
         if (keys.length) this.removeKeyframes(keys)
         this.editor.select(null)
       } finally {
@@ -2708,7 +2746,9 @@ export class StudioSession implements StudioView {
       if (next.length === anim.cameraMotionClips.length) return
       anim.cameraMotionClips = next
     } else if (clipType === 'motion') {
-      const next = anim.motionClips.filter((c) => c.id !== clipId)
+      const next = this.editor.clipRipple
+        ? rippleDeleteMotionClips(anim.motionClips, [clipId])
+        : anim.motionClips.filter((c) => c.id !== clipId)
       if (next.length === anim.motionClips.length) return
       anim.motionClips = next
     } else {
@@ -2736,6 +2776,7 @@ export class StudioSession implements StudioView {
     if (this.writeLocked) return
     this.clipResizeBefore = snapshotDocState(this.docModel)
     this.clipResizeRevision = this.docModel.revision
+    this.clipRippleClips = null
     this.editor.setClipResizePreview(null)
     this.editor.setClipMovePreview(null)
   }
@@ -2769,6 +2810,18 @@ export class StudioSession implements StudioView {
       return
     }
 
+    // "Tự dời" cho clip động tác: clip giữ điểm bắt đầu, các clip sau cùng nhân vật dời theo.
+    if (clipType === 'motion' && this.editor.clipRipple) {
+      const next = rippleTrimMotionClip(anim.motionClips, clipId, edge, frame, tl.fps, tl)
+      const own = (next ?? anim.motionClips).find((c) => c.id === clipId)
+      if (!own) return
+      this.clipRippleClips = next
+      const positions: Record<string, { frameStart: number; frameEnd: number }> = {}
+      for (const c of next ?? []) positions[c.id] = { frameStart: c.frameStart, frameEnd: c.frameEnd }
+      this.editor.setClipResizePreview({ clipType, clipId, frameStart: own.frameStart, frameEnd: own.frameEnd, positions })
+      return
+    }
+
     const target = Math.round(Math.min(Math.max(frame, tl.frameStart), tl.frameEnd))
     let old: { frameStart: number; frameEnd: number; target: { nodeId: string } } | undefined
     if (clipType === 'path') {
@@ -2797,6 +2850,7 @@ export class StudioSession implements StudioView {
 
   cancelClipResize = (): void => {
     this.clipResizeBefore = null
+    this.clipRippleClips = null
     this.editor.setClipResizePreview(null)
   }
 
@@ -2828,6 +2882,9 @@ export class StudioSession implements StudioView {
         if (c.id !== preview.clipId) return c
         return withPathClipRange(c, preview.frameStart, preview.frameEnd)
       })
+    } else if (this.clipRippleClips) {
+      const byId = new Map(this.clipRippleClips.map((c) => [c.id, c]))
+      animation.motionClips = animation.motionClips.map((c) => byId.get(c.id) ?? c)
     } else {
       const source = before.doc.content.timeline.animation.motionClips.find((c) => c.id === preview.clipId)
       animation.motionClips = animation.motionClips.map((c) => {

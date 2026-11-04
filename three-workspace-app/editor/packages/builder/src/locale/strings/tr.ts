@@ -110,6 +110,7 @@ export const tr: LocaleDict = {
     "shortcutNextFrame": "Sonraki kare",
     "shortcutUndo": "Geri al",
     "shortcutRedo": "Yinele",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Sol sürükleme",
     "shortcutRightDrag": "Sağa sürükle",
     "shortcutMiddleDrag": "Orta sürükleme",

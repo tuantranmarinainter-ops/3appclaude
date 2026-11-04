@@ -110,6 +110,7 @@ export const ru: LocaleDict = {
     "shortcutNextFrame": "Следующий кадр",
     "shortcutUndo": "Отменить",
     "shortcutRedo": "Повторить",
+    "shortcutSplitClip": "Split motion clip at playhead",
     "shortcutLeftDrag": "Перетаскивание влево",
     "shortcutRightDrag": "Перетаскивание вправо",
     "shortcutMiddleDrag": "Среднее сопротивление",
