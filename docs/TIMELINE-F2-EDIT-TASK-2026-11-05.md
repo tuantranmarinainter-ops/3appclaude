@@ -1,11 +1,12 @@
-# Timeline F2: Lưu, Về danh sách, menu chuột phải keyframe (Sao chép/Dán), kéo chung clip + keyframe: đặc tả 2026-11-05
+# Dòng thời gian App 2: Lưu, Về danh sách, menu chuột phải keyframe (Sao chép/Dán), kéo chung clip + keyframe: đặc tả 2026-11-05
 
-> Người dùng yêu cầu 2026-11-05 (4 mục). Mục ghi **[Claude chốt]** là quyết định thay người dùng, đổi được.
+> Người dùng yêu cầu 2026-11-05 (4 mục). **Lưu ý tên gọi:** người dùng nói "F2" là **App 2** (Dựng cảnh), không phải đợt F2.
+> "F1/F2" trong đặc tả này chỉ là tên đợt của đặc tả fcurve 2026-11-04 (nhánh `claude/timeline-fcurve-f1|f2`). Mục ghi **[Claude chốt]** là quyết định thay người dùng, đổi được.
 > Đọc trước: `CLAUDE.md`, `docs/DECISIONS.md`, `three-workspace-app/editor/AGENTS.md`,
 > `docs/TIMELINE-FCURVE-KEYS-TASK-2026-11-04.md` (đợt F1/F2: chọn/kéo keyframe fcurve, **làm trước**), PR #219/#220.
 
 ## 1. Vì sao
-Người dùng dựng Tập 15 trên dòng thời gian F2 của App 2 (Dựng cảnh, cổng 3016):
+Người dùng dựng Tập 15 trên dòng thời gian của App 2 (Dựng cảnh, cổng 3016):
 1. Muốn chủ động **lưu** trước khi thoát và thấy rõ đã lưu hay chưa (hiện chỉ có tự lưu 5 s + chữ nhỏ ở topbar).
 2. Muốn **quay về màn hình đầu** (danh sách dự án / tập / shot ở `/`) mà không phải tự xoá `?unified=...` trên thanh địa chỉ.
 3. **Chuột phải lên keyframe đang XOÁ keyframe** → hay xoá nhầm. Muốn chuột phải mở menu giống menu clip, có Sao chép / Dán:
@@ -33,9 +34,9 @@ Người dùng dựng Tập 15 trên dòng thời gian F2 của App 2 (Dựng c�
 ## 3. Đã chốt
 | # | Câu | Chốt |
 | --- | --- | --- |
-| 1 | Nút Lưu ở đâu | **[Claude chốt]** Thanh điều khiển của dòng thời gian F2 (cạnh nút phát/khung), nút "Lưu" + nhãn trạng thái "Đã lưu" / "Chưa lưu" / "Đang lưu…" / "Lưu lỗi" (màu: xám / vàng / xám / đỏ). Phím tắt Ctrl+S cũng lưu (chặn hộp lưu của trình duyệt). |
+| 1 | Nút Lưu ở đâu | **[Claude chốt]** Thanh điều khiển của dòng thời gian App 2 (cạnh nút phát/khung), nút "Lưu" + nhãn trạng thái "Đã lưu" / "Chưa lưu" / "Đang lưu…" / "Lưu lỗi" (màu: xám / vàng / xám / đỏ). Phím tắt Ctrl+S cũng lưu (chặn hộp lưu của trình duyệt). |
 | 2 | Nút Lưu khi khoá ghi (`writeLocked`) | Tắt (disabled) kèm tooltip lý do. |
-| 3 | Nút quay về | **[Claude chốt]** Nút "Về danh sách" trên thanh F2. Bấm: nếu còn chưa lưu → lưu xong (đợi `save()`) rồi về `/`; lưu lỗi → hỏi "Lưu lỗi. Vẫn rời đi?" (Huỷ / Rời đi). Builder không tự điều hướng: nhận callback từ host (vd prop `onExitToList` qua `DirectorStudio`), host gọi lại đúng `closeStudio`. Nút "Đóng" của host cũng lưu trước khi đóng như vậy. |
+| 3 | Nút quay về | **[Claude chốt]** Nút "Về danh sách" trên thanh dòng thời gian. Bấm: nếu còn chưa lưu → lưu xong (đợi `save()`) rồi về `/`; lưu lỗi → hỏi "Lưu lỗi. Vẫn rời đi?" (Huỷ / Rời đi). Builder không tự điều hướng: nhận callback từ host (vd prop `onExitToList` qua `DirectorStudio`), host gọi lại đúng `closeStudio`. Nút "Đóng" của host cũng lưu trước khi đóng như vậy. |
 | 4 | Chuột phải keyframe | Không bao giờ xoá. Mở menu ngữ cảnh (cùng kiểu, cùng hàm định vị với menu clip). Áp cho cả 3 loại hình thoi (userKeys, fcurve, "Biến đổi"). |
 | 5 | Nhấp đôi keyframe | **[Claude chốt]** Cũng KHÔNG xoá nữa (cùng lý do xoá nhầm). Nhấp đôi = chọn + nhảy đầu phát. Xoá chỉ bằng phím Delete/Backspace hoặc mục menu "Xoá". |
 | 6 | Mục trong menu keyframe | "Sao chép biến đổi", "Dán biến đổi" (+ menu con hoặc 3 mục: "Dán chỉ vị trí", "Dán chỉ xoay", "Dán chỉ tỉ lệ" — **[Claude chốt]** có, rẻ), "Xoá". Mục không dùng được thì mờ (disabled), không ẩn. |
@@ -49,7 +50,7 @@ Người dùng dựng Tập 15 trên dòng thời gian F2 của App 2 (Dựng c�
 
 ## 4. Mục tiêu / không làm / coi là hỏng
 **Mục tiêu**
-- G1. Nút "Lưu" + trạng thái trên F2, Ctrl+S; trạng thái đổi đúng khi sửa / đang lưu / lưu xong / lỗi.
+- G1. Nút "Lưu" + trạng thái trên thanh dòng thời gian, Ctrl+S; trạng thái đổi đúng khi sửa / đang lưu / lưu xong / lỗi.
 - G2. Nút "Về danh sách": lưu rồi về `/` (danh sách dự án/tập/shot), URL không còn `?unified=`; không mất sửa đổi.
 - G3. Chuột phải / nhấp đôi keyframe không xoá; chuột phải mở menu tiếng Việt.
 - G4. Sao chép / Dán biến đổi (đủ và từng phần) lên nhiều keyframe, nhiều node; một bước hoàn tác.
@@ -67,7 +68,7 @@ clip; đổi menu clip hiện có; đổi cách tự lưu; sửa `packages/retar
 - Test có sẵn trong `components/timeline/__tests__` và `sync/__tests__` đỏ.
 
 ## 5. Trải nghiệm người dùng
-1. Sửa gì đó → nhãn F2 chuyển "Chưa lưu" (vàng). Bấm **Lưu** (hoặc Ctrl+S) → "Đang lưu…" → "Đã lưu".
+1. Sửa gì đó → nhãn trên thanh dòng thời gian chuyển "Chưa lưu" (vàng). Bấm **Lưu** (hoặc Ctrl+S) → "Đang lưu…" → "Đã lưu".
 2. Bấm **Về danh sách** → (tự lưu nếu cần) → màn hình danh sách dự án/tập/shot.
 3. Chuột phải hình thoi Gỗ Xưa khung 36 → menu: Sao chép biến đổi · Dán biến đổi · Dán chỉ vị trí · Dán chỉ xoay · Dán chỉ tỉ lệ · Xoá.
    Chọn **Sao chép biến đổi**. Rê khung chọn khóa 40, 66 → chuột phải một khóa trong đó → **Dán biến đổi** → nhân vật ở 40, 66
@@ -99,7 +100,7 @@ clip; đổi menu clip hiện có; đổi cách tự lưu; sửa `packages/retar
 Thứ tự nhánh: E1 từ `main` (độc lập, không đụng file keyframe). E2 xếp trên nhánh F2 (`claude/timeline-fcurve-f2`) nếu F2 chưa merge,
 không thì từ main. E3 xếp trên E2.
 Việc timeline khác đang chạy song song (không đè): PR #220 `claude/timeline-kf-shift-fix` (Shift+bấm giữ khung Biến đổi; F1 xếp trên nó),
-thước thời gian mặc định chỉ "Giây" (`components/timeline/utils/rulers.ts`, phiên Claude khác). E1 đặt nút trên thanh F2 không được
+thước thời gian mặc định chỉ "Giây" (`components/timeline/utils/rulers.ts`, phiên Claude khác). E1 đặt nút trên thanh dòng thời gian không được
 đổi mặc định thước; gặp xung đột thì rebase lên main mới nhất, giữ cả hai thay đổi. Nhánh `claude/timeline-f2-e<n>`. Không tự merge.
 
 ## 8. Đo số (bắt buộc)
@@ -145,7 +146,7 @@ Report: `docs/REPORT-timeline-f2-edit-<ngày>.md`, NOT_RUN / BLOCKED / FAIL / PA
 14. **Cổng thử**: 3140–3149 dành riêng cho việc này.
 
 ## 11. Builder tự quyết
-Tên hàm/kiểu, vị trí nút trên thanh F2 (miễn thấy ngay, không che nút cũ), cách truyền hàm lưu từ builder sang host, chia file test.
+Tên hàm/kiểu, vị trí nút trên thanh dòng thời gian (miễn thấy ngay, không che nút cũ), cách truyền hàm lưu từ builder sang host, chia file test.
 
 ## 12. Ràng buộc
 Sửa `packages/builder` và phần host `apps/studio` (StudioOverlay/WorkbenchClient) + test. Không sửa `packages/retarget`, không đổi golden,
