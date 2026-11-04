@@ -4,9 +4,11 @@ import type { TrackProp, UserKeys } from '../../evaluate/curves/KeyframeTrack'
 import { timelinePathClips } from '../../evaluate/path/deriveWalk'
 import type { TranslateFn } from '../../locale/types'
 import {
+  clipRefsOf,
   isKeyframeSelected,
   keyframeRefsOf,
   makeKeyframeSelection,
+  makeTimelineBoxSelection,
   type KeyframeRef,
   type Selection,
 } from '../../stores/types'
@@ -561,6 +563,51 @@ export function bundlePreviewOffset(
 ): number {
   if (previewDf == null || !draggingKeyIds || keyIds.length === 0) return 0
   return keyIds.every((id) => draggingKeyIds.has(id)) ? previewDf : 0
+}
+
+/**
+ * Bấm hình thoi tổng (Biến đổi = vị trí + xoay + tỷ lệ cùng khung), giống bấm clip:
+ * - không giữ phím: nếu cả bó đã nằm trong nhóm đang chọn (vd vừa rê khung) thì GIỮ nguyên nhóm để kéo cả nhóm;
+ *   ngược lại chọn riêng khung biến đổi đó.
+ * - Shift/Ctrl: thêm cả bó vào nhóm, hoặc bỏ cả bó nếu đã chọn đủ.
+ */
+export function nextBundleSelection(
+  current: Selection | null,
+  nodeId: string,
+  frame: number,
+  refs: KeyframeRef[],
+  additive: boolean,
+): Selection {
+  const single: Selection = { kind: 'transformKeyframe', nodeId, frame }
+  const existing = keyframeRefsOf(current)
+  const has = (ref: KeyframeRef) => existing.some((item) => item.keyId === ref.keyId)
+  const allIn = refs.length > 0 && refs.every(has)
+  if (!additive) {
+    if (allIn && existing.length > refs.length) return current!
+    return isSameSelection(current, single) ? current! : single
+  }
+  // Nhóm đang là một khung biến đổi (không có keyId riêng) thì coi như rỗng: Shift chỉ thêm bó mới.
+  const keys = allIn
+    ? existing.filter((item) => !refs.some((ref) => ref.keyId === item.keyId))
+    : [...existing, ...refs.filter((ref) => !has(ref))]
+  return makeTimelineBoxSelection(clipRefsOf(current), keys) ?? single
+}
+
+/**
+ * Độ dời của cả nhóm khi kéo: làm tròn về khung nguyên, kẹp như StudioSession.moveKeyframes
+ * (không cho khung sớm nhất lùi qua frameStart, khung muộn nhất vượt frameEnd) để xem trước khớp kết quả ghi.
+ */
+export function clampKeyframeGroupDelta(
+  df: number,
+  items: readonly { origFrame: number }[],
+  bounds?: { frameStart: number; frameEnd: number } | null,
+): number {
+  let delta = Math.round(df) || 0
+  if (items.length === 0 || !bounds) return delta
+  const minOrig = Math.min(...items.map((item) => item.origFrame))
+  const maxOrig = Math.max(...items.map((item) => item.origFrame))
+  delta = Math.min(Math.max(delta, bounds.frameStart - minOrig), bounds.frameEnd - maxOrig)
+  return delta || 0
 }
 /** Kẹp px/frame trong giới hạn zoom của timeline (khớp EditorStore.setPxPerFrame). */
 export function clampPxPerFrame(value: number): number {

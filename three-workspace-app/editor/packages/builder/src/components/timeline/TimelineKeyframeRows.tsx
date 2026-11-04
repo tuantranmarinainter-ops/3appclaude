@@ -12,6 +12,7 @@ isGroupKeyframeSelected,
 isKeyframeHighlighted,
 isSameSelection,
 keyframePreviewOffset,
+nextBundleSelection,
 nextKeyframeSelection
 } from './utils'
 
@@ -188,10 +189,17 @@ export function AggregateKeyframes({
             onSeek(bundle.frame)
             return
           }
-          const next: Selection = { kind: 'transformKeyframe', nodeId, frame: bundle.frame }
+          // Giống clip: bấm vào bó đã nằm trong nhóm (vd vừa rê khung) thì giữ nhóm và kéo cả nhóm.
+          const additive = isAdditiveMod(e)
+          const next = nextBundleSelection(selection, nodeId, bundle.frame, bundle.refs, additive)
           if (!isSameSelection(selection, next)) onSelect(next)
           onSeek(bundle.frame)
-          if (!readOnly) drag.begin(e, bundle.refs.map((ref) => ({ ...ref, origFrame: bundle.frame })))
+          if (readOnly || additive) return
+          const items =
+            next.kind === 'transformKeyframe'
+              ? bundle.refs.map((ref) => ({ ...ref, origFrame: bundle.frame }))
+              : selectedKeyframeDragItems(next, userKeys)
+          drag.begin(e, items)
         }}
         onPointerMove={muted || readOnly ? undefined : drag.move}
         onPointerUp={muted || readOnly ? undefined : drag.end}
