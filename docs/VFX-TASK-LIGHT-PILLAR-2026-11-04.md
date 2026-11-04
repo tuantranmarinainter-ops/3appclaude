@@ -20,6 +20,15 @@ simple_turbulence_fireworks, toonhit`); không có cột sáng đúng màu. Shot
 - Không lặp (loop false); pivot đáy cột (hoặc ghi rõ pivot để đặt `position.y`).
 - **Phải chạy được trong BBS FS thật** (quy tắc App 4 MVP) + có preview sheet trong `vfx-previews` để App 2 hiện.
 
+## Hình mẫu: luồng sáng UFO (người dùng 2026-11-04, lần 4)
+Ảnh mẫu người dùng gửi: `S:\Claude\w01-samples	ap15v3ef-vfx\cot-sang-ufo-mau.png` (ngoài repo, không commit).
+- Giống **tia hút của UFO chiếu thẳng xuống đất**: cột sáng đứng, thành mờ trong suốt, sáng nhất ở lõi giữa và nhạt dần ra mép;
+  hai mép thẳng, **gần như không xoè** (chỉ hơi rộng ra ở đáy).
+- Có **khói/sương sáng mờ** bao quanh thân cột, **bụi hạt lấp lánh** lơ lửng trong cột và rơi lả tả ở chân cột.
+- **Vệt sáng tròn trên mặt đất** ở đáy cột (đĩa sáng, mép mềm).
+- Ảnh mẫu màu xanh lá chỉ để tham khảo **hình dáng**; màu Shot 03 vẫn là **lõi trắng, viền và quầng cyan**.
+- Không có UFO; đỉnh cột mờ dần lên trời (hoặc ra khỏi khung hình).
+
 ## Nhịp (người dùng 2026-11-04, lần 3)
 - `laser01` tạm **sai ý**: là hình nón/chùm tia và chạy **quá nhanh**. Cần **hình trụ** đứng bao quanh Hero, đổi sáng **chậm, êm**.
 - Shot đã sửa nhịp Hero (project rev ≥ 58): khung 0–28 Hero trôi **chậm** từ 6,8 m xuống 4,8 m trong cột sáng; khung 28–36
