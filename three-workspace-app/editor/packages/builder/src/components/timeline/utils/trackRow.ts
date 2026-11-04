@@ -1,6 +1,19 @@
 import type { TrackProp, UserKeys } from '../../../evaluate/curves/KeyframeTrack'
 import type { FCurveSet } from '../../../evaluate/curves/FCurveSet'
+import { buildNodeSelection, nodeIdsOf, toggleNodeIds } from '../../../stores/nodeSelection'
+import type { Selection } from '../../../stores/types'
 import { FC_PROP_PATH } from '../constants'
+
+/**
+ * Bấm tên dòng timeline: thường thì chọn riêng node đó; Ctrl/Cmd/Shift + bấm thì thêm/bỏ node khỏi nhóm đang chọn
+ * (chọn nhiều dòng tuỳ ý). Bỏ node cuối cùng thì giữ lại chính nó để luôn có một lựa chọn.
+ */
+export function nextRowSelection(current: Selection | null, nodeId: string, additive: boolean): Selection {
+  const single: Selection = { kind: 'node', nodeId }
+  if (!additive || current?.kind !== 'node') return single
+  const ids = toggleNodeIds(nodeIdsOf(current), current.nodeId, nodeId)
+  return buildNodeSelection(ids) ?? single
+}
 
 export function box(frameStart: number, pxPerFrame: number, start: number, end: number) {
   return {
