@@ -284,7 +284,10 @@ export class LocalHostAdapter implements HostAdapter<DirectorDocument> {
 
   resolveAssetUrl(key: string): string {
     const trimmed = key.trim()
-    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/') || trimmed.startsWith('/api/library?modelCharacter=')) return trimmed
+    // Library models are served immutable per fingerprint; bump `render` when the server-built GLB changes without its
+    // inputs changing (2 = NEAREST sampler for Minecraft skins) so browsers drop the cached blurry copy.
+    if (trimmed.startsWith('/api/library?modelCharacter=')) return /[?&]render=/.test(trimmed) ? trimmed : `${trimmed}&render=2`
+    if (trimmed.startsWith(`${LOCAL_ASSET_ROUTE}/`) || trimmed.startsWith('/api/unified/projects/')) return trimmed
     if (/^https?:\/\//i.test(trimmed)) return trimmed
     const normalized = normalizeAssetKey(trimmed)
     if (!normalized) throw new Error(translateStudio('素材 key 为空'))

@@ -125,6 +125,36 @@ export function prepareViewerRoot(root, animations) {
   return root;
 }
 
+/**
+ * Direct clip sampler for the editor bake (no AnimationMixer). Tracks must already be bound by node UUID
+ * (parseAsset / prepareViewerRoot). Why not the mixer: three's PropertyMixer only writes a node when the sampled value
+ * differs from the previous frame's sample; the bake resets the rig to rest between frames, so every channel that is
+ * constant over a stretch (held root height, static Jaw, a clip boundary) silently fell back to the rest pose.
+ * Position/quaternion/scale only (the editor records nothing else); time clamps to the clip like LoopOnce.
+ */
+export function createClipSampler(clip, root) {
+  const nodes = new Map();
+  root.traverse((o) => nodes.set(o.uuid, o));
+  const channels = [];
+  for (const track of clip.tracks) {
+    const dot = track.name.lastIndexOf('.'),
+      node = nodes.get(track.name.slice(0, dot)),
+      path = track.name.slice(dot + 1);
+    if (!node || !['position', 'quaternion', 'scale'].includes(path)) continue;
+    channels.push({ node, path, interpolant: track.createInterpolant() });
+  }
+  return {
+    channels: channels.length,
+    /** True when the clip animates `node` (position/quaternion/scale). */
+    animates: (node) => channels.some((c) => c.node === node),
+    /** Writes the pose at `seconds` onto the nodes; call after resetting them to rest. */
+    sample(seconds) {
+      const t = Math.min(Math.max(seconds, 0), clip.duration);
+      for (const c of channels) c.node[c.path].fromArray(c.interpolant.evaluate(t));
+    },
+  };
+}
+
 /** Bone name -> App 2 Y-up world matrix for every Bone under `root` (matrices must be current). */
 export function sampleBones(root) {
   const bones = {};

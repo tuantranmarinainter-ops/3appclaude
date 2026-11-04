@@ -96,14 +96,16 @@ async function buildLibraryCharacterModel(charId: string, faceForward = true) {
   const fingerprint = hash.digest('hex')
   const { json, binary } = unpackLibraryGlb(base)
   let bin = binary
-  json.images ??= []; json.textures ??= []; json.materials ??= []; json.bufferViews ??= []
+  json.images ??= []; json.textures ??= []; json.materials ??= []; json.bufferViews ??= []; json.samplers ??= []
+  // Minecraft skins are 64×64 pixel art: a texture without a sampler falls back to linear mipmaps and blurs when magnified.
+  const pixelSampler = resolved.baseModel?.rig === 'minecraft20' ? json.samplers.push({ magFilter: 9728, minFilter: 9728, wrapS: 10497, wrapT: 10497 }) - 1 : undefined
   for (const { object, bytes } of textures) {
     if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error(`Skin is not PNG: ${object}`)
     const offset = Math.ceil(bin.length / 4) * 4
     bin = Buffer.concat([bin, Buffer.alloc(offset - bin.length), bytes])
     const view = json.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: bytes.length }) - 1
     const image = json.images.push({ bufferView: view, mimeType: 'image/png' }) - 1
-    const texture = json.textures.push({ source: image }) - 1
+    const texture = json.textures.push({ source: image, ...(pixelSampler !== undefined ? { sampler: pixelSampler } : {}) }) - 1
     const nodes = json.nodes.filter((node: any) => node.mesh !== undefined && (node.name === object || node.extras?.bobjObject === object || json.meshes[node.mesh]?.name === object))
     for (const node of nodes) {
       const mesh = structuredClone(json.meshes[node.mesh])

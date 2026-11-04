@@ -31,13 +31,20 @@ function isLolUpArmVariant(names: ReadonlySet<string>): boolean {
     ...['l', 'r'].flatMap((side) => ['hip', 'knee', 'foot', 'shoulder', 'uparm', 'forearm', 'hand'].map((part) => `${side}${part}`))].every((name) => names.has(name))
 }
 
+/** LoL Pelvis variant (jayce.glb): no Root, Pelvis parents Spine1 and the legs, one `L_Knee`, `L_Shoulder`/`L_Elbow` arms. */
+function isLolPelvisVariant(names: ReadonlySet<string>): boolean {
+  return !names.has('lkneelower') && !names.has('root') && ['pelvis', 'spine1', 'spine2', 'spine3', 'neck', 'head',
+    ...['l', 'r'].flatMap((side) => ['clavicle', 'shoulder', 'elbow', 'hand', 'hip', 'knee', 'foot'].map((part) => `${side}${part}`))].every((name) => names.has(name))
+}
+
 /**
  * Canonical alias per Mixamo joint; UE uses `name_l` suffixes, CC `CC_Base_L_Name`, LoL (lol2gltf) `L_Name` prefixes.
  * LoL `Root` is the hip-level parent of both `Spine1` and `Pelvis`, so it plays Mixamo `Hips`.
  */
 function familyAliases(family: 'ue' | 'cc' | 'lol', names: ReadonlySet<string>): Map<string, string> {
   const result = new Map<string, string>(), upArm = family === 'lol' && isLolUpArmVariant(names)
-  const variantLimbs: Record<string, string> = { Shoulder: 'shoulder', Arm: 'uparm', ForeArm: 'forearm', Leg: 'knee' }
+  const pelvisRig = family === 'lol' && !upArm && isLolPelvisVariant(names)
+  const variantLimbs: Record<string, string> = upArm ? { Shoulder: 'shoulder', Arm: 'uparm', ForeArm: 'forearm', Leg: 'knee' } : pelvisRig ? { Leg: 'knee' } : {}
   if (family === 'ue') {
     const ue5 = names.has('spine05')
     result.set('Hips', 'pelvis').set('Spine', 'spine01').set('Spine1', ue5 ? 'spine03' : 'spine02').set('Spine2', ue5 ? 'spine05' : 'spine03')
@@ -46,12 +53,12 @@ function familyAliases(family: 'ue' | 'cc' | 'lol', names: ReadonlySet<string>):
     if (upArm) {
       // Root parents both Pelvis (legs) and Spine (torso); Pelvis alone cannot drive Hips.
       result.set('Hips', 'root').set('Spine', 'spine').set('Spine2', 'chest').set('Neck', 'neck').set('Head', 'head')
-    } else result.set('Hips', 'root').set('Spine', 'spine1').set('Spine1', 'spine2').set('Spine2', 'spine3').set('Neck', 'neck').set('Head', 'head')
+    } else result.set('Hips', pelvisRig ? 'pelvis' : 'root').set('Spine', 'spine1').set('Spine1', 'spine2').set('Spine2', 'spine3').set('Neck', 'neck').set('Head', 'head')
   } else {
     result.set('Hips', 'hip').set('Spine', 'waist').set('Spine1', 'spine01').set('Spine2', 'spine02').set('Neck', 'necktwist01').set('Head', 'head')
   }
   for (const [side, s] of [['Left', 'l'], ['Right', 'r']] as const) {
-    for (const [part, [ue, cc, lol]] of Object.entries(LIMBS)) result.set(`${side}${part}`, family === 'ue' ? `${ue}${s}` : `${s}${family === 'lol' ? (upArm ? variantLimbs[part] ?? lol : lol) : cc}`)
+    for (const [part, [ue, cc, lol]] of Object.entries(LIMBS)) result.set(`${side}${part}`, family === 'ue' ? `${ue}${s}` : `${s}${family === 'lol' ? variantLimbs[part] ?? lol : cc}`)
     for (const finger of FINGERS) for (const index of [1, 2, 3]) {
       const lower = finger.toLowerCase()
       result.set(`${side}Hand${finger}${index}`, family === 'ue' ? `${lower}0${index}${s}` : `${s}${lower}${index}`)
@@ -141,7 +148,7 @@ function detectFamily(names: ReadonlySet<string>, raw: readonly string[]): Sourc
   if (raw.some((name) => /^cc_?base_/i.test(name.split(':').pop()!))) return 'cc'
   if (names.has('pelvis') && names.has('thighl')) return 'ue'
   if (names.has('pelvis') && names.has('lkneeupper') && names.has('lkneelower')) return 'lol'
-  if (isLolUpArmVariant(names)) return 'lol'
+  if (isLolUpArmVariant(names) || isLolPelvisVariant(names)) return 'lol'
   if (names.has('spinec00jnt') && names.has('bonechest') && names.has('arml00jnt')) return 'wc3r'
   if (names.has('anchor') && names.has('lowbody') && names.has('lowleftarm')) return 'minecraft20'
   if (names.has('boneroot') && names.has('bonefootl') && (names.has('bonelegl') || names.has('boneexpl1leg1twist1'))) return 'wow'

@@ -14,8 +14,9 @@ for (const [index, path] of inputs.entries()) {
 mkdirSync(output, { recursive: true })
 const temporary = mkdtempSync(join(tmpdir(), 'w01-c15-camera-'))
 process.env.W01_LIBRARY = join(temporary, 'library')
-const source = join(temporary, 'source.glb'), second = join(temporary, 'second.fbx')
+const source = join(temporary, 'source.glb'), second = join(temporary, 'second.fbx'), third = join(temporary, 'third.fbx')
 copyFileSync(resolve(inputs[0]!), source)
+copyFileSync(resolve(inputs[1]!), third)
 copyFileSync(resolve(inputs[1]!), second)
 const require = createRequire(new URL('../../../apps/studio/package.json', import.meta.url)), { chromium } = require('playwright')
 const bench = await startWorkbench({ port: 0 }), browser = await chromium.launch()
@@ -60,8 +61,16 @@ try {
  await orbit(); const fileBefore = await snapshot(); await page.evaluate(() => { (window as any).__cameraDone = null });
  await page.locator('#pathInput').fill(second); await page.locator('#pathBtn').click()
  await page.waitForFunction(() => (window as any).__cameraDone && document.querySelector('#sourceInfo')?.textContent?.includes('second.fbx') && document.querySelector('#cancelBtn')?.hasAttribute('hidden'))
- const fileAfter = await snapshot(); evidence.sourceChange = { maxDelta: maxDelta(fileBefore, fileAfter) }; assert.ok(evidence.sourceChange.maxDelta < 1e-8)
- await page.locator('#frameBtn').click(); const manual = await snapshot(); evidence.manual = { maxDelta: maxDelta(fileAfter, manual) }; assert.ok(evidence.manual.maxDelta > .01)
+ // second.fbx is centimetres (Xbot is metres): holding the old camera would put it inside the new model, so the
+ // source pane reframes while the target pane keeps the chosen view.
+ const fileAfter = await snapshot(); evidence.sourceChange = { left: maxDelta([fileBefore[0]], [fileAfter[0]]), right: maxDelta([fileBefore[1]], [fileAfter[1]]) }
+ assert.ok(evidence.sourceChange.left > .01); assert.ok(evidence.sourceChange.right < 1e-8)
+ // A same-rig, same-units file keeps both views.
+ await orbit(); const sameBefore = await snapshot(); await page.evaluate(() => { (window as any).__cameraDone = null })
+ await page.locator('#pathInput').fill(third); await page.locator('#pathBtn').click()
+ await page.waitForFunction(() => (window as any).__cameraDone && document.querySelector('#sourceInfo')?.textContent?.includes('third.fbx') && document.querySelector('#cancelBtn')?.hasAttribute('hidden'))
+ const sameAfter = await snapshot(); evidence.sameScaleChange = { maxDelta: maxDelta(sameBefore, sameAfter) }; assert.ok(evidence.sameScaleChange.maxDelta < 1e-8)
+ await page.locator('#frameBtn').click(); const manual = await snapshot(); evidence.manual = { maxDelta: maxDelta(sameAfter, manual) }; assert.ok(evidence.manual.maxDelta > .01)
  assert.deepEqual(evidence.errors, []); evidence.status = 'PASS'
  console.log(JSON.stringify(evidence))
 } catch (error) { evidence.status = 'FAIL'; evidence.failure = String(error); await page.screenshot({ path: join(output, 'failure.png') }); throw error }

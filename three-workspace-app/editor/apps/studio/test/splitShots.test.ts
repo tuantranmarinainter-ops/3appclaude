@@ -63,9 +63,12 @@ test('store split leaves source bytes unchanged, shares audio inode, reports and
   assert.deepEqual(readFileSync(path.join(root, 'project.json')), before)
   assert.equal(reports.length, 3); assert.equal(reports[1]!.newAssetBytes, 0)
   const second = await readUnifiedProject(reports[1]!.projectId)
-  assert.equal(statSync(path.join(root, ref.path)).ino, statSync(path.join(temp, second.projectId, ref.path)).ino)
-  const audio = second.extensions.audioCues.cues as Array<{ frameStart: number; offsetSeconds: number; frameEnd: number }>
-  assert.equal(audio[0]!.frameStart, 0); assert.equal(audio[0]!.offsetSeconds, 0.5); assert.equal(audio[0]!.frameEnd, 29)
+  // The 2 s line starts in shot 1, so it plays whole there (shot grows to frame 74) and is not repeated as a tail in shot 2.
+  assert.deepEqual(second.extensions.audioCues.cues, [])
+  const first = await readUnifiedProject(reports[0]!.projectId)
+  assert.equal(statSync(path.join(root, ref.path)).ino, statSync(path.join(temp, first.projectId, ref.path)).ino)
+  assert.deepEqual((first.extensions.audioCues.cues as Array<{ frameStart: number; frameEnd: number }>).map((cue) => [cue.frameStart, cue.frameEnd]), [[15, 74]])
+  assert.equal(first.scene.content.timeline.frameEnd, 74)
   const effects = second.extensions.vfxCues.cues as Array<{ frameStart: number; frameEnd: number }>
   assert.deepEqual(effects.map((cue) => [cue.frameStart, cue.frameEnd]), [[0, 5]])
   assert.deepEqual(await executeUnifiedCommand(envelope), result)
@@ -93,6 +96,34 @@ test('store split leaves source bytes unchanged, shares audio inode, reports and
   assert.equal(delayed[MIX_RATE * 0.4], 0); assert.ok(delayed[MIX_RATE * 0.6]! > 0)
 })
 
+
+test('dialogue started in a shot plays whole (shot grows), its tail is not carried into the next shot, music continues', () => {
+  const source = fixture()
+  const asset = (id: string) => `sha256:${id.repeat(64)}` as const
+  const [music, voice, sfx] = [asset('a'), asset('b'), asset('c')]
+  for (const id of [music, voice, sfx]) {
+    const ref = { path: `assets/${id.slice(7)}/source.wav`, sha256: id.slice(7), byteLength: 1, mediaType: 'audio/wav' }
+    source.assets[id] = { id, kind: 'other', displayName: id, source: ref, derivatives: {}, provenance: { sourceKey: 'test', sourceVersion: '1', sourceHash: ref.sha256, original: ref }, license: null, dependencies: [] }
+  }
+  source.extensions.audioCues = { version: 1, cues: [
+    { id: 'music', kind: 'music', assetId: music, frameStart: 0, gainDb: -5 },
+    { id: 'line', kind: 'voice', assetId: voice, frameStart: 20, gainDb: 0, speaker: 'GÀ', text: 'Câu dài' },
+    { id: 'hit', kind: 'sfx', assetId: sfx, frameStart: 50, gainDb: 0 },
+  ] }
+  const durations = new Map([[music, 10], [voice, 2], [sfx, 0.2]])
+  const [one, two] = planSplitShots(source, {}, [], durations)
+  const cues = (plan: typeof one) => (plan!.project.extensions.audioCues.cues as Array<{ id: string; frameStart: number; frameEnd: number; offsetSeconds?: number }>).map((cue) => [cue.id, cue.frameStart, cue.frameEnd, cue.offsetSeconds ?? 0])
+  // 2 s at 30 fps from frame 20 ends at frame 79: shot 1 grows from 29 to 79 and music follows it.
+  assert.deepEqual(cues(one), [['music', 0, 79, 0], ['line', 20, 79, 0]])
+  assert.equal(one!.project.scene.content.timeline.frameEnd, 79)
+  assert.equal(one!.project.scene.content.editorial!.sequences[0]!.clips[0]!.sourceFrameEnd, 79)
+  assert.ok(one!.warnings.some((warning) => warning.includes('line')))
+  assert.equal(validateProject(one!.project), true)
+  // Shot 2 drops the carried-over tail of `line`, keeps music phase and the whole 6-frame sfx.
+  assert.deepEqual(cues(two), [['music', 0, 29, 1], ['hit', 20, 25, 0]])
+  assert.equal(two!.project.scene.content.timeline.frameEnd, 29)
+  assert.ok(two!.warnings.some((warning) => warning.includes('line')))
+})
 
 test('selection retains user-key-only actor, hierarchy and shot set, excluding other cameras and hidden nodes', () => {
   const source = fixture(), template = structuredClone(source.scene.content.nodes.find((node) => node.id === 'actor')!)
