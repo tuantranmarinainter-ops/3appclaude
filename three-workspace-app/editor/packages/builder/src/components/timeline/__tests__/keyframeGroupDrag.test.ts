@@ -17,6 +17,8 @@ import {
   nextKeyframeSelection,
   selectedKeyframeDragItems,
 } from '../utils'
+import { nextRowSelection } from '../utils/trackRow'
+import { nodeIdsOf } from '../../../stores/nodeSelection'
 
 const XFORM = ['position', 'rotation', 'scale'] as const
 
@@ -158,4 +160,18 @@ test('kéo nhóm sang trái quá khung 0: cả nhóm dừng ở 0, giữ khoản
   assert.equal(delta, -10)
   session.moveKeyframes(items.map((i) => ({ nodeId: i.nodeId, prop: i.prop, keyId: i.keyId, newFrame: i.origFrame + delta })))
   for (const s of framesOf(model.userKeys)) assert.ok(s.endsWith(':0,20'), s)
+})
+
+test('Ctrl/Shift + bấm tên dòng: chọn nhiều dòng tuỳ ý, bấm lại thì bỏ, bấm thường quay về một dòng', () => {
+  let sel: Selection = nextRowSelection(null, 'cam', false)
+  sel = nextRowSelection(sel, 'den', true)
+  sel = nextRowSelection(sel, 'go', true)
+  assert.deepEqual(nodeIdsOf(sel), ['cam', 'den', 'go'])
+  sel = nextRowSelection(sel, 'den', true)
+  assert.deepEqual(nodeIdsOf(sel), ['cam', 'go'])
+  assert.deepEqual(nodeIdsOf(nextRowSelection(nextRowSelection(sel, 'cam', true), 'go', true)), ['go'])
+  assert.deepEqual(nextRowSelection(sel, 'den', false), { kind: 'node', nodeId: 'den' })
+  // Đang chọn keyframe/clip thì Ctrl + bấm dòng bắt đầu nhóm node mới.
+  const fromKey = nextRowSelection({ kind: 'transformKeyframe', nodeId: 'a', frame: 10 }, 'den', true)
+  assert.deepEqual(nodeIdsOf(fromKey), ['den'])
 })
