@@ -201,7 +201,10 @@ export async function evaluateVfxCuesAtFrame(project: UnifiedProject, frame: num
   const skeletons = sampledSkeletons ?? new Map<string, { actorWorldMatrix: number[]; bones: Array<{ name: string; worldMatrix: number[] }> }>()
   if (characterIds.length && !sampledSkeletons) {
     const selected = { ...project, characters: Object.fromEntries(characterIds.map((id) => [id, project.characters[id]!])) }
-    const sample = await evaluateProjectSkeletons(selected, snapshot)
+    // Only the attached Characters are sampled: drop the other Characters' playback, or the evaluator reports them as
+    // "legacy" Characters without a model binding and the whole film export fails (Tập 15 Shot 03 eye glow on Đen).
+    const nodeIds = new Set(activeNodeIds)
+    const sample = await evaluateProjectSkeletons(selected, { ...snapshot, motionPlayback: snapshot.motionPlayback.filter((command) => nodeIds.has(command.nodeId)) })
     signal?.throwIfAborted()
     if (sample.issues.length) throw new VfxCueExportError(`VFX Character attachment could not be CPU-evaluated at frame ${frame}: ${sample.issues[0]!.message}`)
     turnFilmSkeletonsByRotationKeys(scene, { frame, side: 'right', skeletonSamples: sample.skeletonSamples })
