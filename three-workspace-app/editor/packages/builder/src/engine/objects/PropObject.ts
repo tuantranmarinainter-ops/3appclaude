@@ -4,6 +4,7 @@ import { applyTransform } from './transform'
 import type { StageGraph } from './graph'
 import { markTemplateShared } from './templateShared'
 import { attachModelBasis } from './modelBasis'
+import { preparePropTextureAnimation } from './propTextureAnimation'
 
 export function attachProp(graph: StageGraph, n: DraftNode, sceneRoot: THREE.Object3D): void {
   const root = new THREE.Group()
@@ -22,6 +23,7 @@ export function attachProp(graph: StageGraph, n: DraftNode, sceneRoot: THREE.Obj
       const cloned = (mat as THREE.Material).clone()
       const std = cloned as THREE.MeshStandardMaterial
       if (std.color && n.metadata?.preserveMaterials !== true) std.color.copy(color)
+      preparePropTextureAnimation(root, cloned)
       return cloned
     })
     // Three 只在 geometry.groups 非空时遍历 material[]；单材质却写成数组
