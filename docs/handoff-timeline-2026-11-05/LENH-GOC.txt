@@ -1,0 +1,50 @@
+Bạn làm trọn gói chỉnh sửa dòng thời gian App 2 (Dựng cảnh; người dùng gọi App 2 là "F2"), gồm 5 đợt theo đúng thứ tự:
+F1 → F2 (mọi keyframe biến đổi, cả lớp fcurve, đều chọn và kéo được), rồi E1 → E2 → E3 (nút Lưu + Về danh sách,
+menu chuột phải keyframe Sao chép/Dán và bỏ xoá nhầm, kéo chung clip + keyframe).
+
+ĐẶC TẢ (đọc HẾT cả hai trước khi làm; mỗi đặc tả có mục "Chia đợt", "Đo số", "Ràng buộc"):
+1. https://github.com/tuantranmarinainter-ops/3appclaude/blob/main/docs/TIMELINE-FCURVE-KEYS-TASK-2026-11-04.md  (đợt F1, F2)
+2. https://github.com/tuantranmarinainter-ops/3appclaude/blob/main/docs/TIMELINE-F2-EDIT-TASK-2026-11-05.md      (đợt E1, E2, E3)
+Quy tắc repo: https://github.com/tuantranmarinainter-ops/3appclaude/blob/main/CLAUDE.md
+              https://github.com/tuantranmarinainter-ops/3appclaude/blob/main/docs/DECISIONS.md
+              three-workspace-app/editor/AGENTS.md
+Skill dùng chung: https://github.com/tuantranmarinainter-ops/3appclaude/blob/main/docs/AGENT-SKILLS.md
+  (.claude/skills/: w01-test-sandbox, w01-pr, w01-browser-check, w01-backlog: dùng script có sẵn, không tự viết lại).
+Repo cục bộ: S:\Claude\w01. Mỗi đợt một git worktree riêng, tạo từ origin/main MỚI NHẤT tại lúc bắt đầu đợt đó.
+
+NỀN ĐÃ CÓ TRÊN MAIN (giữ nguyên hành vi, có test):
+- PR #219 rê khung chọn + kéo nhóm keyframe Biến đổi; #220 Shift+bấm cộng thêm vào vùng chọn; #221 timeline mở chỉ thước Giây.
+- Song song: một phiên Claude đang làm Ctrl+B (cắt clip tại đầu phát) + "Tự dời" khi cắt/tỉa clip. Nếu PR đó chưa merge khi bạn tới
+  phần clip (E3), KHÔNG sửa đè logic cắt/tỉa; đợi merge rồi rebase, hoặc dừng và hỏi.
+
+NHÁNH VÀ PR (KHÔNG tự merge; người dùng nói "merge" mới merge):
+- F1: claude/timeline-fcurve-f1 (base main). F2: claude/timeline-fcurve-f2 (base = nhánh F1 nếu F1 chưa merge).
+- E1: claude/timeline-f2-e1 (base main, độc lập, có thể làm song song với F1/F2 nếu không đụng cùng file).
+- E2: claude/timeline-f2-e2 (base = nhánh F2 nếu chưa merge). E3: claude/timeline-f2-e3 (base = nhánh E2).
+- Mở PR bằng .claude/skills/w01-pr/scripts/gh_pr.py (máy không có gh). Mỗi PR ghi số đo + ảnh + điều chưa kiểm.
+
+ĐIỀU PHỐI SUB-AGENT (bắt buộc):
+- Bạn là điều phối viên: huy động MỌI sub-agent phù hợp (khảo sát, code, test, đo số, kiểm trình duyệt, review), chạy song song việc
+  độc lập nhưng không để hai agent sửa cùng một file.
+- Model sub-agent LUÔN dưới Opus 5.5; với Codex tối đa "terra" high. Cấm Opus và Fable.
+- Tự kiểm lại kết quả sub-agent (diff, test, số) trước khi commit.
+
+RÀNG BUỘC CỨNG:
+- Chỉ sửa three-workspace-app/editor/packages/builder và host apps/studio (StudioOverlay/WorkbenchClient) + test.
+  Không fetch trong packages/builder. Không sửa packages/retarget, không đổi golden, không commit binary/kho thật/project thật.
+- Mỗi thao tác (kéo, dán, xoá, kéo nhóm) = đúng MỘT bước Hoàn tác; Làm lại đúng.
+- KHÔNG ghi thư viện thật (S:\Claude\w01-library, C:\w01-library) hay project thật (S:\Claude\w01-samples\tap15v3).
+  W01_LIBRARY mặc định là kho THẬT → luôn đặt bản sao (skill w01-test-sandbox). Dữ liệu đo: bản sao project Shot 03
+  (tap15v3\projects\5673640e-bfd9-4a96-8d22-0e8a648ee130, chỉ đọc để copy) + bản sao thư viện con.
+- Cổng dev server: 3140–3149. KHÔNG dừng/đụng 3016 (App 2 thật, worktree S:\Claude\w01-app: không làm việc trong đó),
+  3101 (App 1), 3127 (bản thử của Claude).
+- Next dev ở cổng khác tự sửa apps/studio/tsconfig.json: hoàn tác trước khi commit.
+- Windows: PATH thiếu System32; Bash heredoc mất dấu "\" → sửa code bằng Edit/Write.
+- UI tiếng Việt, nền tối. pnpm typecheck toàn workspace + test builder trước mỗi lần push.
+
+ĐO SỐ VÀ BÁO CÁO:
+- Đo đúng mục 8 "Đo số" của TỪNG đặc tả; ghi docs/REPORT-timeline-fcurve-keys-<ngày>.md và docs/REPORT-timeline-f2-edit-<ngày>.md.
+  Trạng thái NOT_RUN/BLOCKED/FAIL/PASS; không PASS chỉ vì UI hiện ra.
+- Mỗi đợt kiểm trình duyệt thật trên bản sao + ảnh bằng chứng (trước/sau).
+- Báo tiến độ tiếng Việt, thanh progress 5 đợt. Cuối mỗi đợt: link PR, số đo, test (đạt/lỗi), điều chưa kiểm.
+- Gặp điểm chưa rõ ảnh hưởng thứ người dùng nhìn thấy: dừng và hỏi.
