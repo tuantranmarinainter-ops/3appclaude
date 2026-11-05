@@ -1,3 +1,4 @@
+import { useKeyframeContextMenu } from './KeyframeContextMenu'
 import { useDirector } from '../../bridge/DirectorContext'
 import { fcurveRefsOf } from '../../stores/types'
 import type { FCurveSet } from '../../evaluate/curves/FCurveSet'
@@ -88,6 +89,7 @@ export function GhostKeyframes({
   onSeek: (frame: number) => void
   onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
 }) {
+  const openKeyMenu = useKeyframeContextMenu()
   const snap = useSnapFrame(pxPerFrame)
   const { useStore } = useDirector()
   const fcurves = useStore((s) => s.fcurves)
@@ -117,6 +119,7 @@ export function GhostKeyframes({
                 }}
         onPointerDown={(e) => {
           e.stopPropagation()
+          if (e.button !== 0) return
           const clicked: KeyframeRef = { nodeId, prop, keyId: kf.id }
           const additive = isAdditiveMod(e)
           const next = fcurveRefsOf(selection).length ? nextTimelineKeySelection(selection, [clicked], [], additive, userKeys, fcurves) : nextKeyframeSelection(selection, clicked, additive, kf.frame, userKeys)
@@ -124,6 +127,8 @@ export function GhostKeyframes({
           onSeek(kf.frame)
           if (!readOnly && !additive) drag.begin(e, selectedTimelineDragItems(next, userKeys, fcurves))
         }}
+        onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, [{ nodeId, prop, keyId: kf.id }], [], false, userKeys, fcurves)); onSeek(kf.frame) }}
+        onContextMenu={(e) => openKeyMenu(e, nodeId, kf.frame, [{ nodeId, prop, keyId: kf.id }], [], isKeyframeHighlighted(selection, { keyId: kf.id, nodeId, frame: kf.frame }))}
         onPointerMove={readOnly ? undefined : drag.move}
         onPointerUp={readOnly ? undefined : drag.end}
         onPointerCancel={readOnly ? undefined : drag.cancel}
@@ -163,6 +168,7 @@ export function AggregateKeyframes({
   onSeek: (frame: number) => void
   onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
 }) {
+  const openKeyMenu = useKeyframeContextMenu()
   const snap = useSnapFrame(pxPerFrame)
   const drag = useKeyframeDrag(pxPerFrame, onMoveKeyframes, snap)
   const previewDf = muted || readOnly ? null : drag.previewDf
@@ -202,8 +208,8 @@ export function AggregateKeyframes({
         onPointerMove={muted || readOnly ? undefined : drag.move}
         onPointerUp={muted || readOnly ? undefined : drag.end}
         onPointerCancel={muted || readOnly ? undefined : drag.cancel}
-        onDoubleClick={!refs.length && !muted && !readOnly ? (e) => { e.stopPropagation(); onRemoveTransformKeys(nodeId, frame) } : undefined}
-        onContextMenu={!refs.length && !muted && !readOnly ? (e) => { e.preventDefault(); e.stopPropagation(); onRemoveTransformKeys(nodeId, frame) } : undefined}
+        onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, refs, curves, false, userKeys, fcurves)); onSeek(frame) }}
+        onContextMenu={(e) => openKeyMenu(e, nodeId, frame, refs, curves, selected)}
       />
     )
     return muted && mutedHint ? <Tooltip key={`agg-${nodeId}-${frame}`} label={mutedHint} side="top" delay={120}>{diamond}</Tooltip> : diamond

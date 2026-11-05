@@ -1,3 +1,4 @@
+import { useKeyframeContextMenu } from './KeyframeContextMenu'
 import { useDirector } from '../../bridge/DirectorContext'
 import type { FCurveSet } from '../../evaluate/curves/FCurveSet'
 import { fovToFocalLength } from '../../evaluate/camera/focalLength'
@@ -71,6 +72,7 @@ export function TrackRow({
   const { useStore } = useDirector()
   const setFrame = useStore((s) => s.setFrame)
   const writeLocked = useStore((s) => s.writeLocked)
+  const openKeyMenu = useKeyframeContextMenu()
   const moveKeys = keyframesLocked || writeLocked ? () => {} : onMoveKeyframes
   const snap = useSnapFrame(pxPerFrame)
   const dragKf = useKeyframeDrag(pxPerFrame, moveKeys, snap)
@@ -310,8 +312,8 @@ export function TrackRow({
                   onPointerMove={keyframesLocked || writeLocked ? undefined : dragKf.move}
                   onPointerUp={keyframesLocked || writeLocked ? undefined : dragKf.end}
                   onPointerCancel={keyframesLocked || writeLocked ? undefined : dragKf.cancel}
-                  onDoubleClick={(e) => { e.stopPropagation(); if (!keyframesLocked && !writeLocked) onRemoveFcurveKeyframe(row.nodeId, FC_PROP_PATH[row.prop!], f) }}
-                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (!keyframesLocked && !writeLocked) onRemoveFcurveKeyframe(row.nodeId, FC_PROP_PATH[row.prop!], f) }}
+                  onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, [], curves, false, userKeys, fcurves)); setFrame(f) }}
+                  onContextMenu={(e) => openKeyMenu(e, row.nodeId, f, [], curves, selected)}
                 />
               })}
             {(userKeys[row.nodeId]?.[row.prop!] ?? []).map((kf) => {
@@ -354,6 +356,7 @@ export function TrackRow({
                   }
                   onPointerDown={(e) => {
                     e.stopPropagation()
+                    if (e.button !== 0) return
                     if (keyframesLocked) {
                       setFrame(kf.frame)
                       return
@@ -374,17 +377,8 @@ export function TrackRow({
                   onPointerMove={keyframesLocked || writeLocked ? undefined : dragKf.move}
                   onPointerUp={keyframesLocked || writeLocked ? undefined : dragKf.end}
                   onPointerCancel={keyframesLocked || writeLocked ? undefined : dragKf.cancel}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    if (keyframesLocked || writeLocked) return
-                    onRemoveKeyframe(row.nodeId, row.prop!, kf.id)
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (keyframesLocked || writeLocked) return
-                    onRemoveKeyframe(row.nodeId, row.prop!, kf.id)
-                  }}
+                  onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, [{ nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }], curves, false, userKeys, fcurves)); setFrame(kf.frame) }}
+                  onContextMenu={(e) => openKeyMenu(e, row.nodeId, kf.frame, [{ nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }], curves, isKeyframeHighlighted(selection, { keyId: kf.id, nodeId: row.nodeId, frame: kf.frame }))}
                 />
               )
               if (keyframesLocked && keyframesLockedHint) {

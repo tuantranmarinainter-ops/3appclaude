@@ -5,7 +5,7 @@ import { makeKeyframe } from '../../../evaluate/curves/KeyframeTrack'
 import { fcurveRefsOf, keyframeRefsOf } from '../../../stores/types'
 import { makeEmptyDraft } from '../../../contract/emptyDraft'
 import { fcurveFrames, transformKeyframeFrames } from '../utils/trackRow'
-import { fcurveRefsAtFrame, fcurveToken, nextTimelineKeySelection, selectedTimelineDragItems } from '../utils/fcurveSelection'
+import { contextTimelineKeySelection, fcurveRefsAtFrame, fcurveToken, nextTimelineKeySelection, selectedTimelineDragItems } from '../utils/fcurveSelection'
 import { clampKeyframeGroupDelta, collectSnapTargets, snapFrame } from '../utils'
 
 test('gộp các thành phần gần cùng khung và loại khóa đang kéo khỏi snap', () => {
@@ -53,4 +53,20 @@ test('xem trước kẹp theo mọi thành phần thật ở cả hai biên', ()
   const items = selectedTimelineDragItems(selection, {}, fc)
   assert.equal(clampKeyframeGroupDelta(10, items, { frameStart: 0, frameEnd: 20 }), 9)
   assert.equal(clampKeyframeGroupDelta(-10, items, { frameStart: 0.000001, frameEnd: 20 }), -9)
+})
+
+test('context menu preserves a ghost selection and adds the overlapping curve bundle', () => {
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.position', 0, 10, 1)
+  const a = makeKeyframe(10, [1, 2, 3]), b = makeKeyframe(20, [4, 5, 6])
+  const keys = { actor: { position: [a, b] } }
+  const refs = [a, b].map((key) => ({ nodeId: 'actor', prop: 'position' as const, keyId: key.id }))
+  const selected = nextTimelineKeySelection(null, refs, [], false, keys, fc)
+  const curve = fcurveRefsAtFrame(fc, 'actor', ['position'], 10)
+  const result = contextTimelineKeySelection(selected, [refs[0]], curve, true, keys, fc)
+  assert.deepEqual(keyframeRefsOf(result), refs)
+  assert.deepEqual(fcurveRefsOf(result), curve)
+  const aggregateNotHighlighted = contextTimelineKeySelection(selected, [refs[0]], curve, false, keys, fc)
+  assert.deepEqual(keyframeRefsOf(aggregateNotHighlighted), [refs[0]])
+  assert.deepEqual(fcurveRefsOf(aggregateNotHighlighted), curve)
 })

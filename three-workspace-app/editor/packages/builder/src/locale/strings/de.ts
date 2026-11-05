@@ -337,6 +337,13 @@ export const de: LocaleDict = {
     "mainCamera": "Hauptkamera"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Kamerafahrt",
     "pathMotion": "Pfad",
     "transform": "Transformation",
@@ -406,7 +413,7 @@ export const de: LocaleDict = {
     "addKeyframeMulti": "Key alle {{count}} ausgewählten Objekte im aktuellen Frame",
     "saveKeyframe": "Keyframe speichern",
     "cancelPending": "Änderungen verwerfen",
-    "fcurveKey": "Kurven-Keyframe · Frame {{frame}} (Doppelklick oder Rechtsklick zum Löschen)",
+    "fcurveKey": "Kurven-Keyframe · Frame {{frame}}",
     "xformKey": "Keyframe · Frame transformieren {{frame}} (Gruppe, Doppelklick oder Rechtsklick zum Löschen)",
     "resize": "Größe der Zeitleiste ändern",
     "collapse": "Zeitleiste einklappen",
