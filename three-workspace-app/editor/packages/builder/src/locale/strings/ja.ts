@@ -47,6 +47,9 @@ export const ja: LocaleDict = {
     "failed": "開けませんでした"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "保存中…",
     "saved": "保存済み",
     "unsaved": "未保存",

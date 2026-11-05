@@ -199,6 +199,10 @@ export function StudioOverlay({
     if (error && !window.confirm(vi ? 'Lưu lỗi. Vẫn rời đi?' : 'Saving failed. Leave anyway?')) return
     onClose()
   }
+  const exitAfterTimelineSave = () => {
+    if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return
+    onClose()
+  }
   const runHistory = useCallback(async (command: 'history.undo' | 'history.redo') => {
     if (historyBusy) return
     setHistoryBusy(true)
@@ -714,7 +718,7 @@ export function StudioOverlay({
           </div>}
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
-          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
+          {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} onExitToList={exitAfterTimelineSave} sceneKeyboardActive={activeWorkspace === 'scene'} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
           {projectState && <RetargetWorkspace key={`retarget-${documentId}`} projectId={documentId} active={activeWorkspace === 'retarget'} />}
           {projectState && <AnimationWorkspace key={`animation-${documentId}`} projectId={documentId} active={activeWorkspace === 'animation'} controlsOpen={drawer === 'animation'} onClose={() => setDrawer(null)} onEditorDirty={setAnimationEditorDirty} />}
         </main>

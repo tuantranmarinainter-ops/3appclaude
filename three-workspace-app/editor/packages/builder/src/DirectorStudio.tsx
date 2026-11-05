@@ -4,6 +4,8 @@ import type { DirectorDocument } from './contract/types'
 import type { HostAdapter } from './host/types'
 import {
   DirectorProvider,
+  ExitToListContext,
+  SceneKeyboardActiveContext,
   OverlayCloseProvider,
   type DirectorApi,
   type StudioCloseHandler,
@@ -25,6 +27,10 @@ export interface DirectorStudioProps {
   documentId: string
   className?: string
   onReady?: (api: DirectorApi) => void
+  /** Called after the timeline has saved the document. */
+  onExitToList?: () => void
+  /** Whether the scene workspace currently owns global shortcuts. */
+  sceneKeyboardActive?: boolean
   /**
    * 宿主 overlay 关闭。传入后 header 右侧显示退出，不传则不渲染。
    * `saveOnCloseInBackground` 开启时会带上后台保存的 Promise。
@@ -117,6 +123,8 @@ export function DirectorStudio({
   documentId,
   className,
   onReady,
+  onExitToList,
+  sceneKeyboardActive = true,
   onClose,
   saveOnCloseInBackground = false,
   locale,
@@ -137,9 +145,13 @@ export function DirectorStudio({
         fallback={<StudioBootShell className={className} />}
       >
         <OverlayCloseProvider onClose={onClose} saveInBackground={saveOnCloseInBackground}>
+          <SceneKeyboardActiveContext.Provider value={sceneKeyboardActive}>
+          <ExitToListContext.Provider value={onExitToList}>
           <div className={hostClass}>
             <App />
           </div>
+          </ExitToListContext.Provider>
+          </SceneKeyboardActiveContext.Provider>
         </OverlayCloseProvider>
       </DirectorProvider>
     </LocaleProvider>

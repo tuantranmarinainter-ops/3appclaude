@@ -47,6 +47,9 @@ export const ko: LocaleDict = {
     "failed": "열지 못했습니다"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "저장 중…",
     "saved": "저장됨",
     "unsaved": "저장 안 됨",

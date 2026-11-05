@@ -47,6 +47,9 @@ export const id: LocaleDict = {
     "failed": "Tidak dapat membuka"
   },
   "save": {
+    "exitToList": "Back to list",
+    "exitOnError": "Saving failed. Leave anyway?",
+    "locked": "Saving is disabled while editing is locked",
     "saving": "Menyimpan...",
     "saved": "Tersimpan",
     "unsaved": "Belum disimpan",
