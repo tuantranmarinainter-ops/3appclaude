@@ -31,3 +31,20 @@ Chạy Chromium với server cổng 3141, `W01_LIBRARY=/tmp/e2-library` và bả
 - **NOT_RUN:** kiểm chuột phải/nhấp đôi đủ 10 hình thoi thuộc ba loại trên Shot 03; đo Dán chỉ xoay trên Shot 03; browser chọn nhóm qua ghost; các mục E1/E3 nêu ở bảng trên.
 
 Chưa commit, push, mở PR hoặc merge trong đợt kiểm này.
+
+## Gỡ chặn E2 và đo trên Windows (Claude, 2026-11-05)
+
+**Quyết định người dùng:** chặn dán vị trí khi lớp khóa người dùng đang tắt; không đổi cơ chế đường đi dẫn xuất.
+`canPasteWithoutUserKeys` trả false khi mask có `position` (node sửa được) → mục "Dán biến đổi"/"Dán chỉ vị trí" bị tắt,
+title "Bật lại keyframe tay (khóa người dùng) để dán"; session cũng từ chối. Test cập nhật trong `fcurveKeyframe.test.ts`.
+
+Bản sao Shot 03 thật, cổng 3127, chuột thật, so JSON `extensions.topview.fcurves`:
+
+| Mục | Trạng thái | Kết quả |
+| --- | --- | --- |
+| 8.3 Chuột phải / nhấp đôi | PASS | 4 chuột phải + 4 nhấp đôi trên 8 hình thoi Gỗ Xưa (userKey + fcurve): 8/8 còn nguyên, JSON không đổi; nhấp đôi đưa đầu phát tới khung 67 (2,23 s) |
+| 8.4 Sao chép 53 → Dán biến đổi 65 | PASS | fcurve vị trí x tại 65 = 2,4 (giá trị tại 53); thêm userKey vị trí [2,4, 0, 1,2], xoay/tỉ lệ = tư thế đánh giá tại 53; node khác không đổi; Ctrl+Z khớp JSON gốc, Ctrl+Y khớp JSON sau dán |
+| Tắt khóa người dùng | PASS | menu: 4 mục dán tắt kèm title nhắc bật lại; Sao chép, Xóa vẫn bật |
+| Typecheck + builder | PASS | 797 PASS / 1 SKIP |
+
+Ghi chú: ô "Ghi đè khung khóa người dùng" trên thanh timeline có kích thước 0 ở khung 1600×900 trong pane (không bấm chuột được), phải bật/tắt bằng JS khi đo. Chưa sửa, ngoài phạm vi E2.

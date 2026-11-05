@@ -49,11 +49,14 @@ export function selectedPasteTargets(selection: Selection | null, keys: UserKeys
   return targets
 }
 /** When user keys are disabled, every component must be represented by a
- * destination fcurve; otherwise the pasted value would not be visible. */
+ * destination fcurve; otherwise the pasted value would not be visible.
+ * Position is never pasted while user keys are off (user decision 2026-11-05): the derived walk path
+ * is rebuilt from the layer being evaluated, so it would drift once user keys are turned back on. */
 export function canPasteWithoutUserKeys(doc: DirectorDocument, fc: FCurveSet | null, targets: PasteTarget[], mask: TransformProp[]): boolean {
   return targets.every(({ nodeId, frame }) => {
     const node = doc.content.nodes.find((item) => item.id === nodeId)
     if (!node || node.locked || cameraMotionOwnsKeyframes(doc, nodeId)) return true
+    if (mask.includes('position')) return false
     return mask.every((prop) => {
       if (node.type === 'camera' && prop === 'scale') return true
       const tracks = (fc?.tracksForNode(nodeId) ?? []).filter((track) => track.propPath === `transform.${prop}` && track.keys.some((key) => Math.abs(key.frame - frame) <= EPS))

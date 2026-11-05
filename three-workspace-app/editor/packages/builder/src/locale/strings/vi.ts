@@ -343,7 +343,7 @@ export const vi: LocaleDict = {
     "keyPasteRotation": "Dán chỉ xoay",
     "keyPasteScale": "Dán chỉ tỉ lệ",
     "keyPasteSkipped": "Bỏ qua {{count}} đích bị khoá",
-    "keyPasteEnableUserKeys": "Bật khóa người dùng để dán",
+    "keyPasteEnableUserKeys": "Bật lại keyframe tay (khóa người dùng) để dán",
     "cameraMotion": "Chuyển động máy",
     "pathMotion": "Đường đi",
     "transform": "Biến đổi",

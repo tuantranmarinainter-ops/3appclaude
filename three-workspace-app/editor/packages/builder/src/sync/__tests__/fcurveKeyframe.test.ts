@@ -13,7 +13,7 @@ import { DirectorDoc } from '../../document/DirectorDoc'
 import { History } from '../../document/History'
 import type { DirectorEngine } from '../../engine/DirectorEngine'
 import type { HostAdapter } from '../../host/types'
-import { buildTransformPastePlan, copyTransform, getTransformClipboard } from '../transformPaste'
+import { buildTransformPastePlan, canPasteWithoutUserKeys, copyTransform, getTransformClipboard } from '../transformPaste'
 import { PerspectiveCamera, Vector3, MathUtils } from 'three'
 
 function actor(): DraftNode {
@@ -534,10 +534,17 @@ test('paste preserves other keys and curve metadata, and is one undo/redo step',
   editor.userKeysEnabled = false
   assert.equal(s.pasteTransformKeys(['position']).changed, false)
   assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+  // Đủ 3 thành phần fcurve vẫn KHÔNG cho dán vị trí khi tắt khóa người dùng (người dùng chốt 2026-11-05).
   model.fcurves!.upsertKey('actor', 'transform.position', 1, 10, 22)
   model.fcurves!.upsertKey('actor', 'transform.position', 2, 10, 33)
-  assert.equal(s.pasteTransformKeys(['position']).changed, true)
-  assert.deepEqual([0, 1, 2].map((index) => model.fcurves!.getKeyAt('actor', 'transform.position', index, 10)!.value), [0, 0, 0])
+  const covered = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  assert.equal(s.pasteTransformKeys(['position']).changed, false)
+  assert.equal(s.pasteTransformKeys(['position', 'rotation', 'scale']).changed, false)
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), covered)
+  // Xoay có đủ fcurve ở khung đó thì vẫn dán được.
+  for (const index of [0, 1, 2]) model.fcurves!.upsertKey('actor', 'transform.rotation', index, 10, 45)
+  assert.equal(s.pasteTransformKeys(['rotation']).changed, true)
+  assert.deepEqual([0, 1, 2].map((index) => model.fcurves!.getKeyAt('actor', 'transform.rotation', index, 10)!.value), [0, 0, 0])
 })
 
 test('camera copy converts evaluated look-at direction to Euler, and skips camera scale on paste', () => {
@@ -560,7 +567,7 @@ test('camera copy converts evaluated look-at direction to Euler, and skips camer
   assert.equal(plan.userKeys[camera.id].scale, undefined)
 })
 
-test('paste with user keys disabled rederives the path from fcurves while preserving the overlay for later', () => {
+test('user keys disabled: position paste is refused so the derived walk path cannot drift (E2 blocker)', () => {
   const { session: s, model, editor, doc } = session()
   const fc = FCurveSet.empty()
   seedPositionKeys(fc, [10, 20])
@@ -569,12 +576,14 @@ test('paste with user keys disabled rederives the path from fcurves while preser
   model.setUserKeys({ actor: { position: [overlay] } })
   editor.userKeysEnabled = false
   copyTransform(doc, null, {}, 'actor', 0)
+  const targets = [{ nodeId: 'actor', frame: 10 }]
+  assert.equal(canPasteWithoutUserKeys(doc, model.fcurves, targets, ['position']), false)
   editor.select({ kind: 'timelineBox', clips: [], keys: [], fcurves: [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }] })
+  const before = JSON.stringify({ doc, keys: FCurveSet.persist(model.fcurves, model.userKeys) })
+  assert.equal(s.pasteTransformKeys(['position']).changed, false)
+  assert.equal(JSON.stringify({ doc, keys: FCurveSet.persist(model.fcurves, model.userKeys) }), before)
+  // Bật lại khóa người dùng thì dán được như thường.
+  editor.userKeysEnabled = true
   assert.equal(s.pasteTransformKeys(['position']).changed, true)
-  const clip = doc.content.timeline.animation.pathMotionClips.find((item) => item.lockedReason === 'derived-from-keyframes')!
-  assert.deepEqual([clip.frameStart, clip.frameEnd], [10, 20])
-  const path = doc.content.nodes.find((node) => node.id === clip.pathNodeId)!.path!
-  assert.equal(path.points[0].position.x, 0)
-  assert.deepEqual(model.userKeys.actor.position!.find((key) => key.frame === 10)!.value, [0, 0, 0])
   assert.deepEqual(model.userKeys.actor.position!.find((key) => key.frame === 30), overlay)
 })
