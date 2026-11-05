@@ -1,24 +1,24 @@
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
-import { makeEmptyDraft } from '../../../contract/emptyDraft'
-import type { DirectorDocument, DraftNode } from '../../../contract/types'
-import { DirectorDoc } from '../../../document/DirectorDoc'
-import { History } from '../../../document/History'
-import type { DirectorEngine } from '../../../engine/DirectorEngine'
-import { makeKeyframe, type UserKeys } from '../../../evaluate/curves/KeyframeTrack'
-import type { HostAdapter } from '../../../host/types'
-import { EditorStore } from '../../../stores/EditorStore'
-import { keyframeRefsOf, makeKeyframeSelection, makeTimelineBoxSelection, type KeyframeRef, type Selection } from '../../../stores/types'
-import { StudioSession } from '../../../sync/StudioSession'
+import { makeEmptyDraft } from '../../contract/emptyDraft'
+import type { DirectorDocument, DraftNode } from '../../contract/types'
+import { DirectorDoc } from '../../document/DirectorDoc'
+import { History } from '../../document/History'
+import type { DirectorEngine } from '../../engine/DirectorEngine'
+import { makeKeyframe, type UserKeys } from '../../evaluate/curves/KeyframeTrack'
+import type { HostAdapter } from '../../host/types'
+import { EditorStore } from '../../stores/EditorStore'
+import { keyframeRefsOf, makeKeyframeSelection, makeTimelineBoxSelection, type KeyframeRef, type Selection } from '../../stores/types'
+import { StudioSession } from '../../sync/StudioSession'
 import {
   clampKeyframeGroupDelta,
   collectFrameBundles,
   nextBundleSelection,
   nextKeyframeSelection,
   selectedKeyframeDragItems,
-} from '../utils'
-import { nextRowSelection } from '../utils/trackRow'
-import { nodeIdsOf } from '../../../stores/nodeSelection'
+} from '../../components/timeline/utils'
+import { nextRowSelection } from '../../components/timeline/utils/trackRow'
+import { nodeIdsOf } from '../../stores/nodeSelection'
 
 const XFORM = ['position', 'rotation', 'scale'] as const
 

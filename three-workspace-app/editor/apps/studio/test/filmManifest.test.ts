@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Matrix4, Quaternion } from 'three'
+import { AnimationClip, Bone, Group, Matrix4, Quaternion, VectorKeyframeTrack } from 'three'
+import { makeEmptyDraft } from '@topview/3d-builder'
+import { FCurveSet, sceneFromDocument } from '@topview/3d-builder/evaluate'
+import { createSkeletonEvaluator, sampleSkeletonRange } from '@topview/3d-builder/skeleton'
 import { buildFilmExportManifest, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
 
 const identity = new Matrix4().toArray()
@@ -26,6 +29,43 @@ const profile: ConvertedFilmModelProfile = {
   bones: [{ name: 'root', parent: null, bobjRestMatrixRowMajor: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }],
   actions: [], textureRequired: false, files: [{ sourcePath: 'C:/models/model.bobj', targetPath: 'model.bobj', sha256: 'c'.repeat(64) }],
 }
+
+test('Y fcurve moves the film actor once and leaves native COG pose unchanged', (t) => {
+  const doc = makeEmptyDraft('hop', 30, 29)
+  doc.content.nodes.push({ id: 'actor', type: 'character', name: 'Actor', visible: true, locked: false,
+    metadata: { rig: 'direct', modelUnitMeters: 1, preserveMaterials: true },
+    transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } } })
+  const model = new Group(), root = new Bone(), cog = new Bone()
+  root.name = 'Root'; cog.name = 'COG'; cog.position.y = 1; model.add(root); root.add(cog)
+  model.animations = [new AnimationClip('wound', 1, [new VectorKeyframeTrack('COG.position', [0, 1], [0, 1, 0, 0, 1.1, 0])])]
+  doc.content.timeline.animation.motionClips.push({ id: 'wound', source: 'user', sourceDuration: 1, frameStart: 0, frameEnd: 29,
+    target: { type: 'character', nodeId: 'actor' }, playback: { version: 1, speed: 1, loop: false, loopMode: 'none' },
+    motion: { assetId: 'motion', name: 'Wound', source: 'user', sourceRig: 'custom', url: '', inPlace: false, loop: false, speed: 1, time: 0,
+      rootMotion: { policy: 'skeletal', boneName: 'Root', alignment: 'origin' } } })
+  const curves = FCurveSet.empty()
+  for (const [frame, value] of [[0, 0], [15, 0.5], [29, 0]]) curves.upsertKey('actor', 'transform.position', 1, frame!, value!)
+  const evaluator = createSkeletonEvaluator(doc, new Map([['actor', model]]), new Map([['motion', { group: model, clipIndex: 0 }]]))
+  const sample = (fcurves: FCurveSet | null) => [...sampleSkeletonRange(sceneFromDocument(doc, { fcurves }), { startFrame: 0, endFrame: 29, sampleFps: 20 }, evaluator.evaluate)]
+  const row = (y: number) => `1 0 0 0 0 1 0 ${y} 0 0 1 0 0 0 0 1`
+  const bobj = `arm_name rig\narm_bone Root 0 0 0 ${row(0)}\narm_bone COG Root 0 1 0 ${row(1)}\no body\nv 0 0 0\nvw COG 1\nv 0 2 0\nvw COG 1\nv 1 0 0\nvw COG 1\nf 1 2 3\nan idle\nao Root\n`
+  const nativeProfile = { ...profile, originalRig: { bobj }, bones: ['Root', 'COG'].map((name) => ({ name, parent: name === 'Root' ? null : 'Root', bobjRestMatrixRowMajor: identity })) }
+  const filmInput = (samples: ReturnType<typeof sample>) => ({ ...structuredClone(input), durationTicks: 20,
+    models: [{ ...structuredClone(input.models[0]!), sourceBones: ['Root', 'COG'].map((name) => ({ name })) }],
+    frames: samples.map((s, tick) => ({ tick, sourceFrame: s.frame, side: s.side, skeletons: s.skeletonSamples })) })
+  const baseline = filmInput(sample(null)), hop = filmInput(sample(curves))
+  const manifest = (source: typeof baseline) => buildFilmExportManifest(source as never, new Map([['asset', nativeProfile]]), 'hop').actors[0]!
+  const a = manifest(baseline), b = manifest(hop)
+  const cogKeys = (actor: typeof a) => actor.poseTracks.find((track) => track.boneName === 'COG')!.keyframes
+  const maxDiff = (actor: typeof a) => Math.max(...cogKeys(a).map((key, i) => Math.hypot(...key.t.map((v, axis) => v - cogKeys(actor)[i]!.t[axis]!))))
+  const peak = Math.max(...b.transformSamples.map((key, i) => key.y - a.transformSamples[i]!.y))
+  assert.ok(Math.abs(peak - 0.5) < 1e-6, `actor hop ${peak} m`)
+  assert.ok(maxDiff(b) < 0.01, `COG difference ${maxDiff(b)} m`)
+  const doubled = structuredClone(hop)
+  for (const frame of doubled.frames) frame.skeletons[0]!.bones.find((bone) => bone.name === 'COG')!.worldMatrix[13]! += frame.skeletons[0]!.actorWorldMatrix[13]!
+  assert.ok(maxDiff(manifest(doubled)) > 0.1, 'test detects injected duplicate bone translation')
+  t.diagnostic(`actor hop ${peak} m; COG delta ${maxDiff(b)} m; injected fault ${maxDiff(manifest(doubled))} m`)
+  evaluator.dispose()
+})
 
 test('builds a worker manifest with per-tick actor transforms and editable BOBJ tracks', () => {
   const manifest = buildFilmExportManifest(input as never, new Map([['asset', profile]]), 'take-01')

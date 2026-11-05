@@ -81,6 +81,35 @@ describe('drag over neighbour creates blendIn (one undo step)', () => {
 })
 
 describe('context menu and panel actions are single undo steps', () => {
+  it('foot lock can be disabled, survives resizing, and supports undo/redo', () => {
+    const { session, history, byId } = fixture()
+    expect(session.blendMotionClipWithPrevious('B')).toBe(true)
+    expect(byId('B').playback.blendIn!.footLock).toBe(true)
+    expect(session.setMotionClipBlend('B', { footLock: false })).toBe(true)
+    expect(session.setMotionClipBlend('B', { footLock: false })).toBe(false)
+    expect(session.setMotionClipBlend('B', { frames: 20 })).toBe(true)
+    expect(byId('B').playback.blendIn!.footLock).toBe(false)
+    history.undo()
+    expect(byId('B').playback.blendIn!.footLock).toBe(false)
+    history.undo()
+    expect(byId('B').playback.blendIn!.footLock).toBe(true)
+    history.redo()
+    expect(byId('B').playback.blendIn!.footLock).toBe(false)
+  })
+  it('missing clip, clip without blend, or a no-op patch never adds an empty undo step', () => {
+    const { session, history, byId } = fixture()
+    expect(session.setMotionClipBlend('missing', { curve: 'linear', footLock: false })).toBe(false)
+    expect(session.setMotionClipBlend('B', { curve: 'linear', footLock: false })).toBe(false)
+    expect(history.undoStack.length).toBe(0)
+    expect(session.blendMotionClipWithPrevious('B')).toBe(true)
+    const depth = history.undoStack.length
+    const frames = byId('B').playback.blendIn!.frames
+    expect(session.setMotionClipBlend('B', { frames, curve: 'smooth', footLock: true })).toBe(false)
+    expect(history.undoStack.length).toBe(depth)
+    expect(session.setMotionClipBlend('B', { frames, curve: 'linear', footLock: false })).toBe(true)
+    expect(byId('B').playback.blendIn).toEqual({ frames, curve: 'linear', footLock: false })
+    expect(history.undoStack.length).toBe(depth + 1)
+  })
   it('"Trộn với clip trước" -> change frames/curve -> "Bỏ trộn", undo each', () => {
     const { session, doc, history, byId } = fixture()
     const original = JSON.stringify(doc)

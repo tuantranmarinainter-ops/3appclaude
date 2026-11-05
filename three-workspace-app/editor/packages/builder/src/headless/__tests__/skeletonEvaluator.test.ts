@@ -5,6 +5,7 @@ import { createSkeletonEvaluator, sampleSkeletonRange } from '../skeletonEvaluat
 import { makeEmptyDraft } from '../../contract/emptyDraft'
 import { createFrameSnapshot, evaluateFrame } from '../../evaluate/evaluateFrame'
 import { sceneFromDocument } from '../../evaluate/sceneFromDocument'
+import { FCurveSet } from '../../evaluate/curves/FCurveSet'
 
 function fixture() {
   const doc = makeEmptyDraft('CPU skeleton', 30, 90)
@@ -95,5 +96,26 @@ test('terminal skeleton sample keeps the independent path endpoint with root mot
   assert.ok(Math.abs(last.placementMatrix[12]! - 5) < 1e-6)
   assert.ok(Math.abs(last.bones[0]!.worldMatrix[12]! - 5) < 1e-6)
   assert.ok(Math.abs(last.bones[0]!.worldMatrix[14]! + 1) < 1e-6)
+  evaluator.dispose()
+})
+
+test('position Y fcurve moves actor without changing bone pose relative to actor', () => {
+  const { doc, evaluator } = fixture()
+  const curves = FCurveSet.empty()
+  curves.upsertKey('actor', 'transform.position', 1, 0, 0)
+  curves.upsertKey('actor', 'transform.position', 1, 15, 0.5)
+  curves.upsertKey('actor', 'transform.position', 1, 29, 0)
+  const baseline = sceneFromDocument(doc)
+  const keyed = sceneFromDocument(doc, { fcurves: curves })
+  const snapshot = createFrameSnapshot()
+  for (const frame of [0, 7.5, 15, 22.5, 29]) {
+    evaluateFrame(baseline, frame, snapshot)
+    const a = evaluator.evaluate(snapshot)[0]!
+    evaluateFrame(keyed, frame, snapshot)
+    const b = evaluator.evaluate(snapshot)[0]!
+    const relative = (sample: typeof a) => new THREE.Matrix4().fromArray(sample.actorWorldMatrix).invert().multiply(new THREE.Matrix4().fromArray(sample.bones[0]!.worldMatrix))
+    assert.ok(Math.abs(b.actorWorldMatrix[13]! - a.actorWorldMatrix[13]! - curves.evalScalar('actor', 'transform.position', 1, frame)!) < 1e-6)
+    assert.ok(new THREE.Vector3().setFromMatrixPosition(relative(a)).distanceTo(new THREE.Vector3().setFromMatrixPosition(relative(b))) < 0.01)
+  }
   evaluator.dispose()
 })

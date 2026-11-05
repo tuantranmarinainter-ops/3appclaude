@@ -2,7 +2,7 @@ import { useLayoutEffect, useEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from 'react-dom'
 import type { MotionBlendIn, MotionClip } from '../../contract/types'
 import { useDirector } from '../../bridge/DirectorContext'
-import { blendLockText, blendOffBeatText, blendOffsetText, blendPhaseText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../engine/objects/blendStatus'
+import { blendLockText, blendOffBeatText, blendOffsetText, blendPhaseText, blendStatusVersion, getBlendStatus, subscribeBlendStatus } from '../../bridge/blendStatus'
 import { blendBandLabel, blendChainSpan, maxBlendFrames, MIN_BLEND_FRAMES } from '../../document/clipBlend'
 import { motionBlendInOf, motionBlendPartner } from '../../evaluate/clips'
 import { placeAnchoredPanel, type AnchorRect } from './utils/clipMenu'
@@ -32,7 +32,7 @@ export function ClipBlendBands({
   useSyncExternalStore(subscribeBlendStatus, blendStatusVersion, blendStatusVersion)
   const bandTitle = (band: Band) => {
     const status = getBlendStatus(band.clip.id)
-    return [blendBandLabel(band.blend), band.blend.mirror ? 'Đảo chân' : '', blendPhaseText(status), blendOffsetText(status), blendLockText(status, 0), blendOffBeatText(status)].filter(Boolean).join(' · ')
+    return [blendBandLabel(band.blend), band.blend.mirror ? 'Đảo chân' : '', blendPhaseText(status), blendOffsetText(status), band.blend.footLock ? blendLockText(status, 0) : 'Đã tắt khóa chân', blendOffBeatText(status)].filter(Boolean).join(' · ')
   }
 
   // Khi đang kéo, vẽ dải theo vị trí xem trước để người dùng thấy ngay vùng trộn.
@@ -115,7 +115,7 @@ function BlendPanel({
   disabled: boolean
   maxFrames: number
   onClose: () => void
-  apply: (patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
+  apply: (patch: { frames?: number; curve?: 'smooth' | 'linear'; footLock?: boolean; mirror?: boolean; phaseOffsetSeconds?: number | null }) => boolean
   remove: () => void
   editInHost?: () => void
 }) {
@@ -186,10 +186,15 @@ function BlendPanel({
           <option value="linear">Tuyến tính</option>
         </select>
       </label>
+      <label className="t3d-timeline-blend-row">
+        <span>Khóa chân</span>
+        <input type="checkbox" checked={band.blend.footLock} disabled={disabled}
+          onChange={(event) => { apply({ footLock: event.target.checked }) }} />
+      </label>
       {(() => {
         const status = getBlendStatus(band.clip.id)
         const offset = blendOffsetText(status)
-        const lock = blendLockText(status, 0)
+        const lock = band.blend.footLock ? blendLockText(status, 0) : 'Đã tắt khóa chân'
         return (offset || lock) ? (
           <div className="t3d-timeline-blend-note" data-blend-status>
             {offset && <div>{offset}</div>}

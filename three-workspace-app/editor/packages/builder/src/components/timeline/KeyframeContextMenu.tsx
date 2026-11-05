@@ -4,7 +4,6 @@ import { useDirector } from '../../bridge/DirectorContext'
 import { useT } from '../../locale'
 import { makeTimelineBoxSelection, type KeyframeRef } from '../../stores/types'
 import type { FcurveKeyRef } from '../../evaluate/curves/FCurveSet'
-import { canPasteWithoutUserKeys, copyTransform, getTransformClipboard, selectedPasteTargets, type TransformProp } from '../../sync/transformPaste'
 import { clampMenuPosition, emitTimelineNotice } from './utils/clipMenu'
 import { contextTimelineKeySelection, selectedTimelineRefs } from './utils/fcurveSelection'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
@@ -15,6 +14,7 @@ export const useKeyframeContextMenu = () => useContext(MenuContext)
 
 export function KeyframeContextMenuProvider({ children }: { children: ReactNode }) {
   const { useStore, session } = useDirector()
+  type TransformProp = Parameters<typeof session.pasteTransformKeys>[0][number]
   const t = useT()
   const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string; frame: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
@@ -24,7 +24,7 @@ export function KeyframeContextMenuProvider({ children }: { children: ReactNode 
   const locked = useStore((s) => s.writeLocked)
   const enabled = useStore((s) => s.userKeysEnabled)
   const doc = useStore((s) => s.doc)
-  const targets = selectedPasteTargets(selection, keys)
+  const targets = session.selectedPasteTargets(selection, keys)
   const editable = targets.filter(({ nodeId }) => {
     const node = doc?.content.nodes.find((item) => item.id === nodeId)
     return node && !node.locked && !cameraMotionOwnsKeyframes(doc, nodeId)
@@ -61,10 +61,10 @@ export function KeyframeContextMenuProvider({ children }: { children: ReactNode 
     setMenu(null)
   }
   return <MenuContext.Provider value={open}>{children}{menu && createPortal(<div ref={ref} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 10000, background: 'var(--t3d-panel-bg, #222)', padding: 6 }} onPointerDown={(e) => e.stopPropagation()}>
-    <button type="button" role="menuitem" style={{ display: 'block' }} onClick={() => { const s = useStore.getState(); if (s.doc) copyTransform(s.doc, s.fcurves, s.userKeys, menu.nodeId, menu.frame, s.userKeysEnabled, s.chainCameraMotion); setMenu(null) }}>{t('timeline.keyCopyTransform')}</button>
+    <button type="button" role="menuitem" style={{ display: 'block' }} onClick={() => { const s = useStore.getState(); if (s.doc) session.copyTransform(s.doc, s.fcurves, s.userKeys, menu.nodeId, menu.frame, s.userKeysEnabled, s.chainCameraMotion); setMenu(null) }}>{t('timeline.keyCopyTransform')}</button>
     {([['timeline.keyPasteTransform', ['position', 'rotation', 'scale']], ['timeline.keyPastePosition', ['position']], ['timeline.keyPasteRotation', ['rotation']], ['timeline.keyPasteScale', ['scale']]] as [string, TransformProp[]][]).map(([label, mask]) => {
-      const needsUserKeys = !enabled && !!doc && !canPasteWithoutUserKeys(doc, curves, targets, mask)
-      return <button key={label} type="button" role="menuitem" style={{ display: 'block' }} title={needsUserKeys ? t('timeline.keyPasteEnableUserKeys') : undefined} disabled={locked || needsUserKeys || !getTransformClipboard() || !editable.some(({ nodeId }) => mask.length !== 1 || mask[0] !== 'scale' || doc?.content.nodes.find((n) => n.id === nodeId)?.type !== 'camera')} onClick={() => paste(mask)}>{t(label)}</button>
+      const needsUserKeys = !enabled && !!doc && !session.canPasteWithoutUserKeys(doc, curves, targets, mask)
+      return <button key={label} type="button" role="menuitem" style={{ display: 'block' }} title={needsUserKeys ? t('timeline.keyPasteEnableUserKeys') : undefined} disabled={locked || needsUserKeys || !session.getTransformClipboard() || !editable.some(({ nodeId }) => mask.length !== 1 || mask[0] !== 'scale' || doc?.content.nodes.find((n) => n.id === nodeId)?.type !== 'camera')} onClick={() => paste(mask)}>{t(label)}</button>
     })}
     <button type="button" role="menuitem" style={{ display: 'block' }} disabled={locked || !editable.length} onClick={remove}>{t('common.delete')}</button>
   </div>, document.body)}</MenuContext.Provider>

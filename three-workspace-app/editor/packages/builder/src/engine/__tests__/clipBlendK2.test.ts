@@ -218,14 +218,18 @@ test('khóa chân: cổ chân đang chạm đất đứng yên trong vùng trộ
   assert.ok(moved < 1e-4, `chân trượt ${moved}`)
   // Kiểm không-khóa để chắc rằng phép thử có ý nghĩa: không IK thì chân phải lệch rõ.
   const unlocked = setup([0.4, 1.05, 0], 0.5)
+  unlocked.b.playback.blendIn!.footLock = false
   const unlockedPlan = blendPlanFor(unlocked.rig.graph, unlocked.rig.character, unlocked.b)!
-  unlockedPlan.locks.length = 0
+  assert.equal(unlockedPlan.locks.length, 0)
+  assert.equal(unlockedPlan.status.aligned, true)
   let slide = 0
   for (let frame = 30; frame <= left.endFrame; frame += 0.5) {
     evaluate(unlocked.rig, frame, unlocked.a, unlocked.b)
     slide = Math.max(slide, world(unlocked.rig.bones.LeftFoot).distanceTo(hold))
   }
   assert.ok(slide > 0.02, `đối chứng không khóa phải trượt (${slide})`)
+  unlocked.b.playback.blendIn!.footLock = true
+  assert.ok(blendPlanFor(unlocked.rig.graph, unlocked.rig.character, unlocked.b)!.locks.length > 0, 'đổi tùy chọn phải cập nhật cache')
   // Hết vùng trộn: chân về đúng tư thế B đã căn (liên tục, không IK dư).
   evaluate(rig, b.frameStart + D, a, b)
   const afterEnd = world(rig.bones.LeftFoot).clone()
