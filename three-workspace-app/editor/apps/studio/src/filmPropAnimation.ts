@@ -202,7 +202,12 @@ export function sampleAnimatedProp(project: UnifiedProject, nodeId: string, prof
   if (!root || profile.bones.length !== 1) throw new TypeError('Animated props must convert to a single root bone')
   const rest = new Matrix4().set(...(root.bobjRestMatrixRowMajor as [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]))
   const restPosition = new Vector3(), restRotation = new Quaternion(), restScale = new Vector3()
-  rest.decompose(restPosition, restRotation, restScale)
+  // The converter writes BOBJ turned 180 degrees about Y from glTF (Blender import Y-up -> Z-up, OBJ export back:
+  // BOBJ (x, y, z) = glTF (-x, y, -z); the root rest [[-1,0,0],[0,0,1],[0,1,0]] is Blender's identity bone in that frame).
+  // The pose bake needs the same bone at rest in glTF space, or the prop ends up turned 180 degrees in game
+  // (Shot 03: the rod pointed back over Hero's shoulder instead of forward).
+  const sourceRest = new Matrix4().makeRotationY(Math.PI).multiply(rest)
+  sourceRest.decompose(restPosition, restRotation, restScale)
   const raw = ticks.map(({ tick, sourceFrame }) => {
     const world = filmSceneWorldMatrices(project, sourceFrame)(nodeId)
     const position = new Vector3(), rotation = new Quaternion(), scale = new Vector3()
@@ -218,7 +223,7 @@ export function sampleAnimatedProp(project: UnifiedProject, nodeId: string, prof
     nodeId, metersPerUnit: profile.metersPerUnit, placementMatrix: actorWorld(item).toArray(), trajectoryMatrix: new Matrix4().toArray(),
     actorWorldMatrix: actorWorld(item).toArray(),
     bones: [{ name: root.sourceName ?? root.name, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
-      worldMatrix: new Matrix4().compose(item.position, item.rotation, new Vector3(1, 1, 1)).multiply(rest).toArray() }],
+      worldMatrix: new Matrix4().compose(item.position, item.rotation, new Vector3(1, 1, 1)).multiply(sourceRest).toArray() }],
   } }))
   const poseTracks = bakeFilmPoseTracks([{ id: 'root', name: root.sourceName ?? root.name, parentId: null,
     rest: { position: restPosition.toArray(), rotation: restRotation.toArray(), scale: [1, 1, 1] } }], profile.metersPerUnit, profile as never, samples as never)
