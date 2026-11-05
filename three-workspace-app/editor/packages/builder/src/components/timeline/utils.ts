@@ -86,6 +86,8 @@ export function selectedTimelineNodeId(
   }
   if (selection.kind === 'timelineBox') {
     if (selection.keys[0]) return selection.keys[0].nodeId
+    // Hộp chỉ trúng khóa fcurve (vd đạo cụ 150 khóa): vẫn gắn với node để dòng đạo cụ không biến mất khi đang rê.
+    if (selection.fcurves?.[0]) return selection.fcurves[0].nodeId
     const ref = selection.clips[0]
     if (!ref) return null
     const list =
@@ -102,6 +104,29 @@ export function selectedTimelineNodeId(
       ? doc.content.timeline.animation.motionClips
       : doc.content.timeline.animation.pathMotionClips
   return clips.find((clip) => clip.id === selection.clipId)?.target.nodeId ?? null
+}
+
+/**
+ * Mọi node có mục đang chọn trên timeline (khóa tay, khóa fcurve, clip). Đạo cụ chỉ có dòng khi được chọn,
+ * nên khi rê khung trúng khóa của nhiều đạo cụ thì các dòng đó phải còn hiện.
+ */
+export function timelineSelectionNodeIds(doc: DirectorDocument, selection: Selection | null): string[] {
+  if (!selection) return []
+  if (selection.kind === 'node') return selection.nodeIds?.length ? [...selection.nodeIds] : [selection.nodeId]
+  const ids = new Set<string>()
+  for (const ref of keyframeRefsOf(selection)) ids.add(ref.nodeId)
+  if (selection.kind === 'timelineBox') {
+    for (const ref of selection.fcurves ?? []) ids.add(ref.nodeId)
+    const anim = doc.content.timeline.animation
+    for (const ref of selection.clips) {
+      const list = ref.clipType === 'camera' ? anim.cameraMotionClips : ref.clipType === 'motion' ? anim.motionClips : anim.pathMotionClips
+      const nodeId = list.find((clip) => clip.id === ref.clipId)?.target.nodeId
+      if (nodeId) ids.add(nodeId)
+    }
+  }
+  const single = selectedTimelineNodeId(doc, selection)
+  if (single) ids.add(single)
+  return [...ids]
 }
 
 /** 点空白处：片段 / 关键帧高亮收回到所属节点，避免片段一直保持选中描边。 */
