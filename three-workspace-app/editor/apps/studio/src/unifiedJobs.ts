@@ -2,6 +2,7 @@ import { originalFilmHeightTransform } from './filmCharacterHeight'
 import { validateFilmEffectsDestination } from './filmEffectsDestination'
 import { collectFilmAaaAssets, writeFilmAaaAssets } from './filmAaaAssets'
 import { filmSceneWorldMatrices } from './filmSceneWorld'
+import { deriveAnimatedPropModel, propIsAnimated, sampleAnimatedProp, type PropTextureAnimation } from './filmPropAnimation'
 import { Matrix4 } from 'three'
 import { applyFilmWorldAnchor } from './filmWorldAnchor'
 import { projectFilmAnchor } from './filmAnchorProject'
@@ -255,10 +256,13 @@ export function filmAaaEffects(effects: ReadonlyArray<{ effect: string; x: numbe
 }
 
 /** Add static backdrop actors after conversion; this pure step is shared by the job and manifest tests. */
-export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number, sourceFrame = project.scene.content.timeline.frameStart): void {
+export function appendFilmBackdropActors(manifest: FilmManifest, project: UnifiedProject, propIds: readonly string[], profiles: ReadonlyMap<string, ConvertedFilmModelProfile>, durationTicks: number, sourceFrame = project.scene.content.timeline.frameStart,
+  animated?: { ticks: ReadonlyArray<{ tick: number; sourceFrame: number }>; textureAnimations: ReadonlyMap<string, PropTextureAnimation> }): void {
   if (!Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Backdrop Film duration must be a positive whole number of ticks')
   const worldMatrix = filmSceneWorldMatrices(project, sourceFrame)
   for (const propId of propIds) {
+    const keyed = animated && propIsAnimated(project, propId)
+    const animationOf = (assetId: string) => animated?.textureAnimations.get(assetId) ?? null
     const node = project.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
     const assetId = node?.metadata?.assetId
     if (!node || typeof assetId !== 'string') throw new TypeError(`Backdrop ${propId} is missing from the Film snapshot`)
@@ -269,6 +273,23 @@ export function appendFilmBackdropActors(manifest: FilmManifest, project: Unifie
     const prior = manifest.models.find((item) => item.id === profile.modelId)
     if (prior && JSON.stringify(prior) !== JSON.stringify(model)) throw new TypeError(`Converted backdrop model ID ${profile.modelId} has conflicting profiles`)
     if (!prior) manifest.models.push(model)
+    if (keyed || animationOf(assetId)) {
+      // Keyed or texture-animated prop: a sample per tick, rotation on the root bone, visible/texture property tracks.
+      const ticks = animated!.ticks
+      if (ticks.length !== durationTicks + 1) throw new TypeError(`Backdrop ${node.name}: tick samples do not cover the Film`)
+      const sampled = sampleAnimatedProp(project, propId, profile, keyed ? ticks : ticks.map((item) => ({ ...item, sourceFrame })), {
+        unit: typeof node.metadata?.modelUnitMeters === 'number' ? node.metadata.modelUnitMeters : 1,
+        basis: Array.isArray(node.metadata?.modelBasisToScene) ? node.metadata.modelBasisToScene as number[] : undefined,
+        animation: animationOf(assetId), fps: project.scene.content.timeline.fps })
+      const transformSamples = sampled.positions.map((item) => {
+        const inspectedTick = inspectFilmActorTransform(item.matrix, item.tick)
+        if (!inspectedTick.transform) throw new TypeError(`Backdrop ${node.name}: ${inspectedTick.issues[0]?.message ?? 'invalid transform'}`)
+        return { ...inspectedTick.transform, yaw: inspectedTick.transform.yaw + FILM_MODEL_FACING_OFFSET }
+      })
+      manifest.actors.push({ characterId: `prop:${propId}`, name: node.name.slice(0, 64) || 'Prop', modelId: profile.modelId,
+        transformSamples, poseTracks: sampled.poseTracks, ...(sampled.propertyTracks.length ? { propertyTracks: sampled.propertyTracks } : {}) } as FilmManifest['actors'][number])
+      continue
+    }
     const inspected = inspectFilmActorTransform(worldMatrix(propId).toArray(), 0)
     if (!inspected.transform) throw new TypeError(`Backdrop ${node.name}: ${inspected.issues[0]?.message ?? 'invalid transform'}`)
     const pose = (tick: number) => ({ ...inspected.transform!, tick, yaw: inspected.transform!.yaw + FILM_MODEL_FACING_OFFSET })
@@ -462,6 +483,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     const manifest = buildFilmExportManifest(input, profiles, args.filmName)
     // Props are converted to BOBJ profiles, then the pure manifest helper adds one static actor per scene node.
     const propProfiles = new Map<string, ConvertedFilmModelProfile>()
+    const propTextureAnimations = new Map<string, PropTextureAnimation>()
     for (const [index, propId] of (args.propIds ?? []).entries()) {
       signal.throwIfAborted()
       const node = snapshot.scene.content.nodes.find((item) => item.id === propId && item.type === 'prop')
@@ -473,7 +495,9 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
         if (digest(resolved.bytes) !== snapshot.assets[assetId as keyof typeof snapshot.assets]!.source.sha256) throw new TypeError(`Backdrop ${node.name} source hash changed during Film export`)
         const extension = resolved.mediaType === 'application/vnd.autodesk.fbx' ? '.fbx' : '.glb'
         const sourcePath = path.join(work, `prop-${index}${extension}`)
-        await writeFile(sourcePath, resolved.bytes, { flag: 'wx' })
+        // Animated texture strips convert from a derived GLB (one whole frame per UV square); frames ship beside it.
+        const animatedModel = extension === '.glb' ? deriveAnimatedPropModel(resolved.bytes) : null
+        await writeFile(sourcePath, animatedModel?.glb ?? resolved.bytes, { flag: 'wx' })
         const output = path.join(convertedRoot, `prop-${index}`); await mkdir(output)
         const unit = typeof node.metadata?.modelUnitMeters === 'number' ? node.metadata.modelUnitMeters : 1
         const basis = Array.isArray(node.metadata?.modelBasisToScene) ? node.metadata.modelBasisToScene as number[] : [1, 0, 0, 0, 1, 0, 0, 0, 1]
@@ -484,10 +508,21 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
         if (!convertedPath.startsWith(`${rootPath}${path.sep}`)) throw new TypeError('Film converter profile escaped its staging folder')
         const profile = JSON.parse(await readFile(convertedPath, 'utf8')) as Omit<ConvertedFilmModelProfile, 'files'>
         converted = { ...profile, files: conversion.files as ConvertedFilmModelProfile['files'] }
+        if (animatedModel) {
+          const framesDir = path.join(output, 'frames'); await mkdir(framesDir)
+          const frameFiles: ConvertedFilmModelProfile['files'] = []
+          for (const [frame, png] of animatedModel.frames.entries()) {
+            const framePath = path.join(framesDir, `${frame}.png`); await writeFile(framePath, png, { flag: 'wx' })
+            frameFiles.push({ sourcePath: framePath, targetPath: `frames/${frame}.png`, sha256: digest(png) })
+          }
+          converted = { ...converted, files: [...converted.files, ...frameFiles], textureRequired: true }
+          propTextureAnimations.set(assetId, animatedModel.animation)
+        }
         propProfiles.set(assetId, converted)
       }
     }
-    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks, args.range.startFrame)
+    appendFilmBackdropActors(manifest, snapshot, args.propIds ?? [], propProfiles, input.durationTicks, args.range.startFrame,
+      { ticks: input.frames.map((frame) => ({ tick: frame.tick, sourceFrame: frame.sourceFrame })), textureAnimations: propTextureAnimations })
     const source = manifest.actors[0]?.transformSamples[0] ?? manifest.cameras[0]!.keyframes[0]!
     const worldAnchor = projectFilmAnchor(snapshot, args.worldAnchor, args.range.startFrame, args.characterIds, args.propIds, [source.x, source.y, source.z])
     applyFilmWorldAnchor(manifest, worldAnchor, effects)

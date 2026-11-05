@@ -1,3 +1,4 @@
+import { propIsAnimated } from './filmPropAnimation'
 import { filmCharacterHeight } from './filmCharacterHeight'
 import { resolveFilmWorldAnchor } from './filmWorldAnchor'
 import { blendZoneText, invalidFilmMotionOverlaps, listFilmBlendZones } from './filmBlendZones'
@@ -72,7 +73,8 @@ function resolveContentSelection(project: UnifiedProject, args: FilmSamplingArgs
   for (const id of propIds) {
     const node = props.find((item) => item.id === id)!
     if ([node.transform.scale.x, node.transform.scale.y, node.transform.scale.z].some((value) => Math.abs(value - 1) > 1e-6)) fail(`Prop ${node.name} must use unit scale; bake its size into the model first`)
-    if (Math.abs(node.transform.rotation.x) > 1e-6 || Math.abs(node.transform.rotation.z) > 1e-6) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
+    // Keyed props export their full rotation on the root bone (filmPropAnimation.ts); static ones must stay upright.
+    if (!propIsAnimated(project, node.id) && (Math.abs(node.transform.rotation.x) > 1e-6 || Math.abs(node.transform.rotation.z) > 1e-6)) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
     const assetId = node.metadata!.assetId as string
     const asset = project.assets[assetId as keyof typeof project.assets]
     if (!asset || asset.kind !== 'model') fail(`Backdrop ${node.name} is not a model asset`)
