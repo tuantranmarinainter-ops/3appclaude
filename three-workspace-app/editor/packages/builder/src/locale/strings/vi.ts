@@ -340,6 +340,13 @@ export const vi: LocaleDict = {
     "mainCamera": "Camera chính"
   },
   "timeline": {
+    "keyCopyTransform": "Sao chép biến đổi",
+    "keyPasteTransform": "Dán biến đổi",
+    "keyPastePosition": "Dán chỉ vị trí",
+    "keyPasteRotation": "Dán chỉ xoay",
+    "keyPasteScale": "Dán chỉ tỉ lệ",
+    "keyPasteSkipped": "Bỏ qua {{count}} đích bị khoá",
+    "keyPasteEnableUserKeys": "Bật lại keyframe tay (khóa người dùng) để dán",
     "cameraMotion": "Chuyển động máy",
     "pathMotion": "Đường đi",
     "transform": "Biến đổi",
@@ -409,7 +416,7 @@ export const vi: LocaleDict = {
     "addKeyframeMulti": "Khóa tất cả các đối tượng được chọn {{count}} ở khung hiện tại",
     "saveKeyframe": "Lưu khung hình chính",
     "cancelPending": "Loại bỏ các thay đổi",
-    "fcurveKey": "Khung hình đường cong · khung {{frame}} (nhấp đúp hoặc nhấp chuột phải để xóa)",
+    "fcurveKey": "Khung hình đường cong · khung {{frame}}",
     "xformKey": "Chuyển đổi khung hình chính · khung {{frame}} (nhóm, nhấp đúp hoặc nhấp chuột phải để xóa)",
     "resize": "Thay đổi kích thước dòng thời gian",
     "collapse": "Thu gọn dòng thời gian",

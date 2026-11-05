@@ -340,6 +340,13 @@ export const id: LocaleDict = {
     "mainCamera": "Kamera utama"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Gerakan kamera",
     "pathMotion": "Jalur",
     "transform": "Transformasi",
@@ -409,7 +416,7 @@ export const id: LocaleDict = {
     "addKeyframeMulti": "Kunci semua objek {{count}} yang dipilih pada frame saat ini",
     "saveKeyframe": "Simpan bingkai utama",
     "cancelPending": "Buang perubahan",
-    "fcurveKey": "Bingkai utama kurva · bingkai {{frame}} (klik dua kali atau klik kanan untuk menghapus)",
+    "fcurveKey": "Bingkai utama kurva · bingkai {{frame}}",
     "xformKey": "Ubah keyframe · frame {{frame}} (grup, klik dua kali atau klik kanan untuk menghapus)",
     "resize": "Ubah ukuran garis waktu",
     "collapse": "Ciutkan garis waktu",

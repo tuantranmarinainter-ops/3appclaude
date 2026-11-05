@@ -17,6 +17,12 @@ export type CompactFCurvesJson = {
 
 const USER_KEY_PROPS: TrackProp[] = ['position', 'rotation', 'scale', 'lookAt', 'fov']
 
+export interface FcurveKeyRef {
+  nodeId: string
+  propPath: string
+  frame: number
+}
+
 export interface FCurveHandle {
   x: number
   y: number
@@ -395,7 +401,7 @@ export class FCurveSet {
   }
 
   /**
-   * 删除某属性路径在指定帧（严格相等）的关键帧：所有分量曲线同帧一起删，
+   * 删除某属性路径在指定帧（容差 1e-6）的关键帧：所有分量曲线同帧一起删，
    * 返回删除的键数。删空的曲线/属性路径/节点壳一并清掉，避免落盘留下 k:[]。
    */
   removeKeysAtFrame(nodeId: string, propPath: string, frame: number): number {
@@ -405,7 +411,7 @@ export class FCurveSet {
     let removed = 0
     for (const [index, curve] of byIndex) {
       const before = curve.keys.length
-      curve.keys = curve.keys.filter((k) => k.frame !== frame)
+      curve.keys = curve.keys.filter((k) => Math.abs(k.frame - frame) > 1e-6)
       removed += before - curve.keys.length
       if (curve.keys.length === 0) {
         byIndex.delete(index)
@@ -417,6 +423,40 @@ export class FCurveSet {
       if (byProp.size === 0) this.byNode.delete(nodeId)
     }
     return removed
+  }
+
+  /** Move selected frames atomically across all components. Selected keys win collisions. */
+  moveKeys(refs: FcurveKeyRef[], delta: number): number {
+    if (!Number.isInteger(delta) || delta === 0) return 0
+    const groups = new Map<string, FcurveKeyRef[]>()
+    for (const ref of refs) {
+      const token = JSON.stringify([ref.nodeId, ref.propPath])
+      const group = groups.get(token) ?? []
+      group.push(ref)
+      groups.set(token, group)
+    }
+    let count = 0
+    for (const group of groups.values()) {
+      const { nodeId, propPath } = group[0]
+      const curves = this.byNode.get(nodeId)?.get(propPath)
+      if (!curves) continue
+      for (const curve of curves.values()) {
+        const moved = curve.keys.filter((key) => group.some((ref) => Math.abs(key.frame - ref.frame) <= 1e-6))
+        if (!moved.length) continue
+        count += moved.length
+        const selected = new Set(moved)
+        const destinations = moved.map((key) => key.frame + delta)
+        const remaining = curve.keys.filter((key) => !selected.has(key) &&
+          !destinations.some((frame) => Math.abs(frame - key.frame) <= 1e-6))
+        for (const key of moved) {
+          key.frame += delta
+          if (key.inHandle) key.inHandle.x += delta
+          if (key.outHandle) key.outHandle.x += delta
+        }
+        curve.keys = [...remaining, ...moved].sort((a, b) => a.frame - b.frame)
+      }
+    }
+    return count
   }
 
   /** 节点的全部曲线（UI 列轨道用） */

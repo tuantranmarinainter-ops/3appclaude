@@ -340,6 +340,13 @@ export const ko: LocaleDict = {
     "mainCamera": "메인 카메라"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "카메라 무브",
     "pathMotion": "경로",
     "transform": "트랜스폼",
@@ -409,7 +416,7 @@ export const ko: LocaleDict = {
     "addKeyframeMulti": "현재 프레임에서 선택한 모든 {{count}} 개체에 키를 지정합니다.",
     "saveKeyframe": "키프레임 저장",
     "cancelPending": "변경사항 취소",
-    "fcurveKey": "곡선 키프레임 · 프레임 {{frame}}(삭제하려면 더블클릭 또는 마우스 오른쪽 버튼 클릭)",
+    "fcurveKey": "곡선 키프레임 · 프레임 {{frame}}",
     "xformKey": "변형 키프레임 · 프레임 {{frame}} (그룹, 더블클릭 또는 마우스 오른쪽 버튼 클릭으로 삭제)",
     "resize": "타임라인 크기 조정",
     "collapse": "타임라인 축소",

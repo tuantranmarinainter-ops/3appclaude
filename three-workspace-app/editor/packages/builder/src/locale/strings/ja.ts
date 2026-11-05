@@ -340,6 +340,13 @@ export const ja: LocaleDict = {
     "mainCamera": "メインカメラ"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "カメラワーク",
     "pathMotion": "パス",
     "transform": "トランスフォーム",
@@ -409,7 +416,7 @@ export const ja: LocaleDict = {
     "addKeyframeMulti": "現在のフレームで選択したすべての {{count}} オブジェクトにキーを設定します",
     "saveKeyframe": "キーフレームの保存",
     "cancelPending": "変更を破棄する",
-    "fcurveKey": "カーブキーフレーム・フレーム{{frame}}（ダブルクリックまたは右クリックで削除）",
+    "fcurveKey": "カーブキーフレーム・フレーム{{frame}}",
     "xformKey": "変形キーフレーム・フレーム {{frame}} (グループ化、ダブルクリックまたは右クリックで削除)",
     "resize": "タイムラインのサイズを変更する",
     "collapse": "タイムラインを折りたたむ",

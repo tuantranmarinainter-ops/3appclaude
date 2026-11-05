@@ -104,6 +104,7 @@ import { SilhouetteView } from '../objects/silhouette'
 import { BbsLookView } from '../objects/bbsLook'
 import { filmPoseViewDelta, filmPoseViewLocalTurn } from '../objects/filmPoseView'
 import { VfxSpriteLayer, findBoneByCanonicalName, type VfxSheet, type VfxSpriteCue } from '../objects/vfxSprites'
+import { syncPropTextureAnimations } from '../objects/propTextureAnimation'
 
 export const FRAME_THROTTLE_MS = 100
 export type { EvalContext, NodeSnapshot } from '../DirectorEngine'
@@ -1139,6 +1140,7 @@ export class Stage implements DirectorEngine, PathViewHost {
     applyFrameSnapshot(this, snapshot)
     if (this.bbsLookWanted) this.applyFilmPoseView(snapshot)
     this.syncVfxSprites(snapshot.frame ?? this.currentFrame)
+    syncPropTextureAnimations(this.props.values(), snapshot.frame ?? this.currentFrame, this.doc?.content.timeline.fps ?? 30)
   }
 
   /** VFX cue preview (view only, never saved): sprite sheets baked by App 4, placeholders when a sheet is missing. */

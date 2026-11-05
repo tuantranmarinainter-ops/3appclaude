@@ -13,9 +13,10 @@ import {
   type Selection,
 } from '../../stores/types'
 import { displayNodeName } from '../displayNames'
-import { CAMERA_XFORM_PROPS, LEFT_W, NODE_XFORM_PROPS, TRACK_INSET } from './constants'
+import { CAMERA_XFORM_PROPS, FC_PROP_PATH, LEFT_W, NODE_XFORM_PROPS, TRACK_INSET } from './constants'
 import { PX_PER_FRAME_MAX, PX_PER_FRAME_MIN } from '../../stores/EditorStore'
 import type { TimelineRow, TimelineSummary } from './types'
+import { fcurveFrames } from './utils/trackRow'
 
 function baseOf(n: DirectorDocument['content']['nodes'][number]) {
   return { nodeId: n.id, nodeName: n.name, nodeType: n.type }
@@ -85,6 +86,8 @@ export function selectedTimelineNodeId(
   }
   if (selection.kind === 'timelineBox') {
     if (selection.keys[0]) return selection.keys[0].nodeId
+    // Hộp chỉ trúng khóa fcurve (vd đạo cụ 150 khóa): vẫn gắn với node để dòng đạo cụ không biến mất khi đang rê.
+    if (selection.fcurves?.[0]) return selection.fcurves[0].nodeId
     const ref = selection.clips[0]
     if (!ref) return null
     const list =
@@ -101,6 +104,29 @@ export function selectedTimelineNodeId(
       ? doc.content.timeline.animation.motionClips
       : doc.content.timeline.animation.pathMotionClips
   return clips.find((clip) => clip.id === selection.clipId)?.target.nodeId ?? null
+}
+
+/**
+ * Mọi node có mục đang chọn trên timeline (khóa tay, khóa fcurve, clip). Đạo cụ chỉ có dòng khi được chọn,
+ * nên khi rê khung trúng khóa của nhiều đạo cụ thì các dòng đó phải còn hiện.
+ */
+export function timelineSelectionNodeIds(doc: DirectorDocument, selection: Selection | null): string[] {
+  if (!selection) return []
+  if (selection.kind === 'node') return selection.nodeIds?.length ? [...selection.nodeIds] : [selection.nodeId]
+  const ids = new Set<string>()
+  for (const ref of keyframeRefsOf(selection)) ids.add(ref.nodeId)
+  if (selection.kind === 'timelineBox') {
+    for (const ref of selection.fcurves ?? []) ids.add(ref.nodeId)
+    const anim = doc.content.timeline.animation
+    for (const ref of selection.clips) {
+      const list = ref.clipType === 'camera' ? anim.cameraMotionClips : ref.clipType === 'motion' ? anim.motionClips : anim.pathMotionClips
+      const nodeId = list.find((clip) => clip.id === ref.clipId)?.target.nodeId
+      if (nodeId) ids.add(nodeId)
+    }
+  }
+  const single = selectedTimelineNodeId(doc, selection)
+  if (single) ids.add(single)
+  return [...ids]
 }
 
 /** 点空白处：片段 / 关键帧高亮收回到所属节点，避免片段一直保持选中描边。 */
@@ -389,8 +415,10 @@ export function collectSnapTargets(
   }
   if (fcurves) {
     for (const node of doc.content.nodes) {
-      for (const curve of fcurves.tracksForNode(node.id)) {
-        for (const key of curve.keys) targets.push({ frame: key.frame })
+      for (const [prop, propPath] of Object.entries(FC_PROP_PATH) as [TrackProp, string][]) {
+        for (const frame of fcurveFrames(fcurves, node.id, prop)) {
+          targets.push({ frame, keyId: `fcurve:${JSON.stringify([node.id, propPath, frame])}` })
+        }
       }
     }
   }
@@ -439,11 +467,12 @@ export function isSameSelection(a: Selection | null, b: Selection): boolean {
   if (a.kind === 'clip' && b.kind === 'clip') return a.clipId === b.clipId
   if (a.kind === 'keyframe' && b.kind === 'keyframe') return a.keyId === b.keyId
   if (a.kind === 'timelineBox' && b.kind === 'timelineBox') {
-    if (a.clips.length !== b.clips.length || a.keys.length !== b.keys.length) return false
+    if (a.clips.length !== b.clips.length || a.keys.length !== b.keys.length || (a.fcurves?.length ?? 0) !== (b.fcurves?.length ?? 0)) return false
     const clipIds = new Set(a.clips.map((c) => c.clipId))
     const keyIds = new Set(a.keys.map((k) => k.keyId))
     return (
-      b.clips.every((c) => clipIds.has(c.clipId)) && b.keys.every((k) => keyIds.has(k.keyId))
+      b.clips.every((c) => clipIds.has(c.clipId)) && b.keys.every((k) => keyIds.has(k.keyId)) &&
+      (b.fcurves ?? []).every((ref) => (a.fcurves ?? []).some((item) => item.nodeId === ref.nodeId && item.propPath === ref.propPath && Math.abs(item.frame - ref.frame) <= 1e-6))
     )
   }
   if (a.kind === 'transformKeyframe' && b.kind === 'transformKeyframe') {
@@ -457,6 +486,9 @@ export type KeyframeDragItem = {
   prop: TrackProp
   keyId: string
   origFrame: number
+  fcurve?: import('../../evaluate/curves/FCurveSet').FcurveKeyRef
+  minFrame?: number
+  maxFrame?: number
 }
 
 /** 某节点在指定帧上仍存在的用户关键帧（位移 / 旋转 / 缩放 / 看点 / FOV）。 */
@@ -611,14 +643,17 @@ export function nextBundleSelection(
  */
 export function clampKeyframeGroupDelta(
   df: number,
-  items: readonly { origFrame: number }[],
+  items: readonly { origFrame: number; minFrame?: number; maxFrame?: number }[],
   bounds?: { frameStart: number; frameEnd: number } | null,
 ): number {
   let delta = Math.round(df) || 0
   if (items.length === 0 || !bounds) return delta
-  const minOrig = Math.min(...items.map((item) => item.origFrame))
-  const maxOrig = Math.max(...items.map((item) => item.origFrame))
-  delta = Math.min(Math.max(delta, bounds.frameStart - minOrig), bounds.frameEnd - maxOrig)
+  const minOrig = Math.min(...items.map((item) => item.minFrame ?? item.origFrame))
+  const maxOrig = Math.max(...items.map((item) => item.maxFrame ?? item.origFrame))
+  const minDelta = Math.ceil(bounds.frameStart - minOrig)
+  const maxDelta = Math.floor(bounds.frameEnd - maxOrig)
+  if (minDelta > maxDelta) return 0
+  delta = Math.min(Math.max(delta, minDelta), maxDelta)
   return delta || 0
 }
 /** Kẹp px/frame trong giới hạn zoom của timeline (khớp EditorStore.setPxPerFrame). */

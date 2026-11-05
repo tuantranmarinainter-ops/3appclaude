@@ -34,6 +34,7 @@ vec3 bbsLinearToSrgb(vec3 c) {
 const ENTITY_VERTEX = /* glsl */ `
 #include <common>
 #include <skinning_pars_vertex>
+uniform mat3 mapTransform;
 varying vec2 vUv;
 varying vec3 vWorldNormal;
 #ifdef BBS_VERTEX_COLORS
@@ -41,7 +42,8 @@ attribute vec3 color;
 varying vec3 vColor;
 #endif
 void main() {
-  vUv = uv;
+  // Same UV transform as built-in materials (texture offset/repeat), e.g. animated prop texture strips.
+  vUv = (mapTransform * vec3(uv, 1.0)).xy;
 #ifdef BBS_VERTEX_COLORS
   vColor = color;
 #endif
@@ -164,7 +166,7 @@ function entityMaterial(source: THREE.Material): THREE.ShaderMaterial {
     vertexShader: ENTITY_VERTEX,
     fragmentShader: ENTITY_FRAGMENT,
     uniforms: {
-      map: { value: map }, tint: { value: new THREE.Vector3(tint.r, tint.g, tint.b) }, opacity: { value: src.opacity ?? 1 },
+      map: { value: map }, mapTransform: { value: map ? map.matrix : new THREE.Matrix3() }, tint: { value: new THREE.Vector3(tint.r, tint.g, tint.b) }, opacity: { value: src.opacity ?? 1 },
       light0: { value: ENTITY_LIGHT_0 }, light1: { value: ENTITY_LIGHT_1 },
     },
     defines: { ...(map ? { BBS_MAP: '' } : {}), ...(src.vertexColors ? { BBS_VERTEX_COLORS: '' } : {}) },

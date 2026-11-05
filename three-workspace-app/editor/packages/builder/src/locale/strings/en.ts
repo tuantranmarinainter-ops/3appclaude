@@ -340,6 +340,13 @@ export const en: LocaleDict = {
     "mainCamera": "Main Camera"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Camera move",
     "pathMotion": "Path",
     "transform": "Transform",
@@ -407,7 +414,7 @@ export const en: LocaleDict = {
     "officialKey": "Frame {{frame}} · value {{value}} (official fcurve, read-only)",
     "userKey": "Frame {{frame}} · [{{value}}] · {{interpolation}} (double-click or right-click to delete)",
     "keyframeSuspendedByMotion": "A camera move is active — keyframes are paused",
-    "fcurveKey": "Curve keyframe · frame {{frame}} (double-click or right-click to delete)",
+    "fcurveKey": "Curve keyframe · frame {{frame}}",
     "xformKey": "Transform keyframe · frame {{frame}} (group, double-click or right-click to delete)",
     "dragStart": "Drag to change clip start",
     "dragDuration": "Drag to change clip duration",

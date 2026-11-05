@@ -45,8 +45,9 @@ import { orderPinnedRows, readPinnedRows, togglePinned, writePinnedRows } from '
 import { RULER_HEIGHT, defaultRulerVisibility, toggleRuler, visibleRulers, type RulerVisibility } from './utils/rulers'
 import { TIMELINE_NOTICE_EVENT } from './utils/clipMenu'
 import { TrackRow } from './TrackRow'
+import { KeyframeContextMenuProvider } from './KeyframeContextMenu'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
-import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
+import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineSelectionNodeIds, timelineFitPx, wheelZoomPxPerFrame } from './utils'
 import { getActiveEditSequence } from '../../evaluate'
 
 export function TimelinePanel() {
@@ -389,7 +390,7 @@ function SceneTimeline() {
   if (!doc || !tl) return <div className="t3d-timeline">{t('common.loading')}</div>
 
   const selectedNodeId = selectedTimelineNodeId(doc, selection)
-  const multiSelectedIds = nodeIdsOf(selection)
+  const multiSelectedIds = timelineSelectionNodeIds(doc, selection)
   const isOpen = (row: { key: string; kind: string }) => {
     if (openMap[row.key] !== undefined) return openMap[row.key]
     // 物体根行默认展开；变换组始终收起，打关键帧后也不自动展开。
@@ -433,7 +434,7 @@ function SceneTimeline() {
     selection?.kind === 'keyframe' ||
     selection?.kind === 'transformKeyframe' ||
     selection?.kind === 'clip' ||
-    (selection?.kind === 'timelineBox' && (selection.clips.length > 0 || selection.keys.length > 0))
+    (selection?.kind === 'timelineBox' && (selection.clips.length > 0 || selection.keys.length > 0 || (selection.fcurves?.length ?? 0) > 0))
 
   const onAddKeyframe = (nodeId: string, props: TrackProp | TrackProp[]) => {
     if (cameraMotionOwnsKeyframes(doc, nodeId)) return
@@ -700,6 +701,7 @@ function SceneTimeline() {
 
       {timelineOpen ? (
         <div className="t3d-timeline-scroll" ref={scrollRef}>
+          <KeyframeContextMenuProvider>
           <KeyframeDragPreviewProvider>
           <div
             className="t3d-timeline-content"
@@ -791,6 +793,7 @@ function SceneTimeline() {
             ) : null}
           </div>
           </KeyframeDragPreviewProvider>
+          </KeyframeContextMenuProvider>
         </div>
       ) : null}
       {notice ? <div className="t3d-timeline-notice" role="status">{notice}</div> : null}

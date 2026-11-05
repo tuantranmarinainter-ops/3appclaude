@@ -340,6 +340,13 @@ export const pt: LocaleDict = {
     "mainCamera": "Câmera principal"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Movimento de câmera",
     "pathMotion": "Caminho",
     "transform": "Transformação",
@@ -409,7 +416,7 @@ export const pt: LocaleDict = {
     "addKeyframeMulti": "Chavear todos os objetos {{count}} selecionados no quadro atual",
     "saveKeyframe": "Salvar quadro-chave",
     "cancelPending": "Descartar alterações",
-    "fcurveKey": "Quadro-chave da curva · quadro {{frame}} (clique duas vezes ou clique com o botão direito para excluir)",
+    "fcurveKey": "Quadro-chave da curva · quadro {{frame}}",
     "xformKey": "Transformar quadro-chave · quadro {{frame}} (grupo, clique duas vezes ou clique com o botão direito para excluir)",
     "resize": "Redimensionar linha do tempo",
     "collapse": "Recolher linha do tempo",

@@ -1,29 +1,30 @@
+import { useKeyframeContextMenu } from './KeyframeContextMenu'
 import { useDirector } from '../../bridge/DirectorContext'
 import type { FCurveSet } from '../../evaluate/curves/FCurveSet'
 import { fovToFocalLength } from '../../evaluate/camera/focalLength'
 import type { TrackProp, UserKeys } from '../../evaluate/curves/KeyframeTrack'
 import { useT } from '../../locale'
 import { nodeIdsOf } from '../../stores/nodeSelection'
-import { type KeyframeRef, type Selection } from '../../stores/types'
+import { fcurveRefsOf, type KeyframeRef, type Selection } from '../../stores/types'
 import { Tooltip } from '../common/Tooltip'
 import { cx } from '../common/cx'
 import { IconChevron } from '../leftrail/icons'
 import { FC_PROP_PATH } from './constants'
-import { selectedKeyframeDragItems, useKeyframeDrag } from './hooks/useKeyframeDrag'
+import { useKeyframeDrag } from './hooks/useKeyframeDrag'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import type { TimelineRow } from './types'
 import {
-collectFrameBundles,
 collectSummary,
 isKeyframeHighlighted,
-isSameSelection,
 keyframePreviewOffset,
+bundlePreviewOffset,
 nextKeyframeSelection
 } from './utils'
 
 import { CameraClips, MotionClips, PathClips } from './TimelineClipRows'
 import { AddKeyframeButton, AggregateKeyframes, GhostKeyframes } from './TimelineKeyframeRows'
-import { fcurveFrames, isAdditiveMod, nextRowSelection, transformKeyframeFrames } from './utils/trackRow'
+import { fcurveFrames, isAdditiveMod, nextRowSelection } from './utils/trackRow'
+import { fcurveRefsAtFrame, fcurveToken, nextTimelineKeySelection, sameFcurve, selectedTimelineDragItems, selectedTimelineRefs } from './utils/fcurveSelection'
 
 export function TrackRow({
   row,
@@ -56,7 +57,7 @@ export function TrackRow({
   fcurves: FCurveSet | null
   keyframesLocked?: boolean
   keyframesLockedHint?: string
-  onSelect: (next: Selection) => void
+  onSelect: (next: Selection | null) => void
   onToggle: (key: string) => void
   /** Defined only for root node rows: whether the row is pinned to the top. */
   pinned?: boolean
@@ -71,6 +72,7 @@ export function TrackRow({
   const { useStore } = useDirector()
   const setFrame = useStore((s) => s.setFrame)
   const writeLocked = useStore((s) => s.writeLocked)
+  const openKeyMenu = useKeyframeContextMenu()
   const moveKeys = keyframesLocked || writeLocked ? () => {} : onMoveKeyframes
   const snap = useSnapFrame(pxPerFrame)
   const dragKf = useKeyframeDrag(pxPerFrame, moveKeys, snap)
@@ -199,6 +201,7 @@ export function TrackRow({
             frameStart={frameStart}
             pxPerFrame={pxPerFrame}
             userKeys={userKeys}
+            fcurves={fcurves}
             selection={selection}
             muted={keyframesLocked}
             readOnly={writeLocked}
@@ -206,6 +209,7 @@ export function TrackRow({
             onSelect={onSelect}
             onSeek={setFrame}
             onMoveKeyframes={moveKeys}
+            onRemoveTransformKeys={onRemoveTransformKeys}
           />
         ) : null}
         {summary ? (
@@ -277,83 +281,44 @@ export function TrackRow({
             onSelect={onSelect}
           />
         )}
-        {row.kind === 'group' &&
-          xformProps &&
-          // 组行 userKeys 已由 AggregateKeyframes 画可拖钻石；这里只补 fcurves 独有帧，
-          // 避免叠一层不能拖的实心钻把按下事件吃掉。
-          transformKeyframeFrames(userKeys, fcurves, row.nodeId, xformProps)
-            .filter((f) => !collectFrameBundles(row.nodeId, xformProps, userKeys).some((b) => b.frame === f))
-            .map((f) => (
-            <div
-              key={`xf:${f}`}
-              className={cx(
-                't3d-timeline-kf',
-                't3d-timeline-kf-xform',
-                isSameSelection(selection, {
-                  kind: 'transformKeyframe',
-                  nodeId: row.nodeId,
-                  frame: f,
-                }) && 't3d-timeline-kf-selected',
-              )}
-              style={{ left: (f - frameStart) * pxPerFrame }}
-              title={t('timeline.xformKey', { frame: f })}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                if (e.button !== 0) return
-                onSelect({ kind: 'transformKeyframe', nodeId: row.nodeId, frame: f })
-                setFrame(f)
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                onRemoveTransformKeys(row.nodeId, f)
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onRemoveTransformKeys(row.nodeId, f)
-              }}
-            />
-          ))}
         {row.kind === 'kf' && (
           <>
             {fcurveFrames(fcurves, row.nodeId, row.prop!)
               // 同帧已有 userKeys 菱形时不重复画（userKeys 优先，可交互）
               .filter(
-                (f) => !(userKeys[row.nodeId]?.[row.prop!] ?? []).some((k) => k.frame === f),
+                (f) => !(userKeys[row.nodeId]?.[row.prop!] ?? []).some((k) => Math.abs(k.frame - f) <= 1e-6),
               )
-              .map((f) => (
-                <div
+              .map((f) => {
+                const curves = fcurveRefsAtFrame(fcurves, row.nodeId, [row.prop!], f)
+                const tokens = curves.map(fcurveToken)
+                const selected = curves.every((ref) => selectedTimelineRefs(selection, userKeys, fcurves).curves.some((item) => sameFcurve(ref, item)))
+                return <div
                   key={`fc:${f}`}
-                  className={cx(
-                    't3d-timeline-kf t3d-timeline-kf-fcurve',
-                    isSameSelection(selection, {
-                      kind: 'transformKeyframe',
-                      nodeId: row.nodeId,
-                      frame: f,
-                    }) && 't3d-timeline-kf-selected',
-                  )}
-                  style={{ left: (f - frameStart) * pxPerFrame }}
+                  className={cx('t3d-timeline-kf t3d-timeline-kf-fcurve', selected && 't3d-timeline-kf-selected', keyframesLocked && 't3d-timeline-kf-suspended')}
+                  data-fcurve-bundle={JSON.stringify(curves)}
+                  data-timeline-key-tokens={JSON.stringify(tokens)}
+                  style={{ left: (f - frameStart + (tokens.length ? keyframePreviewOffset(previewDf, tokens[0], draggingKeyIds) : 0)) * pxPerFrame }}
                   title={t('timeline.fcurveKey', { frame: f })}
                   onPointerDown={(e) => {
                     e.stopPropagation()
                     if (e.button !== 0) return
-                    // fcurve 键没有独立的 keyframe 选中态，选中它所在帧的「变换」
-                    // 组合关键帧——Inspector 随之显示该帧的三轨道值，不会残留旧选中。
-                    onSelect({ kind: 'transformKeyframe', nodeId: row.nodeId, frame: f })
+                    if (keyframesLocked) { setFrame(f); return }
+                    const additive = isAdditiveMod(e)
+                    const next = nextTimelineKeySelection(selection, [], curves, additive, userKeys, fcurves)
+                    if (next !== selection) onSelect(next)
                     setFrame(f)
+                    if (!writeLocked && !additive) dragKf.begin(e, selectedTimelineDragItems(next, userKeys, fcurves))
                   }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    onRemoveFcurveKeyframe(row.nodeId, FC_PROP_PATH[row.prop!], f)
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onRemoveFcurveKeyframe(row.nodeId, FC_PROP_PATH[row.prop!], f)
-                  }}
+                  onPointerMove={keyframesLocked || writeLocked ? undefined : dragKf.move}
+                  onPointerUp={keyframesLocked || writeLocked ? undefined : dragKf.end}
+                  onPointerCancel={keyframesLocked || writeLocked ? undefined : dragKf.cancel}
+                  onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, [], curves, false, userKeys, fcurves)); setFrame(f) }}
+                  onContextMenu={(e) => openKeyMenu(e, row.nodeId, f, [], curves, selected)}
                 />
-              ))}
+              })}
             {(userKeys[row.nodeId]?.[row.prop!] ?? []).map((kf) => {
+              const curves = fcurveRefsAtFrame(fcurves, row.nodeId, [row.prop!], kf.frame)
+              const tokens = [kf.id, ...curves.map(fcurveToken)]
               const diamond = (
                 <div
                   key={kf.id}
@@ -369,13 +334,14 @@ export function TrackRow({
                   data-kf-node={row.nodeId}
                   data-kf-prop={row.prop}
                   data-kf-id={kf.id}
-                  data-timeline-key-tokens={JSON.stringify([kf.id])}
+                  data-timeline-key-tokens={JSON.stringify(tokens)}
+                  data-fcurve-bundle={JSON.stringify(curves)}
                   style={{
                     left:
                       (kf.frame -
                         frameStart +
                         (!keyframesLocked
-                          ? keyframePreviewOffset(previewDf, kf.id, draggingKeyIds)
+                          ? bundlePreviewOffset(previewDf, tokens, draggingKeyIds)
                           : 0)) *
                       pxPerFrame,
                   }}
@@ -390,34 +356,29 @@ export function TrackRow({
                   }
                   onPointerDown={(e) => {
                     e.stopPropagation()
+                    if (e.button !== 0) return
                     if (keyframesLocked) {
                       setFrame(kf.frame)
                       return
                     }
                     const clicked: KeyframeRef = { nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }
-                    const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame, userKeys)
+                    const additive = isAdditiveMod(e)
+                    const next = curves.length || fcurveRefsOf(selection).length
+                      ? nextTimelineKeySelection(selection, [clicked], curves, additive, userKeys, fcurves)
+                      : nextKeyframeSelection(selection, clicked, additive, kf.frame, userKeys)
                     if (next !== selection) onSelect(next)
                     if (writeLocked) {
                       setFrame(kf.frame)
                       return
                     }
-                    dragKf.begin(e, selectedKeyframeDragItems(next, userKeys))
+                    if (!additive) dragKf.begin(e, selectedTimelineDragItems(next, userKeys, fcurves))
                     setFrame(kf.frame)
                   }}
                   onPointerMove={keyframesLocked || writeLocked ? undefined : dragKf.move}
                   onPointerUp={keyframesLocked || writeLocked ? undefined : dragKf.end}
                   onPointerCancel={keyframesLocked || writeLocked ? undefined : dragKf.cancel}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    if (keyframesLocked || writeLocked) return
-                    onRemoveKeyframe(row.nodeId, row.prop!, kf.id)
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (keyframesLocked || writeLocked) return
-                    onRemoveKeyframe(row.nodeId, row.prop!, kf.id)
-                  }}
+                  onDoubleClick={(e) => { e.stopPropagation(); onSelect(nextTimelineKeySelection(selection, [{ nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }], curves, false, userKeys, fcurves)); setFrame(kf.frame) }}
+                  onContextMenu={(e) => openKeyMenu(e, row.nodeId, kf.frame, [{ nodeId: row.nodeId, prop: row.prop!, keyId: kf.id }], curves, isKeyframeHighlighted(selection, { keyId: kf.id, nodeId: row.nodeId, frame: kf.frame }))}
                 />
               )
               if (keyframesLocked && keyframesLockedHint) {

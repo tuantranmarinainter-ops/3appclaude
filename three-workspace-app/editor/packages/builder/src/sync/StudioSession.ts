@@ -1,4 +1,5 @@
 import { computed, makeObservable, observable, runInAction } from 'mobx'
+import { buildTransformPastePlan, canPasteWithoutUserKeys, getTransformClipboard, selectedPasteTargets, type TransformProp } from './transformPaste'
 import { previewClipMove } from '../document/clipMove'
 import {
   applyBlendDrag,
@@ -29,7 +30,7 @@ import {
   type DocSnapshotState,
   type History,
 } from '../document'
-import { FCurveSet } from '../evaluate/curves/FCurveSet'
+import { FCurveSet, type FcurveKeyRef } from '../evaluate/curves/FCurveSet'
 import {
   makeKeyframe,
   type Interpolation,
@@ -58,7 +59,7 @@ import type {
   WorkspaceMode,
 } from '../stores/types'
 import { buildNodeSelection, isLookAtPickTarget, isPathApplyPickTarget, isPathApplyTarget, isPathEditTarget, isPlaceOnSupportPickTarget, nodeIdsOf, unlockedNodeIds } from '../stores/nodeSelection'
-import { clipRefsOf, keyframeRefsOf, makeKeyframeSelection, type ClipRef } from '../stores/types'
+import { clipRefsOf, fcurveRefsOf, keyframeRefsOf, makeKeyframeSelection, makeTimelineBoxSelection, type ClipRef } from '../stores/types'
 import { clampInOutRange, normalizeInOutRange } from '../stores/inOutPreference'
 import type { EditorStore } from '../stores/EditorStore'
 import type { StudioView } from '../stores/types'
@@ -124,9 +125,14 @@ export class StudioSession implements StudioView {
   private pendingHostReload = false
   hydrating = false
   hostLoadFailed = false
+  hostReloadConflict = false
   hostReadOnly = false
   private pendingUserWrites = new Set<Promise<unknown>>()
   private saveInFlight: Promise<string | null> | null = null
+  private timelineCheckpoints: { generation: number; documentId: string; revision: number; doc: DirectorDocument; fcurves: unknown }[] = []
+  private savingRevision: number | null = null
+  private loadedDocumentId: string
+  private draftSwitchSeq = 0
   private saveGeneration = -1
   private pendingSaveCaptureCover = false
   private engineCover: Promise<void> | null = null
@@ -145,10 +151,12 @@ export class StudioSession implements StudioView {
     options?: { readOnly?: boolean },
   ) {
     this.hostReadOnly = options?.readOnly === true
+    this.loadedDocumentId = editor.draftId
     makeObservable<this, 'lastSavedRevision'>(this, {
       hostReadOnly: observable,
       hydrating: observable,
       hostLoadFailed: observable,
+      hostReloadConflict: observable,
       writeLocked: computed,
       lastSavedRevision: observable,
     })
@@ -183,6 +191,10 @@ export class StudioSession implements StudioView {
 
   get draftId(): string {
     return this.editor.draftId
+  }
+  /** ID of the loaded document while a switch is pending. */
+  get loadedDraftId(): string {
+    return this.loadedDocumentId
   }
   get doc(): DirectorDocument | null {
     return this.docModel.snapshot
@@ -607,18 +619,31 @@ export class StudioSession implements StudioView {
   }
 
   setDraft = (id: string): void => {
-    if (this.editor.exporting) return
-    this.cameraAimReleasePending = false
-    this.editor.setPlaying(false)
-    this.engine.pause()
-    this.engine.clearDrawPreview()
-    this.engine.endFollow()
-    this.engine.setOrbitEnabled(true)
-    this.editor.resetForDraft(id)
-    this.playback.reset()
-    this.engine.endProgramPreview()
-    this.docModel.replace(null)
-    this.history.clear()
+    const switchSeq = ++this.draftSwitchSeq
+    if (this.editor.exporting || (id === this.editor.draftId && id === this.loadedDocumentId)) return
+    const switchDocument = () => {
+      this.cameraAimReleasePending = false
+      this.editor.setPlaying(false)
+      this.engine.pause()
+      this.engine.clearDrawPreview()
+      this.engine.endFollow()
+      this.engine.setOrbitEnabled(true)
+      this.loadedDocumentId = id
+      this.editor.resetForDraft(id)
+      this.playback.reset()
+      this.engine.endProgramPreview()
+      this.docModel.replace(null)
+      this.history.clear()
+    }
+    if (this.adapter.preserveTimelineHistory && (this.dirty || this.saveInFlight || this.timelineCheckpoints.length)) {
+      const originalId = this.loadedDocumentId
+      const pending = this.save({ captureCover: false }).then((error) => {
+        if (!error && this.draftSwitchSeq === switchSeq && this.loadedDocumentId === originalId && !this.dirty && !this.timelineCheckpoints.length) switchDocument()
+      })
+      this.trackUserWrite(pending)
+      return
+    }
+    switchDocument()
   }
 
 
@@ -928,10 +953,94 @@ export class StudioSession implements StudioView {
     }
   }
 
+  /** Move both key layers in one undoable transaction; returns the clamped delta. */
+  moveTimelineKeys = (userRefs: KeyframeRef[], fcurveRefs: FcurveKeyRef[], requestedDelta: number): number => {
+    if (this.writeLocked || !Number.isFinite(requestedDelta)) return 0
+    const doc = this.docModel.snapshot
+    const editable = (nodeId: string) => {
+      const node = doc?.content.nodes.find((item) => item.id === nodeId)
+      return !!node && !node.locked && !cameraMotionOwnsKeyframes(doc, nodeId)
+    }
+    const next = cloneJson(this.docModel.userKeys)
+    const users = userRefs.filter((ref) => editable(ref.nodeId)).flatMap((ref) => {
+      const key = next[ref.nodeId]?.[ref.prop]?.find((item) => item.id === ref.keyId)
+      return key ? [{ ref, key, frame: key.frame }] : []
+    })
+    const fc = this.docModel.fcurves
+    const curves = fcurveRefs.filter((ref) => editable(ref.nodeId) && Number.isFinite(ref.frame) &&
+      fc?.tracksForNode(ref.nodeId).some((track) => track.propPath === ref.propPath &&
+        track.keys.some((key) => Math.abs(key.frame - ref.frame) <= 1e-6)))
+    const frames = [...users.map((item) => item.frame)]
+    for (const ref of curves) {
+      for (const track of fc?.tracksForNode(ref.nodeId) ?? []) {
+        if (track.propPath !== ref.propPath) continue
+        for (const key of track.keys) if (Math.abs(key.frame - ref.frame) <= 1e-6) frames.push(key.frame)
+      }
+    }
+    if (!frames.length) return 0
+    const fs = doc?.content.timeline.frameStart ?? 0
+    const fe = doc?.content.timeline.frameEnd ?? 0
+    // Integer deltas keep imported fractional frame offsets intact.
+    const low = Math.ceil(fs - Math.min(...frames))
+    const high = Math.floor(fe - Math.max(...frames))
+    if (low > high) return 0
+    const delta = Math.min(Math.max(Math.round(requestedDelta), low), high)
+    if (!delta) return 0
+    const before = snapshotDocState(this.docModel)
+    if (!before) return 0
+    this.checkpointTimelineState()
+    const movedIds = new Set(users.map(({ key }) => key.id))
+    const touched = new Set(users.map(({ ref }) => JSON.stringify([ref.nodeId, ref.prop])))
+    for (const { key, frame } of users) key.frame = frame + delta
+    for (const token of touched) {
+      const [nodeId, prop] = JSON.parse(token) as [string, TrackProp]
+      const track = next[nodeId]?.[prop] ?? []
+      const byFrame = new Map<number, typeof track[number]>()
+      for (const key of track) if (!movedIds.has(key.id)) byFrame.set(key.frame, key)
+      for (const key of track) if (movedIds.has(key.id)) byFrame.set(key.frame, key)
+      next[nodeId] = { ...next[nodeId], [prop]: [...byFrame.values()].sort((a, b) => a.frame - b.frame) }
+    }
+    runInAction(() => {
+      const previous = this.docModel.userKeys
+      if (users.length) this.docModel.setUserKeys(next)
+      if (fc && curves.length) {
+        fc.moveKeys(curves, delta)
+        this.docModel.setFcurves(fc)
+        this.engine.setFcurves(fc)
+      }
+      const live = this.docModel.toContract()
+      const positionNodes = new Set(curves.filter((ref) => ref.propPath === 'transform.position').map((ref) => ref.nodeId))
+      for (const { ref } of users) if (ref.prop === 'position') positionNodes.add(ref.nodeId)
+      if (live && positionNodes.size) {
+        for (const id of positionNodes) rederiveWalkPaths(live, id, fc ?? FCurveSet.empty(), next)
+        this.engine.syncPathNodes()
+      }
+      if (users.length) this.reseatBaseAfterKeyDelete(previous, next)
+      this.docModel.touch()
+      // A drag is a complete transaction; consecutive drags must not merge.
+      this.pushDocSnapshot('移动关键帧', before)
+      this.pruneKeyframeSelection(next)
+      const selection = this.editor.selection
+      if (selection?.kind === 'timelineBox' && selection.fcurves?.length) {
+        const updated = selection.fcurves.map((ref) => curves.some((moved) =>
+          moved.nodeId === ref.nodeId && moved.propPath === ref.propPath && Math.abs(moved.frame - ref.frame) <= 1e-6,
+        ) ? { ...ref, frame: ref.frame + delta } : ref)
+        this.editor.select(makeTimelineBoxSelection(selection.clips, selection.keys, updated))
+      }
+      if (selection?.kind === 'transformKeyframe' &&
+        (users.some(({ ref, frame }) => ref.nodeId === selection.nodeId && Math.abs(frame - selection.frame) <= 1e-6) ||
+          curves.some((ref) => ref.nodeId === selection.nodeId && Math.abs(ref.frame - selection.frame) <= 1e-6))) {
+        this.editor.select({ ...selection, frame: selection.frame + delta })
+      }
+    })
+    this.checkpointTimelineState()
+    return delta
+  }
+
   /** 合并掉的键 id 已不存在，留在 selection 里会让工具栏和删除操作点空。 */
   private pruneKeyframeSelection(userKeys: UserKeys): void {
     const sel = this.editor.selection
-    if (sel?.kind !== 'keyframe') return
+    if (sel?.kind !== 'keyframe' && sel?.kind !== 'timelineBox') return
     const alive = new Set<string>()
     for (const tracks of Object.values(userKeys)) {
       if (!tracks) continue
@@ -942,7 +1051,11 @@ export class StudioSession implements StudioView {
     const refs = keyframeRefsOf(sel)
     const remain = refs.filter((ref) => alive.has(ref.keyId))
     if (remain.length === refs.length) return
-    this.editor.select(makeKeyframeSelection(remain) ?? { kind: 'node', nodeId: sel.nodeId })
+    if (sel.kind === 'timelineBox') {
+      this.editor.select(makeTimelineBoxSelection(sel.clips, remain, fcurveRefsOf(sel)))
+    } else {
+      this.editor.select(makeKeyframeSelection(remain) ?? { kind: 'node', nodeId: sel.nodeId })
+    }
   }
 
   removeKeyframe = (nodeId: string, prop: TrackProp, keyId: string): void => {
@@ -955,6 +1068,10 @@ export class StudioSession implements StudioView {
     refs = refs.filter((ref) => !cameraMotionOwnsKeyframes(this.docModel.snapshot, ref.nodeId))
     if (refs.length === 0) return
     const next = cloneJson(this.docModel.userKeys)
+    const canRemove = refs.some((ref) => next[ref.nodeId]?.[ref.prop]?.some((key) => key.id === ref.keyId))
+    if (!canRemove) return
+    const ownCheckpoint = !this.history.interactionActive
+    if (ownCheckpoint) this.checkpointTimelineState()
     const removed = new Set<string>()
     for (const ref of refs) {
       const track = next[ref.nodeId]?.[ref.prop]
@@ -967,6 +1084,7 @@ export class StudioSession implements StudioView {
     }
     if (removed.size === 0) return
     this.commitUserKeys(next, '删除关键帧')
+    if (ownCheckpoint) this.checkpointTimelineState()
     const sel = this.editor.selection
     if (sel?.kind !== 'keyframe') return
     const remain = keyframeRefsOf(sel).filter((item) => !removed.has(item.keyId))
@@ -977,12 +1095,40 @@ export class StudioSession implements StudioView {
    * 删除 fcurves（官方曲线层）某属性路径在指定帧的关键帧：所有分量同帧一起删。
    * 角色位移键删除后按剩余关键帧重建派生走位路径（与 commitNodeTransform 同规则）。
    */
+  pasteTransformKeys = (mask: TransformProp[]): { skipped: number; changed: boolean } => {
+    const doc = this.docModel.snapshot
+    const source = getTransformClipboard()
+    if (this.writeLocked || !doc || !source) return { skipped: 0, changed: false }
+    const targets = selectedPasteTargets(this.editor.selection, this.docModel.userKeys)
+    if (!this.editor.userKeysEnabled && !canPasteWithoutUserKeys(doc, this.docModel.fcurves, targets, mask)) return { skipped: 0, changed: false }
+    const plan = buildTransformPastePlan(doc, this.docModel.fcurves, this.docModel.userKeys, source, targets, mask)
+    if (!plan.changed) return { skipped: plan.skipped, changed: false }
+    this.checkpointTimelineState()
+    const before = snapshotDocState(this.docModel)
+    if (!before) return { skipped: plan.skipped, changed: false }
+    runInAction(() => {
+      this.docModel.setUserKeys(plan.userKeys)
+      if (plan.fcurves) { this.docModel.setFcurves(plan.fcurves); this.engine.setFcurves(plan.fcurves) }
+      const live = this.docModel.toContract()
+      if (live && plan.positionNodes.length) {
+        for (const id of plan.positionNodes) rederiveWalkPaths(live, id, plan.fcurves ?? FCurveSet.empty(), this.editor.userKeysEnabled ? plan.userKeys : undefined)
+        this.engine.syncPathNodes()
+      }
+      this.docModel.touch()
+      this.pushDocSnapshot('Dán biến đổi', before)
+    })
+    this.checkpointTimelineState()
+    return { skipped: plan.skipped, changed: true }
+  }
+
   removeFcurveKeyframe = (nodeId: string, propPath: string, frame: number): void => {
     if (this.writeLocked) return
     const fc = this.docModel.fcurves
     if (!fc) return
     const before = snapshotDocState(this.docModel)
     if (!before) return
+    if (!fc.tracksForNode(nodeId).some((track) => track.propPath === propPath && track.keys.some((key) => Math.abs(key.frame - frame) <= 1e-6))) return
+    this.checkpointTimelineState()
     if (fc.removeKeysAtFrame(nodeId, propPath, frame) === 0) return
     const live = this.docModel.toContract()
     if (live && propPath === 'transform.position') {
@@ -993,6 +1139,7 @@ export class StudioSession implements StudioView {
     this.engine.setFcurves(fc)
     this.docModel.touch()
     this.pushDocSnapshot('删除关键帧', before)
+    this.checkpointTimelineState()
   }
 
   /**
@@ -1005,73 +1152,82 @@ export class StudioSession implements StudioView {
     if (cameraMotionOwnsKeyframes(this.docModel.snapshot, nodeId)) return
     const before = snapshotDocState(this.docModel)
     if (!before) return
-    const prevUserKeys = this.docModel.userKeys
-    let changed = false
-    let positionRemoved = false
-    // userKeys 层
-    const uk = this.docModel.userKeys[nodeId]
-    let userKeys = this.docModel.userKeys
-    if (uk) {
-      const rest = { ...uk }
-      for (const prop of ['position', 'rotation', 'scale', 'lookAt', 'fov'] as const) {
-        const track = rest[prop]
-        if (!track) continue
-        const next = track.filter((k) => k.frame !== frame)
-        if (next.length === track.length) continue
-        changed = true
-        if (prop === 'position') positionRemoved = true
-        if (next.length) rest[prop] = next
-        else delete rest[prop]
-      }
-      if (changed) {
-        userKeys = { ...userKeys }
-        if (Object.keys(rest).length) userKeys[nodeId] = rest
-        else delete userKeys[nodeId]
-      }
-    }
-    // fcurves 层
-    const fc = this.docModel.fcurves
-    if (fc) {
-      for (const [prop, path] of [
-        ['position', 'transform.position'],
-        ['rotation', 'transform.rotation'],
-        ['scale', 'transform.scale'],
-        ['lookAt', 'camera.lookAt'],
-        ['fov', 'camera.fov'],
-      ] as const) {
-        const removed = fc.removeKeysAtFrame(nodeId, path, frame)
-        if (removed > 0) {
+    const userTracks = this.docModel.userKeys[nodeId]
+    const hasUser = Object.values(userTracks ?? {}).some((track) => track?.some((key) => Math.abs(key.frame - frame) <= 1e-6))
+    const paths = new Set(['transform.position', 'transform.rotation', 'transform.scale', 'camera.lookAt', 'camera.fov'])
+    const hasCurve = this.docModel.fcurves?.tracksForNode(nodeId).some((track) => paths.has(track.propPath) && track.keys.some((key) => Math.abs(key.frame - frame) <= 1e-6))
+    if (!hasUser && !hasCurve) return
+    this.checkpointTimelineState()
+    runInAction(() => {
+      const prevUserKeys = this.docModel.userKeys
+      let changed = false
+      let positionRemoved = false
+      // userKeys 层
+      const uk = this.docModel.userKeys[nodeId]
+      let userKeys = this.docModel.userKeys
+      if (uk) {
+        const rest = { ...uk }
+        for (const prop of ['position', 'rotation', 'scale', 'lookAt', 'fov'] as const) {
+          const track = rest[prop]
+          if (!track) continue
+          const next = track.filter((k) => Math.abs(k.frame - frame) > 1e-6)
+          if (next.length === track.length) continue
           changed = true
           if (prop === 'position') positionRemoved = true
+          if (next.length) rest[prop] = next
+          else delete rest[prop]
+        }
+        if (changed) {
+          userKeys = { ...userKeys }
+          if (Object.keys(rest).length) userKeys[nodeId] = rest
+          else delete userKeys[nodeId]
         }
       }
-    }
-    if (!changed) return
-    const live = this.docModel.toContract()
-    if (live && positionRemoved) {
-      rederiveWalkPaths(live, nodeId, fc ?? FCurveSet.empty(), userKeys)
-      this.engine.syncPathNodes()
-    }
-    // 删键落座：静态 transform 回到剩余最早键（或删空前最早键）的位置
-    if (userKeys !== prevUserKeys) this.reseatBaseAfterKeyDelete(prevUserKeys, userKeys)
-    if (userKeys !== this.docModel.userKeys) this.docModel.setUserKeys(userKeys)
-    if (fc) {
-      this.docModel.setFcurves(fc)
-      this.engine.setFcurves(fc)
-    }
-    this.docModel.touch()
-    this.pushDocSnapshot('删除变换关键帧', before)
-    // 选中态清理：组合选中或子轨道选中键刚好被删时回退到节点
-    const sel = this.editor.selection
-    if (sel?.kind === 'transformKeyframe' && sel.nodeId === nodeId && sel.frame === frame) {
-      this.editor.select({ kind: 'node', nodeId })
-    } else if (
-      sel?.kind === 'keyframe' &&
-      sel.nodeId === nodeId &&
-      !(this.docModel.userKeys[nodeId]?.[sel.prop] ?? []).some((k) => k.id === sel.keyId)
-    ) {
-      this.editor.select({ kind: 'node', nodeId })
-    }
+      // fcurves 层
+      const fc = this.docModel.fcurves
+      if (fc) {
+        for (const [prop, path] of [
+          ['position', 'transform.position'],
+          ['rotation', 'transform.rotation'],
+          ['scale', 'transform.scale'],
+          ['lookAt', 'camera.lookAt'],
+          ['fov', 'camera.fov'],
+        ] as const) {
+          const removed = fc.removeKeysAtFrame(nodeId, path, frame)
+          if (removed > 0) {
+            changed = true
+            if (prop === 'position') positionRemoved = true
+          }
+        }
+      }
+      if (!changed) return
+      const live = this.docModel.toContract()
+      if (live && positionRemoved) {
+        rederiveWalkPaths(live, nodeId, fc ?? FCurveSet.empty(), userKeys)
+        this.engine.syncPathNodes()
+      }
+      // 删键落座：静态 transform 回到剩余最早键（或删空前最早键）的位置
+      if (userKeys !== prevUserKeys) this.reseatBaseAfterKeyDelete(prevUserKeys, userKeys)
+      if (userKeys !== this.docModel.userKeys) this.docModel.setUserKeys(userKeys)
+      if (fc) {
+        this.docModel.setFcurves(fc)
+        this.engine.setFcurves(fc)
+      }
+      this.docModel.touch()
+      this.pushDocSnapshot('删除变换关键帧', before)
+      // 选中态清理：组合选中或子轨道选中键刚好被删时回退到节点
+      const sel = this.editor.selection
+      if (sel?.kind === 'transformKeyframe' && sel.nodeId === nodeId && sel.frame === frame) {
+        this.editor.select({ kind: 'node', nodeId })
+      } else if (
+        sel?.kind === 'keyframe' &&
+        sel.nodeId === nodeId &&
+        !(this.docModel.userKeys[nodeId]?.[sel.prop] ?? []).some((k) => k.id === sel.keyId)
+      ) {
+        this.editor.select({ kind: 'node', nodeId })
+      }
+    })
+    this.checkpointTimelineState()
   }
 
   setKeyframeInterp = (nodeId: string, prop: TrackProp, keyId: string, interp: Interpolation): void => {
@@ -1680,12 +1836,25 @@ export class StudioSession implements StudioView {
     return true
   }
 
+  /** Capture now, before any later edit or asynchronous host write. */
+  private checkpointTimelineState(): void {
+    const doc = this.docModel.snapshot
+    if (!this.adapter.preserveTimelineHistory || !this.adapter.saveDocumentState || !doc || this.writeLocked) return
+    const revision = this.docModel.revision
+    if (revision === this.lastSavedRevision || revision === this.savingRevision ||
+      this.timelineCheckpoints.some((item) => item.generation === this.loadSeq && item.revision === revision)) return
+    this.timelineCheckpoints.push({ generation: this.loadSeq, documentId: this.loadedDocumentId, revision,
+      doc: cloneJson(doc), fcurves: cloneJson(FCurveSet.persist(this.docModel.fcurves, this.userKeys)) })
+    this.trackUserWrite(this.save({ captureCover: false }))
+  }
+
   save = (opts?: SaveOptions): Promise<string | null> => {
+    if (this.hostReloadConflict) return Promise.resolve('Host conflict: export local edits or reload the host document')
     if (this.saveInFlight && this.saveGeneration === this.loadSeq) {
       if (!this.writeLocked) this.pendingSaveCaptureCover ||= opts?.captureCover !== false
       return this.saveInFlight
     }
-    if (this.writeLocked) return Promise.resolve(null)
+    if (this.writeLocked) return Promise.resolve(this.adapter.preserveTimelineHistory && (this.dirty || this.timelineCheckpoints.length) ? 'save.errorWriteLocked' : null)
     this.pendingSaveCaptureCover ||= opts?.captureCover !== false
     if (this.saveInFlight) {
       // A fresh edit after reload needs its own save, after the old request settles.
@@ -1707,13 +1876,13 @@ export class StudioSession implements StudioView {
       if (generation !== this.loadSeq || this.hydrating) return null
       const err = await this.runSaveAttempt()
       if (err) return err
-      if (this.docModel.revision !== this.lastSavedRevision) continue
+      if (this.timelineCheckpoints.some((item) => item.generation === generation) || this.docModel.revision !== this.lastSavedRevision) continue
 
       const captureCover = this.pendingSaveCaptureCover
       this.pendingSaveCaptureCover = false
       if (captureCover) await this.captureThumbnailSafe()
       // 截封面期间也可能继续编辑；关闭流程必须等这些修改真正落盘。
-      if (this.docModel.revision !== this.lastSavedRevision) continue
+      if (this.timelineCheckpoints.some((item) => item.generation === generation) || this.docModel.revision !== this.lastSavedRevision) continue
       this.editor.setSaveState('saved')
       return null
     }
@@ -1730,24 +1899,34 @@ export class StudioSession implements StudioView {
       this.editor.setSaveState('error', 'save.errorHostReadOnly')
       return 'save.errorHostReadOnly'
     }
-    if (!this.dirty && this.editor.saveState !== 'error') {
-      return null
-    }
-    // 文档与曲线必须来自同一 revision；不要在第一次网络 await 后再读取实时状态。
-    const revision = this.docModel.revision
     const generation = this.loadSeq
-    const doc = cloneJson(source)
-    const fcurves = FCurveSet.persist(this.docModel.fcurves, this.userKeys)
+    let checkpoint = this.timelineCheckpoints.find((item) => item.generation === generation)
+    if (!checkpoint && !this.dirty && this.editor.saveState !== 'error') return null
+    // Every unified write, including periodic saves, must retain its exact
+    // payload if the host cannot determine whether the request committed.
+    if (!checkpoint && this.dirty && this.adapter.preserveTimelineHistory && this.adapter.saveDocumentState) {
+      checkpoint = { generation, documentId: this.loadedDocumentId, revision: this.docModel.revision,
+        doc: cloneJson(source), fcurves: cloneJson(FCurveSet.persist(this.docModel.fcurves, this.userKeys)) }
+      this.timelineCheckpoints.push(checkpoint)
+    }
+    const revision = checkpoint?.revision ?? this.docModel.revision
+    const documentId = checkpoint?.documentId ?? this.loadedDocumentId
+    const doc = checkpoint?.doc ?? cloneJson(source)
+    const fcurves = checkpoint?.fcurves ?? cloneJson(FCurveSet.persist(this.docModel.fcurves, this.userKeys))
+    this.savingRevision = revision
     this.editor.setSaveState('saving')
     try {
       if (this.adapter.saveDocumentState) {
-        await this.adapter.saveDocumentState(this.editor.draftId, doc, fcurves)
+        await this.adapter.saveDocumentState(documentId, doc, fcurves)
       } else {
-        await this.adapter.saveDocument!(this.editor.draftId, doc)
+        await this.adapter.saveDocument!(documentId, doc)
         if (generation !== this.loadSeq || this.hydrating) return null
-        await this.adapter.saveFCurves?.(this.editor.draftId, fcurves)
+        await this.adapter.saveFCurves?.(documentId, fcurves)
       }
-      if (generation === this.loadSeq && !this.hydrating) this.markSavedRevision(revision)
+      if (generation === this.loadSeq && !this.hydrating) {
+        if (checkpoint && this.timelineCheckpoints[0] === checkpoint) this.timelineCheckpoints.shift()
+        this.markSavedRevision(revision)
+      }
       return null
     } catch (e) {
       if (generation !== this.loadSeq || this.hydrating) return null
@@ -1755,6 +1934,8 @@ export class StudioSession implements StudioView {
       const message = e instanceof Error ? e.message : String(e)
       this.editor.setSaveState('error', 'save.failed', message)
       return message
+    } finally {
+      if (this.savingRevision === revision) this.savingRevision = null
     }
   }
 
@@ -1814,8 +1995,14 @@ export class StudioSession implements StudioView {
    * 有修改时，返回前封面已渲染完（引擎可以销毁）；文档保存和封面上传在 `done` 里继续。
    */
   beginCloseSave = async (): Promise<{ done: Promise<string | null> | null }> => {
-    // 写锁期间保存会被跳过。这时不截封面，避免封面和没保存的内容对不上。
-    if (this.writeLocked) return { done: null }
+    // Never report a completed close while an ordered save is still pending.
+    if (this.writeLocked) {
+      if (this.saveInFlight) return { done: this.saveInFlight }
+      if (this.adapter.preserveTimelineHistory && (this.dirty || this.timelineCheckpoints.length)) {
+        return { done: Promise.resolve('save.errorWriteLocked') }
+      }
+      return { done: null }
+    }
     const mustPersist = this.dirty || this.saveInFlight !== null || this.editor.saveState === 'error'
     if (!mustPersist) return { done: null }
 
@@ -1850,7 +2037,34 @@ export class StudioSession implements StudioView {
     }
   }
 
-  async reloadFromHost(_entityIds?: string[]): Promise<void> {
+  /** User chose to resolve a failed host save by explicitly reloading. */
+  offerHostReloadRecovery(): void {
+    runInAction(() => { this.hostReloadConflict = true })
+  }
+
+  /** Caller must explicitly confirm discarding local changes before using this recovery. */
+  async recoverHostReloadConflict(): Promise<void> {
+    if (!this.hostReloadConflict) return
+    if (this.saveInFlight) await this.saveInFlight
+    if (this.hydrating) throw new Error('A document reload is already in progress; try again')
+    const recoveryGeneration = this.loadSeq + 1
+    await this.reloadFromHost(undefined, true)
+    if (this.loadSeq !== recoveryGeneration || this.hydrating) {
+      throw new Error('Document reload was superseded; local changes were not discarded')
+    }
+    this.adapter.confirmHostReload?.(this.loadedDocumentId)
+    this.timelineCheckpoints = []
+    runInAction(() => { this.hostReloadConflict = false })
+    this.editor.setSaveState('saved')
+    this.flushPendingHostReload()
+  }
+
+  async reloadFromHost(_entityIds?: string[], discardLocal = false): Promise<void> {
+    if (!discardLocal && this.adapter.preserveTimelineHistory &&
+      (this.hostReloadConflict || this.dirty || this.saveInFlight || this.timelineCheckpoints.length)) {
+      this.hostReloadConflict = true
+      throw new Error('Unsaved local changes prevent reloading the host document')
+    }
     if (this.hydrating) {
       this.pendingHostReload = true
       return
@@ -1860,15 +2074,23 @@ export class StudioSession implements StudioView {
     const keptSelection = this.editor.selection
     const keptFrame = this.engine.currentFrame
     const keptCamera = this.editor.activeCameraId
+    const beforeRevision = this.docModel.revision
     this.hydrating = true
     try {
-      const nextDoc = await this.adapter.loadDocument(this.editor.draftId)
+      const nextDoc = await this.adapter.loadDocument(this.loadedDocumentId)
       await ensurePoseBones(this.adapter, collectUsedPoseIds(nextDoc), this.engine.poseBank)
       if (seq !== this.loadSeq) return
-      const raw = (await this.adapter.loadFCurves?.(this.editor.draftId)) ?? null
+      const raw = (await this.adapter.loadFCurves?.(this.loadedDocumentId)) ?? null
       if (seq !== this.loadSeq) return
+      if (this.adapter.preserveTimelineHistory &&
+        (this.docModel.revision !== beforeRevision || (!discardLocal && this.hostReloadConflict))) {
+        this.adapter.invalidateLoadedRevision?.(this.loadedDocumentId)
+        this.hostReloadConflict = true
+        throw new Error('Local changes occurred while reloading the host document')
+      }
       // loadDocument 不会清图，必须先 reset 再 setDoc/load，避免节点 reaction 往旧图加角色。
       const previous = this.docModel.toContract()
+      let appliedRevision: number
       if (previous && this.engine.ready && this.engine.refreshDocument) {
         // Preserve the document reference held by Stage and all unchanged model instances.
         const before = { ...previous, content: previous.content }
@@ -1876,13 +2098,20 @@ export class StudioSession implements StudioView {
         const editorial = pruneMissingCameraClips(hydrated)
         this.docModel.applyContent(editorial ? { ...hydrated, content: { ...hydrated.content, editorial } } : hydrated)
         this.history.clear()
+        appliedRevision = this.docModel.revision
         await this.engine.refreshDocument(before)
       } else {
         this.engine.reset()
         this.setDoc(nextDoc, raw)
+        appliedRevision = this.docModel.revision
         await this.engine.load(nextDoc)
       }
       if (seq !== this.loadSeq) return
+      if (this.adapter.preserveTimelineHistory && this.docModel.revision !== appliedRevision) {
+        this.adapter.invalidateLoadedRevision?.(this.loadedDocumentId)
+        this.hostReloadConflict = true
+        throw new Error('Local changes occurred while updating the host document')
+      }
       this.applyFcurvesRaw(raw)
       const nodeIds = new Set(nextDoc.content.nodes.map((node) => node.id))
       const cameraStillThere = keptCamera && nodeIds.has(keptCamera)
@@ -1907,7 +2136,7 @@ export class StudioSession implements StudioView {
       this.hostLoadFailed = false
       this.editor.setReady(true)
     } catch (error) {
-      if (seq === this.loadSeq) this.hostLoadFailed = true
+      if (seq === this.loadSeq && !this.hostReloadConflict) this.hostLoadFailed = true
       throw error
     } finally {
       if (seq === this.loadSeq) {
@@ -1918,6 +2147,13 @@ export class StudioSession implements StudioView {
   }
 
   async loadDraft(draftId: string): Promise<void> {
+    if (this.adapter.preserveTimelineHistory && draftId !== this.loadedDocumentId &&
+      (this.dirty || this.saveInFlight || this.timelineCheckpoints.length)) {
+      if (this.writeLocked && !this.saveInFlight) throw new Error('Cannot switch documents while the current document is locked')
+      const error = await this.save({ captureCover: false })
+      if (error) throw new Error(error)
+      if (this.dirty || this.timelineCheckpoints.length) throw new Error('Unsaved changes prevent switching documents')
+    }
     this.cancelCameraPilotForLoad()
     const seq = ++this.loadSeq
     this.hydrating = true
@@ -1944,6 +2180,7 @@ export class StudioSession implements StudioView {
         activeCameraId: this.editor.activeCameraId,
       })
       this.seekTo(nextDoc.content.timeline.frameStart)
+      this.loadedDocumentId = draftId
       this.markSavedRevision(this.docModel.revision)
       this.editor.setSaveState('idle')
       this.hostLoadFailed = false
@@ -1961,9 +2198,11 @@ export class StudioSession implements StudioView {
   }
 
   private flushPendingHostReload(): void {
-    if (!this.pendingHostReload) return
+    if (!this.pendingHostReload || this.hostReloadConflict) return
     this.pendingHostReload = false
-    void this.reloadFromHost()
+    void this.reloadFromHost().catch((error: unknown) => {
+      this.editor.setLoadStatus(error instanceof Error ? error.message : String(error))
+    })
   }
 
   private markSavedRevision(revision: number): void {
@@ -2620,27 +2859,59 @@ export class StudioSession implements StudioView {
       const before = snapshotDocState(this.docModel)
       if (!before) return
       const clips = [...clipRefsOf(sel)]
-      const keys = [...keyframeRefsOf(sel)]
-      if (clips.length === 1 && keys.length === 0) {
+      const editable = (nodeId: string) => {
+        const node = this.docModel.snapshot?.content.nodes.find((item) => item.id === nodeId)
+        return !!node && !node.locked && !cameraMotionOwnsKeyframes(this.docModel.snapshot, nodeId)
+      }
+      const keys = keyframeRefsOf(sel).filter((ref) => editable(ref.nodeId))
+      const fcurves = fcurveRefsOf(sel).filter((ref) => editable(ref.nodeId))
+      if (!clips.length && !keys.length && !fcurves.length) return
+      const keyOnly = clips.length === 0 && (keys.length > 0 || fcurves.length > 0)
+      if (keyOnly) this.checkpointTimelineState()
+      if (clips.length === 1 && keys.length === 0 && fcurves.length === 0) {
         this.deleteClip(clips[0].clipType, clips[0].clipId)
         return
       }
-      this.history.beginInteraction()
-      try {
-        // "Tự dời": xoá clip muộn trước để mỗi lần dời tính trên vị trí còn đúng.
-        const startOf = (ref: ClipRef) => {
-          const anim = this.docModel.toContract()?.content.timeline.animation
-          const list = ref.clipType === 'motion' ? anim?.motionClips : ref.clipType === 'camera' ? anim?.cameraMotionClips : anim?.pathMotionClips
-          return list?.find((c) => c.id === ref.clipId)?.frameStart ?? 0
+      // Flush observers only after the interaction ends so the host receives the
+      // complete transaction once, including both key layers.
+      runInAction(() => {
+        this.history.beginInteraction()
+        try {
+          // "Tự dời": xoá clip muộn trước để mỗi lần dời tính trên vị trí còn đúng.
+          const startOf = (ref: ClipRef) => {
+            const anim = this.docModel.toContract()?.content.timeline.animation
+            const list = ref.clipType === 'motion' ? anim?.motionClips : ref.clipType === 'camera' ? anim?.cameraMotionClips : anim?.pathMotionClips
+            return list?.find((c) => c.id === ref.clipId)?.frameStart ?? 0
+          }
+          const ordered = [...clips].sort((a, b) => startOf(b) - startOf(a))
+          for (const ref of ordered) this.deleteClip(ref.clipType, ref.clipId)
+          if (keys.length) this.removeKeyframes(keys)
+          const fc = this.docModel.fcurves
+          const positionNodes = new Set<string>()
+          let removed = 0
+          if (fc) for (const ref of fcurves) {
+            const count = fc.removeKeysAtFrame(ref.nodeId, ref.propPath, ref.frame)
+            removed += count
+            if (count && ref.propPath === 'transform.position') positionNodes.add(ref.nodeId)
+          }
+          if (fc && removed) {
+            const live = this.docModel.toContract()
+            if (live && positionNodes.size) {
+              for (const nodeId of positionNodes) rederiveWalkPaths(live, nodeId, fc, this.docModel.userKeys)
+              this.engine.syncPathNodes()
+            }
+            this.docModel.setFcurves(fc)
+            this.engine.setFcurves(fc)
+            this.docModel.touch()
+          }
+          this.editor.select(makeTimelineBoxSelection([], keyframeRefsOf(sel).filter((ref) => !editable(ref.nodeId)),
+            fcurveRefsOf(sel).filter((ref) => !editable(ref.nodeId))))
+        } finally {
+          this.history.endInteraction()
         }
-        const ordered = [...clips].sort((a, b) => startOf(b) - startOf(a))
-        for (const ref of ordered) this.deleteClip(ref.clipType, ref.clipId)
-        if (keys.length) this.removeKeyframes(keys)
-        this.editor.select(null)
-      } finally {
-        this.history.endInteraction()
-      }
-      this.pushDocSnapshot('删除选中片段与关键帧', before)
+        this.pushDocSnapshot('删除选中片段与关键帧', before)
+      })
+      if (keyOnly) this.checkpointTimelineState()
       return
     }
     this.deleteNodes(nodeIdsOf(sel))

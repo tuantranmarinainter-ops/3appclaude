@@ -340,6 +340,13 @@ export const ru: LocaleDict = {
     "mainCamera": "Главная камера"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Движение камеры",
     "pathMotion": "Путь",
     "transform": "Трансформация",
@@ -409,7 +416,7 @@ export const ru: LocaleDict = {
     "addKeyframeMulti": "Введите все выбранные объекты {{count}} в текущем кадре.",
     "saveKeyframe": "Сохранить ключевой кадр",
     "cancelPending": "Отменить изменения",
-    "fcurveKey": "Ключевой кадр кривой · кадр {{frame}} (щелкните дважды или щелкните правой кнопкой мыши, чтобы удалить)",
+    "fcurveKey": "Ключевой кадр кривой · кадр {{frame}}",
     "xformKey": "Преобразование ключевого кадра · кадр {{frame}} (сгруппируйте, дважды щелкните или щелкните правой кнопкой мыши для удаления)",
     "resize": "Изменение размера временной шкалы",
     "collapse": "Свернуть временную шкалу",

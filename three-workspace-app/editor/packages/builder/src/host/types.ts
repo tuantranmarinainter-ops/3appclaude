@@ -114,6 +114,12 @@ export interface HostAdapter<TDocument = unknown> {
    * 避免同一 revision 被拆成两次网络写入。
    */
   saveDocumentState?(documentId: string, doc: TDocument, fcurves: unknown): Promise<void>
+  /** Request an ordered host checkpoint for every timeline key gesture. */
+  readonly preserveTimelineHistory?: boolean
+  /** Revoke save authorization after a host reload cannot be applied safely. */
+  invalidateLoadedRevision?(documentId: string): void
+  /** Discard an unresolved local save only after the user explicitly reloads the host. */
+  confirmHostReload?(documentId: string): void
   /** 保存文档封面。宿主不实现即不产出，包内不做本地下载 */
   saveThumbnail?(documentId: string, blob: Blob): Promise<void>
 

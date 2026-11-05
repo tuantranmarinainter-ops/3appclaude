@@ -1,4 +1,5 @@
 ﻿import { test } from 'vitest'
+import { reaction } from 'mobx'
 import assert from 'node:assert/strict'
 import { makeEmptyDraft } from '../../contract/emptyDraft'
 import type { DirectorDocument, DraftNode } from '../../contract/types'
@@ -6,11 +7,14 @@ import { FCurveSet } from '../../evaluate/curves/FCurveSet'
 import { makeKeyframe } from '../../evaluate/curves/KeyframeTrack'
 import { rederiveWalkPaths } from '../../evaluate/path/deriveWalk'
 import { EditorStore } from '../../stores/EditorStore'
+import { fcurveRefsOf, makeTimelineBoxSelection } from '../../stores/types'
 import { StudioSession } from '../../sync/StudioSession'
 import { DirectorDoc } from '../../document/DirectorDoc'
 import { History } from '../../document/History'
 import type { DirectorEngine } from '../../engine/DirectorEngine'
 import type { HostAdapter } from '../../host/types'
+import { buildTransformPastePlan, canPasteWithoutUserKeys, copyTransform, getTransformClipboard } from '../transformPaste'
+import { PerspectiveCamera, Vector3, MathUtils } from 'three'
 
 function actor(): DraftNode {
   return {
@@ -345,3 +349,241 @@ test('moveKeyframes 移动组合关键帧时自动更新当前 transformKeyframe
   assert.deepEqual(s.editor.selection, { kind: 'transformKeyframe', nodeId: 'actor', frame: 25 })
 })
 
+
+test('moveTimelineKeys moves mixed layers atomically, preserves handles and supports undo/redo', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.parse({ version: 1, encoding: 'compact-v1', fcurves: [
+    { id: 'p', t: ['node', 'actor'], p: 'transform.position', i: 0, k: [
+      [38, 1, 'bezier', 'a', null, { x: 40, y: 2 }],
+      [44, 3, 'bezier', 'b', { x: 42, y: 2 }, null],
+      [50, 4, 'linear', 'c'], [52, 5, 'linear', 'd'], [56, 6, 'linear', 'e'], [60, 7, 'linear', 'stationary'],
+    ] },
+  ] })
+  model.setFcurves(fc)
+  const key = makeKeyframe(36, [1, 2, 3])
+  model.setUserKeys({ actor: { position: [key] } })
+  const before = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  const sample = fc.evalScalar('actor', 'transform.position', 0, 41)!
+  const refs = [38, 44, 50, 52, 56].map((frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame }))
+  assert.equal(s.moveTimelineKeys([{ nodeId: 'actor', prop: 'position', keyId: key.id }], refs, 4), 4)
+  assert.deepEqual(fc.tracksForNode('actor')[0].keys.map((k) => k.frame), [42, 48, 54, 56, 60])
+  assert.equal(model.userKeys.actor?.position?.[0].frame, 40)
+  assert.ok(Math.abs(fc.evalScalar('actor', 'transform.position', 0, 45)! - sample) < 1e-6)
+  assert.deepEqual(fc.tracksForNode('actor')[0].keys[0].outHandle, { x: 44, y: 2 })
+  const after = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), before)
+  s.redo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+  const movedRefs = refs.map((ref) => ({ ...ref, frame: ref.frame + 4 }))
+  assert.equal(s.moveTimelineKeys([{ nodeId: 'actor', prop: 'position', keyId: key.id }], movedRefs, -100), -40)
+  assert.equal(model.userKeys.actor?.position?.[0].frame, 0)
+  assert.deepEqual(model.fcurves?.tracksForNode('actor')[0].keys.map((k) => k.frame), [2, 8, 14, 16, 20])
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+})
+
+test('moveTimelineKeys keeps fractional frames and filters locked nodes', () => {
+  const { session: s, model, doc } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10.25, 2, 'fraction')
+  model.setFcurves(fc)
+  const ref = { nodeId: 'actor', propPath: 'transform.scale', frame: 10.2500001 }
+  s.editor.select({ kind: 'transformKeyframe', nodeId: 'actor', frame: 10.25 })
+  assert.equal(s.moveTimelineKeys([], [ref], 3), 3)
+  assert.deepEqual(s.editor.selection, { kind: 'transformKeyframe', nodeId: 'actor', frame: 13.25 })
+  assert.equal(fc.tracksForNode('actor')[0].keys[0].frame, 13.25)
+  doc.content.nodes.find((n) => n.id === 'actor')!.locked = true
+  assert.equal(s.moveTimelineKeys([], [{ ...ref, frame: 13.25 }], 3), 0)
+})
+
+test('mixed selection follows moved fcurves and deletes both layers in one undo', () => {
+  const { session: s, model, editor } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10, 2)
+  model.setFcurves(fc)
+  const key = makeKeyframe(10, [1, 2, 3])
+  model.setUserKeys({ actor: { position: [key] } })
+  const user = { nodeId: 'actor', prop: 'position' as const, keyId: key.id }
+  const ref = { nodeId: 'actor', propPath: 'transform.scale', frame: 10 }
+  editor.select(makeTimelineBoxSelection([], [user], [ref]))
+  assert.equal(s.moveTimelineKeys([user], [ref], 3), 3)
+  assert.deepEqual(fcurveRefsOf(editor.selection), [{ ...ref, frame: 13 }])
+  const beforeDelete = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  s.deleteSelection()
+  assert.equal(model.userKeys.actor?.position?.length, 0)
+  assert.equal(model.fcurves?.tracksForNode('actor').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), beforeDelete)
+  s.redo()
+  assert.equal(model.userKeys.actor?.position?.length, 0)
+  assert.equal(model.fcurves?.tracksForNode('actor').length, 0)
+})
+
+test('moveTimelineKeys moves 150 synthetic position frames in one transaction', () => {
+  const { session: s, model, doc } = session()
+  doc.content.timeline.frameEnd = 300
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, Array.from({ length: 150 }, (_, i) => i))
+  model.setFcurves(fc)
+  const refs = Array.from({ length: 150 }, (_, frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame }))
+  const before = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  const start = performance.now()
+  assert.equal(s.moveTimelineKeys([], refs, 10), 10)
+  const elapsed = performance.now() - start
+  for (const track of fc.tracksForNode('actor')) {
+    assert.deepEqual(track.keys.map((key) => key.frame), refs.map((ref) => ref.frame + 10))
+  }
+  assert.ok(elapsed < 200, `150 frames: ${elapsed.toFixed(1)} ms`)
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), before)
+})
+
+test('moving position curves rederives the walk path and undo restores it', () => {
+  const { session: s, model, doc } = session()
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, [10, 20])
+  model.setFcurves(fc)
+  rederiveWalkPaths(doc, 'actor', fc)
+  const oldClip = doc.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([oldClip.frameStart, oldClip.frameEnd], [10, 20])
+  const oldPath = doc.content.nodes.find((node) => node.id === oldClip.pathNodeId)!.path!.points
+  assert.equal(s.moveTimelineKeys([], [10, 20].map((frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame })), 5), 5)
+  const newClip = doc.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([newClip.frameStart, newClip.frameEnd], [15, 25])
+  assert.deepEqual(doc.content.nodes.find((node) => node.id === newClip.pathNodeId)!.path!.points.map((point) => point.position), oldPath.map((point) => point.position))
+  s.undo()
+  const restored = model.snapshot!.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([restored.frameStart, restored.frameEnd], [10, 20])
+})
+
+
+test('mixed movement publishes only the completed state', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, [10, 20])
+  model.setFcurves(fc)
+  const key = makeKeyframe(10, [1, 2, 3])
+  model.setUserKeys({ actor: { rotation: [key] } })
+  const states: Array<[number | undefined, number | undefined]> = []
+  const dispose = reaction(() => model.revision, () => {
+    states.push([model.userKeys.actor?.rotation?.[0].frame, model.fcurves?.tracksForNode('actor')[0].keys[0].frame])
+  })
+  s.moveTimelineKeys([{ nodeId: 'actor', prop: 'rotation', keyId: key.id }], [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }], 5)
+  dispose()
+  assert.deepEqual(states, [[15, 15]])
+})
+
+test('direct fcurve and transform deletion includes near-equal component frames with undo', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.position', 0, 10, 1)
+  fc.upsertKey('actor', 'transform.position', 1, 10.0000005, 2)
+  fc.upsertKey('actor', 'transform.rotation', 0, 10.0000005, 3)
+  model.setFcurves(fc)
+  const before = JSON.stringify(fc.encode())
+  s.removeFcurveKeyframe('actor', 'transform.position', 10)
+  assert.equal(model.fcurves!.tracksForNode('actor').filter((t) => t.propPath === 'transform.position').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
+  s.removeTransformKeysAtFrame('actor', 10)
+  assert.equal(model.fcurves!.tracksForNode('actor').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
+})
+
+test('deleting a selected near-frame bundle does not chain epsilon to a third key', () => {
+  const { session: s, model, editor } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10, 1)
+  fc.upsertKey('actor', 'transform.scale', 1, 10.0000009, 2)
+  fc.upsertKey('actor', 'transform.scale', 2, 10.0000018, 3)
+  model.setFcurves(fc)
+  const before = JSON.stringify(fc.encode())
+  editor.select({ kind: 'timelineBox', clips: [], keys: [], fcurves: [{ nodeId: 'actor', propPath: 'transform.scale', frame: 10 }] })
+  s.deleteSelection()
+  assert.deepEqual(model.fcurves!.tracksForNode('actor').flatMap((track) => track.keys.map((key) => key.frame)), [10.0000018])
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
+})
+
+test('paste preserves other keys and curve metadata, and is one undo/redo step', () => {
+  const { session: s, model, editor, doc } = session()
+  const fc = FCurveSet.empty()
+  const first = fc.upsertKey('actor', 'transform.position', 0, 10, 2)
+  first.interp = 'linear'
+  first.outHandle = { x: 12, y: 8 }
+  fc.upsertKey('actor', 'transform.position', 0, 20, 99)
+  model.setFcurves(fc)
+  const overlay = makeKeyframe(30, [9, 9, 9])
+  model.setUserKeys({ actor: { position: [overlay] } })
+  assert.equal(copyTransform(doc, null, {}, 'actor', 0), true)
+  const before = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  editor.select({ kind: 'timelineBox', clips: [], keys: [], fcurves: [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }] })
+  assert.equal(s.pasteTransformKeys(['position']).changed, true)
+  const after = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  const updated = model.fcurves!.getKeyAt('actor', 'transform.position', 0, 10)!
+  assert.deepEqual([updated.value, updated.interp, updated.id, updated.outHandle], [0, 'linear', first.id, { x: 12, y: 8 }])
+  assert.equal(model.fcurves!.getKeyAt('actor', 'transform.position', 0, 20)!.value, 99)
+  assert.deepEqual(model.userKeys.actor.position!.find((key) => key.frame === 30), overlay)
+  assert.deepEqual(model.userKeys.actor.position!.find((key) => key.frame === 10)!.value, [0, 0, 0])
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), before)
+  s.redo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+  editor.userKeysEnabled = false
+  assert.equal(s.pasteTransformKeys(['position']).changed, false)
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+  // Đủ 3 thành phần fcurve vẫn KHÔNG cho dán vị trí khi tắt khóa người dùng (người dùng chốt 2026-11-05).
+  model.fcurves!.upsertKey('actor', 'transform.position', 1, 10, 22)
+  model.fcurves!.upsertKey('actor', 'transform.position', 2, 10, 33)
+  const covered = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  assert.equal(s.pasteTransformKeys(['position']).changed, false)
+  assert.equal(s.pasteTransformKeys(['position', 'rotation', 'scale']).changed, false)
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), covered)
+  // Xoay có đủ fcurve ở khung đó thì vẫn dán được.
+  for (const index of [0, 1, 2]) model.fcurves!.upsertKey('actor', 'transform.rotation', index, 10, 45)
+  assert.equal(s.pasteTransformKeys(['rotation']).changed, true)
+  assert.deepEqual([0, 1, 2].map((index) => model.fcurves!.getKeyAt('actor', 'transform.rotation', index, 10)!.value), [0, 0, 0])
+})
+
+test('camera copy converts evaluated look-at direction to Euler, and skips camera scale on paste', () => {
+  const { doc } = session()
+  const camera: DraftNode = {
+    id: 'cam', type: 'camera', name: 'Camera', visible: true, locked: false,
+    transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+    camera: { projection: 'perspective', fov: 50, fovAxis: 'vertical', near: 0.1, far: 2000, isPrimary: true, lookAt: { x: 2, y: 3, z: -4 } },
+  }
+  doc.content.nodes.push(camera)
+  assert.equal(copyTransform(doc, null, {}, camera.id, 0), true)
+  const copied = getTransformClipboard()!
+  const reference = new PerspectiveCamera()
+  reference.lookAt(2, 3, -4)
+  const actual = new PerspectiveCamera()
+  actual.rotation.set(...copied.rotation.map(MathUtils.degToRad) as [number, number, number])
+  assert.ok(actual.getWorldDirection(new Vector3()).distanceTo(reference.getWorldDirection(new Vector3())) < 1e-6)
+  const plan = buildTransformPastePlan(doc, null, {}, copied, [{ nodeId: camera.id, frame: 10 }], ['rotation', 'scale'])
+  assert.deepEqual(plan.userKeys[camera.id].rotation![0].value, copied.rotation)
+  assert.equal(plan.userKeys[camera.id].scale, undefined)
+})
+
+test('user keys disabled: position paste is refused so the derived walk path cannot drift (E2 blocker)', () => {
+  const { session: s, model, editor, doc } = session()
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, [10, 20])
+  model.setFcurves(fc)
+  const overlay = makeKeyframe(30, [900, 0, 0])
+  model.setUserKeys({ actor: { position: [overlay] } })
+  editor.userKeysEnabled = false
+  copyTransform(doc, null, {}, 'actor', 0)
+  const targets = [{ nodeId: 'actor', frame: 10 }]
+  assert.equal(canPasteWithoutUserKeys(doc, model.fcurves, targets, ['position']), false)
+  editor.select({ kind: 'timelineBox', clips: [], keys: [], fcurves: [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }] })
+  const before = JSON.stringify({ doc, keys: FCurveSet.persist(model.fcurves, model.userKeys) })
+  assert.equal(s.pasteTransformKeys(['position']).changed, false)
+  assert.equal(JSON.stringify({ doc, keys: FCurveSet.persist(model.fcurves, model.userKeys) }), before)
+  // Bật lại khóa người dùng thì dán được như thường.
+  editor.userKeysEnabled = true
+  assert.equal(s.pasteTransformKeys(['position']).changed, true)
+  assert.deepEqual(model.userKeys.actor.position!.find((key) => key.frame === 30), overlay)
+})
