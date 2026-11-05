@@ -154,7 +154,7 @@ export interface CameraMotionClip {
 export interface MotionBlendIn {
   frames: number
   curve: 'smooth' | 'linear'
-  footLock: true
+  footLock: boolean
   mirror?: boolean
   phaseOffsetSeconds?: number
 }

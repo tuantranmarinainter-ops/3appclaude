@@ -1,6 +1,9 @@
 import type { MotionBlendIn, MotionClip } from '../contract/types'
 import { motionBlendInOf, motionBlendPartner } from '../evaluate/clips'
 import { shiftOverlappingMotionClips } from '../evaluate/studioIntents'
+import { motionOverlapsValid } from '../evaluate/motionOverlaps'
+export { findInvalidMotionOverlaps, motionOverlapsValid } from '../evaluate/motionOverlaps'
+export type { InvalidMotionOverlap } from '../evaluate/motionOverlaps'
 
 /**
  * Trộn clip kiểu iClone (K1): các hàm thuần trên danh sách MotionClip.
@@ -25,79 +28,6 @@ export function maxBlendFrames(a: MotionClip, b: MotionClip): number {
   return Math.max(0, Math.floor(Math.min(clipLength(a), clipLength(b)) / 2))
 }
 
-/**
- * Mọi cặp clip chồng nhau (cùng nhân vật) phải là cặp trộn hợp lệ (clip sau có blendIn trỏ đúng clip trước,
- * vùng chồng nằm trong vùng trộn) và không có 3 clip chồng nhau cùng lúc.
- */
-export function motionOverlapsValid(clips: readonly MotionClip[]): boolean {
-  const byNode = new Map<string, MotionClip[]>()
-  for (const clip of clips) {
-    const list = byNode.get(clip.target.nodeId)
-    if (list) list.push(clip)
-    else byNode.set(clip.target.nodeId, [clip])
-  }
-  for (const list of byNode.values()) {
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const x = list[i]
-        const y = list[j]
-        if (!halfOpenOverlap(x, y)) continue
-        const [a, b] = x.frameStart <= y.frameStart ? [x, y] : [y, x]
-        if (a.frameStart === b.frameStart) return false
-        const blend = motionBlendInOf(b)
-        if (!blend || motionBlendPartner(list, b) !== a) return false
-        if (a.frameEnd > b.frameStart + blend.frames - 1) return false
-        for (let k = j + 1; k < list.length; k++) {
-          if (halfOpenOverlap(list[k], x) && halfOpenOverlap(list[k], y)) return false
-        }
-      }
-    }
-  }
-  return true
-}
-
-export interface InvalidMotionOverlap {
-  nodeId: string
-  /** Clip trước / sau (theo frameStart); với `triple`, hai clip đầu của bộ ba chồng nhau. */
-  earlierId: string
-  laterId: string
-  reason: 'no-blend' | 'triple'
-}
-
-/**
- * K4: cùng quy tắc với `motionOverlapsValid` nhưng liệt kê các cặp sai (cho preflight xuất film):
- * `no-blend` = hai clip chồng nhau mà không có blendIn hợp lệ trỏ đúng clip trước (hoặc vùng chồng vượt vùng trộn);
- * `triple` = ba clip chồng nhau cùng lúc.
- */
-export function findInvalidMotionOverlaps(clips: readonly MotionClip[]): InvalidMotionOverlap[] {
-  const byNode = new Map<string, MotionClip[]>()
-  for (const clip of clips) {
-    const list = byNode.get(clip.target.nodeId)
-    if (list) list.push(clip)
-    else byNode.set(clip.target.nodeId, [clip])
-  }
-  const found: InvalidMotionOverlap[] = []
-  for (const [nodeId, list] of byNode) {
-    for (let i = 0; i < list.length; i++) {
-      for (let j = i + 1; j < list.length; j++) {
-        const x = list[i]
-        const y = list[j]
-        if (!halfOpenOverlap(x, y)) continue
-        const [a, b] = x.frameStart <= y.frameStart ? [x, y] : [y, x]
-        const blend = a.frameStart === b.frameStart ? null : motionBlendInOf(b)
-        if (!blend || motionBlendPartner(list, b) !== a || a.frameEnd > b.frameStart + blend.frames - 1) {
-          found.push({ nodeId, earlierId: a.id, laterId: b.id, reason: 'no-blend' })
-          continue
-        }
-        for (let k = j + 1; k < list.length; k++) {
-          if (halfOpenOverlap(list[k], x) && halfOpenOverlap(list[k], y)) found.push({ nodeId, earlierId: a.id, laterId: b.id, reason: 'triple' })
-        }
-      }
-    }
-  }
-  return found
-}
-
 function withBlend(clip: MotionClip, blend: MotionBlendIn | null): MotionClip {
   const { blendIn: _old, ...rest } = clip.playback
   void _old
@@ -108,7 +38,7 @@ function defaultBlend(frames: number, previous?: MotionBlendIn | null): MotionBl
   return {
     frames,
     curve: previous?.curve ?? 'smooth',
-    footLock: true,
+    footLock: previous?.footLock ?? true,
     ...(previous?.mirror !== undefined ? { mirror: previous.mirror } : {}),
     ...(previous?.phaseOffsetSeconds !== undefined ? { phaseOffsetSeconds: previous.phaseOffsetSeconds } : {}),
   }
@@ -272,6 +202,7 @@ export function blendBandLabel(blend: MotionBlendIn): string {
 }
 
 export interface BlendOptionsPatch {
+  footLock?: boolean
   /** Đảo chân: lật trái-phải toàn bộ clip sau. */
   mirror?: boolean
   /** Khớp nhịp bước: dời điểm bắt đầu đọc động tác gốc (giây). null hoặc 0 = bỏ khớp nhịp. */
@@ -288,8 +219,9 @@ export function setBlendOptions(clips: readonly MotionClip[], clipId: string, pa
   const mirror = patch.mirror !== undefined ? patch.mirror : blend.mirror === true
   const phase = patch.phaseOffsetSeconds !== undefined ? patch.phaseOffsetSeconds : blend.phaseOffsetSeconds ?? null
   const phaseValue = phase === null || !Number.isFinite(phase) || phase === 0 ? null : phase
-  if (mirror === (blend.mirror === true) && phaseValue === (blend.phaseOffsetSeconds ?? null)) return null
-  const next: MotionBlendIn = { ...rest, ...(mirror ? { mirror: true } : {}), ...(phaseValue !== null ? { phaseOffsetSeconds: phaseValue } : {}) }
+  const footLock = patch.footLock ?? blend.footLock
+  if (mirror === (blend.mirror === true) && phaseValue === (blend.phaseOffsetSeconds ?? null) && footLock === blend.footLock) return null
+  const next: MotionBlendIn = { ...rest, footLock, ...(mirror ? { mirror: true } : {}), ...(phaseValue !== null ? { phaseOffsetSeconds: phaseValue } : {}) }
   return clips.map((item) => (item.id === clipId ? withBlend(item, next) : item))
 }
 

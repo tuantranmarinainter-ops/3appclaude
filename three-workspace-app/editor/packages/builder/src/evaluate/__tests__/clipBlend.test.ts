@@ -149,6 +149,7 @@ describe('validate blendIn', () => {
   it('accepts old files without blendIn and valid blendIn', () => {
     expect(() => parseDirectorDocument(JSON.parse(JSON.stringify(makeEmptyDraft("v", FPS, 200))))).not.toThrow()
     expect(() => parseDirectorDocument(docWith({ frames: 10, curve: 'smooth', footLock: true }))).not.toThrow()
+    expect(() => parseDirectorDocument(docWith({ frames: 10, curve: 'smooth', footLock: false }))).not.toThrow()
     expect(() => parseDirectorDocument(docWith({ frames: 6, curve: 'linear', footLock: true, mirror: true, phaseOffsetSeconds: -0.2 }))).not.toThrow()
   })
   it('rejects malformed blendIn', () => {
@@ -156,7 +157,7 @@ describe('validate blendIn', () => {
       { frames: 0, curve: 'smooth', footLock: true },
       { frames: 2.5, curve: 'smooth', footLock: true },
       { frames: 10, curve: 'cubic', footLock: true },
-      { frames: 10, curve: 'smooth', footLock: false },
+      { frames: 10, curve: 'smooth', footLock: 'false' },
       { frames: 10, curve: 'smooth' },
       { frames: 10, curve: 'smooth', footLock: true, extra: 1 },
       'smooth',

@@ -1,5 +1,5 @@
 import { computed, makeObservable, observable, runInAction } from 'mobx'
-import { buildTransformPastePlan, canPasteWithoutUserKeys, getTransformClipboard, selectedPasteTargets, type TransformProp } from './transformPaste'
+import { buildTransformPastePlan, canPasteWithoutUserKeys, copyTransform, getTransformClipboard, selectedPasteTargets, type TransformProp } from './transformPaste'
 import { previewClipMove } from '../document/clipMove'
 import {
   applyBlendDrag,
@@ -1090,6 +1090,11 @@ export class StudioSession implements StudioView {
     const remain = keyframeRefsOf(sel).filter((item) => !removed.has(item.keyId))
     this.editor.select(makeKeyframeSelection(remain) ?? { kind: 'node', nodeId: sel.nodeId })
   }
+
+  readonly canPasteWithoutUserKeys = canPasteWithoutUserKeys
+  readonly copyTransform = copyTransform
+  readonly getTransformClipboard = getTransformClipboard
+  readonly selectedPasteTargets = selectedPasteTargets
 
   /**
    * 删除 fcurves（官方曲线层）某属性路径在指定帧的关键帧：所有分量同帧一起删。
@@ -3322,17 +3327,23 @@ export class StudioSession implements StudioView {
   blendMotionClipWithPrevious = (clipId: string): boolean =>
     this.commitMotionClips('Trộn với clip trước', (clips, fps, minFrame) => blendWithPrevious(clips, clipId, fps, minFrame))
 
-  setMotionClipBlend = (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear'; mirror?: boolean; phaseOffsetSeconds?: number | null }): boolean =>
+  setMotionClipBlend = (clipId: string, patch: { frames?: number; curve?: 'smooth' | 'linear'; footLock?: boolean; mirror?: boolean; phaseOffsetSeconds?: number | null }): boolean =>
     this.commitMotionClips(
       patch.mirror !== undefined ? 'Đảo chân' : patch.phaseOffsetSeconds !== undefined ? (patch.phaseOffsetSeconds ? 'Khớp nhịp bước' : 'Bỏ khớp nhịp') : 'Đổi thông số trộn',
       (clips, _fps, minFrame) => {
-        let current: MotionClip[] | null = clips
-        if (patch.frames !== undefined) current = setBlendFrames(current, clipId, patch.frames, minFrame)
-        if (current && patch.curve !== undefined) current = setBlendCurve(current, clipId, patch.curve) ?? current
-        if (current && (patch.mirror !== undefined || patch.phaseOffsetSeconds !== undefined)) {
-          current = setBlendOptions(current, clipId, { mirror: patch.mirror, phaseOffsetSeconds: patch.phaseOffsetSeconds })
+        // Clip thiếu / không có vùng trộn / số khung sai: không đổi gì. Các phần khác của patch trùng giá trị cũ thì bỏ qua,
+        // nhưng nếu cả patch không đổi gì thì trả null để không tạo bước Undo rỗng.
+        let current: MotionClip[] = clips
+        if (patch.frames !== undefined) {
+          const framed = setBlendFrames(current, clipId, patch.frames, minFrame)
+          if (!framed) return null
+          current = framed
         }
-        return current
+        if (patch.curve !== undefined) current = setBlendCurve(current, clipId, patch.curve) ?? current
+        if (patch.footLock !== undefined || patch.mirror !== undefined || patch.phaseOffsetSeconds !== undefined) {
+          current = setBlendOptions(current, clipId, { footLock: patch.footLock, mirror: patch.mirror, phaseOffsetSeconds: patch.phaseOffsetSeconds }) ?? current
+        }
+        return JSON.stringify(current) === JSON.stringify(clips) ? null : current
       })
 
   removeMotionClipBlend = (clipId: string): boolean =>

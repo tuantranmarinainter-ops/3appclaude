@@ -33,7 +33,7 @@ const playbackSchema = z.object({
 const motionBlendInSchema = z.object({
   frames: z.number().int().positive(),
   curve: z.enum(['smooth', 'linear']),
-  footLock: z.literal(true),
+  footLock: z.boolean(),
   mirror: z.boolean().optional(),
   phaseOffsetSeconds: z.number().finite().optional(),
 }).strict()

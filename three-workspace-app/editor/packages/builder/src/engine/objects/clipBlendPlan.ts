@@ -280,7 +280,7 @@ function computePlan(args: {
 
   // 2. Khóa chân: phát hiện chân chạm đất trong từng nguồn (theo thời gian đã áp speed/lặp), giữ vị trí actor.
   const locks: LockPlan[] = []
-  if (skeletal && rig.feet.length) {
+  if (blend.footLock && skeletal && rig.feet.length) {
     const rest = restLocal(ch, rig)
     const restAnkle = rig.feet.map((foot) => positionOf(actorMatrix(ch, foot.foot, rest)))
     const restToe = rig.feet.map((foot) => foot.toe ? positionOf(actorMatrix(ch, foot.toe, rest)) : null)
