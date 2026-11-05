@@ -22,6 +22,15 @@ export function box(frameStart: number, pxPerFrame: number, start: number, end: 
   }
 }
 
+/** Collapse component frames that represent the same timeline key. */
+export function mergeKeyFrames(frames: number[]): number[] {
+  const merged: number[] = []
+  for (const frame of [...frames].sort((a, b) => a - b)) {
+    if (!merged.length || frame - merged[merged.length - 1] > 1e-6) merged.push(frame)
+  }
+  return merged
+}
+
 export function fcurveFrames(fcurves: FCurveSet | null, nodeId: string, prop: TrackProp): number[] {
   if (!fcurves) return []
   const propPath = FC_PROP_PATH[prop]
@@ -29,7 +38,7 @@ export function fcurveFrames(fcurves: FCurveSet | null, nodeId: string, prop: Tr
   for (let i = 0; i < 3; i++) {
     for (const k of fcurves.keyframesForTrack(nodeId, propPath, i)) frames.add(k.frame)
   }
-  return [...frames].sort((a, b) => a - b)
+  return mergeKeyFrames([...frames])
 }
 
 export function transformKeyframeFrames(
@@ -43,7 +52,7 @@ export function transformKeyframeFrames(
     for (const k of userKeys[nodeId]?.[prop] ?? []) frames.add(k.frame)
     for (const f of fcurveFrames(fcurves, nodeId, prop)) frames.add(f)
   }
-  return [...frames].sort((a, b) => a - b)
+  return mergeKeyFrames([...frames])
 }
 
 export function isAdditiveMod(e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }): boolean {

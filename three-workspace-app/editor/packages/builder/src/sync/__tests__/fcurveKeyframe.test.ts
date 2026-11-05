@@ -7,6 +7,7 @@ import { FCurveSet } from '../../evaluate/curves/FCurveSet'
 import { makeKeyframe } from '../../evaluate/curves/KeyframeTrack'
 import { rederiveWalkPaths } from '../../evaluate/path/deriveWalk'
 import { EditorStore } from '../../stores/EditorStore'
+import { fcurveRefsOf, makeTimelineBoxSelection } from '../../stores/types'
 import { StudioSession } from '../../sync/StudioSession'
 import { DirectorDoc } from '../../document/DirectorDoc'
 import { History } from '../../document/History'
@@ -394,6 +395,29 @@ test('moveTimelineKeys keeps fractional frames and filters locked nodes', () => 
   assert.equal(s.moveTimelineKeys([], [{ ...ref, frame: 13.25 }], 3), 0)
 })
 
+test('mixed selection follows moved fcurves and deletes both layers in one undo', () => {
+  const { session: s, model, editor } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10, 2)
+  model.setFcurves(fc)
+  const key = makeKeyframe(10, [1, 2, 3])
+  model.setUserKeys({ actor: { position: [key] } })
+  const user = { nodeId: 'actor', prop: 'position' as const, keyId: key.id }
+  const ref = { nodeId: 'actor', propPath: 'transform.scale', frame: 10 }
+  editor.select(makeTimelineBoxSelection([], [user], [ref]))
+  assert.equal(s.moveTimelineKeys([user], [ref], 3), 3)
+  assert.deepEqual(fcurveRefsOf(editor.selection), [{ ...ref, frame: 13 }])
+  const beforeDelete = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  s.deleteSelection()
+  assert.equal(model.userKeys.actor?.position?.length, 0)
+  assert.equal(model.fcurves?.tracksForNode('actor').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), beforeDelete)
+  s.redo()
+  assert.equal(model.userKeys.actor?.position?.length, 0)
+  assert.equal(model.fcurves?.tracksForNode('actor').length, 0)
+})
+
 test('moveTimelineKeys moves 150 synthetic position frames in one transaction', () => {
   const { session: s, model, doc } = session()
   doc.content.timeline.frameEnd = 300
@@ -446,4 +470,37 @@ test('mixed movement publishes only the completed state', () => {
   s.moveTimelineKeys([{ nodeId: 'actor', prop: 'rotation', keyId: key.id }], [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }], 5)
   dispose()
   assert.deepEqual(states, [[15, 15]])
+})
+
+test('direct fcurve and transform deletion includes near-equal component frames with undo', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.position', 0, 10, 1)
+  fc.upsertKey('actor', 'transform.position', 1, 10.0000005, 2)
+  fc.upsertKey('actor', 'transform.rotation', 0, 10.0000005, 3)
+  model.setFcurves(fc)
+  const before = JSON.stringify(fc.encode())
+  s.removeFcurveKeyframe('actor', 'transform.position', 10)
+  assert.equal(model.fcurves!.tracksForNode('actor').filter((t) => t.propPath === 'transform.position').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
+  s.removeTransformKeysAtFrame('actor', 10)
+  assert.equal(model.fcurves!.tracksForNode('actor').length, 0)
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
+})
+
+test('deleting a selected near-frame bundle does not chain epsilon to a third key', () => {
+  const { session: s, model, editor } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10, 1)
+  fc.upsertKey('actor', 'transform.scale', 1, 10.0000009, 2)
+  fc.upsertKey('actor', 'transform.scale', 2, 10.0000018, 3)
+  model.setFcurves(fc)
+  const before = JSON.stringify(fc.encode())
+  editor.select({ kind: 'timelineBox', clips: [], keys: [], fcurves: [{ nodeId: 'actor', propPath: 'transform.scale', frame: 10 }] })
+  s.deleteSelection()
+  assert.deepEqual(model.fcurves!.tracksForNode('actor').flatMap((track) => track.keys.map((key) => key.frame)), [10.0000018])
+  s.undo()
+  assert.equal(JSON.stringify(model.fcurves!.encode()), before)
 })

@@ -1,22 +1,25 @@
+import { useDirector } from '../../bridge/DirectorContext'
+import { fcurveRefsOf } from '../../stores/types'
+import type { FCurveSet } from '../../evaluate/curves/FCurveSet'
 import type { TrackProp, UserKeys } from '../../evaluate/curves/KeyframeTrack'
 import { type KeyframeRef, type Selection } from '../../stores/types'
 import { Tooltip } from '../common/Tooltip'
 import { cx } from '../common/cx'
-import { selectedKeyframeDragItems, useKeyframeDrag } from './hooks/useKeyframeDrag'
+import { useKeyframeDrag } from './hooks/useKeyframeDrag'
 import { useSnapFrame } from './hooks/useSnapFrame'
 import type { TimelineSummary } from './types'
 import {
 bundlePreviewOffset,
 collectFrameBundles,
-isGroupKeyframeSelected,
 isKeyframeHighlighted,
-isSameSelection,
 keyframePreviewOffset,
 nextBundleSelection,
 nextKeyframeSelection
 } from './utils'
 
 import { isAdditiveMod } from './utils/trackRow'
+import { fcurveRefsAtFrame, fcurveToken, nextTimelineKeySelection, sameFcurve, selectedTimelineDragItems, selectedTimelineRefs } from './utils/fcurveSelection'
+import { transformKeyframeFrames } from './utils/trackRow'
 
 function IconDiamond() {
   return (
@@ -81,11 +84,13 @@ export function GhostKeyframes({
   userKeys: UserKeys
   selection: Selection | null
   readOnly?: boolean
-  onSelect: (next: Selection) => void
+  onSelect: (next: Selection | null) => void
   onSeek: (frame: number) => void
   onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
 }) {
   const snap = useSnapFrame(pxPerFrame)
+  const { useStore } = useDirector()
+  const fcurves = useStore((s) => s.fcurves)
   const drag = useKeyframeDrag(pxPerFrame, onMoveKeyframes, snap)
   const previewDf = drag.previewDf
   const draggingKeyIds = drag.draggingKeyIds
@@ -113,10 +118,11 @@ export function GhostKeyframes({
         onPointerDown={(e) => {
           e.stopPropagation()
           const clicked: KeyframeRef = { nodeId, prop, keyId: kf.id }
-          const next = nextKeyframeSelection(selection, clicked, isAdditiveMod(e), kf.frame, userKeys)
+          const additive = isAdditiveMod(e)
+          const next = fcurveRefsOf(selection).length ? nextTimelineKeySelection(selection, [clicked], [], additive, userKeys, fcurves) : nextKeyframeSelection(selection, clicked, additive, kf.frame, userKeys)
           if (next !== selection) onSelect(next)
           onSeek(kf.frame)
-          if (!readOnly) drag.begin(e, selectedKeyframeDragItems(next, userKeys))
+          if (!readOnly && !additive) drag.begin(e, selectedTimelineDragItems(next, userKeys, fcurves))
         }}
         onPointerMove={readOnly ? undefined : drag.move}
         onPointerUp={readOnly ? undefined : drag.end}
@@ -132,6 +138,7 @@ export function AggregateKeyframes({
   frameStart,
   pxPerFrame,
   userKeys,
+  fcurves,
   selection,
   muted = false,
   readOnly = false,
@@ -139,17 +146,20 @@ export function AggregateKeyframes({
   onSelect,
   onSeek,
   onMoveKeyframes,
+  onRemoveTransformKeys,
 }: {
   nodeId: string
   props: TrackProp[]
   frameStart: number
   pxPerFrame: number
   userKeys: UserKeys
+  fcurves: FCurveSet | null
   selection: Selection | null
   muted?: boolean
   readOnly?: boolean
   mutedHint?: string
-  onSelect: (next: Selection) => void
+  onRemoveTransformKeys: (nodeId: string, frame: number) => void
+  onSelect: (next: Selection | null) => void
   onSeek: (frame: number) => void
   onMoveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
 }) {
@@ -157,62 +167,45 @@ export function AggregateKeyframes({
   const drag = useKeyframeDrag(pxPerFrame, onMoveKeyframes, snap)
   const previewDf = muted || readOnly ? null : drag.previewDf
   const draggingKeyIds = muted || readOnly ? null : drag.draggingKeyIds
-  return collectFrameBundles(nodeId, props, userKeys).map((bundle) => {
-    const lead = bundle.refs[0]
-    if (!lead) return null
-    const selected = isGroupKeyframeSelected(selection, nodeId, bundle.frame, bundle.refs)
-    const bundleKeyIds = bundle.refs.map((r) => r.keyId)
+  const bundles = collectFrameBundles(nodeId, props, userKeys)
+  return transformKeyframeFrames(userKeys, fcurves, nodeId, props).map((frame) => {
+    const refs = bundles.find((bundle) => Math.abs(bundle.frame - frame) <= 1e-6)?.refs ?? []
+    const curves = fcurveRefsAtFrame(fcurves, nodeId, props, frame)
+    const selectedRefs = selectedTimelineRefs(selection, userKeys, fcurves)
+    const selected = refs.every((ref) => selectedRefs.keys.some((item) => item.keyId === ref.keyId)) &&
+      curves.every((ref) => selectedRefs.curves.some((item) => sameFcurve(item, ref))) && refs.length + curves.length > 0
+    const tokens = [...refs.map((ref) => ref.keyId), ...curves.map(fcurveToken)]
+    const lead = refs[0]
     const diamond = (
       <div
-        key={`agg-${nodeId}-${bundle.frame}`}
-        className={cx(
-          't3d-timeline-kf',
-          selected && 't3d-timeline-kf-selected',
-          muted && 't3d-timeline-kf-suspended',
-        )}
-        data-kf-node={lead.nodeId}
-        data-kf-prop={lead.prop}
-        data-kf-id={lead.keyId}
-        data-timeline-key-tokens={JSON.stringify(bundleKeyIds)}
-        data-kf-bundle={JSON.stringify(bundle.refs)}
-        style={{
-          left:
-            (bundle.frame -
-              frameStart +
-              bundlePreviewOffset(previewDf, bundleKeyIds, draggingKeyIds)) *
-            pxPerFrame,
-        }}
+        key={`agg-${nodeId}-${frame}`}
+        className={cx('t3d-timeline-kf', curves.length > 0 && 't3d-timeline-kf-xform', selected && 't3d-timeline-kf-selected', muted && 't3d-timeline-kf-suspended')}
+        data-kf-node={lead?.nodeId}
+        data-kf-prop={lead?.prop}
+        data-kf-id={lead?.keyId}
+        data-timeline-key-tokens={JSON.stringify(tokens)}
+        data-kf-bundle={JSON.stringify(refs)}
+        data-fcurve-bundle={JSON.stringify(curves)}
+        style={{ left: (frame - frameStart + bundlePreviewOffset(previewDf, tokens, draggingKeyIds)) * pxPerFrame }}
         onPointerDown={(e) => {
           e.stopPropagation()
           if (e.button !== 0) return
-          if (muted) {
-            onSeek(bundle.frame)
-            return
-          }
-          // Giống clip: bấm vào bó đã nằm trong nhóm (vd vừa rê khung) thì giữ nhóm và kéo cả nhóm.
+          if (muted) { onSeek(frame); return }
           const additive = isAdditiveMod(e)
-          const next = nextBundleSelection(selection, nodeId, bundle.frame, bundle.refs, additive, userKeys)
-          if (!isSameSelection(selection, next)) onSelect(next)
-          onSeek(bundle.frame)
-          if (readOnly || additive) return
-          const items =
-            next.kind === 'transformKeyframe'
-              ? bundle.refs.map((ref) => ({ ...ref, origFrame: bundle.frame }))
-              : selectedKeyframeDragItems(next, userKeys)
-          drag.begin(e, items)
+          const next = curves.length || fcurveRefsOf(selection).length
+            ? nextTimelineKeySelection(selection, refs, curves, additive, userKeys, fcurves)
+            : nextBundleSelection(selection, nodeId, frame, refs, additive, userKeys)
+          if (next !== selection) onSelect(next)
+          onSeek(frame)
+          if (!readOnly && !additive) drag.begin(e, selectedTimelineDragItems(next, userKeys, fcurves))
         }}
         onPointerMove={muted || readOnly ? undefined : drag.move}
         onPointerUp={muted || readOnly ? undefined : drag.end}
         onPointerCancel={muted || readOnly ? undefined : drag.cancel}
+        onDoubleClick={!refs.length && !muted && !readOnly ? (e) => { e.stopPropagation(); onRemoveTransformKeys(nodeId, frame) } : undefined}
+        onContextMenu={!refs.length && !muted && !readOnly ? (e) => { e.preventDefault(); e.stopPropagation(); onRemoveTransformKeys(nodeId, frame) } : undefined}
       />
     )
-    if (muted && mutedHint) {
-      return (
-        <Tooltip key={`agg-${nodeId}-${bundle.frame}`} label={mutedHint} side="top" delay={120}>
-          {diamond}
-        </Tooltip>
-      )
-    }
-    return diamond
+    return muted && mutedHint ? <Tooltip key={`agg-${nodeId}-${frame}`} label={mutedHint} side="top" delay={120}>{diamond}</Tooltip> : diamond
   })
 }

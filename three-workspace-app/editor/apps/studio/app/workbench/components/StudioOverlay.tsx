@@ -139,6 +139,8 @@ export function StudioOverlay({
   const [historyBusy, setHistoryBusy] = useState(false)
   const hostRefreshRef = useRef<Promise<void> | null>(null)
   const [shellError, setShellError] = useState<string | null>(null)
+  const [hostReloadConflict, setHostReloadConflict] = useState(false)
+  const [recoveringHostConflict, setRecoveringHostConflict] = useState(false)
   const [assetMessage, setAssetMessage] = useState('')
   const [assetBusy, setAssetBusy] = useState(false)
   const [animationEditorDirty, setAnimationEditorDirty] = useState(false)
@@ -185,6 +187,18 @@ export function StudioOverlay({
     installDebugHooks(api)
     setApi(api)
   }, [setApi])
+  const closeAfterSaving = async () => {
+    if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return
+    const live = getLiveStudio()
+    const needsSave = live?.documentId === documentId && (live.session.dirty || live.session.saveState === 'saving' || live.session.saveState === 'error')
+    const error = needsSave && live
+      ? live.useStore.getState().writeLocked && live.session.saveState !== 'saving'
+        ? 'save.locked'
+        : await live.session.save({ captureCover: false })
+      : null
+    if (error && !window.confirm(vi ? 'Lưu lỗi. Vẫn rời đi?' : 'Saving failed. Leave anyway?')) return
+    onClose()
+  }
   const runHistory = useCallback(async (command: 'history.undo' | 'history.redo') => {
     if (historyBusy) return
     setHistoryBusy(true)
@@ -367,16 +381,33 @@ export function StudioOverlay({
       if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId === documentId) setSaveStatus('saving')
     }
     const onSaved = (event: Event) => {
-      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId === documentId) {
-        setSaveStatus('saved')
-        const previousError = saveErrorRef.current
-        saveErrorRef.current = null
-        if (previousError) setShellError((current) => current === previousError ? null : current)
+      const detail = (event as CustomEvent<{ projectId?: string; sceneSaveAdapter?: LocalHostAdapter }>).detail
+      if (detail?.projectId === documentId) {
+        const finish = () => {
+          setSaveStatus('saved')
+          const previousError = saveErrorRef.current
+          saveErrorRef.current = null
+          if (previousError) setShellError((current) => current === previousError ? null : current)
+        }
+        if (detail.sceneSaveAdapter !== adapter) { finish(); return }
+        // A single ACK can precede later queued writes. Wait for the entire
+        // drain before displaying Saved or dismissing the recovery controls.
+        queueMicrotask(() => {
+          const studio = getLiveStudio()
+          if (!studio || studio.documentId !== documentId) return
+          const done = studio.session.saveState === 'saving'
+            ? studio.session.save({ captureCover: false }) : Promise.resolve(null)
+          void done.then((error) => {
+            if (error || studio.session.dirty || studio.session.saveState === 'error' || studio.session.hostReloadConflict) return
+            finish()
+            setHostReloadConflict(false)
+          })
+        })
       }
     }
     const onFailed = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string; message?: string }>).detail
-      if (detail?.projectId === documentId) { setSaveStatus('error'); if (detail.message) { saveErrorRef.current = detail.message; setShellError(detail.message) } }
+      if (detail?.projectId === documentId) { setSaveStatus('error'); if (adapter.preserveTimelineHistory) setHostReloadConflict(true); if (detail.message) { saveErrorRef.current = detail.message; setShellError(detail.message) } }
     }
     window.addEventListener('bbs-unified-project-saving', onSaving)
     window.addEventListener('bbs-unified-project-saved', onSaved)
@@ -386,7 +417,7 @@ export function StudioOverlay({
       window.removeEventListener('bbs-unified-project-saved', onSaved)
       window.removeEventListener('bbs-unified-project-save-failed', onFailed)
     }
-  }, [documentId, source])
+  }, [adapter, documentId, source])
 
   useEffect(() => {
     if (shellError && openAnimationOnSwitch.current) openAnimationOnSwitch.current = false
@@ -395,21 +426,51 @@ export function StudioOverlay({
   useEffect(() => {
     if (source !== 'unified') return
     const refresh = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId?: string }>).detail
+      const detail = (event as CustomEvent<{ projectId?: string; sceneSaveAdapter?: LocalHostAdapter }>).detail
       if (detail?.projectId !== documentId) return
       invalidateUnifiedProjectReads(documentId)
       // Apply host revisions in order: async node loads must finish before the next refresh.
       const reload = (hostRefreshRef.current ?? Promise.resolve()).then(() => loadUnifiedProject(documentId)).then(async (state) => {
         setProjectState(state)
         const studio = getLiveStudio()
-        if (studio?.documentId === documentId) await adapter.withProjectSnapshot(state.project, () => studio.session.reloadFromHost())
-      }).catch((error: unknown) => setShellError(error instanceof Error ? error.message : String(error)))
+        if (detail.sceneSaveAdapter !== adapter && studio?.documentId === documentId) await adapter.withProjectSnapshot(state.project, () => studio.session.reloadFromHost())
+      }).catch((error: unknown) => {
+        if (getLiveStudio()?.session.hostReloadConflict) setHostReloadConflict(true)
+        setShellError(error instanceof Error ? error.message : String(error))
+      })
       hostRefreshRef.current = reload
       void reload.finally(() => { if (hostRefreshRef.current === reload) hostRefreshRef.current = null })
     }
     window.addEventListener('bbs-unified-project-commit', refresh)
     return () => window.removeEventListener('bbs-unified-project-commit', refresh)
   }, [adapter, documentId, source])
+
+  const recoverHostConflict = async () => {
+    const studio = getLiveStudio()
+    if (!studio || studio.documentId !== documentId || recoveringHostConflict) return
+    if (!window.confirm(vi ? 'Tải lại dự án sẽ bỏ các thay đổi chưa lưu. Tiếp tục?' : 'Reloading the project will discard unsaved changes. Continue?')) return
+    setRecoveringHostConflict(true)
+    try {
+      invalidateUnifiedProjectReads(documentId)
+      studio.session.offerHostReloadRecovery()
+      await studio.session.recoverHostReloadConflict()
+      setProjectState(await loadUnifiedProject(documentId))
+      setHostReloadConflict(false)
+      setShellError(null)
+    } catch (error) {
+      setShellError(error instanceof Error ? error.message : String(error))
+    } finally { setRecoveringHostConflict(false) }
+  }
+
+  const retryHostSave = async () => {
+    const studio = getLiveStudio()
+    if (!studio || studio.documentId !== documentId) return
+    try {
+      const error = await studio.session.save({ captureCover: false })
+      if (error) setShellError(error)
+      else if (!studio.session.hostReloadConflict) { setHostReloadConflict(false); setShellError(null) }
+    } catch (error) { setShellError(error instanceof Error ? error.message : String(error)) }
+  }
 
   useEffect(() => {
     if (source === 'unified' && activeWorkspace === 'scene' && getLiveStudio()) setApi(getLiveStudio())
@@ -639,12 +700,18 @@ export function StudioOverlay({
             <button type="button" className="wb-host-icon" aria-label={vi ? 'Làm lại' : 'Redo'} title="Redo (Ctrl+Shift+Z)" disabled={historyBusy || !projectState?.history.canRedo} onClick={() => void runHistory('history.redo')}>↷</button>
             <button type="button" className="wb-host-primary" onClick={() => setDrawer('export')}>{vi ? 'Xuất' : 'Export'} ▾</button>
             <details className="wb-host-more"><summary aria-label={vi ? 'Tùy chọn khác' : 'More options'}>⋯</summary><div className="wb-host-more-menu"><LanguageMenu /><button type="button" disabled={assetBusy} onClick={() => void cleanupResources()}>{vi ? 'Dọn tài nguyên thừa' : 'Clean unused resources'}</button><button type="button" onClick={() => setDrawer('diagnostics')}>{vi ? 'Chẩn đoán' : 'Diagnostics'}</button><button type="button" onClick={() => window.dispatchEvent(new Event('bbs-unified-open-devtools'))}>{vi ? 'Công cụ phát triển' : 'Developer tools'}</button><details><summary>{vi ? 'Chi tiết dự án' : 'Project details'}</summary><small>{vi ? 'Revision' : 'Revision'} {project?.revision ?? '—'} · {assetCount} {vi ? 'tài nguyên' : 'assets'}</small></details></div></details>
-            <button type="button" className="wb-unified-close" onClick={() => { if (animationEditorDirty && !window.confirm(vi ? 'Animation chưa lưu. Bạn có muốn đóng dự án và bỏ bản sửa này?' : 'Animation changes are unsaved. Close the project and discard them?')) return; onClose() }}>{vi ? 'Đóng' : 'Close'}</button>
+            <button type="button" className="wb-unified-close" onClick={() => { void closeAfterSaving() }}>{vi ? 'Đóng' : 'Close'}</button>
           </div>
         </header>
         <WorkspaceNavigationSlot />
         <div className="wb-workflow-bar"><span>{workflowHint}</span>{assetCount === 0 && <button type="button" className="cross-app-button" onClick={() => switchWorkspace('retarget')}>{vi ? 'Mở Chuẩn hóa' : 'Open Standardize'}</button>}{assetCount > 0 && characterCount === 0 && <button type="button" onClick={() => setDrawer('assets')}>{vi ? 'Mở Tài nguyên' : 'Open Assets'}</button>}{(characterCount > 0 || activeWorkspace === 'animation') && clipCount === 0 && <button type="button" onClick={openAnimationControls}>{vi ? 'Thêm animation' : 'Add animation'}</button>}</div>
         <main className="wb-unified-main">
+          {hostReloadConflict && <div className="wb-unified-error" role="alert">
+            <span>{vi ? 'Không thể lưu hoặc tải lại khi còn thay đổi chưa lưu. Bạn có thể xuất bản đang sửa, thử lưu lại hoặc tải lại dự án.' : 'The changes could not be saved or the project could not be reloaded while edits are pending. You can export your edits, retry saving, or reload the project.'}</span>{' '}
+            <button type="button" onClick={() => getLiveStudio()?.session.exportDraft()}>{vi ? 'Xuất bản đang sửa' : 'Export current edits'}</button>{' '}
+            <button type="button" disabled={recoveringHostConflict} onClick={() => void retryHostSave()}>{vi ? 'Thử lưu lại' : 'Retry saving'}</button>{' '}
+            <button type="button" disabled={recoveringHostConflict} onClick={() => void recoverHostConflict()}>{vi ? 'Tải lại từ dự án' : 'Reload project'}</button>
+          </div>}
           {shellError && <div className="wb-unified-error" role="alert">{shellError}</div>}
           {!projectState && <div className="wb-unified-placeholder" role="status">{shellError ? (vi ? 'Không thể mở dự án.' : 'Could not open the project.') : (vi ? 'Đang mở dự án…' : 'Opening project…')}</div>}
           {projectState && <div className="wb-unified-scene" style={{ display: activeWorkspace === 'scene' ? undefined : 'none' }}><div className="studio-root"><DirectorStudio adapter={adapter} documentId={documentId} locale={locale} onLocaleChange={setStudioLocale} onReady={onReady} readOnly={adapter.readOnly} autoSaveIntervalMs={activeWorkspace === 'scene' ? undefined : 0} /></div><AudioSubtitle cue={subtitle} />{project && <CharacterHeightNotice project={project} selectedNodeId={selectedNodeId} />}</div>}
