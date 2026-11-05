@@ -14,3 +14,15 @@
 | **Prop xuất BBS đứng yên** | Gậy theo tay trong App 2 nhưng không trong film | Chưa hỗ trợ: `docs/BBS-PROP-ANIM-TASK-2026-11-05.md` |
 | **library.place đè khung có clip** | "Khung bắt đầu đã có clip khác" | Đặt ở khung trống (sau cuối shot), rồi xếp lại |
 | **Nhiều clip trong `document.replace`** | "Project contract validation failed" | `rootMotion.policy` phải khớp `bindings[clip].rootPolicy` và `motion.inPlace`; đổi bằng `motion.binding.set`, không sửa tay |
+
+## Xuất film BBS (film.preflight / film.export)
+| Bẫy | Triệu chứng | Cách xử lý |
+| --- | --- | --- |
+| **Ẩn nhân vật bằng scale** | `CHARACTER_TRANSFORM_SCALE` "tỉ lệ khác 1" | Film không nhận scale nhân vật thay đổi: ẩn nhân vật bằng cất lên cao (y=40), chỉ prop mới ẩn bằng scale |
+| **Chồng clip dài hơn vùng trộn** | `FILM_MOTION_OVERLAP_INVALID` | Phần chồng của hai clip = đúng số khung `blendIn` của clip sau, tối đa 2 clip cùng lúc |
+| **Lưới 20 tick** | `FILM_TICK_GRID`, `FILM_CAMERA_CUT_GRID` | Độ dài khoảng xuất và shot (editorial) là bội của 3 khung (30 fps) |
+| **Gốc neo lấy nhân vật đang cất trên cao** | Cả cảnh bị chôn dưới đất (y lệch đúng độ cao cất) | `worldAnchor.pivot = [x, 0, z]` (mặt đất của cảnh) khi `mode: 'local-origin'` |
+| **VFX gắn xương nhân vật đang di chuyển** | "follows a moving attachment … only one transform per cue" | Định dạng effects.json chỉ có một vị trí mỗi cue: tạm gỡ cue gắn xương (vfx.cue.remove), xuất, rồi `history.undo` trả lại |
+| **Đường dẫn game trong heredoc Bash** | `...studio\MinecraftMinecraft Forge-1.20.1` | Viết `S:/Minecraft/...` (dấu `/`) |
+| **Cài film trùng tên** | File khác nội dung bị giữ nguyên, film cũ vẫn còn | Gỡ bản cũ bằng `/api/unified/bbs-install/uninstall {gameDir, installId}` rồi cài lại; chỉ cài khi `Get-Process java,javaw` rỗng |
+| **Kiểm film đã cài** | | Giải mã `.dat` bằng BbsCodec (`agent/film_worker/vendor/bbs-animation-bridge-*.jar` + gson), chép `.dat` sang đường dẫn ASCII trước; đọc `replays[i].keyframes.y` theo tick |
