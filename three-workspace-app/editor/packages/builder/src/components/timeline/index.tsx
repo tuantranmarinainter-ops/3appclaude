@@ -44,7 +44,7 @@ import { RULER_HEIGHT, defaultRulerVisibility, toggleRuler, visibleRulers, type 
 import { TIMELINE_NOTICE_EVENT } from './utils/clipMenu'
 import { TrackRow } from './TrackRow'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
-import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
+import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineSelectionNodeIds, timelineFitPx, wheelZoomPxPerFrame } from './utils'
 import { getActiveEditSequence } from '../../evaluate'
 
 export function TimelinePanel() {
@@ -371,7 +371,7 @@ function SceneTimeline() {
   if (!doc || !tl) return <div className="t3d-timeline">{t('common.loading')}</div>
 
   const selectedNodeId = selectedTimelineNodeId(doc, selection)
-  const multiSelectedIds = nodeIdsOf(selection)
+  const multiSelectedIds = timelineSelectionNodeIds(doc, selection)
   const isOpen = (row: { key: string; kind: string }) => {
     if (openMap[row.key] !== undefined) return openMap[row.key]
     // 物体根行默认展开；变换组始终收起，打关键帧后也不自动展开。
