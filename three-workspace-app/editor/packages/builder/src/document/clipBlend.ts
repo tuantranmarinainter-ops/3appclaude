@@ -117,6 +117,42 @@ export function applyBlendDrag(clips: readonly MotionClip[], result: BlendDragRe
   return normalizeBlendIns(placed)
 }
 
+export interface GroupBlend { clipId: string; frames: number }
+
+/**
+ * Kéo nhiều clip cùng lúc (nhóm chọn) dời `delta` khung: chỗ nào clip trong nhóm đè lên clip ngoài nhóm (cùng nhân vật)
+ * thì clip sau nhận blendIn bằng đúng vùng đè, như kéo một clip (K1). null nếu không có chỗ đè nào, hoặc một chỗ đè
+ * không thành vùng trộn hợp lệ (quá ngắn/dài, clip nằm gọn trong clip khác, ba clip chồng nhau).
+ */
+export function previewGroupBlendMove(clips: readonly MotionClip[], selectedIds: ReadonlySet<string>, delta: number): { clips: MotionClip[]; blends: GroupBlend[] } | null {
+  if (!Number.isFinite(delta) || delta === 0) return null
+  const moved = clips.map((clip) => (selectedIds.has(clip.id) ? { ...clip, frameStart: clip.frameStart + delta, frameEnd: clip.frameEnd + delta } : clip))
+  const blends: GroupBlend[] = []
+  for (const a of moved) {
+    if (!selectedIds.has(a.id)) continue
+    for (const b of moved) {
+      if (selectedIds.has(b.id) || b.target.nodeId !== a.target.nodeId || !halfOpenOverlap(a, b)) continue
+      const [earlier, later] = a.frameStart <= b.frameStart ? [a, b] : [b, a]
+      if (earlier.frameStart === later.frameStart || later.frameEnd < earlier.frameEnd) return null
+      const frames = earlier.frameEnd - later.frameStart + 1
+      if (frames < MIN_BLEND_FRAMES || frames > maxBlendFrames(earlier, later)) return null
+      blends.push({ clipId: later.id, frames })
+    }
+  }
+  if (!blends.length) return null
+  const next = applyGroupBlends(moved, blends)
+  return motionOverlapsValid(next) ? { clips: next, blends } : null
+}
+
+/** Ghi blendIn cho các clip sau của `blends` (giữ kiểu trộn cũ nếu có) rồi bỏ các blendIn hết hiệu lực. */
+export function applyGroupBlends(clips: readonly MotionClip[], blends: readonly GroupBlend[]): MotionClip[] {
+  const byId = new Map(blends.map((blend) => [blend.clipId, blend.frames]))
+  return normalizeBlendIns(clips.map((clip) => {
+    const frames = byId.get(clip.id)
+    return frames === undefined ? clip : withBlend(clip, defaultBlend(frames, clip.playback.blendIn))
+  }))
+}
+
 /** Chuột phải "Trộn với clip trước": clip sát clip trước (cách 0–1 khung) -> dời sớm `frames` khung và đặt blendIn. */
 export function blendWithPrevious(
   clips: readonly MotionClip[],

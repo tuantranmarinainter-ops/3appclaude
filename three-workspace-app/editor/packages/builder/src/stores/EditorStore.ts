@@ -67,7 +67,7 @@ export class EditorStore {
   /** "Cho chồng để trộn" (K1): kéo clip đè lên clip kề cùng nhân vật thì tạo blendIn thay vì đẩy clip ra. */
   clipBlendOverlap = true
   /** "Tự dời" (2026-11-05): cắt/tỉa/xoá clip động tác thì các clip sau cùng nhân vật dời theo, không để khoảng trống. */
-  clipRipple = true
+  clipRipple = false
   /** Khoá khung 3D (B2): camera khung nhìn không nhận phím tắt/lăn/kéo. */
   viewportLocked = false
   chainCameraMotion = false

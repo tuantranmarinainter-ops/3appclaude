@@ -185,6 +185,8 @@ export interface ClipMovePreview extends ClipMoveLayout {
   clips?: ClipRef[]
   /** Kéo đè để trộn (K1): clip sau nhận blendIn `frames` khi thả. */
   blend?: { clipId: string; frames: number }
+  /** Kéo nhóm clip đè lên clip ngoài nhóm: các clip sau nhận blendIn khi thả. */
+  blends?: Array<{ clipId: string; frames: number }>
 }
 
 export interface ClipResizePreview {

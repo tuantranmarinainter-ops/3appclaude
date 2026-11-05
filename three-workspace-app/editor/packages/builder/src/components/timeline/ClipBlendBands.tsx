@@ -39,9 +39,12 @@ export function ClipBlendBands({
   const live = clips.map((clip) => {
     const position = preview?.clipType === 'motion' ? preview.positions[clip.id] : undefined
     let next = position ? { ...clip, ...position } : clip
-    if (preview?.clipType === 'motion' && preview.blend?.clipId === clip.id) {
+    const previewBlend = preview?.clipType === 'motion'
+      ? (preview.blend?.clipId === clip.id ? preview.blend : preview.blends?.find((blend) => blend.clipId === clip.id))
+      : undefined
+    if (previewBlend) {
       const base = next.playback.blendIn
-      next = { ...next, playback: { ...next.playback, blendIn: { curve: 'smooth', footLock: true, ...base, frames: preview.blend.frames } } }
+      next = { ...next, playback: { ...next.playback, blendIn: { curve: 'smooth', footLock: true, ...base, frames: previewBlend.frames } } }
     }
     return next
   })

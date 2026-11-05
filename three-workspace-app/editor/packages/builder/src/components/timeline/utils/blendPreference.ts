@@ -21,15 +21,16 @@ export function writeClipBlendOverlap(storage: PanelSizeStorage | null, enabled:
   }
 }
 
-/** "Tự dời": nhớ theo người dùng; mặc định bật. */
-export const CLIP_RIPPLE_STORAGE_KEY = 'topview.builder.timeline.clipRipple'
+/** "Tự dời": nhớ theo người dùng; mặc định tắt (cắt/xoá/kéo clip không làm clip khác thụt vào hay bị đẩy). */
+// v2: bản cũ tự ghi '1' (mặc định bật) vào máy người dùng; đổi khoá để mặc định mới (tắt) có hiệu lực.
+export const CLIP_RIPPLE_STORAGE_KEY = 'topview.builder.timeline.clipRipple.v2'
 
 export function readClipRipple(storage: PanelSizeStorage | null): boolean {
-  if (!storage) return true
+  if (!storage) return false
   try {
-    return storage.getItem(CLIP_RIPPLE_STORAGE_KEY) !== '0'
+    return storage.getItem(CLIP_RIPPLE_STORAGE_KEY) === '1'
   } catch {
-    return true
+    return false
   }
 }
 
