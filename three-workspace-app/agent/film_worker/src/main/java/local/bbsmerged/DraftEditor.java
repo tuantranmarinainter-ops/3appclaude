@@ -199,6 +199,24 @@ public final class DraftEditor {
                 if (!map(props).containsKey("visible") && tick(p,"timelineTick",0)>0) key(props,"visible","boolean",0,map(form).getOrDefault("visible",bool(true)));
                 key(props,"visible","boolean",tick(p,"timelineTick",0),bool(flag(p,"visible",true)));
             }
+            case "set_property_keyframes" -> {
+                // Animated props: form "visible" (boolean) and ModelForm "texture" (link "assets:path", BBS steps the frame
+                // number in the file name). Only these two channels are accepted.
+                Node a=actor(root,p); Node props=group(a,"properties");
+                String property=str(p,"property"), type=str(p,"type");
+                if (!(property.equals("visible") && type.equals("boolean")) && !(property.equals("texture") && type.equals("link"))) throw new IllegalArgumentException("Unsupported property track: "+property+"/"+type);
+                JsonArray keys=p.getAsJsonArray("keyframes");
+                if (keys==null || keys.isEmpty() || keys.size()>4096) throw new IllegalArgumentException("Property track needs 1-4096 keyframes");
+                for (var item:keys) {
+                    JsonObject k=item.getAsJsonObject(); int t=k.get("tick").getAsInt();
+                    if (type.equals("boolean")) key(props,property,type,t,bool(k.get("value").getAsBoolean()));
+                    else {
+                        String link=k.get("value").getAsString();
+                        if (!link.matches("assets:[A-Za-z0-9_./-]{1,240}\\.png") || link.contains("..")) throw new IllegalArgumentException("Texture link must be an assets: PNG path");
+                        key(props,property,type,t,string(link));
+                    }
+                }
+            }
             case "set_damage_reaction" -> {
                 Node ch=group(actor(root,p),"keyframes"); int t=tick(p,"timelineTick",0), hurt=tick(p,"hurtTicks",10);
                 if(hurt>20) throw new IllegalArgumentException("hurtTicks <= 20");

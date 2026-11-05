@@ -67,6 +67,7 @@ public final class FilmExportWorker {
             Path modelsDir = Files.createDirectories(stage.resolve("assets/models"));
             Path stateDir = Files.createDirectory(stage.resolve("state"));
             Map<String, JsonObject> modelById = new LinkedHashMap<>();
+            Map<String, Set<String>> modelFiles = new HashMap<>();
             long copiedBytes = 0;
             JsonArray exportedAssets = new JsonArray();
             for (JsonElement item : models) {
@@ -112,6 +113,7 @@ public final class FilmExportWorker {
                 }
                 if (!hasBobj) throw new IllegalArgumentException("Each BBS model must include model.bobj");
                 if (textureRequired && !hasTexture) throw new IllegalArgumentException("Model profile requires texture files, but none were packaged");
+                modelFiles.put(id, targetNames);
                 JsonObject savedModel = new JsonObject(); savedModel.addProperty("id", id); savedModel.add("files", assetFiles); exportedAssets.add(savedModel);
             }
 
@@ -183,6 +185,23 @@ public final class FilmExportWorker {
                     JsonObject command = animation.deepCopy(); command.addProperty("filmId", draft); command.addProperty("replayId", replayId);
                     command.addProperty("timelineTick", integer(animation, "tick", 0, duration)); command.remove("tick"); command.addProperty("actionTick", integer(animation, "actionTick", 0, 1_000_000));
                     draftEditor.invoke("add_animation_keyframe", command);
+                }
+                // Animated props: "visible" (boolean) and "texture" (link to a PNG packaged with this actor's model).
+                JsonArray propertyTracks = actor.has("propertyTracks") ? array(actor, "propertyTracks", 0, 8) : new JsonArray();
+                for (JsonElement trackItem : propertyTracks) {
+                    JsonObject track = trackItem.getAsJsonObject(); String property = text(track, "property"), type = text(track, "type");
+                    JsonArray keys = array(track, "keyframes", 1, 4096); validateTicks(keys, duration, "property keyframes");
+                    if (type.equals("link")) {
+                        if (modelId.isEmpty()) throw new IllegalArgumentException("Texture tracks require a BOBJ model");
+                        String prefix = "assets:models/" + modelId + "/";
+                        for (JsonElement keyItem : keys) {
+                            String link = text(keyItem.getAsJsonObject(), "value");
+                            if (!link.startsWith(prefix) || !modelFiles.getOrDefault(modelId, Set.of()).contains(link.substring(prefix.length()).toLowerCase(Locale.ROOT))) throw new IllegalArgumentException("Texture track must link a file packaged with its model: " + link);
+                        }
+                    }
+                    JsonObject setTrack = new JsonObject(); setTrack.addProperty("filmId", draft); setTrack.addProperty("replayId", replayId);
+                    setTrack.addProperty("property", property); setTrack.addProperty("type", type); setTrack.add("keyframes", keys);
+                    draftEditor.invoke("set_property_keyframes", setTrack);
                 }
                 replayByCharacter.put(characterId, replayId);
                 JsonObject mapping = new JsonObject(); mapping.addProperty("characterId", characterId); mapping.addProperty("replayId", replayId); if (!modelId.isEmpty()) mapping.addProperty("modelId", modelId); actorMap.add(mapping);

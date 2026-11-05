@@ -1,3 +1,4 @@
+import { propIsAnimated } from './filmPropAnimation'
 import { resolveFilmWorldAnchor, type FilmWorldAnchor } from './filmWorldAnchor'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import type { FilmSamplingArgs } from './unifiedFilmSampling'
@@ -98,7 +99,7 @@ export function resolveSceneBbsFilmArgs(project: UnifiedProject, raw: Record<str
     if (!node) fail(`Prop ${String(propId)} is not a model prop in this scene`)
     const { rotation, scale } = node.transform
     if ([scale.x, scale.y, scale.z].some((value) => Math.abs(value - 1) > 1e-6)) fail(`Prop ${node.name} must use unit scale; bake its size into the model first`)
-    if (Math.abs(rotation.x) > 1e-6 || Math.abs(rotation.z) > 1e-6) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
+    if (!propIsAnimated(project, node.id) && (Math.abs(rotation.x) > 1e-6 || Math.abs(rotation.z) > 1e-6)) fail(`Prop ${node.name} may only turn around the vertical axis in a Film`)
   }
   const viewportAspect = resolveFilmFrameAspect(project.extensions, args.viewportAspect)
   if (args.viewportAspect === undefined) defaulted.push('viewportAspect')
