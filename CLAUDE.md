@@ -21,7 +21,8 @@
 ## Skill dùng chung (đọc `docs/AGENT-SKILLS.md`)
 `.claude/skills/`: `w01-backlog` (ghi B<n>), `w01-pr` (PR không có gh, merge xếp chồng), `w01-app3-build` (build App 3 nhúng + hash + kiểm
 không mất chức năng), `w01-test-sandbox` (bản thử với bản sao project/thư viện: `W01_LIBRARY` mặc định là kho THẬT), `w01-browser-check`
-(kiểm UI + ảnh bằng chứng), `w01-spec` (đặc tả + lệnh giao agent khác). Dùng script trong skill thay vì viết lại.
+(kiểm UI + ảnh bằng chứng), `w01-spec` (đặc tả + lệnh giao agent khác), `w01-shot-edit` (sửa shot App 2 trên bản thử, đo khung 3D, ghi thật một lệnh).
+Dùng script trong skill thay vì viết lại.
 
 ## Bản đồ code W01
 | Vị trí | Vai trò |
