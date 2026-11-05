@@ -337,6 +337,13 @@ export const zhCN: LocaleDict = {
     "mainCamera": "主相机"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "运镜",
     "pathMotion": "运动轨迹",
     "transform": "变换",
@@ -404,7 +411,7 @@ export const zhCN: LocaleDict = {
     "officialKey": "帧 {{frame}} · 值 {{value}}（官方 fcurve，只读）",
     "userKey": "帧 {{frame}} · [{{value}}] · {{interpolation}}（双击或右键删除）",
     "keyframeSuspendedByMotion": "已添加运镜预设，关键帧暂不生效",
-    "fcurveKey": "曲线关键帧 · 帧 {{frame}}（双击或右键删除）",
+    "fcurveKey": "曲线关键帧 · 帧 {{frame}}",
     "xformKey": "变换关键帧 · 帧 {{frame}}（整组，双击或右键删除）",
     "dragStart": "拖动改片段起点",
     "dragDuration": "拖动改片段时长",

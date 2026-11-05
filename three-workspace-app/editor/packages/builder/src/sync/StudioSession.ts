@@ -1,4 +1,5 @@
 import { computed, makeObservable, observable, runInAction } from 'mobx'
+import { buildTransformPastePlan, canPasteWithoutUserKeys, getTransformClipboard, selectedPasteTargets, type TransformProp } from './transformPaste'
 import { previewClipMove } from '../document/clipMove'
 import {
   applyBlendDrag,
@@ -1094,6 +1095,32 @@ export class StudioSession implements StudioView {
    * 删除 fcurves（官方曲线层）某属性路径在指定帧的关键帧：所有分量同帧一起删。
    * 角色位移键删除后按剩余关键帧重建派生走位路径（与 commitNodeTransform 同规则）。
    */
+  pasteTransformKeys = (mask: TransformProp[]): { skipped: number; changed: boolean } => {
+    const doc = this.docModel.snapshot
+    const source = getTransformClipboard()
+    if (this.writeLocked || !doc || !source) return { skipped: 0, changed: false }
+    const targets = selectedPasteTargets(this.editor.selection, this.docModel.userKeys)
+    if (!this.editor.userKeysEnabled && !canPasteWithoutUserKeys(doc, this.docModel.fcurves, targets, mask)) return { skipped: 0, changed: false }
+    const plan = buildTransformPastePlan(doc, this.docModel.fcurves, this.docModel.userKeys, source, targets, mask)
+    if (!plan.changed) return { skipped: plan.skipped, changed: false }
+    this.checkpointTimelineState()
+    const before = snapshotDocState(this.docModel)
+    if (!before) return { skipped: plan.skipped, changed: false }
+    runInAction(() => {
+      this.docModel.setUserKeys(plan.userKeys)
+      if (plan.fcurves) { this.docModel.setFcurves(plan.fcurves); this.engine.setFcurves(plan.fcurves) }
+      const live = this.docModel.toContract()
+      if (live && plan.positionNodes.length) {
+        for (const id of plan.positionNodes) rederiveWalkPaths(live, id, plan.fcurves ?? FCurveSet.empty(), this.editor.userKeysEnabled ? plan.userKeys : undefined)
+        this.engine.syncPathNodes()
+      }
+      this.docModel.touch()
+      this.pushDocSnapshot('Dán biến đổi', before)
+    })
+    this.checkpointTimelineState()
+    return { skipped: plan.skipped, changed: true }
+  }
+
   removeFcurveKeyframe = (nodeId: string, propPath: string, frame: number): void => {
     if (this.writeLocked) return
     const fc = this.docModel.fcurves

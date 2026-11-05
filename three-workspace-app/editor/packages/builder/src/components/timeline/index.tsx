@@ -43,6 +43,7 @@ import { orderPinnedRows, readPinnedRows, togglePinned, writePinnedRows } from '
 import { RULER_HEIGHT, defaultRulerVisibility, toggleRuler, visibleRulers, type RulerVisibility } from './utils/rulers'
 import { TIMELINE_NOTICE_EVENT } from './utils/clipMenu'
 import { TrackRow } from './TrackRow'
+import { KeyframeContextMenuProvider } from './KeyframeContextMenu'
 import { cameraMotionOwnsKeyframes } from '../../evaluate/camera/cameraMotionExclusive'
 import { anchoredScrollLeft, buildTree, fitPxForRange, flattenTree, frameAtContentX, selectedTimelineNodeId, timelineContentFrameEnd, timelineFitPx, wheelZoomPxPerFrame } from './utils'
 import { getActiveEditSequence } from '../../evaluate'
@@ -679,6 +680,7 @@ function SceneTimeline() {
 
       {timelineOpen ? (
         <div className="t3d-timeline-scroll" ref={scrollRef}>
+          <KeyframeContextMenuProvider>
           <KeyframeDragPreviewProvider>
           <div
             className="t3d-timeline-content"
@@ -770,6 +772,7 @@ function SceneTimeline() {
             ) : null}
           </div>
           </KeyframeDragPreviewProvider>
+          </KeyframeContextMenuProvider>
         </div>
       ) : null}
       {notice ? <div className="t3d-timeline-notice" role="status">{notice}</div> : null}

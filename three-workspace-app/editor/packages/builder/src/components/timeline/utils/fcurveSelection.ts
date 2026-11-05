@@ -34,6 +34,16 @@ export function nextTimelineKeySelection(current: Selection | null, keys: Keyfra
   return makeTimelineBoxSelection(clipRefsOf(current), nextKeys, nextCurves)
 }
 
+/** A context click on a selected part of a visible bundle preserves the group
+ * and includes the other keys represented by that same diamond. */
+export function contextTimelineKeySelection(current: Selection | null, keys: KeyframeRef[], curves: FcurveKeyRef[], highlighted: boolean, userKeys: UserKeys, fc: FCurveSet | null): Selection | null {
+  const existing = selectedTimelineRefs(current, userKeys, fc)
+  const hasKey = (ref: KeyframeRef) => existing.keys.some((item) => item.nodeId === ref.nodeId && item.prop === ref.prop && item.keyId === ref.keyId)
+  const hasCurve = (ref: FcurveKeyRef) => existing.curves.some((item) => sameFcurve(item, ref))
+  if (!highlighted) return makeTimelineBoxSelection([], keys, curves)
+  return makeTimelineBoxSelection(clipRefsOf(current), [...existing.keys, ...keys.filter((ref) => !hasKey(ref))], [...existing.curves, ...curves.filter((ref) => !hasCurve(ref))])
+}
+
 export function selectedTimelineDragItems(selection: Selection | null, userKeys: UserKeys, fc: FCurveSet | null): KeyframeDragItem[] {
   const refs = selectedTimelineRefs(selection, userKeys, fc)
   const base = selection?.kind === 'transformKeyframe' ? selectedKeyframeDragItems(selection, userKeys) : refs.keys.flatMap((ref) => {

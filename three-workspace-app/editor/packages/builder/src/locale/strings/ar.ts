@@ -337,6 +337,13 @@ export const ar: LocaleDict = {
     "mainCamera": "الكاميرا الرئيسية"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "حركة الكاميرا",
     "pathMotion": "مسار",
     "transform": "تحويل",
@@ -406,7 +413,7 @@ export const ar: LocaleDict = {
     "addKeyframeMulti": "قم بمفتاح كافة الكائنات المحددة {{count}} في الإطار الحالي",
     "saveKeyframe": "حفظ الإطار الرئيسي",
     "cancelPending": "تجاهل التغييرات",
-    "fcurveKey": "الإطار الرئيسي المنحني · الإطار {{frame}} (انقر نقرًا مزدوجًا أو انقر بزر الماوس الأيمن للحذف)",
+    "fcurveKey": "الإطار الرئيسي المنحني · الإطار {{frame}}",
     "xformKey": "تحويل الإطار الرئيسي · الإطار {{frame}} (مجموعة، انقر نقرًا مزدوجًا أو انقر بزر الماوس الأيمن للحذف)",
     "resize": "تغيير حجم الخط الزمني",
     "collapse": "طي الجدول الزمني",

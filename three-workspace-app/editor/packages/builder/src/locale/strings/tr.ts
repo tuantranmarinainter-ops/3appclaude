@@ -337,6 +337,13 @@ export const tr: LocaleDict = {
     "mainCamera": "Ana kamera"
   },
   "timeline": {
+    "keyCopyTransform": "Copy transform",
+    "keyPasteTransform": "Paste transform",
+    "keyPastePosition": "Paste position only",
+    "keyPasteRotation": "Paste rotation only",
+    "keyPasteScale": "Paste scale only",
+    "keyPasteSkipped": "Skipped {{count}} locked targets",
+    "keyPasteEnableUserKeys": "Enable user keys to paste",
     "cameraMotion": "Kamera hareketi",
     "pathMotion": "Yol",
     "transform": "Dönüşüm",
@@ -406,7 +413,7 @@ export const tr: LocaleDict = {
     "addKeyframeMulti": "Seçilen tüm {{count}} nesneleri geçerli karede anahtarla",
     "saveKeyframe": "Ana kareyi kaydet",
     "cancelPending": "Değişiklikleri iptal et",
-    "fcurveKey": "Eğri ana karesi · kare {{frame}} (silmek için çift tıklayın veya sağ tıklayın)",
+    "fcurveKey": "Eğri ana karesi · kare {{frame}}",
     "xformKey": "Ana kareyi dönüştür · kare {{frame}} (gruplayın, silmek için çift tıklayın veya sağ tıklayın)",
     "resize": "Zaman çizelgesini yeniden boyutlandır",
     "collapse": "Zaman çizelgesini daralt",
