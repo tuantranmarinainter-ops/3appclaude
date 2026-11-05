@@ -34,6 +34,7 @@ function fixture(kind: 'motion' | 'camera' | 'path') {
   model.replace(doc)
   const editor = new EditorStore('drag-test')
   editor.autoKeyframe = false
+  editor.clipRipple = true // các test này kiểm chế độ "Tự dời" (mặc định tắt)
   const history = new History()
   const session = new StudioSession({} as DirectorEngine, model, editor, history, {} as HostAdapter<DirectorDocument>)
   return { model, doc, editor, history, session }

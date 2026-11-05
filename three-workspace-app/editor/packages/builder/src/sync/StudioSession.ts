@@ -3,9 +3,11 @@ import { buildTransformPastePlan, canPasteWithoutUserKeys, copyTransform, getTra
 import { previewClipMove } from '../document/clipMove'
 import {
   applyBlendDrag,
+  applyGroupBlends,
   blendWithPrevious,
   normalizeBlendIns,
   previewBlendDrag,
+  previewGroupBlendMove,
   removeBlend,
   setBlendCurve,
   setBlendOptions,
@@ -3231,11 +3233,20 @@ export class StudioSession implements StudioView {
           else { minDelta = Math.max(minDelta, 0); maxDelta = Math.min(maxDelta, 0) }
         }
       }
-      const delta = Math.max(minDelta, Math.min(maxDelta, Math.round(frame) - clip.frameStart))
+      let delta = Math.max(minDelta, Math.min(maxDelta, Math.round(frame) - clip.frameStart))
+      let blends: Array<{ clipId: string; frames: number }> | undefined
+      // "Cho chồng để trộn": nhóm toàn clip động tác được kéo đè lên clip ngoài nhóm để tạo vùng trộn.
+      if (this.editor.clipBlendOverlap && selected.every(({ ref }) => ref.clipType === 'motion')) {
+        const floor = Math.max(...selected.map(({ item }) => base.doc.content.timeline.frameStart - item.frameStart))
+        const wanted = Math.max(floor, Math.round(frame) - clip.frameStart)
+        const group = wanted !== delta ? previewGroupBlendMove(animation.motionClips, new Set(selected.map(({ item }) => item.id)), wanted) : null
+        if (group) { delta = wanted; blends = group.blends }
+      }
       const positions = Object.fromEntries(selected.map(({ item }) => [item.id, { frameStart: item.frameStart + delta, frameEnd: item.frameEnd + delta }]))
       this.editor.setClipMovePreview({ clipType, clipId, clips: selected.map(({ ref }) => ref), positions,
         pointerFrame: clip.frameStart + delta,
         frameEnd: Math.max(base.doc.content.timeline.frameEnd, ...Object.values(positions).map((p) => p.frameEnd)),
+        ...(blends ? { blends } : {}),
       })
       return
     }
@@ -3255,7 +3266,7 @@ export class StudioSession implements StudioView {
     }
     const layout = previewClipMove(
       track,
-      clipId, frame, base.doc.content.timeline.frameStart, 6 / this.editor.pxPerFrame,
+      clipId, frame, base.doc.content.timeline.frameStart, 6 / this.editor.pxPerFrame, this.editor.clipRipple,
     )
     if (layout) this.editor.setClipMovePreview({ ...layout, clipType, clipId })
   }
@@ -3299,12 +3310,12 @@ export class StudioSession implements StudioView {
         : normalizeBlendIns(apply(animation.motionClips))
     }
     else animation.pathMotionClips = apply(animation.pathMotionClips)
-    if (preview.clips) animation.motionClips = normalizeBlendIns(animation.motionClips)
+    if (preview.clips) animation.motionClips = preview.blends ? applyGroupBlends(animation.motionClips, preview.blends) : normalizeBlendIns(animation.motionClips)
     runInAction(() => {
       this.cancelClipMove()
       if (JSON.stringify(before.doc.content) === JSON.stringify(next.content)) return
       this.docModel.applyContent(next)
-      this.pushDocSnapshot(preview.blend ? 'Kéo đè để trộn clip' : '移动片段', before)
+      this.pushDocSnapshot(preview.blend || preview.blends ? 'Kéo đè để trộn clip' : '移动片段', before)
     })
   }
 

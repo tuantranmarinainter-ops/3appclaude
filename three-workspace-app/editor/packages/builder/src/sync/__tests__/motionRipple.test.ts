@@ -69,6 +69,7 @@ function fixture() {
   model.replace(doc)
   const editor = new EditorStore('ripple-test')
   editor.autoKeyframe = false
+  editor.clipRipple = true // các test này kiểm chế độ "Tự dời" (mặc định tắt)
   const history = new History()
   const state = { currentFrame: 45 }
   const engine = {

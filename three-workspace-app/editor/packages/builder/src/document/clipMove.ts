@@ -17,6 +17,8 @@ export function previewClipMove(
   requestedFrame: number,
   minFrame: number,
   snapFrames: number,
+  /** false ("Tự dời" tắt): chỉ clip được kéo di chuyển, đặt vào chỗ trống gần nhất; clip khác đứng yên. */
+  pushOthers = true,
 ): ClipMoveLayout | null {
   if (!Number.isFinite(requestedFrame)) return null
   const ordered = [...clips].sort((a, b) => a.frameStart - b.frameStart)
@@ -42,6 +44,25 @@ export function previewClipMove(
     frameEnd: Math.max(minFrame, ...Object.values(positions).map((c) => c.frameEnd)),
   })
   if (pointerFrame === dragged.frameStart) return result()
+  if (!pushOthers) {
+    // Các khoảng bắt đầu hợp lệ (không chồng clip nào); vị trí cũ luôn nằm trong một khoảng.
+    const ranges: Array<[number, number]> = []
+    let freeFrom = minFrame
+    for (const c of others) {
+      if (c.frameStart - duration >= freeFrom) ranges.push([freeFrom, c.frameStart - duration])
+      freeFrom = Math.max(freeFrom, c.frameEnd)
+    }
+    ranges.push([freeFrom, Infinity])
+    let best = dragged.frameStart
+    let bestDistance = Infinity
+    for (const [lo, hi] of ranges) {
+      const start = Math.min(Math.max(pointerFrame, lo), hi)
+      const distance = Math.abs(start - pointerFrame)
+      if (distance < bestDistance) { best = start; bestDistance = distance }
+    }
+    positions[clipId] = { frameStart: best, frameEnd: best + duration }
+    return { positions, pointerFrame: best, frameEnd: Math.max(minFrame, ...Object.values(positions).map((c) => c.frameEnd)) }
+  }
   // Deleting a clip only closes its suffix when it is surrounded by a
   // continuous run. A gap on either side is intentional and must remain
   // visible while the clip is being dragged.
