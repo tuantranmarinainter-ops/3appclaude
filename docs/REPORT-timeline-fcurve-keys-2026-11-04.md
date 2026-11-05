@@ -30,3 +30,17 @@ Kiểm tra khởi động riêng: Chromium hệ thống mở Studio ở cổng 3
 - Gate F2 sau sửa: `pnpm build` và `pnpm typecheck` PASS; builder 790 PASS / 1 SKIP; host revision/history 5/5 PASS.
 - Ghép thử E1 #224 trong worktree tạm: 3 conflict tại StudioOverlay, StudioSession và documentSync test đã được giải trong bản thử; build + typecheck PASS, 62/62 test save/exit/Ctrl+S/F2/ripple PASS. Chromium bản ghép: Ctrl+S trong lúc request chậm không phát request trùng; Về danh sách thoát sau khi lưu. Chưa ghép E1 vào nhánh F2 chính.
 - Các mục đo trên bản sao Shot 03 và đạo cụ 150 khóa thật vẫn **BLOCKED** vì dữ liệu không có trong môi trường. Các kết quả tổng hợp không thay thế phép đo đó.
+
+## Đo trên Windows, bản sao Shot 03 thật (Claude, 2026-11-05)
+
+Bản thử cổng 3127, project `kfbox-projects/5673640e-…` chép từ `tap15v3` (bản gốc chỉ đọc), thao tác chuột thật, so JSON `extensions.topview.fcurves`.
+
+| Mục 8 | Trạng thái | Kết quả |
+| --- | --- | --- |
+| 1. Gỗ Xưa 38/44/50/52/56 + userKey 36, kéo +4 | PASS | 42/48/54/56/60 và 40; giá trị/interp/id từng khóa bằng nhau; node khác không đổi |
+| 2. Kéo trái quá đà | PASS | khóa nhỏ nhất về 0, cả nhóm giữ khoảng cách (0/2/8/14/16/20); userKey 0 cũ bị khóa dời thay thế như quy tắc trùng khung; Ctrl+Z khớp JSON gốc |
+| 3. Một Ctrl+Z | PASS | JSON fcurves + userKeys khớp từng ký tự; 2 lần kéo cần đúng 2 Ctrl+Z, Ctrl+Y làm lại đúng |
+| 4. Đạo cụ 150 khóa kéo +10 | PASS (sau sửa) | rê khung chọn 150/150, 900/900 thành phần dời +10 giá trị giữ nguyên, Ctrl+Z khớp JSON. Thời gian < 200 ms: NOT_RUN trên trình duyệt (cách đo pointerup→DOM không tin cậy), test tổng hợp 11,52 ms |
+| 5. Ảnh | PASS | `work/fcurve-real/1..3` (không commit) |
+
+**Lỗi tìm thấy và đã sửa (commit f0b357d):** rê khung trên dòng đạo cụ chỉ trúng khóa fcurve → selection `timelineBox` không có userKey/clip → `selectedTimelineNodeId` trả null → dòng đạo cụ biến mất giữa lúc rê, chọn được 0 khóa. Sửa: lấy node từ `fcurves`, và timeline hiện mọi node có mục đang chọn (`timelineSelectionNodeIds`). Test `propFcurveRow.test.ts`.
