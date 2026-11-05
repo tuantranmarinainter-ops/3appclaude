@@ -1,4 +1,5 @@
 ﻿import { test } from 'vitest'
+import { reaction } from 'mobx'
 import assert from 'node:assert/strict'
 import { makeEmptyDraft } from '../../contract/emptyDraft'
 import type { DirectorDocument, DraftNode } from '../../contract/types'
@@ -345,3 +346,104 @@ test('moveKeyframes 移动组合关键帧时自动更新当前 transformKeyframe
   assert.deepEqual(s.editor.selection, { kind: 'transformKeyframe', nodeId: 'actor', frame: 25 })
 })
 
+
+test('moveTimelineKeys moves mixed layers atomically, preserves handles and supports undo/redo', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.parse({ version: 1, encoding: 'compact-v1', fcurves: [
+    { id: 'p', t: ['node', 'actor'], p: 'transform.position', i: 0, k: [
+      [38, 1, 'bezier', 'a', null, { x: 40, y: 2 }],
+      [44, 3, 'bezier', 'b', { x: 42, y: 2 }, null],
+      [50, 4, 'linear', 'c'], [52, 5, 'linear', 'd'], [56, 6, 'linear', 'e'], [60, 7, 'linear', 'stationary'],
+    ] },
+  ] })
+  model.setFcurves(fc)
+  const key = makeKeyframe(36, [1, 2, 3])
+  model.setUserKeys({ actor: { position: [key] } })
+  const before = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  const sample = fc.evalScalar('actor', 'transform.position', 0, 41)!
+  const refs = [38, 44, 50, 52, 56].map((frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame }))
+  assert.equal(s.moveTimelineKeys([{ nodeId: 'actor', prop: 'position', keyId: key.id }], refs, 4), 4)
+  assert.deepEqual(fc.tracksForNode('actor')[0].keys.map((k) => k.frame), [42, 48, 54, 56, 60])
+  assert.equal(model.userKeys.actor?.position?.[0].frame, 40)
+  assert.ok(Math.abs(fc.evalScalar('actor', 'transform.position', 0, 45)! - sample) < 1e-6)
+  assert.deepEqual(fc.tracksForNode('actor')[0].keys[0].outHandle, { x: 44, y: 2 })
+  const after = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), before)
+  s.redo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+  const movedRefs = refs.map((ref) => ({ ...ref, frame: ref.frame + 4 }))
+  assert.equal(s.moveTimelineKeys([{ nodeId: 'actor', prop: 'position', keyId: key.id }], movedRefs, -100), -40)
+  assert.equal(model.userKeys.actor?.position?.[0].frame, 0)
+  assert.deepEqual(model.fcurves?.tracksForNode('actor')[0].keys.map((k) => k.frame), [2, 8, 14, 16, 20])
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), after)
+})
+
+test('moveTimelineKeys keeps fractional frames and filters locked nodes', () => {
+  const { session: s, model, doc } = session()
+  const fc = FCurveSet.empty()
+  fc.upsertKey('actor', 'transform.scale', 0, 10.25, 2, 'fraction')
+  model.setFcurves(fc)
+  const ref = { nodeId: 'actor', propPath: 'transform.scale', frame: 10.2500001 }
+  s.editor.select({ kind: 'transformKeyframe', nodeId: 'actor', frame: 10.25 })
+  assert.equal(s.moveTimelineKeys([], [ref], 3), 3)
+  assert.deepEqual(s.editor.selection, { kind: 'transformKeyframe', nodeId: 'actor', frame: 13.25 })
+  assert.equal(fc.tracksForNode('actor')[0].keys[0].frame, 13.25)
+  doc.content.nodes.find((n) => n.id === 'actor')!.locked = true
+  assert.equal(s.moveTimelineKeys([], [{ ...ref, frame: 13.25 }], 3), 0)
+})
+
+test('moveTimelineKeys moves 150 synthetic position frames in one transaction', () => {
+  const { session: s, model, doc } = session()
+  doc.content.timeline.frameEnd = 300
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, Array.from({ length: 150 }, (_, i) => i))
+  model.setFcurves(fc)
+  const refs = Array.from({ length: 150 }, (_, frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame }))
+  const before = JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys))
+  const start = performance.now()
+  assert.equal(s.moveTimelineKeys([], refs, 10), 10)
+  const elapsed = performance.now() - start
+  for (const track of fc.tracksForNode('actor')) {
+    assert.deepEqual(track.keys.map((key) => key.frame), refs.map((ref) => ref.frame + 10))
+  }
+  assert.ok(elapsed < 200, `150 frames: ${elapsed.toFixed(1)} ms`)
+  s.undo()
+  assert.equal(JSON.stringify(FCurveSet.persist(model.fcurves, model.userKeys)), before)
+})
+
+test('moving position curves rederives the walk path and undo restores it', () => {
+  const { session: s, model, doc } = session()
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, [10, 20])
+  model.setFcurves(fc)
+  rederiveWalkPaths(doc, 'actor', fc)
+  const oldClip = doc.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([oldClip.frameStart, oldClip.frameEnd], [10, 20])
+  const oldPath = doc.content.nodes.find((node) => node.id === oldClip.pathNodeId)!.path!.points
+  assert.equal(s.moveTimelineKeys([], [10, 20].map((frame) => ({ nodeId: 'actor', propPath: 'transform.position', frame })), 5), 5)
+  const newClip = doc.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([newClip.frameStart, newClip.frameEnd], [15, 25])
+  assert.deepEqual(doc.content.nodes.find((node) => node.id === newClip.pathNodeId)!.path!.points.map((point) => point.position), oldPath.map((point) => point.position))
+  s.undo()
+  const restored = model.snapshot!.content.timeline.animation.pathMotionClips.find((clip) => clip.lockedReason === 'derived-from-keyframes')!
+  assert.deepEqual([restored.frameStart, restored.frameEnd], [10, 20])
+})
+
+
+test('mixed movement publishes only the completed state', () => {
+  const { session: s, model } = session()
+  const fc = FCurveSet.empty()
+  seedPositionKeys(fc, [10, 20])
+  model.setFcurves(fc)
+  const key = makeKeyframe(10, [1, 2, 3])
+  model.setUserKeys({ actor: { rotation: [key] } })
+  const states: Array<[number | undefined, number | undefined]> = []
+  const dispose = reaction(() => model.revision, () => {
+    states.push([model.userKeys.actor?.rotation?.[0].frame, model.fcurves?.tracksForNode('actor')[0].keys[0].frame])
+  })
+  s.moveTimelineKeys([{ nodeId: 'actor', prop: 'rotation', keyId: key.id }], [{ nodeId: 'actor', propPath: 'transform.position', frame: 10 }], 5)
+  dispose()
+  assert.deepEqual(states, [[15, 15]])
+})

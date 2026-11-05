@@ -29,7 +29,7 @@ import {
   type DocSnapshotState,
   type History,
 } from '../document'
-import { FCurveSet } from '../evaluate/curves/FCurveSet'
+import { FCurveSet, type FcurveKeyRef } from '../evaluate/curves/FCurveSet'
 import {
   makeKeyframe,
   type Interpolation,
@@ -926,6 +926,82 @@ export class StudioSession implements StudioView {
         this.editor.select({ kind: 'transformKeyframe', nodeId: sel.nodeId, frame: sel.frame + delta })
       }
     }
+  }
+
+  /** Move both key layers in one undoable transaction; returns the clamped delta. */
+  moveTimelineKeys = (userRefs: KeyframeRef[], fcurveRefs: FcurveKeyRef[], requestedDelta: number): number => {
+    if (this.writeLocked || !Number.isFinite(requestedDelta)) return 0
+    const doc = this.docModel.snapshot
+    const editable = (nodeId: string) => {
+      const node = doc?.content.nodes.find((item) => item.id === nodeId)
+      return !!node && !node.locked && !cameraMotionOwnsKeyframes(doc, nodeId)
+    }
+    const next = cloneJson(this.docModel.userKeys)
+    const users = userRefs.filter((ref) => editable(ref.nodeId)).flatMap((ref) => {
+      const key = next[ref.nodeId]?.[ref.prop]?.find((item) => item.id === ref.keyId)
+      return key ? [{ ref, key, frame: key.frame }] : []
+    })
+    const fc = this.docModel.fcurves
+    const curves = fcurveRefs.filter((ref) => editable(ref.nodeId) && Number.isFinite(ref.frame) &&
+      fc?.tracksForNode(ref.nodeId).some((track) => track.propPath === ref.propPath &&
+        track.keys.some((key) => Math.abs(key.frame - ref.frame) <= 1e-6)))
+    const frames = [...users.map((item) => item.frame)]
+    for (const ref of curves) {
+      for (const track of fc?.tracksForNode(ref.nodeId) ?? []) {
+        if (track.propPath !== ref.propPath) continue
+        for (const key of track.keys) if (Math.abs(key.frame - ref.frame) <= 1e-6) frames.push(key.frame)
+      }
+    }
+    if (!frames.length) return 0
+    const fs = doc?.content.timeline.frameStart ?? 0
+    const fe = doc?.content.timeline.frameEnd ?? 0
+    // Integer deltas keep imported fractional frame offsets intact.
+    const low = Math.ceil(fs - Math.min(...frames))
+    const high = Math.floor(fe - Math.max(...frames))
+    if (low > high) return 0
+    const delta = Math.min(Math.max(Math.round(requestedDelta), low), high)
+    if (!delta) return 0
+    const before = snapshotDocState(this.docModel)
+    if (!before) return 0
+    const movedIds = new Set(users.map(({ key }) => key.id))
+    const touched = new Set(users.map(({ ref }) => JSON.stringify([ref.nodeId, ref.prop])))
+    for (const { key, frame } of users) key.frame = frame + delta
+    for (const token of touched) {
+      const [nodeId, prop] = JSON.parse(token) as [string, TrackProp]
+      const track = next[nodeId]?.[prop] ?? []
+      const byFrame = new Map<number, typeof track[number]>()
+      for (const key of track) if (!movedIds.has(key.id)) byFrame.set(key.frame, key)
+      for (const key of track) if (movedIds.has(key.id)) byFrame.set(key.frame, key)
+      next[nodeId] = { ...next[nodeId], [prop]: [...byFrame.values()].sort((a, b) => a.frame - b.frame) }
+    }
+    runInAction(() => {
+      const previous = this.docModel.userKeys
+      if (users.length) this.docModel.setUserKeys(next)
+      if (fc && curves.length) {
+        fc.moveKeys(curves, delta)
+        this.docModel.setFcurves(fc)
+        this.engine.setFcurves(fc)
+      }
+      const live = this.docModel.toContract()
+      const positionNodes = new Set(curves.filter((ref) => ref.propPath === 'transform.position').map((ref) => ref.nodeId))
+      for (const { ref } of users) if (ref.prop === 'position') positionNodes.add(ref.nodeId)
+      if (live && positionNodes.size) {
+        for (const id of positionNodes) rederiveWalkPaths(live, id, fc ?? FCurveSet.empty(), next)
+        this.engine.syncPathNodes()
+      }
+      if (users.length) this.reseatBaseAfterKeyDelete(previous, next)
+      this.docModel.touch()
+      // A drag is a complete transaction; consecutive drags must not merge.
+      this.pushDocSnapshot('移动关键帧', before)
+      this.pruneKeyframeSelection(next)
+      const selection = this.editor.selection
+      if (selection?.kind === 'transformKeyframe' &&
+        (users.some(({ ref, frame }) => ref.nodeId === selection.nodeId && Math.abs(frame - selection.frame) <= 1e-6) ||
+          curves.some((ref) => ref.nodeId === selection.nodeId && Math.abs(ref.frame - selection.frame) <= 1e-6))) {
+        this.editor.select({ ...selection, frame: selection.frame + delta })
+      }
+    })
+    return delta
   }
 
   /** 合并掉的键 id 已不存在，留在 selection 里会让工具栏和删除操作点空。 */

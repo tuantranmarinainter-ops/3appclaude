@@ -1,6 +1,6 @@
 import type { DirectorDocument, DraftNode, MotionClip } from '../contract/types'
 import type { ClipMoveLayout } from '../document/clipMove'
-import type { FCurveSet } from '../evaluate/curves/FCurveSet'
+import type { FCurveSet, FcurveKeyRef } from '../evaluate/curves/FCurveSet'
 import type { Interpolation, TrackProp, UserKeys } from '../evaluate/curves/KeyframeTrack'
 import type { CharacterLibEntry } from '../host/types'
 import type { TimelineClipResult } from '../sync/timelineClipOps'
@@ -362,6 +362,7 @@ export interface StudioView {
   commitPendingKeyframe: () => void
   cancelPendingKeyframe: () => void
   moveKeyframe: (nodeId: string, prop: TrackProp, keyId: string, newFrame: number) => void
+  moveTimelineKeys: (userRefs: KeyframeRef[], fcurveRefs: FcurveKeyRef[], delta: number) => number
   moveKeyframes: (items: { nodeId: string; prop: TrackProp; keyId: string; newFrame: number }[]) => void
   removeKeyframe: (nodeId: string, prop: TrackProp, keyId: string) => void
   removeKeyframes: (refs: KeyframeRef[]) => void
