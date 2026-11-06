@@ -100,10 +100,10 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
         </label>}
         <EffectsOptions capabilities={install.capabilities} value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
         <PreflightIssues items={placed.effects} vi={vi} />
-        {state.exportMode === 'film' && <label className="wb-check">
+        <label className="wb-check">
           <input type="checkbox" checked={state.includeAudioInFilm} onChange={(event) => state.setIncludeAudioInFilm(event.target.checked)} />
           <span>{vi ? 'Kèm tiếng trong film' : 'Include audio in the film'}</span>
-        </label>}
+        </label>
         <label>{vi ? 'Tên phim' : 'Film name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} maxLength={state.exportMode === 'series' ? 56 : 64} />
           <small>{vi ? 'Tên hiện trong danh sách Film của BBS. Chỉ dùng chữ không dấu, số, dấu - _ .' : 'Shown in the BBS Film list. Letters, digits, - _ . only.'}</small>
         </label>

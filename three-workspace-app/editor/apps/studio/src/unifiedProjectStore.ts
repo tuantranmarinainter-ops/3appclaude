@@ -1053,7 +1053,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.expectedRevision !== project.revision) throw new UnifiedStoreError('REVISION_CONFLICT', 'Dự án đã thay đổi — tải lại trước khi xuất tập.', 409)
     const episode = readEpisode(project)
     if (!episode) throw new UnifiedStoreError('VALIDATION_FAILED', 'Dự án chưa thuộc nhóm tập.', 400)
-    if (Object.keys(envelope.args).some((key) => !['name', 'worldAnchor', 'effectsPolicy', 'viewportAspect'].includes(key))) throw new UnifiedStoreError('VALIDATION_FAILED', 'Tùy chọn xuất tập không hợp lệ.', 400)
+    if (Object.keys(envelope.args).some((key) => !['name', 'worldAnchor', 'effectsPolicy', 'viewportAspect', 'includeAudioInFilm'].includes(key)) ||
+        envelope.args.includeAudioInFilm !== undefined && typeof envelope.args.includeAudioInFilm !== 'boolean') throw new UnifiedStoreError('VALIDATION_FAILED', 'Tùy chọn xuất tập không hợp lệ.', 400)
+    const { includeAudioInFilm, ...episodeArgs } = envelope.args
     const rows = (await listUnifiedProjects()).filter((row) => row.episode?.id === episode.id).sort((a, b) => a.episode!.order - b.episode!.order)
     if (new Set(rows.map((row) => row.episode!.order)).size !== rows.length) throw new UnifiedStoreError('VALIDATION_FAILED', 'Nhóm tập có số thứ tự shot trùng nhau.', 400)
     const segments: Awaited<ReturnType<typeof planFilmSeriesWithCameraSamples>> = []
@@ -1062,7 +1064,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       const member = await readUnifiedProject(row.id)
       const sequenceId = member.scene.content.editorial?.activeSequenceId
       try {
-        const resolved = resolveSceneBbsFilmArgs(member, { ...envelope.args, ...(anchor ? { worldAnchor: anchor } : {}), name: envelope.args.name ?? 'episode', sequenceId, characterIds: [], propIds: [], content: 'characters' })
+        const resolved = resolveSceneBbsFilmArgs(member, { ...episodeArgs, ...(anchor ? { worldAnchor: anchor } : {}), name: episodeArgs.name ?? 'episode', sequenceId, characterIds: [], propIds: [], content: 'characters' })
         name = resolved.film.filmName
         const planned = await planFilmSeriesWithCameraSamples(member, { ...resolved.film, characterIds: Object.keys(member.characters), propIds: member.scene.content.nodes.filter((node) => node.type === 'prop' && typeof node.metadata?.assetId === 'string').map((node) => node.id), content: Object.keys(member.characters).length ? 'both' : 'backdrops' })
         anchor = planned[0]?.exportArgs.worldAnchor ?? anchor
@@ -1075,7 +1077,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     let tick = 0
     const series = segments.map((segment) => { const startTick = tick; tick += segment.ticks; return { projectId: segment.project.projectId, order: segment.order, ticks: segment.ticks, startTick, endTick: tick } })
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, episode, series })
-    const job = await startUnifiedFilmSeriesExport(project, { name, segments })
+    const job = await startUnifiedFilmSeriesExport(project, { name, segments, includeAudioInFilm: includeAudioInFilm as boolean | undefined })
     const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, state: job.state, sourceRevision: project.revision, episode, series })
     await saveRequest(envelope, hash, response)
     return response
@@ -1535,8 +1537,9 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film series snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    const { content, ...sceneArgs } = envelope.args
-    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content'].includes(key))) {
+    const { content, includeAudioInFilm, ...sceneArgs } = envelope.args
+    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'sequenceId', 'frameStart', 'frameEnd', 'characterIds', 'propIds', 'viewportAspect', 'name', 'mode', 'content', 'includeAudioInFilm'].includes(key)) ||
+        includeAudioInFilm !== undefined && typeof includeAudioInFilm !== 'boolean') {
       throw new UnifiedStoreError('VALIDATION_FAILED', 'scene.export.bbsFilmSeries accepts sequenceId, characterIds, viewportAspect, name and content', 400)
     }
     if (sceneArgs.characterIds !== undefined && sceneArgs.characterIds !== 'auto' && !isUniqueStringIdList(sceneArgs.characterIds) ||
@@ -1569,7 +1572,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
       characterIds, propIds, segmentCount: segments.length, series,
       segments: segments.map((segment) => ({ segment: segment.order, range: segment.range, characterIds: segment.exportArgs.characterIds, propIds: segment.exportArgs.propIds ?? [] })) })
     try {
-      const job = await startUnifiedFilmSeriesExport(project, { name: resolved.film.filmName, segments })
+      const job = await startUnifiedFilmSeriesExport(project, { name: resolved.film.filmName, segments, includeAudioInFilm: includeAudioInFilm as boolean | undefined })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, segmentCount: segments.length, series })
       await saveRequest(envelope, hash, response)
       return response

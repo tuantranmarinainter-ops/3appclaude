@@ -23,7 +23,7 @@ export async function mixdownProjectAudio(project: UnifiedProject, startFrame: n
  * Film package audio, kept small: one ducked mix of the Film range (audio/mix.wav, ready for video editing) and the
  * 20 Hz schedule with speaker/subtitle per cue (audio.json). Source files stay in the project.
  */
-export async function filmAudioPackage(project: UnifiedProject, startFrame: number, endFrame: number, signal?: AbortSignal, filmDurationTicks?: number):
+export async function filmAudioPackage(project: UnifiedProject, startFrame: number, endFrame: number, signal?: AbortSignal, filmDurationTicks?: number, filmGain?: number):
   Promise<{ files: Map<string, Buffer>; schedule: FilmAudioEntry[]; mix: Buffer; bbs?: ReturnType<typeof bbsFilmAudio> } | null> {
   const cues = readAudioCueExtension(project).cues
   if (!cues.length) return null
@@ -34,11 +34,11 @@ export async function filmAudioPackage(project: UnifiedProject, startFrame: numb
   const schedule = filmAudioSchedule(cues, durations, startFrame, endFrame, fps, sourceOf)
   if (!schedule.length) return null
   return { files: new Map(), schedule, mix: encodeWav16(mixAudio(cues, decoded, startFrame, endFrame, fps)),
-    ...(filmDurationTicks === undefined ? {} : { bbs: bbsFilmAudio(cues, decoded, startFrame, fps, filmDurationTicks) }) }
+    ...(filmDurationTicks === undefined ? {} : { bbs: bbsFilmAudio(cues, decoded, startFrame, fps, filmDurationTicks, filmGain) }) }
 }
 
 /** Mix like playback: cue gains and offsets, with only a global peak limit. */
-export function bbsFilmAudio(cues: readonly AudioCue[], decoded: ReadonlyMap<string, Float32Array>, startFrame: number, fps: number, durationTicks: number): { wav: Buffer; peakDb: number } {
+export function bbsFilmAudio(cues: readonly AudioCue[], decoded: ReadonlyMap<string, Float32Array>, startFrame: number, fps: number, durationTicks: number, filmGain?: number): { wav: Buffer; peakDb: number; rawPeak: number } {
   if (!Number.isSafeInteger(durationTicks) || durationTicks < 1 || !Number.isFinite(fps) || fps <= 0) throw new TypeError('Invalid film audio duration or frame rate')
   const rate = 44100, samples = new Float32Array(Math.round(durationTicks * rate / 20))
   for (const cue of cues) {
@@ -57,11 +57,12 @@ export function bbsFilmAudio(cues: readonly AudioCue[], decoded: ReadonlyMap<str
   }
   let peak = 0
   for (const sample of samples) peak = Math.max(peak, Math.abs(sample))
-  const limit = 10 ** (-1 / 20)
-  if (peak > limit) {
-    const gain = limit / peak
+  const limit = 10 ** (-1 / 20), rawPeak = peak
+  const gain = filmGain ?? (peak > limit ? limit / peak : 1)
+  if (!Number.isFinite(gain) || gain < 0 || gain > 1 || peak * gain > limit + 1e-7) throw new TypeError('Invalid Film audio gain')
+  if (gain < 1) {
     for (let i = 0; i < samples.length; i++) samples[i]! *= gain
-    peak = limit
+    peak *= gain
   }
-  return { wav: encodeWav16(samples, rate), peakDb: peak ? 20 * Math.log10(peak) : -Infinity }
+  return { wav: encodeWav16(samples, rate), peakDb: peak ? 20 * Math.log10(peak) : -Infinity, rawPeak }
 }

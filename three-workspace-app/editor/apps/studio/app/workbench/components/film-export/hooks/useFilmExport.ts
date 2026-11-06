@@ -105,7 +105,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
       sequenceId, range, viewportAspect }
   }, [worldAnchor, effectsPolicy, content, exportMode, seriesCharacterSelection, seriesPropSelection, characterIds, propIds, sequenceId, effectiveRange, viewportAspect])
   const contentKey = filmExportContentKey(project)
-  const currentKey = JSON.stringify({ contentKey, exportMode, filmName, ...selectionArgs, ...(exportMode === 'film' ? { includeAudioInFilm } : {}) })
+  const currentKey = JSON.stringify({ contentKey, exportMode, filmName, ...selectionArgs, includeAudioInFilm })
   const latestKey = useRef(currentKey)
   latestKey.current = currentKey
   const passedKey = useRef<string | null>(null)
@@ -192,7 +192,7 @@ export function useFilmExport(project: UnifiedProject, capabilities: import('../
         command: exportMode === 'series' ? 'scene.export.bbsFilmSeries' : 'film.export',
         args: exportMode === 'series'
           ? { content, effectsPolicy, worldAnchor, characterIds: content === 'backdrops' ? [] : seriesCharacterSelection === 'auto' ? 'auto' : characterIds,
-              propIds: content === 'characters' ? [] : seriesPropSelection === 'auto' ? 'auto' : propIds, sequenceId, viewportAspect, name: filmName }
+              propIds: content === 'characters' ? [] : seriesPropSelection === 'auto' ? 'auto' : propIds, sequenceId, viewportAspect, name: filmName, includeAudioInFilm }
           : { content, effectsPolicy, worldAnchor, characterIds: content === 'backdrops' ? [] : characterIds, propIds: content === 'characters' ? [] : propIds,
               sequenceId, range: { startFrame: effectiveRange.startFrame, endFrame: effectiveRange.endFrame }, viewportAspect, filmName, includeAudioInFilm } })
       const jobId = String(started.result.jobId)

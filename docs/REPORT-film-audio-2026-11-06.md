@@ -38,6 +38,19 @@ pnpm --filter @topview/3d-builder exec tsx --test ../../apps/studio/test/filmExp
 
 Worker, từ `three-workspace-app`: `python -m unittest agent.test_film_worker` (cần JDK 17 và fixture tham chiếu). Kiểm Shot 03 và âm thanh trong game phải do người dùng chạy trên bản sao và cài thử theo đặc tả.
 
-## A2 — xuất tập
+## A2 — xuất tập (xếp trên A1, chưa nghiệm thu Windows)
 
-NOT_RUN: chưa triển khai; xếp sau A1.
+- Xuất một film riêng cho mỗi đoạn hiện có của App 2, mỗi clip âm thanh bắt đầu tại tick 0 của film đó; `series.json` lưu vị trí tích lũy trong tập. Dùng cùng hệ số giảm đỉnh cho toàn bộ tập để tránh thay đổi âm lượng ở ranh giới; `film-audio.json` ghi SHA và đỉnh từng WAV.
+- `pnpm typecheck`: **PASS** toàn workspace trên Linux. `pnpm --filter @topview/3d-builder build`: **PASS**.
+- Test `filmSeries.test.ts`, `audioCues.test.ts`, `splitShots.test.ts`: **PASS 25/25** trước bổ sung test offset; `audioCues.test.ts` sau bổ sung **PASS 8/8**, `splitShots.test.ts` **PASS 6/6**.
+- Integration `filmExportJob.integration.test.ts`: **PASS 1/1**, gồm scene series và `episode.export` qua hai project tổng hợp. Giải mã hai `.dat`: mỗi clip tick 0, duration 4, offset 0, link khớp WAV; mốc tích lũy tập 0 và 4; WAV mỗi đoạn 8.820 mẫu tại 44.100 Hz. Tắt tiếng: không clip và không asset audio BBS.
+- Shot 03 bản sao / Windows / nghe trong game: **BLOCKED / NOT_RUN** như A1. Hash `.dat` không tiếng so với main: **BLOCKED**, chưa chứng minh được từng byte. Chưa xác nhận trong game BBS phát clip.
+
+Lệnh từ `three-workspace-app/editor`, dùng bản sao riêng cho `W01_LIBRARY` và `BBS_UNIFIED_PROJECTS_DIR`, JDK 17 trên PATH và `BBS_FILM_E2E_FBX` trỏ tới `three-workspace-app/builtin-assets/animation-studio/sample.fbx`:
+
+```sh
+pnpm --filter @topview/3d-builder build
+pnpm typecheck
+pnpm --filter @topview/3d-builder exec tsx --test ../../apps/studio/test/filmSeries.test.ts ../../apps/studio/test/audioCues.test.ts ../../apps/studio/test/splitShots.test.ts
+pnpm --filter @topview/3d-builder exec tsx --test ../../apps/studio/test/filmExportJob.integration.test.ts
+```

@@ -52,6 +52,15 @@ test('BBS Film mix preserves relative cue gains during overlap without ducking',
   assert.ok(Math.abs(overlap / single - (1 + 10 ** (-6 / 20))) < 0.001)
 })
 
+test('BBS Film mix keeps source offset and inclusive cue end across a segment cut', () => {
+  const source = Float32Array.from({ length: MIX_RATE * 2 }, (_, i) => i / MIX_RATE / 4)
+  const sliced = cue({ frameStart: 0, frameEnd: 6, offsetSeconds: 0.2 })
+  const result = decodeWav(bbsFilmAudio([sliced], new Map([['a', source]]), 4, 10, 10).wav)!.samples
+  assert.ok(Math.abs(result[0]! - 0.15) < 0.0001)
+  assert.ok(result[13229]! > 0.22)
+  assert.equal(result[13230], 0)
+})
+
 test('plays the right cues from the right offset and shows the latest voice subtitle', () => {
   const durations = new Map([['v', 2], ['m', 10]])
   const voice = cue({ kind: 'voice', assetId: 'v', frameStart: 30, speaker: 'Hero', text: 'Xin chào' })
