@@ -5,6 +5,7 @@
 // - blend N: blendIn of N frames (smooth, foot lock OFF); the clip must overlap the previous one by N frames.
 // - root: skeletal | in-place | trajectory (in-place for anything whose path you drive with curves; skeletal for falls).
 //   Root changes go through motion.binding.set with the clip parked (avoids the overlap check), then the scene is applied.
+// - { "key": "oldClip", "remove": true } takes a clip off the timeline (its binding goes with it).
 // - Parked clips (frame >= 1000) not listed are removed from the timeline. A non-loop clip that ends before the shot does
 //   NOT hold: the character snaps to the rest pose. Stretch the last clip of each character to the end.
 import { readFileSync } from 'node:fs'
@@ -17,6 +18,7 @@ let { project: p } = await project(shot.project)
 for (const it of plan) {
   const id = ids[it.key]; if (!id) throw new Error('unknown clip key ' + it.key)
   const b = p.bindings[id]
+  if (it.remove) continue
   if (it.root && b && b.rootPolicy !== it.root) {
     const c = p.scene.content.timeline.animation.motionClips.find((x) => x.id === id)
     await command(shot.project, 'motion.binding.set', { binding: { ...b, rootPolicy: it.root }, clipPatch: { frameStart: 5000 + plan.indexOf(it) * 200, frameEnd: 5000 + plan.indexOf(it) * 200 + (c.frameEnd - c.frameStart) } })
@@ -24,10 +26,11 @@ for (const it of plan) {
   }
 }
 const scene = structuredClone(p.scene)
-const listed = new Set(plan.map((it) => ids[it.key]))
+const listed = new Set(plan.filter((it) => !it.remove).map((it) => ids[it.key]))
+const removed = new Set(plan.filter((it) => it.remove).map((it) => ids[it.key]))
 const tl = scene.content.timeline
-tl.animation.motionClips = tl.animation.motionClips.filter((c) => listed.has(c.id) || c.frameStart < 1000)
-for (const it of plan) {
+tl.animation.motionClips = tl.animation.motionClips.filter((c) => !removed.has(c.id) && (listed.has(c.id) || c.frameStart < 1000))
+for (const it of plan.filter((x) => !x.remove)) {
   const c = tl.animation.motionClips.find((x) => x.id === ids[it.key])
   Object.assign(c, { frameStart: it.start, frameEnd: it.end })
   if (it.speed != null) c.playback.speed = it.speed

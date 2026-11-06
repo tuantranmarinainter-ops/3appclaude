@@ -1,4 +1,5 @@
-// Floor contact + fast fall for one character, from measured skeletons (no guessing):
+// Floor contact + fast fall for one character, from measured skeletons (no guessing). --knock dx: diagonal knock-back of dx m
+// in x, then the body stays where it landed.
 //   node ground.mjs <shot.json> <char> [--hit H --land L] [--knock dx] [--from F]
 // Without --hit: the character is kept on the floor from --from (default 0).
 // With --hit/--land: no change before H; small pop-up then gravity fall to the floor at L; on the floor after L.
@@ -19,7 +20,9 @@ async function curves() {
 }
 let { p, fc, node, get } = await curves()
 const baseY = node.transform.position.y
+const baseX = get(0).k.length ? get(0).k[0][1] : node.transform.position.x
 get(1).k = [[0, baseY, 'linear', 'kgy_base']]
+if (HIT != null && KNOCK) get(0).k = [[0, baseX, 'linear', 'kgx_base']]   // measure the clip's own drift too
 await applyScene(shot, p.scene, fc)
 const { data } = await runProbe(shot)
 const d = (f) => near(data, f)[key]
@@ -40,8 +43,15 @@ for (let f = start; f < END; f += f < (LAND ?? start) + 90 ? 1 : 4) {
 ;({ p, fc, get } = await curves())
 get(1).k = y
 if (HIT != null && KNOCK) {
-  const x = get(0); const x0 = x.k.length ? x.k[0][1] : node.transform.position.x
-  x.k = [[0, x0, 'linear', 'kgx0'], [HIT, x0, 'linear', 'kgx1'], [HIT + Math.round((LAND - HIT) * 0.6), r4(x0 + KNOCK * 0.8), 'bezier', 'kgx2'], [LAND, r4(x0 + KNOCK), 'linear', 'kgx3']]
+  // knock-back along a straight diagonal (the hypotenuse): hip x moves linearly from the hit to the landing point while it
+  // falls, then stays where it landed (cancels the clip's own root drift, e.g. Death sliding back toward the attacker)
+  const hipX = (f) => d(f).hip[0], x0 = hipX(HIT), xLand = x0 + KNOCK
+  const xs = [[0, baseX, 'linear', 'kgx0'], [HIT - 1, baseX, 'linear', 'kgx_pre']]
+  for (let f = HIT; f < END; f += f < LAND + 90 ? 1 : 4) {
+    const want = f < LAND ? x0 + KNOCK * (f - HIT) / (LAND - HIT) : xLand
+    xs.push([f, r4(baseX + want - hipX(f)), 'linear', `kgx_${f}`])
+  }
+  get(0).k = xs
 }
 const r = await applyScene(shot, p.scene, fc)
 console.log(`rev ${r.revision}: ${key} Y keys ${y.length}${HIT != null ? `, hit ${HIT} -> floor ${LAND}` : `, on floor from ${FROM}`}. Check: node gates.mjs (FLOOR)`)

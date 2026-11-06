@@ -81,16 +81,17 @@ for (const c of project.scene.content.timeline.animation.motionClips) {
 }
 const fast = new Set<number>((shot.fastFrames ?? []).flatMap(([a, b]: number[]) => Array.from({ length: b - a + 1 }, (_, i) => a + i)))
 for (const k of keys) {
-  const frames = out.get(shot.chars[k].char)!; let prevQ: Map<string, Quaternion> | null = null; const bad: string[] = []
+  const frames = out.get(shot.chars[k].char)!; let prevQ: Map<string, Quaternion> | null = null, prevF = -1; const bad: string[] = []
   for (let f = 0; f <= END; f++) {
     const m = frames.get(f); if (!m) continue
     const cur = new Map<string, Quaternion>(); for (const [n, w] of m) cur.set(n, quat(w))
+    const gap = Math.max(1, f - prevF)   // the sampler skips a few frames at seams: compare per frame
     if (prevQ && seams.get(k)?.has(f) && !fast.has(f)) {
       let worst = 0, wn = ''
-      for (const [n, q] of cur) { if (/index|thumb|ring|middle|pinky|_end/i.test(n)) continue; const p = prevQ.get(n); if (!p) continue; const d = 2 * Math.acos(Math.min(1, Math.abs(q.dot(p)))) * 180 / Math.PI; if (d > worst) { worst = d; wn = n } }
+      for (const [n, q] of cur) { if (/index|thumb|ring|middle|pinky|_end/i.test(n)) continue; const p = prevQ.get(n); if (!p) continue; const d = 2 * Math.acos(Math.min(1, Math.abs(q.dot(p)))) * 180 / Math.PI / gap; if (d > worst) { worst = d; wn = n } }
       if (worst > 20) bad.push(`${f}:${worst.toFixed(0)}°${wn}`)
     }
-    prevQ = cur
+    prevQ = cur; prevF = f
   }
   gates.push(['SEAM_JUMP ' + k, bad.length ? 'FAIL' : 'PASS', bad.length ? bad.slice(0, 8).join(' ') : 'all seams <= 20°/frame (fast frames excluded: ' + (shot.fastFrames ?? []).map((r: number[]) => r.join('-')).join(',') + ')'])
 }
