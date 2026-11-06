@@ -165,7 +165,7 @@ public final class FilmExportWorker {
                 draftEditor.invoke("set_transform_keyframes", transforms);
                 JsonArray poses = actor.has("poseTracks") ? array(actor, "poseTracks", 0, 512) : new JsonArray();
                 JsonArray animations = actor.has("animationKeyframes") ? array(actor, "animationKeyframes", 0, 256) : new JsonArray();
-                if (animations.size() > 0) validateTicks(animations, duration, "animation keyframes");
+                if (animations.size() > 0) validateAnimationTicks(animations, duration);
                 if (poses.size() > 0 && mode.equals("playback")) throw new IllegalArgumentException("Editable pose tracks require editable mode");
                 if (poses.size() > 0 && modelId.isEmpty()) throw new IllegalArgumentException("Editable pose tracks require a BOBJ model");
                 JsonObject model = modelId.isEmpty() ? null : modelById.get(modelId);
@@ -345,6 +345,18 @@ public final class FilmExportWorker {
     private static boolean safeModelId(String value) { return value.matches("[a-z0-9_-]+(?:/[a-z0-9_-]+)*") && !value.contains(".."); }
     private static boolean safeAssetPath(String value) { if(value.isBlank()||value.length()>240||value.startsWith("/")||value.contains("\\")||value.contains(":")) return false; for(String part:value.split("/")) if(part.isBlank()||part.equals(".")||part.equals("..")||!part.matches("[A-Za-z0-9_.-]{1,128}")) return false; return true; }
     private static void validateTicks(JsonArray keys, int duration, String field) { int prev=-1; for(JsonElement e:keys) { if(!e.isJsonObject()) throw new IllegalArgumentException("Invalid " + field); int tick=integer(e.getAsJsonObject(),"tick",0,duration); if(tick<=prev) throw new IllegalArgumentException(field+" ticks must be strictly increasing"); prev=tick; } }
+    /** Several action slots may change on the same tick (all state slots → rest action at tick 0); one slot never twice. */
+    private static void validateAnimationTicks(JsonArray keys, int duration) {
+        int prev=-1; Map<String,Integer> last=new HashMap<>();
+        for(JsonElement e:keys) {
+            if(!e.isJsonObject()) throw new IllegalArgumentException("Invalid animation keyframes");
+            JsonObject key=e.getAsJsonObject(); int tick=integer(key,"tick",0,duration);
+            String slot=key.has("slot")&&key.get("slot").isJsonPrimitive()?key.get("slot").getAsString():"";
+            Integer before=last.put(slot,tick);
+            if(tick<prev||(before!=null&&tick<=before)) throw new IllegalArgumentException("animation keyframes ticks must be strictly increasing per slot");
+            prev=tick;
+        }
+    }
     private static void validateRelativeTicks(JsonArray keys, int duration) { int prev=-1; for(JsonElement e:keys) { JsonObject key=e.getAsJsonObject(); int tick=integer(key,"tick",0,duration); if(tick<=prev) throw new IllegalArgumentException("Camera keyframe ticks must be strictly increasing"); prev=tick; } }
     private static Set<String> strings(JsonArray array) { Set<String> result=new HashSet<>(); for(JsonElement e:array) { if(!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isString()||!result.add(e.getAsString())) throw new IllegalArgumentException("Invalid or duplicate string list value"); } return result; }
     private static String sha256(Path path) throws Exception { MessageDigest digest=MessageDigest.getInstance("SHA-256"); try(var in=Files.newInputStream(path)) { byte[] buffer=new byte[64*1024]; int n; while((n=in.read(buffer))!=-1) digest.update(buffer,0,n); } return HexFormat.of().formatHex(digest.digest()); }
