@@ -4,7 +4,7 @@ import { AnimationClip, Bone, Group, Matrix4, Quaternion, VectorKeyframeTrack } 
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { FCurveSet, sceneFromDocument } from '@topview/3d-builder/evaluate'
 import { createSkeletonEvaluator, sampleSkeletonRange } from '@topview/3d-builder/skeleton'
-import { buildFilmExportManifest, filmAudioClip, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
+import { buildFilmExportManifest, FILM_REST_ACTION, FILM_REST_SLOTS, filmAudioClip, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
 
 test('Film audio manifest links the exact safe asset and full duration', () => {
   assert.deepEqual(filmAudioClip('shot-03', 150), { tick: 0, durationTicks: 150, link: 'assets:audio/w01/shot-03-mix.wav', volume: 1 })
@@ -217,6 +217,13 @@ test('L3 native topology keeps moving COG samples after removing actor and BOBJ 
   const nativeProfile: ConvertedFilmModelProfile = { ...profile, originalRig: { bobj }, bones: ['Root', 'COG', 'Jaw', 'Wing.Bone'].map((name) => ({ name, parent: name === 'Root' ? null : name === 'COG' ? 'Root' : 'COG', bobjRestMatrixRowMajor: identity })) }
   const manifest = buildFilmExportManifest(source, new Map([['character', nativeProfile]]), 'native-samples')
   assert.equal(manifest.actors[0]!.animationKeyframes, undefined, 'sampled native Root and wings must not layer over idle')
+  // Tập 15 Shot 03: with the rest action present every state slot plays it, so moving in game adds no run cycle.
+  const restBobj = `${bobj.replace(/\s*$/, '')}\nan ${FILM_REST_ACTION}\nao Root\nag location 0\nkf 0 0.000000 LINEAR -1 0.000000 1 0.000000\n`
+  const rested = buildFilmExportManifest(source, new Map([['character', { ...nativeProfile, originalRig: { bobj: restBobj } }]]), 'native-samples')
+  const keys = rested.actors[0]!.animationKeyframes!
+  assert.deepEqual(keys.map((key) => key.slot), [...FILM_REST_SLOTS])
+  assert.ok(keys.every((key) => key.animationName === FILM_REST_ACTION && key.tick === 0))
+  assert.ok(FILM_REST_SLOTS.includes('running' as never) && FILM_REST_SLOTS.includes('sprinting' as never))
 })
 
 test('Minecraft20 native BOBJ removes the GLB wrapper and exports exactly 20 moving native tracks without an idle action', () => {

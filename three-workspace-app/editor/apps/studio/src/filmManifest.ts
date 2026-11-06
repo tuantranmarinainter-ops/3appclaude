@@ -95,6 +95,13 @@ type PoseKey = { tick: number; t: [number, number, number]; s: [number, number, 
 /** Bake native BOBJ samples directly, or invert canonical Mixamo samples through the original Verity hierarchy. */
 /** Empty BOBJ action mapped to the idle slot so BBS does not add the model's own idle under Film pose tracks (B30). */
 export const FILM_REST_ACTION = 'w01_rest'
+/**
+ * Every BBS action slot the game fills on its own from the actor's state (moving, sneaking, falling, hit…).
+ * Verity BOBJs ship 'running', 'sprinting', 'crouching'…, so a Film actor that moves (Gỗ Xưa sliding 1.6 m in
+ * Tập 15 Shot 03) got the model's run cycle added over the Film pose, in game only. All of them play the rest action.
+ * Same list as DraftEditor.SLOTS minus base_pre/base_post (layering slots, not state actions).
+ */
+export const FILM_REST_SLOTS = ['idle', 'running', 'sprinting', 'crouching', 'crouching_idle', 'dying', 'falling', 'swipe', 'jump', 'jump_alt', 'hurt', 'land', 'shoot', 'consume'] as const
 
 export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: number, original: { bobj: string; wingAction?: string; nativeOnly?: boolean; sourcePositionScale?: number }) {
   const model = input.models[modelIndex]!
@@ -225,7 +232,7 @@ export function buildFilmExportManifest(input: FilmInput, convertedModels: Reado
     return { characterId: model.characterId, name, modelId: profile.modelId, transformSamples, poseTracks,
       ...((profile.formScale ?? model.actorScale ?? 1) !== 1 || profile.formOffsetY ? { formScale: profile.formScale ?? model.actorScale ?? 1, formOffsetY: profile.formOffsetY ?? 0 } : {}),
       ...(original && !nativeTopology ? { animationKeyframes: [{ tick: 0, animationName: original.wingAction || 'idle', actionTick: 0 }] }
-        : original && parseBobjActions(original.bobj).has(FILM_REST_ACTION) ? { animationKeyframes: [{ tick: 0, animationName: FILM_REST_ACTION, actionTick: 0, slot: 'idle' }] } : {}) }
+        : original && parseBobjActions(original.bobj).has(FILM_REST_ACTION) ? { animationKeyframes: FILM_REST_SLOTS.map((slot) => ({ tick: 0, animationName: FILM_REST_ACTION, actionTick: 0, slot })) } : {}) }
   })
   return {
     schemaVersion: 1 as const, targetVersion: '2.4' as const, projectId: input.projectId,
