@@ -100,6 +100,10 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
         </label>}
         <EffectsOptions capabilities={install.capabilities} value={state.effectsPolicy} onChange={state.setEffectsPolicy} disabled={state.busy} vi={vi} />
         <PreflightIssues items={placed.effects} vi={vi} />
+        {state.exportMode === 'film' && <label className="wb-check">
+          <input type="checkbox" checked={state.includeAudioInFilm} onChange={(event) => state.setIncludeAudioInFilm(event.target.checked)} />
+          <span>{vi ? 'Kèm tiếng trong film' : 'Include audio in the film'}</span>
+        </label>}
         <label>{vi ? 'Tên phim' : 'Film name'}<input value={state.filmName} onChange={(event) => state.setFilmName(event.target.value)} maxLength={state.exportMode === 'series' ? 56 : 64} />
           <small>{vi ? 'Tên hiện trong danh sách Film của BBS. Chỉ dùng chữ không dấu, số, dấu - _ .' : 'Shown in the BBS Film list. Letters, digits, - _ . only.'}</small>
         </label>
@@ -191,9 +195,10 @@ export function FilmExportPanel({ project, active }: { project: UnifiedProject; 
           <small>{vi ? 'Không cần nếu đã cài thẳng vào game. Gói ZIP chứa phim .dat, nhân vật và hiệu ứng.' : 'Not needed when installing directly. The ZIP holds the .dat film, characters and effects.'}</small>
           <div className="wb-scene-render-actions">
             <button type="button" onClick={() => void state.exportFilm()} disabled={!state.canExport}>{vi ? 'Lưu ZIP ra chỗ khác…' : 'Save ZIP elsewhere…'}</button>
-            {state.exportMode === 'film' && <button type="button" onClick={() => void state.exportFilm({ datOnly: true })} disabled={!state.canExport}>{vi ? 'Chỉ lưu file .dat…' : 'Save the .dat only…'}</button>}
+            {state.exportMode === 'film' && <button type="button" onClick={() => void state.exportFilm({ datOnly: true })} disabled={!state.canExport} aria-describedby={state.mayNeedAudioPackage ? 'wb-film-dat-audio-note' : undefined}>{vi ? 'Chỉ lưu file .dat…' : 'Save the .dat only…'}</button>}
             {!state.busy && state.completedJob?.state === 'succeeded' && <button type="button" onClick={() => void state.saveAgain(state.completedJob!)}>{vi ? 'Lưu lại gói vừa xuất…' : 'Save the last package again…'}</button>}
           </div>
+          {state.mayNeedAudioPackage && <small id="wb-film-dat-audio-note">{vi ? 'Nếu khoảng xuất có tiếng, hãy lưu ZIP để kèm file âm thanh.' : 'If the exported range has audio, save the ZIP to include the audio file.'}</small>}
         </fieldset>
         <FilmCleanupPanel state={cleanup} vi={vi} />
         <BbsInstallPanel state={install} />

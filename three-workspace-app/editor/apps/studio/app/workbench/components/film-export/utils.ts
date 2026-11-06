@@ -6,6 +6,11 @@ function canonical(value: unknown): unknown {
   return value
 }
 
+/** Block extracting a Film whose audio asset would be left behind. Older jobs lack the flag. */
+export function filmDatNeedsAudioPackage(included: unknown, mayHaveAudio: boolean): boolean {
+  return included === true || (typeof included !== 'boolean' && mayHaveAudio)
+}
+
 // Keep the export's data dependencies, not save bookkeeping or workbench/session state.
 export function filmExportContentKey(project: UnifiedProject): string {
   return JSON.stringify(canonical({ projectId: project.projectId, content: { nodes: project.scene.content.nodes, timeline: project.scene.content.timeline,
@@ -14,7 +19,7 @@ export function filmExportContentKey(project: UnifiedProject): string {
     assets: project.assets, characters: project.characters, motions: project.motions,
     bindings: project.bindings, skeletons: project.skeletons, mappings: project.mappings,
     extensions: { fcurves: project.extensions.topview?.fcurves,
-      vfxCues: project.extensions.vfxCues, filmFrame: project.extensions.filmFrame,
+      audioCues: project.extensions.audioCues, vfxCues: project.extensions.vfxCues, filmFrame: project.extensions.filmFrame,
       assetSkeletonFingerprints: project.extensions.assetSkeletonFingerprints, assetImportModels: project.extensions.assetImportModels } }))
 }
 

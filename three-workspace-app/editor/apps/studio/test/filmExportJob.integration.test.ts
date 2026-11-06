@@ -2,12 +2,14 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { executeUnifiedCommand, readUnifiedProject } from '../src/unifiedProjectStore.ts'
 import { stageAssetUpload } from '../src/unifiedAssetFiles.ts'
 import { getUnifiedJob, readUnifiedJobFile } from '../src/unifiedJobs.ts'
 import { sampleProjectFilm } from '../src/unifiedFilmSampling.ts'
+import { encodeWav16 } from '../src/audioCues.ts'
 
 const sourcePath = process.env.BBS_FILM_E2E_FBX
 const sourceBasis = [1, 0, 0, 0, 0, 1, 0, -1, 0]
@@ -69,9 +71,39 @@ test('film.export converts animated project Characters and reads back a native F
   }
   assert.equal(job.state, 'succeeded', JSON.stringify(job))
   assert.equal(job.result?.provenance.durationTicks, 20)
+  assert.equal(job.result?.provenance.filmAudioIncluded, false)
   const archive = job.result?.files.find((file) => file.mimeType === 'application/zip')
   assert.ok(archive)
   const downloaded = await readUnifiedJobFile(jobId, projectId, archive.id)
   assert.ok(downloaded)
   assert.deepEqual([...downloaded.bytes.subarray(0, 2)], [0x50, 0x4b])
+  const inspect = (bytes: Buffer) => {
+    const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', 'import sys,zipfile,io,json,hashlib,wave; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); names=z.namelist(); m=json.loads(z.read("export-manifest.json")); a=m.get("audio",[]); w=wave.open(io.BytesIO(z.read(a[0]["path"]))) if a else None; print(json.dumps({"names":names,"audio":a,"hash":hashlib.sha256(z.read(a[0]["path"])).hexdigest() if a else None,"wav":[w.getframerate(),w.getnchannels(),w.getsampwidth(),w.getnframes()] if w else None}))'], { input: bytes, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    return JSON.parse(result.stdout) as { names: string[]; audio: { path: string; sha256: string }[]; hash: string; wav: number[] }
+  }
+  assert.deepEqual(inspect(downloaded.bytes).audio, [])
+  const tone = encodeWav16(Float32Array.from({ length: 48000 }, (_, i) => 0.3 * Math.sin(2 * Math.PI * 440 * i / 48000)))
+  const audioUpload = await stageAssetUpload('tone.wav', new ReadableStream({ start(controller) { controller.enqueue(tone); controller.close() } }))
+  const importedAudio = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'asset.import', args: { files: [audioUpload.id], format: 'auto' } })
+  revision++
+  await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'audio.cue.add', args: { cue: { kind: 'sfx', assetId: (importedAudio.result.assetIds as string[])[0], frameStart: 0, gainDb: 0 } } })
+  revision++
+  const audioStarted = await executeUnifiedCommand({ requestId: randomUUID(), projectId, expectedRevision: revision, command: 'film.export', args: { ...args, filmName: 'film-e2e-audio' } })
+  const audioJobId = String(audioStarted.result.jobId)
+  let audioJob = await getUnifiedJob(audioJobId, projectId)
+  for (let attempt = 0; attempt < 900 && (audioJob.state === 'queued' || audioJob.state === 'running'); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000)); audioJob = await getUnifiedJob(audioJobId, projectId)
+  }
+  assert.equal(audioJob.state, 'succeeded', JSON.stringify(audioJob))
+  assert.equal(audioJob.result?.provenance.filmAudioIncluded, true)
+  const audioArchive = audioJob.result?.files.find((file) => file.mimeType === 'application/zip')
+  assert.ok(audioArchive)
+  const audioDownloaded = await readUnifiedJobFile(audioJobId, projectId, audioArchive.id)
+  assert.ok(audioDownloaded)
+  const info = inspect(audioDownloaded.bytes)
+  assert.equal(info.audio[0]?.path, 'assets/audio/w01/film-e2e-audio-mix.wav')
+  assert.ok(info.names.includes(info.audio[0]!.path))
+  assert.equal(info.audio[0]!.sha256, info.hash)
+  assert.deepEqual(info.wav, [44100, 1, 2, 44100])
 })

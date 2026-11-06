@@ -1379,11 +1379,12 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     catch (error) { throw new UnifiedStoreError('VALIDATION_FAILED', error instanceof Error ? error.message : 'Invalid effects destination', 400) }
   }
   if (envelope.command === 'film.export') {
-    const { worldAnchor, content, characterIds, propIds, sequenceId, range, viewportAspect, filmName } = envelope.args
+    const { worldAnchor, content, characterIds, propIds, sequenceId, range, viewportAspect, filmName, includeAudioInFilm } = envelope.args
     if (envelope.expectedRevision !== undefined && envelope.expectedRevision !== project.revision) {
       throw new UnifiedStoreError('REVISION_CONFLICT', 'Film snapshot revision is stale', 409, { expectedRevision: envelope.expectedRevision, actualRevision: project.revision })
     }
-    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds'].includes(key)) ||
+    if (Object.keys(envelope.args).some((key) => !['effectsPolicy', 'worldAnchor', 'characterIds', 'sequenceId', 'range', 'viewportAspect', 'filmName', 'content', 'propIds', 'includeAudioInFilm'].includes(key)) ||
+        includeAudioInFilm !== undefined && typeof includeAudioInFilm !== 'boolean' ||
         content !== undefined && (typeof content !== 'string' || !['characters', 'backdrops', 'both'].includes(content)) ||
         propIds !== undefined && !Array.isArray(propIds) ||
         typeof filmName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) {
@@ -1414,7 +1415,7 @@ async function executeLockedCommand(envelope: CommandEnvelope, hash: string): Pr
     if (envelope.dryRun) return success(envelope.requestId, id, project.revision, { valid: true, sourceRevision: project.revision, sampleCount: preflight.durationTicks + 1,
       viewportAspect: effectiveAspect, content: preflight.content, characterIds: preflight.characterIds, propIds: preflight.propIds })
     try {
-      const job = await startUnifiedFilmExport(project, { ...normalizedFilm, filmName })
+      const job = await startUnifiedFilmExport(project, { ...normalizedFilm, filmName, includeAudioInFilm: includeAudioInFilm as boolean | undefined })
       const response = success(envelope.requestId, id, project.revision, { jobId: job.jobId, sourceRevision: job.sourceRevision, state: job.state, progress: job.progress, viewportAspect: effectiveAspect })
       await saveRequest(envelope, hash, response)
       return response

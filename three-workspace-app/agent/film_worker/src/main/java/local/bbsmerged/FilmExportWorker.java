@@ -54,6 +54,7 @@ public final class FilmExportWorker {
         if (!projectId.matches("[A-Za-z0-9_-]{1,128}")) throw new IllegalArgumentException("Invalid projectId");
         JsonArray actors = array(manifest, "actors", 1, 64);
         JsonArray cameras = array(manifest, "cameras", 1, 3);
+        JsonArray audioClips = manifest.has("audioClips") ? array(manifest, "audioClips", 0, 192) : new JsonArray();
         JsonArray models = manifest.has("models") ? array(manifest, "models", 0, 64) : new JsonArray();
         // B15: AAA Particles effects (App 2 VFX cues) become extra replays after the actors.
         JsonArray aaaEffects = manifest.has("aaaEffects") ? array(manifest, "aaaEffects", 0, 192) : new JsonArray();
@@ -239,6 +240,19 @@ public final class FilmExportWorker {
                 JsonObject mapping = new JsonObject(); mapping.addProperty("id", id); mapping.addProperty("clipId", clipId); mapping.addProperty("startTick", start); mapping.addProperty("durationTicks", clipDuration); cameraMap.add(mapping);
             }
 
+            for (JsonElement audioItem : audioClips) {
+                JsonObject audio = audioItem.getAsJsonObject();
+                int start = integer(audio, "tick", 0, duration), clipDuration = integer(audio, "durationTicks", 1, duration);
+                if (start + clipDuration > duration) throw new IllegalArgumentException("Audio clip exceeds Film duration");
+                String link = text(audio, "link");
+                if (!link.startsWith("assets:audio/") || !safeAssetPath(link.substring("assets:".length()))) throw new IllegalArgumentException("Invalid audio link");
+                double volume = finite(audio, "volume");
+                if (volume < 0 || volume > 2) throw new IllegalArgumentException("Audio volume must be in [0,2]");
+                JsonObject add = new JsonObject(); add.addProperty("filmId", draft); add.addProperty("startTick", start);
+                add.addProperty("duration", clipDuration); add.addProperty("link", link); add.addProperty("volume", volume);
+                draftEditor.invoke("add_export_audio_clip", add);
+            }
+
             for (JsonElement effectItem : aaaEffects) {
                 JsonObject effect = effectItem.getAsJsonObject(); JsonObject add = new JsonObject(); add.addProperty("filmId", draft);
                 add.addProperty("label", "VFX " + text(effect, "label")); add.addProperty("effect", text(effect, "effect"));
@@ -259,13 +273,20 @@ public final class FilmExportWorker {
             if (!semantic.equals(reread)) throw new IOException("BBS typed codec semantic read-back mismatch");
             JsonObject decodedJson = BbsCodec.toJson(decoded).getAsJsonObject();
             if (array(decodedJson, "replays", 0, 256).size() != actors.size() + aaaEffects.size()) throw new IOException("Film actor count changed during native read-back");
-            long emittedCameras = array(decodedJson, "camera", 0, 4096).asList().stream().filter(c -> c.isJsonObject() && c.getAsJsonObject().has("mcp_id") && c.getAsJsonObject().has("title") && cameraIds.contains(c.getAsJsonObject().get("title").getAsString())).count();
-            if (decodedJson.getAsJsonArray("camera").size() != cameras.size() || emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
+            long emittedCameras = array(decodedJson, "camera", 0, 4096).asList().stream().filter(c -> c.isJsonObject() && c.getAsJsonObject().has("mcp_id") && c.getAsJsonObject().has("title") && cameraIds.contains(c.getAsJsonObject().get("title").getAsString()) && "bbs:keyframe".equals(text(c.getAsJsonObject(), "type"))).count();
+            if (decodedJson.getAsJsonArray("camera").size() != cameras.size() + audioClips.size() || emittedCameras != cameras.size()) throw new IOException("Film camera count changed during native read-back");
+            for (int i=0; i<audioClips.size(); i++) {
+                JsonObject source=audioClips.get(i).getAsJsonObject(), actual=decodedJson.getAsJsonArray("camera").get(cameras.size()+i).getAsJsonObject();
+                if (!"bbs:audio".equals(text(actual,"type")) || integer(actual,"tick",0,duration)!=integer(source,"tick",0,duration)
+                    || integer(actual,"duration",1,duration)!=integer(source,"durationTicks",1,duration) || !text(actual,"audio").equals(text(source,"link"))
+                    || integer(actual,"offset",0,0)!=0 || Math.abs(finite(actual,"volume")-finite(source,"volume"))>1e-6)
+                    throw new IOException("Audio clip changed during native read-back");
+            }
             JsonObject cameraReadback = new JsonObject();
             int cameraValues = 0; double cameraMaxError = 0;
             for (JsonElement sourceElement : cameras) {
                 JsonObject source = sourceElement.getAsJsonObject(), actual = null;
-                for (JsonElement emitted : decodedJson.getAsJsonArray("camera")) if (text(emitted.getAsJsonObject(), "title").equals(text(source, "id"))) actual = emitted.getAsJsonObject();
+                for (JsonElement emitted : decodedJson.getAsJsonArray("camera")) if ("bbs:keyframe".equals(text(emitted.getAsJsonObject(), "type")) && text(emitted.getAsJsonObject(), "title").equals(text(source, "id"))) actual = emitted.getAsJsonObject();
                 if (actual == null || !text(actual, "type").equals("bbs:keyframe") || integer(actual, "tick", 0, duration) != integer(source, "startTick", 0, duration) || integer(actual, "duration", 1, duration) != integer(source, "durationTicks", 1, duration)) throw new IOException("Camera timing/type changed during native read-back");
                 for (String component : List.of("x", "y", "z", "yaw", "pitch", "roll", "fov")) {
                     JsonArray sourceKeys = source.getAsJsonArray("keyframes"), actualKeys = actual.getAsJsonObject(component).getAsJsonArray("keyframes");

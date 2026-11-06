@@ -15,7 +15,7 @@ import path from 'node:path'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
 import { renderFrames } from '@topview/3d-director-cli/render.mjs'
 import { resolveUnifiedAssetFile } from './unifiedAssetFiles'
-import { FILM_MODEL_FACING_OFFSET, FILM_REST_ACTION, inspectFilmActorTransform, buildFilmExportManifest, type ConvertedFilmModelProfile } from './filmManifest'
+import { FILM_MODEL_FACING_OFFSET, FILM_REST_ACTION, inspectFilmActorTransform, buildFilmExportManifest, filmAudioClip, type ConvertedFilmModelProfile } from './filmManifest'
 import { preflightProjectFilm, sampleProjectFilm, type FilmSamplingArgs } from './unifiedFilmSampling'
 import { stageProjectNormalization, type NormalizationPlanArgs } from './unifiedNormalizationPlan'
 import { stageProjectAssignment, type AssignmentArgs } from './unifiedAssignment'
@@ -51,7 +51,7 @@ export interface UnifiedJobView extends Omit<StoredJob, 'result'> {
 }
 
 interface RenderArgs { frames: number[]; cameraNodeIds: string[]; width: number; height: number; silhouette?: boolean; bbsLook?: boolean }
-interface FilmExportArgs extends FilmSamplingArgs { filmName: string }
+interface FilmExportArgs extends FilmSamplingArgs { filmName: string; includeAudioInFilm?: boolean }
 /** Scene-level packaging on top of `film.export` (`scene.export.bbsFilm`): archive name and extra JSON files in the ZIP root. */
 export interface FilmPackageOptions { archiveName?: string; extraFiles?: Record<string, unknown> }
 interface Runtime { record: StoredJob; controller: AbortController; active: boolean; internal?: boolean; done?: Promise<void> }
@@ -481,6 +481,10 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     }
     signal.throwIfAborted()
     const manifest = buildFilmExportManifest(input, profiles, args.filmName)
+    const audio = await filmAudioPackage(snapshot, args.range.startFrame, args.range.endFrame, signal, args.includeAudioInFilm === false ? undefined : input.durationTicks)
+    const filmAudio = audio?.bbs
+    const audioPath = `assets/audio/w01/${args.filmName}-mix.wav`
+    if (filmAudio) Object.assign(manifest, { audioClips: [filmAudioClip(args.filmName, input.durationTicks)] })
     // Props are converted to BOBJ profiles, then the pure manifest helper adds one static actor per scene node.
     const propProfiles = new Map<string, ConvertedFilmModelProfile>()
     const propTextureAnimations = new Map<string, PropTextureAnimation>()
@@ -545,12 +549,19 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     if (effects.length) await writeFile(path.join(packagePath, 'effects.json'), `${JSON.stringify(effects, null, 2)}\n`, { flag: 'w' })
     await writeFile(path.join(packagePath, 'world-anchor.json'), `${JSON.stringify(worldAnchor, null, 2)}\n`, { flag: 'wx' })
     // B16: voices/SFX/music heard in this Film, their 20 Hz schedule and a ducked mix for video editing.
-    const audio = await filmAudioPackage(snapshot, args.range.startFrame, args.range.endFrame, signal)
     if (audio) {
       await mkdir(path.join(packagePath, 'audio'), { recursive: true })
       for (const [name, bytes] of audio.files) await writeFile(path.join(packagePath, ...name.split('/')), bytes, { flag: 'wx' })
       await writeFile(path.join(packagePath, 'audio.json'), `${JSON.stringify(audio.schedule, null, 2)}\n`, { flag: 'wx' })
       await writeFile(path.join(packagePath, 'audio', 'mix.wav'), audio.mix, { flag: 'wx' })
+    }
+    if (filmAudio) {
+      await mkdir(path.join(packagePath, 'assets', 'audio', 'w01'), { recursive: true })
+      await writeFile(path.join(packagePath, ...audioPath.split('/')), filmAudio.wav, { flag: 'wx' })
+      const exportManifestPath = path.join(packagePath, 'export-manifest.json')
+      const exportedManifest = JSON.parse(await readFile(exportManifestPath, 'utf8')) as Record<string, unknown>
+      exportedManifest.audio = [{ path: audioPath, sizeBytes: filmAudio.wav.length, sha256: digest(filmAudio.wav) }]
+      await writeFile(exportManifestPath, JSON.stringify(exportedManifest, null, 2))
     }
     await writeFile(path.join(packagePath, 'README.txt'), [
       'BBS FS 2.7 Film package. Copy films/*.dat into saves/<world>/bbs/films/ and assets/** into config/bbs/assets/, keeping the included directory layout.',
@@ -566,6 +577,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
       effectsPolicy.mode === 'include' ? 'Moving attachments are rejected: the sidecar stores one transform per interval and moving transform replay has not been established.' : 'Project VFX cues were not evaluated or changed; no effect replay, form, sidecar or asset was exported.',
       'Static cues and stationary attachments can be represented. BBS in-game playback was not tested.',
       ...(blendZoneTexts.length ? ['', 'Clip blend zones baked into the pose tracks (same blended pose as App 2):', ...blendZoneTexts.map((text) => `- ${text}`)] : []),
+      ...(filmAudio ? [`Tiếng: 1 clip, ${(input.durationTicks / 20).toFixed(2)} s, đỉnh ${Number.isFinite(filmAudio.peakDb) ? filmAudio.peakDb.toFixed(1) : '−∞'} dBFS.`] : []),
       '',
     ].join('\n'), { flag: 'w' })
     const archiveName = options.archiveName ?? `${args.filmName}.zip`
@@ -574,7 +586,7 @@ async function runFilmExport(runtime: Runtime, snapshot: UnifiedProject, args: F
     await saveArtifact(record, archive, archiveName, files)
     signal.throwIfAborted()
     record.result = { files, provenance: { sourceRevision: record.sourceRevision, sourceSha256: record.sourceSha256,
-      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes, worldAnchor,
+      targetVersion: '2.4', durationTicks: input.durationTicks, characterIds: args.characterIds, sourceHashes: input.sourceHashes, worldAnchor, filmAudioIncluded: !!filmAudio,
       ...(blendZoneTexts.length ? { blendZones: input.blendZones } : {}) }, warnings: blendZoneTexts.map((text) => `Vùng trộn clip đã nướng vào film: ${text}`), blockedRequests: [] }
     record.state = 'succeeded'; record.progress = 1
   } catch (error) {
@@ -622,7 +634,7 @@ async function runFilmSeriesExport(runtime: Runtime, snapshot: UnifiedProject, a
       const filmName = `${args.name}-${order}`
       const stagedZip = path.join(work, `segment-${order}.zip`)
       if (segmentRunner) {
-        const bytes = await segmentRunner(segment.project, { ...segment.exportArgs, filmName }, signal)
+        const bytes = await segmentRunner(segment.project, { ...segment.exportArgs, filmName, includeAudioInFilm: false }, signal)
         signal.throwIfAborted()
         await writeFile(stagedZip, bytes, { flag: 'wx' })
       } else {
@@ -635,7 +647,7 @@ async function runFilmSeriesExport(runtime: Runtime, snapshot: UnifiedProject, a
         const child: Runtime = { record: childRecord, controller, active: true, internal: true }
         try {
           await persist(childRecord)
-          await runFilmExport(child, segment.project, { ...segment.exportArgs, filmName })
+          await runFilmExport(child, segment.project, { ...segment.exportArgs, filmName, includeAudioInFilm: false })
           signal.throwIfAborted()
           if (childRecord.state !== 'succeeded' || !childRecord.result?.files[0]) {
             throw new Error(childRecord.error?.message ?? `Film segment ${index + 1} did not finish successfully`)

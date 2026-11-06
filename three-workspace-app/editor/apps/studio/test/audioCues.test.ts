@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { decodeWav, encodeWav16, filmAudioSchedule, mixAudio, MIX_RATE, type AudioCue } from '../src/audioCues'
-import { mixdownProjectAudio } from '../src/audioMix'
+import { bbsFilmAudio, mixdownProjectAudio } from '../src/audioMix'
 import { activeSubtitle, audioCuesToStart } from '../app/workbench/components/audio-cues/playback'
 import { stageAssetUpload } from '../src/unifiedAssetFiles'
 import { executeUnifiedCommand, readUnifiedProject, UnifiedStoreError } from '../src/unifiedProjectStore'
@@ -27,6 +27,29 @@ test('WAV round trip and decoding of 16-bit stereo', () => {
   assert.equal(decoded.samples.length, samples.length)
   assert.ok(Math.abs(decoded.samples[100]! - samples[100]!) < 1e-4)
   assert.equal(decodeWav(new Uint8Array([1, 2, 3])), null)
+})
+
+test('BBS Film WAV is mono PCM16 at 44100 Hz, film length and at most -1 dBFS', () => {
+  const result = bbsFilmAudio([cue({})], new Map([['a', tone(8, 1)]]), 0, 30, 150)
+  assert.equal(result.wav.readUInt16LE(20), 1)
+  assert.equal(result.wav.readUInt16LE(22), 1)
+  assert.equal(result.wav.readUInt32LE(24), 44100)
+  assert.equal(result.wav.readUInt16LE(34), 16)
+  const decoded = decodeWav(result.wav)!
+  assert.equal(decoded.samples.length, 44100 * 7.5)
+  const peak = decoded.samples.reduce((max, value) => Math.max(max, Math.abs(value)), 0)
+  assert.ok(20 * Math.log10(peak) <= -1)
+  assert.ok(Math.abs(decoded.samples[4410]! - decoded.samples[0]!) < 0.001)
+  assert.throws(() => bbsFilmAudio([], new Map(), 0, 30, 0), /Invalid/)
+})
+
+test('BBS Film mix preserves relative cue gains during overlap without ducking', () => {
+  const voice = cue({ kind: 'voice', assetId: 'voice', gainDb: 0 })
+  const music = cue({ kind: 'music', assetId: 'music', gainDb: -6, frameStart: 30 })
+  const source = new Float32Array(MIX_RATE * 3).fill(0.8)
+  const decoded = decodeWav(bbsFilmAudio([voice, music], new Map([['voice', source], ['music', source]]), 0, 30, 60).wav)!.samples
+  const single = decoded[22050]!, overlap = decoded[66150]!
+  assert.ok(Math.abs(overlap / single - (1 + 10 ** (-6 / 20))) < 0.001)
 })
 
 test('plays the right cues from the right offset and shows the latest voice subtitle', () => {
