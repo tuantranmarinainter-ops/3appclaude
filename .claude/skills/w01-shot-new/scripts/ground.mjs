@@ -3,7 +3,8 @@
 //   node ground.mjs <shot.json> <char> [--hit H --land L] [--knock dx] [--from F]
 // Without --hit: the character is kept on the floor from --from (default 0).
 // With --hit/--land: no change before H; small pop-up then gravity fall to the floor at L; on the floor after L.
-// Floor rule: torso rests on the floor (8 cm body radius), limbs may sink at most 5 cm.
+// Floor rule: torso rests on the floor (8 cm body radius), limb bones stay >= --clear (3 cm) above it.
+// --user-keys: also lift the node's user position keys after --until (hand edits) so they stay on the floor (x/z kept).
 // Always resets the character's Y curve to its base value and re-probes first (re-running never accumulates offsets).
 import { loadShot, api, applyScene, runProbe, near, r4 } from './lib.mjs'
 const shot = loadShot()
@@ -12,6 +13,8 @@ const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? Number
 const HIT = arg('--hit', null), LAND = arg('--land', null), KNOCK = arg('--knock', 0), FROM = arg('--from', 0)
 // --until U: only rebuild keys up to U; keys after U (e.g. the user's own hand edits at the end of the shot) are kept as they are
 const UNTIL = arg('--until', null), END = UNTIL != null ? UNTIL + 1 : shot.end
+// --clear c: limb bones stay at least c m above the floor (meshes have thickness; 0.03 hides hands/feet sinking)
+const CLEAR = arg('--clear', 0.03)
 const { project, command } = await api()
 async function curves() {
   const { project: p } = await project(shot.project)
@@ -30,12 +33,12 @@ if (HIT != null && KNOCK) get(0).k = [[0, baseX, 'linear', 'kgx_base']]   // mea
 await applyScene(shot, p.scene, fc)
 const { data } = await runProbe(shot)
 const d = (f) => near(data, f)[key]
-const hip = (f) => d(f).hip[1], low = (f) => Math.min(d(f).torso[0] - 0.08, d(f).low[0] + 0.05)
+const hip = (f) => d(f).hip[1], low = (f) => Math.min(d(f).torso[0] - 0.08, d(f).low[0] - CLEAR)
 const y = [[0, baseY, 'linear', 'kgy_0']]
 const start = HIT ?? FROM
 if (start > 0) y.push([start - 1, baseY, 'linear', 'kgy_pre'])
 const hip0 = HIT != null ? hip(HIT) : 0, hipLand = LAND != null ? hip(LAND) - low(LAND) : 0
-for (let f = start; f < END; f += f < (LAND ?? start) + 90 ? 1 : 4) {
+for (let f = start; f < END; f += f < (LAND ?? start) + 90 || f > END - 14 ? 1 : 2) {
   let o
   if (HIT != null && f < LAND) {
     const t = (f - HIT) / (LAND - HIT)
@@ -44,6 +47,7 @@ for (let f = start; f < END; f += f < (LAND ?? start) + 90 ? 1 : 4) {
   } else o = -low(f)
   y.push([f, r4(baseY + o), 'linear', `kgy_${f}`])
 }
+if (y.at(-1)[0] !== END - 1) y.push([END - 1, r4(baseY - low(END - 1)), 'linear', `kgy_${END - 1}`])   // last frame of the rebuilt range
 ;({ p, fc, get } = await curves())
 get(1).k = [...y, ...keptY]
 if (HIT != null && KNOCK) {
@@ -59,5 +63,12 @@ if (HIT != null && KNOCK) {
 } else if (UNTIL != null && keptX.length) {
   const x = get(0); if (!x.k.some((k) => k[0] > UNTIL)) x.k.push(...keptX)
 }
+let lifted = 0
+if (process.argv.includes('--user-keys') && UNTIL != null) {
+  // user position keys win over the curve where they exist: lift each of them by what the floor needs at its frame
+  const uk = fc.userKeys?.[ch.node]?.position ?? []
+  for (const k of uk) if (k.frame > UNTIL) { const need = -low(k.frame); if (Math.abs(need) > 0.005) { k.value = [k.value[0], r4(k.value[1] + need), k.value[2]]; lifted++ } }
+}
 const r = await applyScene(shot, p.scene, fc)
+if (lifted) console.log(`lifted ${lifted} user position keys after ${UNTIL}`)
 console.log(`rev ${r.revision}: ${key} Y keys ${y.length}${HIT != null ? `, hit ${HIT} -> floor ${LAND}` : `, on floor from ${FROM}`}. Check: node gates.mjs (FLOOR)`)
