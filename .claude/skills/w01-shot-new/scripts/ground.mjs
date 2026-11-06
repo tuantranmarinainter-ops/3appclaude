@@ -9,7 +9,9 @@ import { loadShot, api, applyScene, runProbe, near, r4 } from './lib.mjs'
 const shot = loadShot()
 const key = process.argv[3]; const ch = shot.chars[key]; if (!ch) throw new Error('unknown char ' + key)
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? Number(process.argv[i + 1]) : d }
-const HIT = arg('--hit', null), LAND = arg('--land', null), KNOCK = arg('--knock', 0), FROM = arg('--from', 0), END = shot.end
+const HIT = arg('--hit', null), LAND = arg('--land', null), KNOCK = arg('--knock', 0), FROM = arg('--from', 0)
+// --until U: only rebuild keys up to U; keys after U (e.g. the user's own hand edits at the end of the shot) are kept as they are
+const UNTIL = arg('--until', null), END = UNTIL != null ? UNTIL + 1 : shot.end
 const { project, command } = await api()
 async function curves() {
   const { project: p } = await project(shot.project)
@@ -19,8 +21,10 @@ async function curves() {
   return { p, fc, node, get }
 }
 let { p, fc, node, get } = await curves()
-const baseY = node.transform.position.y
-const baseX = get(0).k.length ? get(0).k[0][1] : node.transform.position.x
+const keptX = UNTIL != null ? get(0).k.filter((k) => k[0] > UNTIL) : [], keptY = UNTIL != null ? get(1).k.filter((k) => k[0] > UNTIL) : []
+// base = the curve's own first key (dragging the node in App 2 can move node.transform, which must not shift frame 0)
+const baseY = get(1).k.length ? [...get(1).k].sort((a, b) => a[0] - b[0])[0][1] : node.transform.position.y
+const baseX = get(0).k.length ? [...get(0).k].sort((a, b) => a[0] - b[0])[0][1] : node.transform.position.x
 get(1).k = [[0, baseY, 'linear', 'kgy_base']]
 if (HIT != null && KNOCK) get(0).k = [[0, baseX, 'linear', 'kgx_base']]   // measure the clip's own drift too
 await applyScene(shot, p.scene, fc)
@@ -41,7 +45,7 @@ for (let f = start; f < END; f += f < (LAND ?? start) + 90 ? 1 : 4) {
   y.push([f, r4(baseY + o), 'linear', `kgy_${f}`])
 }
 ;({ p, fc, get } = await curves())
-get(1).k = y
+get(1).k = [...y, ...keptY]
 if (HIT != null && KNOCK) {
   // knock-back along a straight diagonal (the hypotenuse): hip x moves linearly from the hit to the landing point while it
   // falls, then stays where it landed (cancels the clip's own root drift, e.g. Death sliding back toward the attacker)
@@ -51,7 +55,9 @@ if (HIT != null && KNOCK) {
     const want = f < LAND ? x0 + KNOCK * (f - HIT) / (LAND - HIT) : xLand
     xs.push([f, r4(baseX + want - hipX(f)), 'linear', `kgx_${f}`])
   }
-  get(0).k = xs
+  get(0).k = [...xs, ...keptX]
+} else if (UNTIL != null && keptX.length) {
+  const x = get(0); if (!x.k.some((k) => k[0] > UNTIL)) x.k.push(...keptX)
 }
 const r = await applyScene(shot, p.scene, fc)
 console.log(`rev ${r.revision}: ${key} Y keys ${y.length}${HIT != null ? `, hit ${HIT} -> floor ${LAND}` : `, on floor from ${FROM}`}. Check: node gates.mjs (FLOOR)`)
