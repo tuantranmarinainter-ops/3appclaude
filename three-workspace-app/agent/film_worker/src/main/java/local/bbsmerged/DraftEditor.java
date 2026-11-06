@@ -256,6 +256,19 @@ public final class DraftEditor {
                 }
                 array(root,"camera").add(c); result=camera(c);
             }
+            case "add_export_audio_clip" -> {
+                List<Node> clips=array(root,"camera");
+                if(clips.isEmpty()) throw new IllegalArgumentException("Audio clip needs a camera template");
+                int layer=clips.stream().mapToInt(c -> (int)value(c,"layer",0)).max().orElse(0);
+                if(layer==Integer.MAX_VALUE) throw new IllegalArgumentException("No available camera layer");
+                Node c=BbsCodec.map(); Map<String,Node> fields=map(c), template=map(clips.get(0));
+                for(String field:List.of("enabled","additive","envelope")) if(template.containsKey(field)) fields.put(field,deepCopy(template.get(field)));
+                fields.put("mcp_id",string(UUID.randomUUID().toString())); fields.put("title",string("W01 âm thanh"));
+                fields.put("type",string("bbs:audio")); fields.put("tick",integer(tick(p,"startTick",0)));
+                fields.put("duration",integer(tick(p,"duration",1))); fields.put("layer",integer(layer+1));
+                fields.put("audio",string(str(p,"link"))); fields.put("offset",integer(0)); fields.put("volume",floating((float)num(p,"volume",1)));
+                clips.add(c); result=camera(c);
+            }
             case "add_camera_keyframe", "set_camera_transform", "set_camera_fov" -> {
                 Node c=clip(root,str(p,"clipId")); if(!text(c,"type","").equals("bbs:keyframe")) throw new IllegalArgumentException("Requires KeyframeClip");
                 int t=tick(p,"relativeTick",0); if(t>value(c,"duration",1)) throw new IllegalArgumentException("Keyframe beyond camera duration");

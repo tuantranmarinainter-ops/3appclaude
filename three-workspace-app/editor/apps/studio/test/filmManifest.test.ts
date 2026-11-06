@@ -4,7 +4,13 @@ import { AnimationClip, Bone, Group, Matrix4, Quaternion, VectorKeyframeTrack } 
 import { makeEmptyDraft } from '@topview/3d-builder'
 import { FCurveSet, sceneFromDocument } from '@topview/3d-builder/evaluate'
 import { createSkeletonEvaluator, sampleSkeletonRange } from '@topview/3d-builder/skeleton'
-import { buildFilmExportManifest, FILM_REST_ACTION, FILM_REST_SLOTS, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
+import { buildFilmExportManifest, FILM_REST_ACTION, FILM_REST_SLOTS, filmAudioClip, inspectFilmActorTransform, projectOriginalVerityPoseTracks, type ConvertedFilmModelProfile } from '../src/filmManifest.ts'
+
+test('Film audio manifest links the exact safe asset and full duration', () => {
+  assert.deepEqual(filmAudioClip('shot-03', 150), { tick: 0, durationTicks: 150, link: 'assets:audio/w01/shot-03-mix.wav', volume: 1 })
+  assert.throws(() => filmAudioClip('../unsafe', 150))
+  assert.throws(() => filmAudioClip('shot', 0))
+})
 
 const identity = new Matrix4().toArray()
 const input = {

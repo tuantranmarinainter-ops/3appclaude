@@ -29,13 +29,14 @@ export interface FilmSeriesSegment {
 
 /** Python stdlib merger for native worker ZIPs; refuses traversal and differing asset collisions. */
 export const FILM_SERIES_ARCHIVE_SCRIPT = String.raw`
-import json,pathlib,stat,sys,zipfile
+import hashlib,json,pathlib,stat,sys,zipfile
 spec=json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
 out=pathlib.Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=False)
 films=out/'films'; films.mkdir()
 assets={}
 effects={}
 audio={}
+film_audio={}
 anchors={}
 def unsafe_name(name):
     path=pathlib.PurePosixPath(name)
@@ -66,6 +67,15 @@ for item in spec['segments']:
             anchors['films/'+item['film']]=json.loads(source.read('world-anchor.json').decode('utf-8'))
         if 'audio.json' in names:
             audio['films/'+item['film']]=json.loads(source.read('audio.json').decode('utf-8'))
+        if 'export-manifest.json' in names:
+            manifest=json.loads(source.read('export-manifest.json').decode('utf-8'))
+            entries=manifest.get('audio',[])
+            if entries:
+                for entry in entries:
+                    name=entry['path']
+                    if not name.startswith('assets/audio/') or name not in names or hashlib.sha256(source.read(name)).hexdigest()!=entry['sha256']:
+                        raise ValueError('Film audio asset is missing or has a mismatched SHA-256')
+                film_audio['films/'+item['film']]=entries
         for name in names:
             if name=='audio/mix.wav':
                 stem=pathlib.PurePosixPath(item['film']).stem
@@ -86,6 +96,7 @@ if effects: (out/'effects.json').write_text(json.dumps(effects,ensure_ascii=Fals
 (out/'required-mods.json').write_text(json.dumps({'schemaVersion':1,'requiredMods':['BBS FS 2.7']+(['AAA Particles with compatible BBS AAA form renderer/addon'] if effects else []),'includedEffectCount':sum(len(cues) for cues in effects.values()),'effectPlayback':'UNVERIFIED' if effects else 'OMITTED','gamePlayback':'NOT_RUN'},indent=2)+'\n',encoding='utf-8')
 if anchors: (out/'world-anchors.json').write_text(json.dumps(anchors,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 if audio: (out/'audio.json').write_text(json.dumps(audio,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+if film_audio: (out/'film-audio.json').write_text(json.dumps(film_audio,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (out/'README.txt').write_text(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'),encoding='utf-8')
 archive=pathlib.Path(sys.argv[4])
 with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:

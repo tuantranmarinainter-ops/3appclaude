@@ -9,11 +9,12 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from .film_worker import run_film_worker
+from .film_worker import BRIDGE_JAR, GSON_JAR, run_film_worker
 
 
 WORKSPACE = Path(__file__).resolve().parents[2]
@@ -92,6 +93,41 @@ class NativeHeightFormTests(unittest.TestCase):
             self.assertEqual(result["cameras"], 2)
             self.assertEqual(report["cameraReadback"]["valuesCompared"], 160 * 7)
             self.assertLessEqual(report["cameraReadback"]["maxAbsoluteError"], 1e-10)
+
+    def test_audio_clip_native_readback_and_non_audio_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            decoder = root / "Decode.java"
+            decoder.write_text('import java.nio.file.*; import local.bbsmcp.data.BbsCodec; public class Decode { public static void main(String[] a)throws Exception { System.out.println(BbsCodec.toJson(BbsCodec.read(Files.readAllBytes(Path.of(a[0]))))); }}', encoding="utf-8")
+            cp = os.pathsep.join(map(str, (BRIDGE_JAR, GSON_JAR)))
+            subprocess.run(["javac", "-cp", cp, str(decoder)], check=True, capture_output=True)
+            def export(document, name):
+                document["filmName"] = name
+                spec = root / (name + ".json")
+                spec.write_text(json.dumps(document), encoding="utf-8")
+                result = run_film_worker(spec, root)
+                return json.loads(subprocess.check_output(["java", "-cp", cp + os.pathsep + str(root), "Decode", result["filmPath"]], text=True))
+            base = export(self.camera_manifest(), "base")
+            document = self.camera_manifest()
+            document["audioClips"] = [{"tick": 0, "durationTicks": 160, "link": "assets:audio/w01/test-mix.wav", "volume": 1}]
+            actual = export(document, "with-audio")
+            audio = actual["camera"].pop()
+            self.assertEqual({k: audio[k] for k in ("type", "tick", "duration", "audio", "offset", "volume", "title")},
+                {"type": "bbs:audio", "tick": 0, "duration": 160, "audio": "assets:audio/w01/test-mix.wav", "offset": 0, "volume": 1, "title": "W01 âm thanh"})
+            self.assertGreater(audio["layer"], max(c["layer"] for c in actual["camera"]))
+            for key in ("enabled", "additive", "envelope"):
+                self.assertEqual(audio[key], actual["camera"][0][key])
+            def normalize(value):
+                if isinstance(value, dict):
+                    return {k: normalize(v) for k, v in value.items() if k not in ("mcp_id", "id", "title", "created_at")}
+                if isinstance(value, list):
+                    return [normalize(v) for v in value]
+                return value
+            self.assertEqual(normalize(base), normalize(actual))
+            bad = self.camera_manifest()
+            bad["audioClips"] = [{"tick": 1, "durationTicks": 160, "link": "assets:audio/w01/test.wav", "volume": 1}]
+            with self.assertRaisesRegex(RuntimeError, "Audio clip exceeds Film duration"):
+                export(bad, "invalid")
 
     def test_overlapping_shots_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

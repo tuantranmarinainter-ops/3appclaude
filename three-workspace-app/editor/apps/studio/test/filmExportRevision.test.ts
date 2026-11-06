@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { UnifiedProject } from '@bbs/animation-workspace-shared'
-import { filmExportContentKey, prepareFilmExportRevision } from '../app/workbench/components/film-export/utils.ts'
+import { filmDatNeedsAudioPackage, filmExportContentKey, prepareFilmExportRevision } from '../app/workbench/components/film-export/utils.ts'
 const project = () => ({ projectId: 'p', revision: 1, name: 'Draft', scene: { content: { nodes: [{ camera: { fov: 60 } }] } }, characters: {}, assets: {}, motions: {}, bindings: {}, extensions: {}, skeletons: {}, mappings: {} } as unknown as UnifiedProject)
 function setup() {
   const fresh = project()
@@ -22,6 +22,19 @@ test('camera content changes stop export before preflight', async () => {
   fresh.scene.content.nodes[0]!.camera!.fov = 80
   await assert.rejects(prepareFilmExportRevision(options), /content changed/)
   assert.deepEqual(checked, [])
+})
+test('audio cue changes stop export before preflight', async () => {
+  const { fresh, checked, options } = setup()
+  fresh.extensions.audioCues = { version: 1, cues: [{ id: 'cue', kind: 'sfx', assetId: 'sound', frameStart: 1, gainDb: 0 }] }
+  await assert.rejects(prepareFilmExportRevision(options), /content changed/)
+  assert.deepEqual(checked, [])
+})
+test('saving only a dat respects the actual exported audio and handles older jobs safely', () => {
+  assert.equal(filmDatNeedsAudioPackage(true, true), true)
+  assert.equal(filmDatNeedsAudioPackage(false, true), false)
+  assert.equal(filmDatNeedsAudioPackage(false, false), false)
+  assert.equal(filmDatNeedsAudioPackage(undefined, true), true)
+  assert.equal(filmDatNeedsAudioPackage(undefined, false), false)
 })
 test('source frame aspect changes stop export because they change camera projection', async () => {
   const { fresh, options } = setup()

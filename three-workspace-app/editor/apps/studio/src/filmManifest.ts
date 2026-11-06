@@ -172,6 +172,12 @@ export function projectOriginalVerityPoseTracks(input: FilmInput, modelIndex: nu
 }
 
 /** Build the exact typed JSON accepted by the pinned BBS 2.4 Film worker. */
+/** Camera audio link for a single shot, aligned to the film's 20 Hz clock. */
+export function filmAudioClip(filmName: string, durationTicks: number) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.') || !Number.isSafeInteger(durationTicks) || durationTicks < 1) throw new TypeError('Invalid Film audio name or duration')
+  return { tick: 0, durationTicks, link: `assets:audio/w01/${filmName}-mix.wav`, volume: 1 }
+}
+
 export function buildFilmExportManifest(input: FilmInput, convertedModels: ReadonlyMap<string, ConvertedFilmModelProfile>, filmName: string) {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(filmName) || filmName.endsWith('.')) fail('Film name must use 1-64 safe ASCII characters')
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(input.projectId) || !HASH.test(input.sourceSha256) || !Number.isSafeInteger(input.sourceRevision) || input.sourceRevision < 0 || input.targetVersion !== '2.4' || input.sampleFps !== 20 ||
