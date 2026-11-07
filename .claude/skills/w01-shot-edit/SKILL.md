@@ -7,6 +7,17 @@ description: Sửa nội dung một shot App 2 (nhịp động tác, xuất hi�
 
 Việc này lặp lại nhiều. Phần tốn thời gian nhất là chuyển từ bản thử sang project thật và kiểm khung 3D. Hãy dùng script, đừng viết lại.
 
+## Ít token (bắt buộc)
+- **Mỗi lần sửa một shot = một phiên mới.** Không sửa tiếp trong phiên đã dài (mỗi lượt đọc lại toàn bộ lịch sử).
+- **Đọc/sửa/đo bằng MCP `w01-shot`** (`.mcp.json` gốc repo, chi tiết trong `w01-shot-new/SKILL.md` mục "Ít token"),
+  không viết curl/Python/JS hay script `.mjs` riêng cho từng lần:
+  `shot_read` (clips/keys/cues/cast), `shot_edit` (moveClip/setClip/removeClip/setKeys/addCue/removeCue, một bước hoàn tác, có `dryRun`),
+  `shot_undo`, `shot_measure` (floor/height/distance/contact/continuity/gates). `shot` = slug hoặc đường dẫn `shot.json`
+  (bản thử từ `sandbox.py` chưa có shot.json: tạo tay với `project`, `api`, `projectsDir`, `library`, `editor`, `work`, `chars`).
+- MCP chưa nạp (phiên mở ở checkout không có `.mcp.json`): chạy `node .claude/skills/w01-shot-new/mcp/server.mjs` của một checkout main qua stdio,
+  hoặc dùng các script dưới đây. Chỉ viết script riêng khi MCP thiếu thao tác (vd. prop bám tay), và ghi lại để thêm vào MCP.
+- `shot_edit setKeys` ghi lớp fcurve, **không** ghi userKeys. Shot có userKeys ở khung đó thì khoá người dùng vẫn đè lên: kiểm bằng `shot_read keys`.
+
 ## Quy trình
 1. **Bản thử**: skill `w01-test-sandbox` (`sandbox.py all --name <x> … --from-projects <thư mục project thật> --port 31xx`).
    Ghi lại **revision của project thật lúc sao chép** (`project.json → revision`); bước 5 cần số này.
