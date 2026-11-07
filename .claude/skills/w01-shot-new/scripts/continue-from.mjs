@@ -27,11 +27,12 @@ tl.animation.motionClips = keep
 tl.frameEnd = END
 for (const seq of scene.content.editorial?.sequences ?? []) seq.clips = [{ ...seq.clips[0], sourceFrameStart: 0, sourceFrameEnd: END - 1 }]
 const fc = structuredClone(p.extensions.topview.fcurves)
-for (const c of fc.fcurves) c.k = [[0, r4(evalKeys(c.k, F)), 'linear', `kf_cont_${c.id}`]]
+// full precision: App 3 shot export rejects a scale that differs from libraryHeightScale by > 1e-6 (r4 broke Shot 05)
+for (const c of fc.fcurves) c.k = [[0, evalKeys(c.k, F), 'linear', `kf_cont_${c.id}`]]
 for (const [node, props] of Object.entries(fc.userKeys ?? {})) for (const [prop, ks] of Object.entries(props)) {
   const sorted = [...ks].sort((a, b) => a.frame - b.frame)
   const val = (i) => sorted.length === 1 ? sorted[0].value[i] : evalKeys(sorted.map((k) => [k.frame, k.value[i]]), F)
-  props[prop] = [{ id: `kf_cont_${node}_${prop}`, frame: 0, value: sorted[0].value.map((_, i) => r4(val(i))), interpolation: 'linear' }]
+  props[prop] = [{ id: `kf_cont_${node}_${prop}`, frame: 0, value: sorted[0].value.map((_, i) => val(i)), interpolation: 'linear' }]
 }
 // cues must stay inside the timeline at every step: fix them while the old (longer) timeline is still there
 const maxCue = Math.max(0, ...(p.extensions.vfxCues?.cues ?? []).map((c) => c.frameEnd))
