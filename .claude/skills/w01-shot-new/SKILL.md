@@ -24,11 +24,13 @@ Một shot từng tốn ~15% hạn 5 giờ vì phiên dài: mỗi lượt đọc
    `shot` = slug (`s5` → `S:/Claude/w01/work/s5/shot.json`) hoặc đường dẫn shot.json. Server từ chối 3016/3002.
    - `shot_read` `what: summary|clips|keys|cues|cast` (+ `char`, `frames`): bảng gọn; id cue rút 8 ký tự.
    - `shot_edit` `ops: moveClip|setClip|removeClip|setKeys|addCue|removeCue` (+ `dryRun`): mọi thao tác cảnh/đường cong = **một** bước hoàn tác.
-     `setKeys` ghi lớp fcurve, không ghi userKeys (khoá người dùng). `shot_undo` hoàn tác.
+     `setKeys` ghi lớp fcurve; `layer: "user"` ghi khoá người dùng (userKeys **đè** fcurve: nhân vật có userKeys thì setKeys lớp
+     fcurve không có tác dụng, ví dụ xoay Gỗ Xưa sau `flat.mjs`). `addCue` audio nhận `asset: "thud"` (tên file đã nhập, như
+     `shot_read cues` hiện) thay cho `assetId`. Mỗi cue là một lệnh riêng (một bước hoàn tác/cue). `shot_undo` hoàn tác.
    - `shot_measure` `metric: floor|height|distance|contact|continuity|gates` (+ `char`, `other`, `bone`, `frames`, `step`):
      probe chỉ chạy lại khi project đổi (~1,6 s), câu hỏi sau ~3 ms.
    - `shot_build`: chạy `build.mjs`.
-   Kiểm thử: `node --test mcp/server.test.mjs mcp/measure.test.mjs scripts/build.test.mjs`.
+   Kiểm thử: `node --test mcp/server.test.mjs mcp/measure.test.mjs scripts/build.test.mjs scripts/continue.test.mjs`.
 
 Ví dụ `build` (thứ tự Shot 04):
 ```json
@@ -89,4 +91,8 @@ Ví dụ `build` (thứ tự Shot 04):
 - Cue VFX không bắt đầu trước khung 0 được (vòm nở lại ở đầu shot); clip động tác thì được (frameStart âm).
 - Ảnh `stills.py` (w01-shot-edit) bỏ qua khoá người dùng; ảnh duyệt shot dùng `stills.md` (khung 3D thật).
 - pixelfx (tap15-*) chỉ xem được trong App 2; film BBS chưa có (việc của Codex). BBS không phát cue âm thanh: cần clip âm thanh camera.
+- Clip có `blendIn` kiểu skeletal bị App 2 **dời + xoay cả clip** cho gốc khớp clip trước: bỏ clip trước là nhân vật nhảy chỗ
+  (Shot 05: Gỗ Xưa lệch 1,9 m). `continue-from.mjs` giữ chuỗi clip đó (khung âm); `rhythm.json` bỏ trống `blend` = giữ blendIn.
+- Sau `continue-from`, vị trí người dùng là một khoá hằng: `ground.mjs` tự gộp nó vào fcurve rồi mới chỉnh sàn.
+- Xoay node quanh gốc làm hông trượt (gốc node ≠ hông): đo hông trước/sau rồi bù x/z cùng khoảng khung.
 - Người dùng hay nói nhầm tên khi đọc giọng nói ("đen" ↔ Gỗ Xưa): đối chiếu khung hình/nhân vật trước khi sửa, hỏi lại nếu cả hai đều hợp lý.

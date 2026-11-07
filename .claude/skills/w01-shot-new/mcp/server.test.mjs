@@ -19,9 +19,11 @@ const fixture = () => ({
     ] } },
   } },
   bindings: { clip_b: { rootPolicy: 'in-place' } },
-  assets: {},
+  assets: { 'sha256:aaa': { displayName: 'thud', kind: 'audio' }, 'sha256:bbb': { displayName: 'beam', kind: 'audio' }, 'sha256:ccc': { displayName: 'beam', kind: 'audio' } },
   extensions: {
-    topview: { fcurves: { version: 1, encoding: 'compact-v1', fcurves: [{ id: 'fc1', t: ['node', 'n_hero'], p: 'transform.position', i: 1, k: [[0, 0, 'linear', 'k0'], [40, 1, 'linear', 'k1']] }] } },
+    topview: { fcurves: { version: 1, encoding: 'compact-v1', fcurves: [{ id: 'fc1', t: ['node', 'n_hero'], p: 'transform.position', i: 1, k: [[0, 0, 'linear', 'k0'], [40, 1, 'linear', 'k1']] }],
+      userKeys: { n_hero: { rotation: [{ id: 'u0', frame: 0, value: [5, 0, 0], interpolation: 'linear' }] } } } },
+    audioCues: { version: 1, cues: [{ id: 'acue1', kind: 'sfx', assetId: 'sha256:ccc', frameStart: 100, gainDb: 0 }] },
     vfxCues: { version: 1, cues: [{ id: 'cue1', effect: 'bonk', frameStart: 10, frameEnd: 30, position: { x: 0, y: 1, z: 0 }, yaw: 0, scale: 1 }] },
   },
 })
@@ -127,6 +129,36 @@ test('shot_edit: cue ops go as separate commands after scene.apply', async () =>
   assert.deepEqual(posts.map((p) => p.command), ['scene.apply', 'vfx.cue.add', 'vfx.cue.remove'])
   assert.equal(posts[1].args.cue.frameStart, 5)
   assert.deepEqual(posts[2].args, { id: 'cue1' })
+})
+
+test('shot_edit: audio addCue takes an imported file name (asset) instead of assetId', async () => {
+  posts = []
+  const r = await call('shot_edit', { shot: shotFile, ops: [
+    { op: 'addCue', kind: 'audio', asset: 'thud.wav', start: 150, gainDb: -6 },
+    { op: 'addCue', kind: 'audio', asset: 'beam', start: 160 },   // 2 assets named beam: the one a cue already uses wins
+  ] })
+  assert.ok(!r.isError, text(r))
+  assert.deepEqual(posts.map((p) => [p.command, p.args.cue.assetId, p.args.cue.frameStart]), [['audio.cue.add', 'sha256:aaa', 150], ['audio.cue.add', 'sha256:ccc', 160]])
+  for (const asset of ['nope', '']) {
+    const bad = await call('shot_edit', { shot: shotFile, ops: [{ op: 'addCue', kind: 'audio', asset, start: 1 }] })
+    assert.equal(bad.isError, true)
+  }
+})
+
+test('shot_read cues shows the audio asset name usable by addCue', async () => {
+  const r = await call('shot_read', { shot: shotFile, what: 'cues' })
+  assert.match(text(r), /sfx:beam/)
+})
+
+test('shot_edit: setKeys layer user merges one axis into the vec3 user keys', async () => {
+  posts = []
+  const r = await call('shot_edit', { shot: shotFile, ops: [{ op: 'setKeys', node: 'hero', layer: 'user', channel: 'rotation.y', keys: [[0, 10], [20, 90]] }] })
+  assert.ok(!r.isError, text(r))
+  const uk = posts[0].args.operations[0].fcurves.userKeys.n_hero.rotation
+  assert.deepEqual(uk.map((k) => [k.frame, k.value]), [[0, [5, 10, 0]], [20, [5, 90, 0]]])   // x kept from the existing key
+  assert.equal(uk[1].interpolation, 'linear')
+  const bad = await call('shot_edit', { shot: shotFile, ops: [{ op: 'setKeys', node: 'hero', layer: 'user', replace: true, channel: 'rotation.y', keys: [[0, 1]] }] })
+  assert.equal(bad.isError, true)   // replace would drop the other two axes
 })
 
 test('shot_edit: validation error sends nothing', async () => {

@@ -58,3 +58,29 @@ export async function runProbe(shot, extra = []) {
   const json = readJson(probeFile(shot))
   return { report: r.stdout, data: json.data, revision: json.revision }
 }
+
+/** Blend partner, same rule as App 2 (builder evaluate/clips.ts motionBlendPartner): the latest-starting earlier clip of the
+ *  same node that still runs at the last frame of the blend zone. */
+export function blendPartner(clips, clip) {
+  const n = clip.playback?.blendIn?.frames
+  if (!(n > 0)) return null
+  const zoneEnd = clip.frameStart + n - 1
+  let best = null
+  for (const o of clips) {
+    if (o.id === clip.id || o.target.nodeId !== clip.target.nodeId || o.frameStart >= clip.frameStart || o.frameEnd < zoneEnd) continue
+    if (!best || o.frameStart > best.frameStart) best = o
+  }
+  return best
+}
+
+/** Clips that make up frame F, shifted by -F (mutates the clips). A skeletal blendIn moves + yaws the WHOLE later clip so its root
+ *  meets the partner's at the blend start (builder clipBlendPlan), so the partner chain is kept (ending before 0) together with the
+ *  blendIn; dropping it moved Gỗ Xưa 1.9 m at Shot 05 frame 0. Returns the kept clips in their original order. */
+export function continueClips(clips, F) {
+  const keep = new Set(clips.filter((c) => c.frameEnd >= F))
+  const skeletal = (c) => (c.motion?.rootMotion?.policy ?? 'skeletal') === 'skeletal'   // builder clipBlendPlan isSkeletal
+  for (const c of [...keep]) for (let x = c, p = blendPartner(clips, x); p && skeletal(x) && skeletal(p); x = p, p = blendPartner(clips, p)) keep.add(p)
+  const out = clips.filter((c) => keep.has(c))
+  for (const c of out) { c.frameStart -= F; c.frameEnd -= F }
+  return out
+}

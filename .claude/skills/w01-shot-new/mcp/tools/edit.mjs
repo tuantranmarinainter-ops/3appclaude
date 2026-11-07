@@ -16,12 +16,13 @@ const opSchema = {
     node: { type: 'string', description: 'char key or node id' },
     channel: { type: 'string', description: 'position|rotation|scale + .x|.y|.z (rotation in degrees)' },
     keys: { type: 'array', items: { type: 'array' }, description: '[[frame,value,interp?],...]' },
-    replace: { type: 'boolean', description: 'replace all keys of the channel (default: merge by frame)' },
+    replace: { type: 'boolean', description: 'replace all keys of the channel (default: merge by frame); not with layer user' },
+    layer: { type: 'string', enum: ['curve', 'user'], description: 'setKeys: curve (default, F-curve layer) or user (user keys: they win over the curve, e.g. continued shots)' },
     kind: { type: 'string', enum: ['vfx', 'audio'] },
     id: { type: 'string', description: 'cue id (removeCue)' },
     effect: { type: 'string' }, pos: { type: 'array', items: { type: 'number' } }, yaw: { type: 'number' }, scale: { type: 'number' },
     attach: { type: 'string', description: 'char key or node id' }, bone: { type: 'string' },
-    assetId: { type: 'string' }, sound: { type: 'string', enum: ['voice', 'sfx', 'music'] }, gainDb: { type: 'number' }, offsetSeconds: { type: 'number' }, speaker: { type: 'string' }, text: { type: 'string' },
+    assetId: { type: 'string' }, asset: { type: 'string', description: 'audio: imported file name instead of assetId (e.g. thud or thud.wav)' }, sound: { type: 'string', enum: ['voice', 'sfx', 'music'] }, gainDb: { type: 'number' }, offsetSeconds: { type: 'number' }, speaker: { type: 'string' }, text: { type: 'string' },
   },
   required: ['op'],
 }
@@ -52,6 +53,8 @@ function validate(shot, p, ops) {
       if (!CHANNEL.test(o.channel ?? '')) e('channel must be position|rotation|scale + .x|.y|.z')
       if (!Array.isArray(o.keys) || !o.keys.length) e('keys must be a non-empty array of [frame,value]')
       else for (const k of o.keys) if (!Array.isArray(k) || !int(k[0]) || !num(k[1]) || (k[2] != null && !INTERP.has(k[2]))) { e(`bad key ${JSON.stringify(k)}`); break }
+      if (o.layer != null && !['curve', 'user'].includes(o.layer)) e('layer must be curve|user')
+      if (o.layer === 'user' && o.replace) e('replace is not allowed with layer user (user keys hold x,y,z together)')
     }
     if (o.op === 'addCue') {
       if (!int(o.start)) e('start must be an integer frame')
@@ -62,7 +65,18 @@ function validate(shot, p, ops) {
         if (o.pos && !(o.pos.length === 3 && o.pos.every(num))) e('pos must be [x,y,z]')
         if (o.bone && !o.attach) e('bone needs attach')
       } else if (o.kind === 'audio') {
-        if (!o.assetId) e('missing assetId')
+        if (!o.assetId && o.asset != null) {
+          // shot_read shows "sfx:<name>", never the asset id: resolve the imported file's name; on duplicates (audio.mjs
+          // re-imports) prefer the asset a cue already uses
+          const base = (n) => String(n ?? '').replace(/\.[a-z0-9]{2,4}$/i, '').toLowerCase()
+          const want = base(o.asset)
+          const hits = want ? Object.entries(p.assets ?? {}).filter(([, a]) => [a?.displayName, a?.name].some((n) => n != null && base(n) === want)).map(([id]) => id) : []
+          const used = new Set((p.extensions?.audioCues?.cues ?? []).map((c) => c.assetId))
+          const pick = hits.length === 1 ? hits : hits.filter((id) => used.has(id))
+          if (pick.length === 1) o.assetId = pick[0]
+          else return e(hits.length ? `asset name not unique: ${o.asset} (${hits.length} assets)` : `audio asset not found: ${o.asset}`)
+        }
+        if (!o.assetId) e('missing assetId (or asset: imported file name, as shot_read cues shows it)')
         if (o.sound != null && !['voice', 'sfx', 'music'].includes(o.sound)) e('sound must be voice|sfx|music')
       } else e('kind must be vfx|audio')
     }
@@ -98,6 +112,27 @@ function applyScene(shot, p, ops, scene, fc) {
         if (o.blend != null) { if (o.blend > 0) c.playback.blendIn = { frames: o.blend, curve: 'smooth', footLock: false }; else delete c.playback.blendIn }
       }
       log.push(`${o.op} ${o.clip}: ${before} -> ${c.frameStart}-${c.frameEnd} x${c.playback?.speed}${c.playback?.blendIn ? ' blend ' + c.playback.blendIn.frames : ''}`)
+    } else if (o.op === 'setKeys' && o.layer === 'user') {
+      // user keys win over the curve; each key holds [x,y,z]: set one axis, keep the others (sampled at that frame)
+      const nid = nodeId(shot, o.node)
+      const [, prop, ax] = CHANNEL.exec(o.channel)
+      const i = 'xyz'.indexOf(ax)
+      fc.userKeys ??= {}; fc.userKeys[nid] ??= {}
+      const cur = [...(fc.userKeys[nid][prop] ?? [])].sort((a, b) => a.frame - b.frame)
+      const before = cur.length
+      const node = nodesOf(p).find((n) => n.id === nid)
+      const base = prop === 'scale' ? [1, 1, 1] : [0, 0, 0]
+      const at = (f) => {
+        if (!cur.length) { const t = node?.transform?.[prop]; return t ? [t.x ?? base[0], t.y ?? base[1], t.z ?? base[2]] : [...base] }
+        if (f <= cur[0].frame) return [...cur[0].value]
+        const j = cur.findIndex((k) => k.frame >= f); if (j < 0) return [...cur.at(-1).value]
+        const a = cur[j - 1], b = cur[j], t = (f - a.frame) / (b.frame - a.frame)
+        return a.value.map((v, n) => v + (b.value[n] - v) * t)
+      }
+      const add = o.keys.map(([f, v, ip]) => { const old = cur.find((k) => k.frame === f); const value = old ? [...old.value] : at(f); value[i] = v; return { id: old?.id ?? KEY_ID(), frame: f, value, interpolation: ip === 'bezier' ? 'ease-in-out' : 'linear' } })
+      const byFrame = new Map(cur.map((k) => [k.frame, k])); for (const k of add) byFrame.set(k.frame, k)
+      fc.userKeys[nid][prop] = [...byFrame.values()].sort((a, b) => a.frame - b.frame)
+      log.push(`setKeys ${o.node} ${o.channel} (user): ${before} -> ${fc.userKeys[nid][prop].length} keys (set ${o.keys.length})`)
     } else if (o.op === 'setKeys') {
       const nid = nodeId(shot, o.node)
       const [, prop, ax] = CHANNEL.exec(o.channel)

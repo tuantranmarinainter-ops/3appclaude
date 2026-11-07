@@ -1,11 +1,12 @@
 // Turn the copied previous-shot project into the START of the new shot: frame 0 = previous frame F (shot.prev.frame).
 //   node continue-from.mjs <shot.json> [--frame F]
 // - motion clips still playing at F are shifted by -F (negative frameStart is allowed, so loops / ping-pong keep their exact phase);
+//   their blendIn partner chain is kept too (ends before 0): App 2 aligns a skeletal blended clip to its partner's root;
 //   clips that ended before F are removed; the last clip of each character is stretched to the end (non-loop clips hold).
 // - every F-curve and user key becomes one constant key holding its value at F (piecewise linear; check CONTINUITY afterwards).
 // - VFX cues alive at F restart at 0 (App 2 cannot start a cue before 0: say so to the user); audio cues are removed.
 // Then: node gates.mjs <shot.json>  (probe CONTINUITY must PASS <= 2 cm)
-import { loadShot, api, applyScene, evalKeys, r4, writeJson, readJson, clipsFile } from './lib.mjs'
+import { loadShot, api, applyScene, evalKeys, r4, writeJson, readJson, clipsFile, continueClips, blendPartner } from './lib.mjs'
 const shot = loadShot()
 const fi = process.argv.indexOf('--frame')
 const F = fi > 0 ? Number(process.argv[fi + 1]) : shot.prev.frame
@@ -15,13 +16,9 @@ const { project: p } = await project(shot.project)
 const done = readJson(clipsFile(shot), {}).__continuedFrom != null   // re-runnable: never shift twice
 const scene = structuredClone(p.scene)
 const tl = scene.content.timeline
-const keep = []
-for (const c of tl.animation.motionClips) {
-  if (c.frameEnd < F) continue
-  c.frameStart -= F; c.frameEnd -= F
-  if (c.playback.blendIn && c.frameStart + c.playback.blendIn.frames <= 0) delete c.playback.blendIn
-  keep.push(c)
-}
+// clips running at F + their blend partner chain (a skeletal blendIn aligns the whole clip to its partner: keep both)
+const keep = continueClips(tl.animation.motionClips, F)
+for (const c of keep) if (c.playback.blendIn && c.frameStart + c.playback.blendIn.frames <= 0 && !blendPartner(keep, c)) delete c.playback.blendIn
 for (const node of new Set(keep.map((c) => c.target.nodeId))) {
   const last = keep.filter((c) => c.target.nodeId === node).sort((a, b) => b.frameEnd - a.frameEnd)[0]
   if (last.frameEnd < END) last.frameEnd = END
