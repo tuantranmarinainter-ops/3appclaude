@@ -2,7 +2,8 @@
 //   node rhythm.mjs <shot.json> rhythm.json
 // rhythm.json: [ { "key": "heroAttack", "start": 94, "end": 117, "speed": 1.5, "loop": false, "loopMode": "repeat",
 //                  "blend": 4, "root": "in-place" }, … ]       keys are clips.json keys (place.mjs / continue-from.mjs)
-// - blend N: blendIn of N frames (smooth, foot lock OFF); the clip must overlap the previous one by N frames.
+// - blend N: blendIn of N frames (smooth, foot lock OFF); the clip must overlap the previous one by N frames. 0 removes it;
+//   leaving "blend" out keeps the clip's blendIn (a continued skeletal blend aligns the clip to its partner: CONTINUITY).
 // - root: skeletal | in-place | trajectory (in-place for anything whose path you drive with curves; skeletal for falls).
 //   Root changes go through motion.binding.set with the clip parked (avoids the overlap check), then the scene is applied.
 // - { "key": "oldClip", "remove": true } takes a clip off the timeline (its binding goes with it).
@@ -36,8 +37,8 @@ for (const it of plan.filter((x) => !x.remove)) {
   if (it.speed != null) c.playback.speed = it.speed
   if (it.loop != null) c.playback.loop = it.loop
   if (it.loopMode) c.playback.loopMode = it.loopMode
-  delete c.playback.blendIn
-  if (it.blend) c.playback.blendIn = { frames: it.blend, curve: 'smooth', footLock: false }
+  // no "blend" in the entry = keep the clip's blendIn (continue-from keeps skeletal blends: their root alignment); 0 = none
+  if (it.blend != null) { delete c.playback.blendIn; if (it.blend > 0) c.playback.blendIn = { frames: it.blend, curve: 'smooth', footLock: false } }
 }
 tl.frameEnd = shot.end
 const r = await applyScene(shot, scene, p.extensions.topview.fcurves)

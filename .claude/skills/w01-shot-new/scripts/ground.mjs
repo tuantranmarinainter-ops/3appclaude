@@ -5,6 +5,7 @@
 // With --hit/--land: no change before H; small pop-up then gravity fall to the floor at L; on the floor after L.
 // Floor rule: torso rests on the floor (8 cm body radius), limb bones stay >= --clear (3 cm) above it.
 // --user-keys: also lift the node's user position keys after --until (hand edits) so they stay on the floor (x/z kept).
+// A single constant user position key (continued shot) is folded into the curve first (user keys would hide the Y keys).
 // Always resets the character's Y curve to its base value and re-probes first (re-running never accumulates offsets).
 import { loadShot, api, applyScene, runProbe, near, r4 } from './lib.mjs'
 const shot = loadShot()
@@ -24,6 +25,14 @@ async function curves() {
   return { p, fc, node, get }
 }
 let { p, fc, node, get } = await curves()
+// User position keys win over the curve. A continued shot has ONE constant user key (continue-from): fold it into the curve
+// (same pose) so the Y keys below take effect (Shot 05 Gỗ Xưa floated 10-76 cm and ground.mjs changed nothing).
+const ukPos = fc.userKeys?.[ch.node]?.position
+if (ukPos?.length === 1) {
+  for (const i of [0, 1, 2]) get(i).k = [[0, r4(ukPos[0].value[i]), 'linear', `kg_fold_${i}`]]
+  delete fc.userKeys[ch.node].position
+  console.log(`folded 1 constant user position key into the curve`)
+} else if (ukPos?.length && !process.argv.includes('--user-keys')) console.log(`warning: ${ukPos.length} user position keys override the curve; add --user-keys`)
 const keptX = UNTIL != null ? get(0).k.filter((k) => k[0] > UNTIL) : [], keptY = UNTIL != null ? get(1).k.filter((k) => k[0] > UNTIL) : []
 // base = the curve's own first key (dragging the node in App 2 can move node.transform, which must not shift frame 0)
 const baseY = get(1).k.length ? [...get(1).k].sort((a, b) => a[0] - b[0])[0][1] : node.transform.position.y
