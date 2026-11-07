@@ -8,6 +8,45 @@ description: Dựng một shot MỚI của tập phim trong App 2 (bản thử) 
 Mỗi shot mới lặp lại cùng một chuỗi việc. Hãy dùng script ở `scripts/`, đừng viết lại. Mọi script đọc một file cấu hình
 `shot.json` (do `new-shot.py` tạo, sửa tay được) và **từ chối** cổng 3016/3002 (App 2 thật). Không xuất ZIP / vào game khi chưa có lệnh.
 
+## Ít token (bắt buộc)
+Một shot từng tốn ~15% hạn 5 giờ vì phiên dài: mỗi lượt đọc lại 400–900 nghìn token lịch sử (đo 2026-11-07: 1.331 lượt gọi,
+873 lệnh Bash, 79 ảnh). Quy tắc:
+1. **Mỗi shot một phiên mới.** Sửa shot đã xong cũng mở phiên mới. Không dồn nhiều shot vào một phiên.
+2. **Một lệnh cho cả chuỗi**: ghi các bước vào `shot.json` → `"build": [...]`, rồi chạy
+   `node scripts/build.mjs <shot.json>` (thêm `--dry` để xem lệnh, `--from <n>` chạy tiếp, `--only <tên>` chạy một bước).
+   Kết quả: 1 dòng/bước + tóm tắt cổng đo; log đầy đủ ở `work/<slug>/build/NN-<bước>.log`, `build/summary.json`.
+   **Chỉ mở log khi bước FAIL**, và chỉ đọc đoạn cuối. Sửa nhịp/vị trí = sửa file JSON rồi chạy lại `build.mjs` (các bước chạy lại an toàn;
+   `vfx add` đã có cue cùng hiệu ứng + khung thì tự bỏ qua).
+3. **Không viết `step*.mjs` riêng cho từng shot.** Thiếu bước thì dùng `{"run": "<script>", "args": [...]}` hoặc thêm vào script chung.
+4. **Ảnh**: một ảnh tổng hợp (`sheet.py`) cho mỗi vòng duyệt, không chụp từng khung, không dò dữ liệu bằng JS trên trình duyệt.
+5. **Model**: Opus lập bảng nhịp và đọc kết quả; vòng sửa–chạy lại–đo giao subagent Sonnet (hoặc Haiku khi chỉ tìm động tác/đọc log).
+6. **MCP `w01-shot`** (`.mcp.json` ở gốc repo, server `mcp/server.mjs`): dùng thay cho curl/Python/JS tự viết.
+   `shot` = slug (`s5` → `S:/Claude/w01/work/s5/shot.json`) hoặc đường dẫn shot.json. Server từ chối 3016/3002.
+   - `shot_read` `what: summary|clips|keys|cues|cast` (+ `char`, `frames`): bảng gọn; id cue rút 8 ký tự.
+   - `shot_edit` `ops: moveClip|setClip|removeClip|setKeys|addCue|removeCue` (+ `dryRun`): mọi thao tác cảnh/đường cong = **một** bước hoàn tác.
+     `setKeys` ghi lớp fcurve, không ghi userKeys (khoá người dùng). `shot_undo` hoàn tác.
+   - `shot_measure` `metric: floor|height|distance|contact|continuity|gates` (+ `char`, `other`, `bone`, `frames`, `step`):
+     probe chỉ chạy lại khi project đổi (~1,6 s), câu hỏi sau ~3 ms.
+   - `shot_build`: chạy `build.mjs`.
+   Kiểm thử: `node --test mcp/server.test.mjs mcp/measure.test.mjs scripts/build.test.mjs`.
+
+Ví dụ `build` (thứ tự Shot 04):
+```json
+"build": [
+  {"step": "continue"}, {"step": "place", "file": "place.json"}, {"step": "rhythm", "file": "rhythm.json"},
+  {"step": "prop-follow"}, {"step": "align", "frame": 101, "target": "go", "offset": 0.1}, {"step": "prop-follow"},
+  {"step": "ground", "char": "go", "hit": 102, "land": 118, "knock": 0.6},
+  {"step": "flat", "char": "go", "in": 140, "hold": [156, 190], "out": 222}, {"step": "ground", "char": "go", "from": 118},
+  {"step": "camera", "file": "camera.json"},
+  {"step": "vfx", "cmd": "keep", "effect": "barrior01"},
+  {"step": "vfx", "cmd": "add", "effect": "bonk", "start": 101, "at": "go:head@101", "dy": 0.1, "scale": 0.35},
+  {"step": "voice", "who": "goxua", "text": "Ây ây da... đau quá!", "out": "voice.wav"},
+  {"step": "sfx", "outDir": "sfx", "names": ["bonk", "thud", "whoosh:0.8"]},
+  {"step": "audio", "file": "audio.json"}, {"step": "gates"}
+]
+```
+`flat` tự làm mới probe trước khi chạy. Không có bước `gates` thì `build.mjs` tự đo ở cuối. Các bước dưới đây vẫn chạy tay được khi cần.
+
 ## Quy trình
 0. **Đọc kịch bản/slide**, hỏi người dùng các điểm chưa rõ (thời lượng, ai làm gì sau cú đánh, thoại nào). Đề xuất bảng nhịp:
    nói chuyện/giữ cảnh **chậm**, tấn công **nhanh** (người dùng chốt quy tắc này). Ghi các mục tự chốt là **[Claude chốt]**.
