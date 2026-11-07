@@ -24,6 +24,9 @@ không mất chức năng), `w01-test-sandbox` (bản thử với bản sao proj
 (kiểm UI + ảnh bằng chứng), `w01-spec` (đặc tả + lệnh giao agent khác), `w01-shot-edit` (sửa shot App 2 trên bản thử, đo khung 3D, ghi thật một lệnh), `w01-shot-new` (dựng shot mới nối
 tiếp shot trước, cổng đo PASS/FAIL).
 Dùng script trong skill thay vì viết lại.
+**Dựng/sửa shot ít token**: mỗi shot (kể cả một lần sửa) một phiên mới; đọc/sửa/đo project App 2 bằng MCP `w01-shot` (`.mcp.json`:
+`shot_read`, `shot_edit`, `shot_undo`, `shot_measure`, `shot_build`) thay vì curl/Python/JS tự viết; chuỗi bước chạy bằng
+`w01-shot-new/scripts/build.mjs`; chỉ mở log khi FAIL; mỗi vòng duyệt một ảnh tổng hợp. Lý do: một shot từng tốn ~15% hạn 5 giờ.
 
 ## Bản đồ code W01
 | Vị trí | Vai trò |
