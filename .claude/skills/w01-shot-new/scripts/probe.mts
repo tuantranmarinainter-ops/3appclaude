@@ -1,6 +1,7 @@
 /**
  * Measure a sandbox shot from the skeletons App 2 evaluates (no writes). Run through lib.runProbe() or directly:
  *   cd <shot.editor> && W01_LIBRARY=<lib> pnpm --filter @topview/3d-builder exec tsx <skill>/scripts/probe.mts <shot.json> [--prev <projectsDir> <projectId> <frame>]
+ * Optional `--bones a,b` adds data[f][char].bones[name] = [x,y,z] (world position) and `bonesArg` to probe.json; probe.json also keeps `gates`.
  * Writes <work>/probe.json: data[frame][charKey] = { head, hip, torso, low, feet, bone? } and prints gates:
  *   CONTINUITY  max bone offset vs the previous shot's frame  (PASS <= 2 cm)
  *   SEAM_JUMP   world-rotation change per frame at clip seams (±3 frames), fingers ignored (PASS <= 20°)
@@ -18,6 +19,8 @@ const store = await import(`file:///${studio}/unifiedProjectStore.ts`)
 const ev = await import(`file:///${studio}/unifiedSkeletonEvaluation.ts`)
 const argPrev = process.argv.indexOf('--prev')
 const prev = argPrev > 0 ? { dir: process.argv[argPrev + 1]!, id: process.argv[argPrev + 2]!, frame: Number(process.argv[argPrev + 3]) } : shot.prev ?? null
+const argBones = process.argv.indexOf('--bones')
+const BONES: string[] = argBones > 0 ? process.argv[argBones + 1]!.split(',').filter(Boolean) : []
 const END = (shot.end ?? 300) - 1
 type Frames = Map<number, Map<string, number[]>>
 
@@ -70,6 +73,7 @@ for (let f = 0; f <= END; f++) {
     row[k] = { head: pos(head![1]).toArray(), hip: hip ? pos(hip[1]).toArray() : pos(head![1]).toArray(), torso: [torso], low: [low], feet }
     const bone = shot.prop?.follow === k ? shot.prop.bone : shot.chars[k].hand
     if (bone && m.get(bone)) row[k].bone = m.get(bone)!
+    if (BONES.length) { const bs: Record<string, number[]> = {}; for (const n of BONES) { const w = m.get(n); if (w) bs[n] = pos(w).toArray() } ;(row[k] as any).bones = bs }
   }
   if (Object.keys(row).length) data[f] = row
 }
@@ -114,6 +118,6 @@ if (shot.contact && shot.prop) {
     gates.push([`CONTACT f${f}`, dist <= 0.15 ? 'PASS' : 'FAIL', `prop tip to ${shot.contact.char} head top ${(dist * 100).toFixed(1)} cm`])
   }
 }
-writeFileSync(path.join(shot.work, 'probe.json'), JSON.stringify({ revision: project.revision, data }))
+writeFileSync(path.join(shot.work, 'probe.json'), JSON.stringify({ revision: project.revision, data, ...(BONES.length ? { bonesArg: BONES } : {}), gates }))
 console.log(`probe rev ${project.revision}, ${Object.keys(data).length} frames`)
 for (const [g, s, msg] of gates) console.log(`${s.padEnd(7)} ${g.padEnd(24)} ${msg}`)

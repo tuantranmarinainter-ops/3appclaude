@@ -20,6 +20,15 @@ Một shot từng tốn ~15% hạn 5 giờ vì phiên dài: mỗi lượt đọc
 3. **Không viết `step*.mjs` riêng cho từng shot.** Thiếu bước thì dùng `{"run": "<script>", "args": [...]}` hoặc thêm vào script chung.
 4. **Ảnh**: một ảnh tổng hợp (`sheet.py`) cho mỗi vòng duyệt, không chụp từng khung, không dò dữ liệu bằng JS trên trình duyệt.
 5. **Model**: Opus lập bảng nhịp và đọc kết quả; vòng sửa–chạy lại–đo giao subagent Sonnet (hoặc Haiku khi chỉ tìm động tác/đọc log).
+6. **MCP `w01-shot`** (`.mcp.json` ở gốc repo, server `mcp/server.mjs`): dùng thay cho curl/Python/JS tự viết.
+   `shot` = slug (`s5` → `S:/Claude/w01/work/s5/shot.json`) hoặc đường dẫn shot.json. Server từ chối 3016/3002.
+   - `shot_read` `what: summary|clips|keys|cues|cast` (+ `char`, `frames`): bảng gọn; id cue rút 8 ký tự.
+   - `shot_edit` `ops: moveClip|setClip|removeClip|setKeys|addCue|removeCue` (+ `dryRun`): mọi thao tác cảnh/đường cong = **một** bước hoàn tác.
+     `setKeys` ghi lớp fcurve, không ghi userKeys (khoá người dùng). `shot_undo` hoàn tác.
+   - `shot_measure` `metric: floor|height|distance|contact|continuity|gates` (+ `char`, `other`, `bone`, `frames`, `step`):
+     probe chỉ chạy lại khi project đổi (~1,6 s), câu hỏi sau ~3 ms.
+   - `shot_build`: chạy `build.mjs`.
+   Kiểm thử: `node --test mcp/server.test.mjs mcp/measure.test.mjs scripts/build.test.mjs`.
 
 Ví dụ `build` (thứ tự Shot 04):
 ```json

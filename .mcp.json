@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "w01-shot": {
+      "command": "node",
+      "args": [".claude/skills/w01-shot-new/mcp/server.mjs"]
+    }
+  }
+}
